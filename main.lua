@@ -229,7 +229,7 @@ sbar.exec("sketchybar --subscribe volume volume_change")
 sbar.add("item", "battery", {
   position = "right",
   update_freq = 120,
-  script = PLUGIN_DIR .. "/battery.sh",
+  script = PLUGIN_DIR .. "/battery.sh '" .. colors.GREEN .. "' '" .. colors.YELLOW .. "' '" .. colors.RED .. "' '" .. colors.BLUE .. "'",
   background = {
     color = colors.LAVENDER,
     corner_radius = 7,

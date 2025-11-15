@@ -1,0 +1,40 @@
+if [ "$SENDER" = "front_app_switched" ]; then
+  if [ "$INFO" = "Terminal" ]; then
+      ICON=""
+    elif [ "$INFO" = "Firefox" ]; then
+      ICON=""
+    elif [ "$INFO" = "Google Chrome" ]; then
+      ICON=""
+    elif [ "$INFO" = "Messages" ]; then
+      ICON=""
+    elif [ "$INFO" = "Code" ]; then
+      ICON=""
+    elif [ "$INFO" = "Emacs" ]; then
+      ICON=""
+    elif [ "$INFO" = "Finder" ]; then
+      ICON=""
+    elif [ "$INFO" = "Spotify" ]; then
+      ICON=""
+    elif [ "$INFO" = "Discord" ]; then
+      ICON="󱥁"
+    elif [ "$INFO" = "Mail" ]; then
+      ICON=""
+    elif [ "$INFO" = "Calendar" ]; then
+      ICON=""
+    elif [ "$INFO" = "Notes" ]; then
+      ICON=""
+    elif [ "$INFO" = "Reminders" ]; then
+      ICON=""
+    elif [ "$INFO" = "Music" ]; then
+      ICON=""
+    elif [ "$INFO" = "Photos" ]; then
+      ICON=""
+    elif [ "$INFO" = "Parallels Desktop" ]; then
+      ICON=""
+    elif [ "$INFO" = "Gimp" ]; then
+      ICON=""
+    else
+      ICON=""
+    fi
+  sketchybar --set space."$SID" icon="$ICON"
+fi

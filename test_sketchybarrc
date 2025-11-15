@@ -1,0 +1,5 @@
+#!/usr/bin/env lua
+
+package.cpath = package.cpath .. ";/Users/scawful/.local/share/sketchybar_lua/?.so"
+
+require("test_config")

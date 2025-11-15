@@ -1,32 +1,9 @@
 local sbar = require("sketchybar")
+local theme = require("theme")
 
 local PLUGIN_DIR = "/Users/scawful/.config/sketchybar/plugins"
 
 sbar.begin_config()
-
-colors = {
-  bar = {
-    bg = 0xD04C3B52
-  },
-  ROSEWATER = "0xFFf5e0dc",
-  FLAMINGO = "0xFFf2cdcd",
-  PINK = "0xFFf5c2e7",
-  MAUVE = "0xFFcba6f7",
-  RED = "0xFFf38ba8",
-  MAROON = "0xFFeba0ac",
-  PEACH = "0xFFfab387",
-  YELLOW = "0xFFf9e2af",
-  GREEN = "0xFFa6e3a1",
-  TEAL = "0xFF94e2d5",
-  SKY = "0xFF89dceb",
-  SAPPHIRE = "0xFF74c7ec",
-  BLUE = "0xFF89b4fa",
-  LAVENDER = "0xFFb4befe",
-  WHITE = "0xFFcdd6f4",
-  DARK_WHITE = "0xFF9399b2",
-  BG_PRI_COLR = "0xEE1e1e2e",
-  BG_SEC_COLR = "0xFF313244",
-}
 
 local settings = {
   font = {
@@ -48,7 +25,7 @@ sbar.bar({
   position = "top",
   height = 25,
   blur_radius = 30,
-  color = colors.bar.bg,
+  color = theme.bar.bg,
   margin = 5,
   padding_left = 5,
   padding_right = 5,
@@ -62,7 +39,7 @@ sbar.default({
   updates = "when_shown",
   padding_left = 5,
   padding_right = 5,
-  color = 0xD04C3B52,
+  color = theme.bar.bg,
   height = 25,
   blur_radius = 30,
   icon = {
@@ -71,7 +48,7 @@ sbar.default({
       style = settings.font.style_map["Bold"],
       size = 16.0
     },
-    color = 0xffffffff,
+    color = theme.WHITE,
     padding_left = 4,
     padding_right = 4,
   },
@@ -81,7 +58,7 @@ sbar.default({
       style = settings.font.style_map["Semibold"],
       size = 14.0
     },
-    color = 0xffffffff,
+    color = theme.WHITE,
     padding_left = 4,
     padding_right = 4,
   },
@@ -98,8 +75,8 @@ sbar.add("item", "zelda", {
     background = {
       border_width = 2,
       corner_radius = 3,
-      border_color = 0xffffffff,
-      color = colors.bar.bg
+      border_color = theme.WHITE,
+      color = theme.bar.bg
     }
   }
 })
@@ -202,7 +179,7 @@ sbar.add("item", "clock", {
   update_freq = 10,
   script = PLUGIN_DIR .. "/clock.sh",
   background = {
-    color = "0x80111111",
+    color = theme.clock,
     corner_radius = 7,
     height = 20
   },
@@ -218,7 +195,7 @@ sbar.add("item", "volume", {
   position = "right",
   script = PLUGIN_DIR .. "/volume.sh",
   background = {
-    color = 0x8020B2AA,
+    color = theme.volume,
     corner_radius = 7,
     height = 20
   },
@@ -229,9 +206,9 @@ sbar.exec("sketchybar --subscribe volume volume_change")
 sbar.add("item", "battery", {
   position = "right",
   update_freq = 120,
-  script = PLUGIN_DIR .. "/battery.sh '" .. colors.GREEN .. "' '" .. colors.YELLOW .. "' '" .. colors.RED .. "' '" .. colors.BLUE .. "'",
+  script = PLUGIN_DIR .. "/battery.sh '" .. theme.GREEN .. "' '" .. theme.YELLOW .. "' '" .. theme.RED .. "' '" .. theme.BLUE .. "'",
   background = {
-    color = colors.LAVENDER,
+    color = theme.LAVENDER,
     corner_radius = 7,
     height = 20
   },

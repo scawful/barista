@@ -46,6 +46,7 @@ local HOVER_SCRIPT = compiled_script("popup_hover", PLUGIN_DIR .. "/popup_hover.
 local POPUP_ANCHOR_SCRIPT = compiled_script("popup_anchor", PLUGIN_DIR .. "/popup_anchor.sh")
 local SUBMENU_HOVER_SCRIPT = compiled_script("submenu_hover", PLUGIN_DIR .. "/submenu_hover.sh")
 local POPUP_MANAGER_SCRIPT = compiled_script("popup_manager", PLUGIN_DIR .. "/popup_manager.sh")
+local POPUP_GUARD_SCRIPT = compiled_script("popup_guard", PLUGIN_DIR .. "/popup_guard.sh")
 
 -- Environment
 local NET_INTERFACE = os.getenv("SKETCHYBAR_NET_INTERFACE") or "en0"
@@ -308,13 +309,13 @@ sbar.default({
   },
 })
 
--- Apple Menu
+-- Apple Menu (with popup_guard to prevent premature closing when submenus are open)
 sbar.add("item", "apple_menu", {
   position = "left",
   icon = icon_for("apple", ""),
   label = { drawing = false },
   click_script = PLUGIN_DIR .. "/apple_menu.sh",
-  script = POPUP_ANCHOR_SCRIPT,
+  script = POPUP_GUARD_SCRIPT,  -- Use popup_guard instead of popup_anchor
   background = {
     color = "0x00000000",
     corner_radius = widget_corner_radius,
@@ -332,9 +333,9 @@ sbar.add("item", "apple_menu", {
   }
 })
 
-subscribe_popup_autoclose("apple_menu")
--- Add hover effect to apple menu icon
-attach_hover("apple_menu")
+-- Subscribe apple_menu with popup_guard (prevents closing when submenus are open)
+shell_exec("sketchybar --subscribe apple_menu mouse.entered mouse.exited mouse.exited.global")
+-- Note: Don't call attach_hover() for apple_menu - it would override popup_guard with popup_hover
 
 -- Menu context for rendering
 local menu_context = {

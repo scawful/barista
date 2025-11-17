@@ -25,6 +25,8 @@ static const size_t SUBMENU_COUNT = sizeof(SUBMENUS) / sizeof(SUBMENUS[0]);
 
 static double CLOSE_DELAY = 0.25;  // Increased default for better reliability
 static char state_file[PATH_MAX];
+static char parent_state_file[PATH_MAX];
+static const char *PARENT_POPUP = "apple_menu";  // Main menu that contains submenus
 
 static void run_cmd(const char *fmt, ...) {
   char buffer[1024];
@@ -56,6 +58,21 @@ static int read_active(char *buffer, size_t size) {
 
 static void clear_active() {
   unlink(state_file);
+  unlink(parent_state_file);  // Also clear parent state
+}
+
+static void record_parent_open() {
+  FILE *fp = fopen(parent_state_file, "w");
+  if (!fp) return;
+  fputs("open", fp);
+  fclose(fp);
+}
+
+static int is_parent_open() {
+  FILE *fp = fopen(parent_state_file, "r");
+  if (!fp) return 0;
+  fclose(fp);
+  return 1;
 }
 
 static void close_other_submenus(const char *current) {
@@ -100,6 +117,7 @@ int main(void) {
   const char *tmpdir = getenv("TMPDIR");
   if (!tmpdir) tmpdir = "/tmp";
   snprintf(state_file, sizeof(state_file), "%s/sketchybar_submenu_active", tmpdir);
+  snprintf(parent_state_file, sizeof(parent_state_file), "%s/sketchybar_parent_popup_lock", tmpdir);
 
   const char *delay_env = getenv("SUBMENU_CLOSE_DELAY");
   if (delay_env && delay_env[0] != '\0') {
@@ -116,6 +134,7 @@ int main(void) {
   if (!sender || strcmp(sender, "mouse.entered") == 0) {
     close_other_submenus(name);
     record_active(name);
+    record_parent_open();  // Lock parent popup from closing
     run_cmd("sketchybar --set %s popup.drawing=on background.drawing=on "
             "background.color=%s background.corner_radius=6 "
             "background.padding_left=4 background.padding_right=4",
@@ -129,9 +148,13 @@ int main(void) {
   }
 
   if (strcmp(sender, "mouse.exited.global") == 0) {
+    // Global exit: close everything
     clear_active();
+    close_other_submenus(name);  // Close all submenus
     run_cmd("sketchybar --set %s popup.drawing=off background.drawing=off background.color=%s",
             name, IDLE_BG);
+    // Also close parent popup
+    run_cmd("sketchybar --set %s popup.drawing=off", PARENT_POPUP);
     return 0;
   }
 

@@ -6,7 +6,7 @@ CFLAGS = -O2 -Wall -Wextra
 CXXFLAGS = -O2 -std=c++17 -Wall -Wextra
 INSTALL_DIR = $(HOME)/.config/sketchybar/bin
 
-TARGETS = clock_widget system_info_widget space_manager submenu_hover popup_anchor popup_hover popup_manager menu_action
+TARGETS = clock_widget system_info_widget space_manager submenu_hover popup_anchor popup_hover popup_manager popup_guard menu_action
 
 all: $(TARGETS)
 
@@ -31,6 +31,9 @@ popup_hover: popup_hover.c
 popup_manager: popup_manager.c
 	$(CC) $(CFLAGS) -o $@ $<
 
+popup_guard: popup_guard.c
+	$(CC) $(CFLAGS) -o $@ $<
+
 menu_action: menu_action.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
@@ -43,6 +46,7 @@ install: $(TARGETS)
 	install -m 755 popup_anchor $(INSTALL_DIR)/
 	install -m 755 popup_hover $(INSTALL_DIR)/
 	install -m 755 popup_manager $(INSTALL_DIR)/
+	install -m 755 popup_guard $(INSTALL_DIR)/
 	install -m 755 menu_action $(INSTALL_DIR)/
 	@echo "C widgets and tools installed to $(INSTALL_DIR)"
 	@echo "Update your main.lua to use:"

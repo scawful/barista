@@ -57,11 +57,14 @@ function profile.merge_config(base_config, user_profile)
     return base_config
   end
 
-  -- Merge appearance
+  -- Merge appearance (only for non-nil values to preserve state.json)
   if user_profile.appearance then
     base_config.appearance = base_config.appearance or {}
     for k, v in pairs(user_profile.appearance) do
-      base_config.appearance[k] = v
+      -- Only merge if value is not nil (allows profiles to preserve existing settings)
+      if v ~= nil then
+        base_config.appearance[k] = v
+      end
     end
   end
 
@@ -94,17 +97,16 @@ function profile.merge_config(base_config, user_profile)
     end
   end
 
-  -- Merge space modes
+  -- Merge space modes (ONLY if explicitly set in profile)
+  -- DO NOT automatically apply default_mode to all spaces
+  -- This prevents forcing window management on users
   if user_profile.spaces and user_profile.spaces.default_mode then
-    base_config.space_modes = base_config.space_modes or {}
-    -- Apply default mode to spaces that don't have one
-    for i = 1, (user_profile.spaces.count or 10) do
-      local key = tostring(i)
-      if not base_config.space_modes[key] then
-        base_config.space_modes[key] = user_profile.spaces.default_mode
-      end
-    end
+    -- Only apply if user explicitly wants it
+    -- Most users should NOT set default_mode in their profile
+    print("Warning: Profile sets default_mode to " .. user_profile.spaces.default_mode)
+    print("This will force window management on all spaces!")
   end
+  -- Space modes should be set via control panel, not profile
 
   return base_config
 end

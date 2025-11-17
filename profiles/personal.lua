@@ -28,13 +28,14 @@ profile.menu_sections = {
   { type = "submenu", name = "menu.emacs.section", icon = "", label = "Emacs Workspace", order = 60 },
 }
 
--- Appearance preferences
+-- Appearance preferences (these override state.json on profile load)
+-- Comment out or remove to preserve existing state.json values
 profile.appearance = {
-  bar_height = 38,
-  corner_radius = 0,
-  bar_color = "0xd03b2b4a",
-  blur_radius = 30,
-  widget_scale = 1.0,
+  -- bar_height = 38,
+  -- corner_radius = 0,
+  -- bar_color = "0xd03b2b4a",
+  -- blur_radius = 30,
+  -- widget_scale = 1.0,
 }
 
 -- Widget configuration
@@ -50,7 +51,8 @@ profile.widgets = {
 -- Space configuration
 profile.spaces = {
   count = 10,
-  default_mode = "bsp",  -- bsp, stack, float
+  -- default_mode removed - let users set via control panel
+  -- DO NOT set default_mode here unless you want to force window management
   icons = {
     ["1"] = "",  -- Code
     ["2"] = "",  -- Browser

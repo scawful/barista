@@ -25,7 +25,8 @@ A powerful, modular, and portable SketchyBar configuration with native macOS con
 ### 🔧 Modular Architecture
 - **Profile System**: Easy switching between personal, work, and custom setups
 - **Lua Modules**: Clean, maintainable code structure
-- **Theme Support**: Catppuccin Mocha included, easily customizable
+- **6 Coffee Themes**: Caramel, White Coffee, Chocolate, Mocha, plus Strawberry Matcha
+- **Theme Support**: Catppuccin Mocha default, easily customizable
 - **State Management**: Centralized JSON-based configuration
 
 ### 🔌 Extensible Integrations
@@ -87,6 +88,8 @@ After installation:
 ## 📚 Documentation
 
 - **[Control Panel Guide](docs/CONTROL_PANEL_V2.md)**: Complete GUI documentation
+- **[Themes Guide](docs/THEMES.md)**: Available themes and customization
+- **[License Analysis](docs/LICENSE_ANALYSIS.md)**: Commercial use and licensing details
 - **[Improvements Overview](docs/IMPROVEMENTS.md)**: Architecture and performance details
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)**: Common issues and solutions
 
@@ -130,6 +133,33 @@ cp ~/.config/sketchybar/profiles/minimal.lua ~/.config/sketchybar/profiles/mypro
 # Set "profile": "myprofile" in state.json
 sketchybar --reload
 ```
+
+## ☕ Themes
+
+Barista includes 6 carefully crafted color themes inspired by coffee culture:
+
+### Coffee Themes
+- **Default** (Catppuccin Mocha): Dark purple-tinted modern theme
+- **Caramel**: Warm golden browns and amber tones
+- **White Coffee**: Creamy whites and light browns (flat white style)
+- **Chocolate**: Rich dark browns and warm chocolatey tones
+- **Mocha**: Medium browns with chocolate and coffee accents
+
+### Specialty
+- **Strawberry Matcha**: Fresh pinks and vibrant greens
+
+### Switching Themes
+
+Edit `theme.lua`:
+```lua
+local current_theme = "mocha"  -- or "caramel", "white_coffee", "chocolate", "strawberry_matcha"
+local theme = require("themes." .. current_theme)
+return theme
+```
+
+Then reload: `sketchybar --reload`
+
+**📖 Full Documentation**: See [docs/THEMES.md](docs/THEMES.md) for theme details, customization, and creating your own themes.
 
 ## 📊 Performance
 

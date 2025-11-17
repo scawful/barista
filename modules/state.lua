@@ -26,8 +26,14 @@ local default_state = {
     widget_scale = 1.0,
   },
   icons = {
-    apple = "",
-    quest = "󰊠",
+    apple = "",        -- FontAwesome apple icon (F179)
+    quest = "󰊠",       -- Material Design triforce (F02A0)
+    settings = "",    -- FontAwesome gear (F013)
+    clock = "",       -- FontAwesome clock (F017)
+    calendar = "",    -- FontAwesome calendar (F073)
+    battery = "",    -- FontAwesome battery (F240)
+    wifi = "󰖩",        -- Material Design wifi (F05A9)
+    volume = "",     -- FontAwesome volume (F028)
   },
   widget_colors = {},
   space_icons = {},

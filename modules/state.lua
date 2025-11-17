@@ -54,6 +54,15 @@ local default_state = {
       workspace_name = "Emacs",
       recent_org_files = {},
     },
+    halext = {
+      enabled = false,
+      server_url = "",
+      api_key = "",
+      sync_interval = 300, -- 5 minutes
+      show_tasks = true,
+      show_calendar = true,
+      show_suggestions = true,
+    },
   },
 }
 

@@ -1,0 +1,973 @@
+#import <Cocoa/Cocoa.h>
+
+@interface MenuController : NSObject <NSApplicationDelegate, NSWindowDelegate, NSTextFieldDelegate>
+@property (strong) NSWindow *window;
+@property (strong) NSDictionary<NSNumber *, NSString *> *widgetMap;
+@property (strong) NSSlider *heightSlider;
+@property (strong) NSSlider *cornerSlider;
+@property (strong) NSPopUpButton *colorMenu;
+@property (strong) NSSegmentedControl *shortcutToggle;
+@property (strong) NSPopUpButton *widgetSelector;
+@property (strong) NSPopUpButton *widgetColorMenu;
+@property (strong) NSPopUpButton *spaceSelector;
+@property (strong) NSTextField *iconAppField;
+@property (strong) NSTextField *iconGlyphField;
+@property (strong) NSTextField *spaceIconField;
+@property (strong) NSPopUpButton *clockFontMenu;
+@property (strong) NSPopUpButton *appleIconMenu;
+@property (strong) NSPopUpButton *questIconMenu;
+@property (strong) NSPopUpButton *iconLibraryMenu;
+@property (strong) NSDictionary<NSNumber *, NSString *> *systemInfoMap;
+@property (strong) NSSlider *scaleSlider;
+@property (strong) NSTextField *scaleValueLabel;
+@property (strong) NSTextField *iconPreviewField;
+@property (strong) NSTextField *spaceIconPreviewField;
+@property (copy) NSString *scriptsPath;
+@property (copy) NSString *statePath;
+@property (strong) NSDictionary *state;
+@property (strong) NSArray<NSDictionary *> *iconLibrary;
+@end
+
+@implementation MenuController
+
+- (void)applicationDidFinishLaunching:(NSNotification *)notification {
+  self.scriptsPath = [NSHomeDirectory() stringByAppendingPathComponent:@".config/scripts"];
+  self.statePath = [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar/state.json"];
+  [self refreshState];
+  [self buildWindow];
+  [NSApp activateIgnoringOtherApps:YES];
+  [self.window makeKeyAndOrderFront:nil];
+}
+
+- (NSDictionary *)loadState {
+  NSData *data = [NSData dataWithContentsOfFile:self.statePath];
+  if (!data) return @{};
+  NSError *error = nil;
+  id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+  if (error || ![json isKindOfClass:[NSDictionary class]]) {
+    return @{};
+  }
+  return json;
+}
+
+- (void)refreshState {
+  self.state = [self loadState];
+}
+
+- (void)buildWindow {
+  NSRect frame = NSMakeRect(0, 0, 1080, 760);
+  self.window = [[NSWindow alloc] initWithContentRect:frame
+                                            styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable)
+                                              backing:NSBackingStoreBuffered
+                                                defer:NO];
+  [self.window setTitle:@"Sketchybar Controls"];
+  [self.window setLevel:NSFloatingWindowLevel];
+  self.window.delegate = self;
+  [self.window setMinSize:NSMakeSize(940, 640)];
+  [self.window center];
+  NSView *content = [self.window contentView];
+  self.iconLibrary = @[
+    @{ @"title": @"Terminal", @"glyph": @"" },
+    @{ @"title": @"Finder", @"glyph": @"󰀶" },
+    @{ @"title": @"Calendar", @"glyph": @"" },
+    @{ @"title": @"Music", @"glyph": @"" },
+    @{ @"title": @"Docs", @"glyph": @"󰈙" },
+    @{ @"title": @"Quest", @"glyph": @"󰊠" },
+    @{ @"title": @"CPU", @"glyph": @"" },
+    @{ @"title": @"Network", @"glyph": @"󰖩" }
+  ];
+  NSArray *widgets = @[ @"system_info", @"network", @"clock", @"volume", @"battery" ];
+  NSArray *labels = @[ @"System Info", @"Network", @"Clock", @"Volume", @"Battery" ];
+  self.widgetMap = @{@0:@"system_info", @1:@"network", @2:@"clock", @3:@"volume", @4:@"battery"};
+
+  NSBox *widgetsBox = [[NSBox alloc] initWithFrame:NSMakeRect(20, 400, 320, 320)];
+  [widgetsBox setTitle:@"Widgets"];
+  [content addSubview:widgetsBox];
+  NSView *widgetsContent = [widgetsBox contentView];
+  CGFloat widgetY = widgetsContent.bounds.size.height - 30;
+  for (NSInteger idx = 0; idx < widgets.count; idx++) {
+    NSButton *checkbox = [[NSButton alloc] initWithFrame:NSMakeRect(10, widgetY, 200, 24)];
+    checkbox.buttonType = NSButtonTypeSwitch;
+    checkbox.title = labels[idx];
+    checkbox.tag = idx;
+    checkbox.target = self;
+    checkbox.action = @selector(toggleWidget:);
+    BOOL enabled = YES;
+    NSDictionary *widgetState = self.state[@"widgets"];
+    if ([widgetState isKindOfClass:[NSDictionary class]]) {
+      id raw = widgetState[widgets[idx]];
+      if ([raw isKindOfClass:[NSNumber class]]) {
+        enabled = [raw boolValue];
+      }
+    }
+    checkbox.state = enabled ? NSControlStateValueOn : NSControlStateValueOff;
+    [widgetsContent addSubview:checkbox];
+    widgetY -= 28;
+  }
+
+  NSBox *iconBox = [[NSBox alloc] initWithFrame:NSMakeRect(720, 410, 340, 320)];
+  [iconBox setTitle:@"Custom App Icon"];
+  [content addSubview:iconBox];
+  NSView *iconContent = [iconBox contentView];
+  CGFloat iconWidth = iconContent.bounds.size.width - 20;
+  CGFloat iconY = iconContent.bounds.size.height - 40;
+  self.iconAppField = [[NSTextField alloc] initWithFrame:NSMakeRect(10, iconY, iconWidth, 24)];
+  self.iconAppField.placeholderString = @"Application or Process";
+  [iconContent addSubview:self.iconAppField];
+  iconY -= 34;
+  self.iconGlyphField = [[NSTextField alloc] initWithFrame:NSMakeRect(10, iconY, iconWidth, 24)];
+  self.iconGlyphField.placeholderString = @"Glyph (e.g. 󰊠)";
+  self.iconGlyphField.delegate = self;
+  [iconContent addSubview:self.iconGlyphField];
+  iconY -= 30;
+  NSTextField *previewLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, iconY, iconWidth, 18)];
+  [previewLabel setBezeled:NO];
+  [previewLabel setEditable:NO];
+  [previewLabel setDrawsBackground:NO];
+  [previewLabel setStringValue:@"Font Preview"];
+  [iconContent addSubview:previewLabel];
+  iconY -= 56;
+  self.iconPreviewField = [[NSTextField alloc] initWithFrame:NSMakeRect(10, iconY, iconWidth, 48)];
+  [self.iconPreviewField setBezeled:NO];
+  [self.iconPreviewField setEditable:NO];
+  [self.iconPreviewField setDrawsBackground:NO];
+  [self.iconPreviewField setAlignment:NSTextAlignmentCenter];
+  NSFont *previewFont = [NSFont fontWithName:@"Hack Nerd Font" size:40.0];
+  if (!previewFont) {
+    previewFont = [NSFont systemFontOfSize:40.0 weight:NSFontWeightRegular];
+  }
+  [self.iconPreviewField setFont:previewFont];
+  [iconContent addSubview:self.iconPreviewField];
+  iconY -= 26;
+  NSTextField *libraryLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, iconY, iconWidth, 18)];
+  [libraryLabel setBezeled:NO];
+  [libraryLabel setEditable:NO];
+  [libraryLabel setDrawsBackground:NO];
+  [libraryLabel setStringValue:@"Library Presets"];
+  [iconContent addSubview:libraryLabel];
+  iconY -= 28;
+  self.iconLibraryMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(10, iconY, iconWidth, 26)];
+  NSMenuItem *placeholder = [[NSMenuItem alloc] initWithTitle:@"Choose a preset" action:NULL keyEquivalent:@""];
+  placeholder.representedObject = nil;
+  [self.iconLibraryMenu.menu addItem:placeholder];
+  [self.iconLibraryMenu selectItem:placeholder];
+  for (NSDictionary *entry in self.iconLibrary) {
+    NSMenuItem *option = [[NSMenuItem alloc] initWithTitle:entry[@"title"] action:nil keyEquivalent:@""];
+    option.representedObject = entry[@"glyph"];
+    [self.iconLibraryMenu.menu addItem:option];
+  }
+  self.iconLibraryMenu.target = self;
+  self.iconLibraryMenu.action = @selector(iconLibraryChanged:);
+  [iconContent addSubview:self.iconLibraryMenu];
+  NSButton *openIconBrowser = [[NSButton alloc] initWithFrame:NSMakeRect(10, 82, iconWidth, 28)];
+  [openIconBrowser setTitle:@"Browse Icon Library"];
+  [openIconBrowser setButtonType:NSButtonTypeMomentaryPushIn];
+  [openIconBrowser setBezelStyle:NSBezelStyleRounded];
+  openIconBrowser.target = self;
+  openIconBrowser.action = @selector(openIconBrowser:);
+  [iconContent addSubview:openIconBrowser];
+  NSButton *openIconMap = [[NSButton alloc] initWithFrame:NSMakeRect(10, 50, iconWidth, 26)];
+  [openIconMap setTitle:@"Open icon_map.json"];
+  [openIconMap setButtonType:NSButtonTypeMomentaryPushIn];
+  [openIconMap setBezelStyle:NSBezelStyleRounded];
+  openIconMap.target = self;
+  openIconMap.action = @selector(openIconMap:);
+  [iconContent addSubview:openIconMap];
+  NSButton *saveIcon = [[NSButton alloc] initWithFrame:NSMakeRect(10, 15, iconWidth, 28)];
+  [saveIcon setTitle:@"Save Icon"];
+  [saveIcon setButtonType:NSButtonTypeMomentaryPushIn];
+  [saveIcon setBezelStyle:NSBezelStyleRounded];
+  saveIcon.target = self;
+  saveIcon.action = @selector(saveIconMapping:);
+  [iconContent addSubview:saveIcon];
+
+  NSBox *themesBox = [[NSBox alloc] initWithFrame:NSMakeRect(720, 60, 340, 140)];
+  [themesBox setTitle:@"Theme Presets"];
+  [content addSubview:themesBox];
+  NSView *themesContent = [themesBox contentView];
+  CGFloat themeWidth = (themesContent.bounds.size.width - 30) / 2.0;
+
+  NSArray *themes = @[
+    @{ @"title": @"Liquid", @"value": @"liquid", @"icon": @"󰧱" },
+    @{ @"title": @"Tinted", @"value": @"tinted", @"icon": @"󰧱" },
+    @{ @"title": @"Classic", @"value": @"classic", @"icon": @"󰧱" },
+    @{ @"title": @"Matte", @"value": @"solid", @"icon": @"󰧱" }
+  ];
+
+  for (NSInteger idx = 0; idx < themes.count; idx++) {
+    NSDictionary *theme = themes[idx];
+    NSInteger row = idx / 2;
+    NSInteger col = idx % 2;
+    CGFloat themeX = 10 + (col * (themeWidth + 10));
+    CGFloat themeY = themesContent.bounds.size.height - 40 - (row * 40);
+
+    NSButton *themeButton = [[NSButton alloc] initWithFrame:NSMakeRect(themeX, themeY, themeWidth, 32)];
+    [themeButton setTitle:[NSString stringWithFormat:@"%@ %@", theme[@"icon"], theme[@"title"]]];
+    [themeButton setButtonType:NSButtonTypeMomentaryPushIn];
+    [themeButton setBezelStyle:NSBezelStyleRounded];
+    themeButton.tag = idx;
+    themeButton.toolTip = theme[@"value"];
+    themeButton.target = self;
+    themeButton.action = @selector(applyTheme:);
+    [themesContent addSubview:themeButton];
+  }
+
+  NSBox *docsBox = [[NSBox alloc] initWithFrame:NSMakeRect(20, 220, 320, 200)];
+  [docsBox setTitle:@"Workflow Docs"];
+  [content addSubview:docsBox];
+  NSView *docsContent = [docsBox contentView];
+  NSArray *docs = @[
+    @{ @"title": @"tasks.org", @"path": @"Code/docs/workflow/tasks.org" },
+    @{ @"title": @"rom-hacking.org", @"path": @"Code/docs/workflow/rom-hacking.org" },
+    @{ @"title": @"development.org", @"path": @"Code/docs/workflow/development.org" },
+    @{ @"title": @"Sketchybar Menu", @"path": @"Code/docs/workflow/SKETCHYBAR-CUSTOM-MENU.md" },
+    @{ @"title": @"Sketchybar Handoff", @"path": @".config/sketchybar/HANDOFF.md" }
+  ];
+  CGFloat docY = docsContent.bounds.size.height - 40;
+  for (NSDictionary *doc in docs) {
+    NSButton *button = [[NSButton alloc] initWithFrame:NSMakeRect(10, docY, docsContent.bounds.size.width - 20, 26)];
+    [button setTitle:doc[@"title"]];
+    [button setButtonType:NSButtonTypeMomentaryPushIn];
+    [button setBezelStyle:NSBezelStyleRounded];
+    button.target = self;
+    button.action = @selector(openDoc:);
+    button.toolTip = doc[@"path"];
+    [docsContent addSubview:button];
+    docY -= 32;
+  }
+
+  NSBox *appearanceBox = [[NSBox alloc] initWithFrame:NSMakeRect(360, 420, 340, 320)];
+  [appearanceBox setTitle:@"Bar Appearance"];
+  [content addSubview:appearanceBox];
+  NSView *appearanceContent = [appearanceBox contentView];
+  CGFloat appearanceWidth = appearanceContent.bounds.size.width - 20;
+  CGFloat appearanceTop = appearanceContent.bounds.size.height - 40;
+  NSTextField *heightLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, appearanceTop, 200, 20)];
+  [heightLabel setBezeled:NO];
+  [heightLabel setEditable:NO];
+  [heightLabel setDrawsBackground:NO];
+  [heightLabel setStringValue:@"Bar Height"];
+  [appearanceContent addSubview:heightLabel];
+  self.heightSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(10, appearanceTop - 30, appearanceWidth, 24)];
+  self.heightSlider.minValue = 20;
+  self.heightSlider.maxValue = 45;
+  NSNumber *height = self.state[@"appearance"][@"bar_height"];
+  self.heightSlider.doubleValue = height ? [height doubleValue] : 25;
+  self.heightSlider.target = self;
+  self.heightSlider.action = @selector(heightChanged:);
+  [appearanceContent addSubview:self.heightSlider];
+  NSTextField *cornerLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, appearanceTop - 70, 200, 20)];
+  [cornerLabel setBezeled:NO];
+  [cornerLabel setEditable:NO];
+  [cornerLabel setDrawsBackground:NO];
+  [cornerLabel setStringValue:@"Corner Radius"];
+  [appearanceContent addSubview:cornerLabel];
+  self.cornerSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(10, appearanceTop - 100, appearanceWidth, 24)];
+  self.cornerSlider.minValue = 0;
+  self.cornerSlider.maxValue = 15;
+  NSNumber *corner = self.state[@"appearance"][@"corner_radius"];
+  self.cornerSlider.doubleValue = corner ? [corner doubleValue] : 0;
+  self.cornerSlider.target = self;
+  self.cornerSlider.action = @selector(cornerChanged:);
+  [appearanceContent addSubview:self.cornerSlider];
+  NSArray *colorOptions = @[
+    @{ @"title": @"Default", @"value": @"0xD04C3B52" },
+    @{ @"title": @"Lavender", @"value": @"0xFFb4befe" },
+    @{ @"title": @"Emerald", @"value": @"0xffa6e3a1" },
+    @{ @"title": @"Slate", @"value": @"0xCC1e1e2e" }
+  ];
+  NSTextField *colorLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, appearanceTop - 140, 200, 20)];
+  [colorLabel setBezeled:NO];
+  [colorLabel setEditable:NO];
+  [colorLabel setDrawsBackground:NO];
+  [colorLabel setStringValue:@"Bar Color"];
+  [appearanceContent addSubview:colorLabel];
+  self.colorMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(10, appearanceTop - 170, appearanceWidth, 26)];
+  NSString *currentColor = self.state[@"appearance"][@"bar_color"];
+  for (NSDictionary *option in colorOptions) {
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:option[@"title"] action:NULL keyEquivalent:@""];
+    item.representedObject = option[@"value"];
+    [self.colorMenu.menu addItem:item];
+    if ([currentColor isKindOfClass:[NSString class]] && [currentColor caseInsensitiveCompare:option[@"value"]] == NSOrderedSame) {
+      [self.colorMenu selectItem:item];
+    }
+  }
+  self.colorMenu.target = self;
+  self.colorMenu.action = @selector(colorChanged:);
+  [appearanceContent addSubview:self.colorMenu];
+  NSTextField *scaleLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, appearanceTop - 200, 200, 20)];
+  [scaleLabel setBezeled:NO];
+  [scaleLabel setEditable:NO];
+  [scaleLabel setDrawsBackground:NO];
+  [scaleLabel setStringValue:@"Widget Scale (More Space)"];
+  [appearanceContent addSubview:scaleLabel];
+  self.scaleSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(10, appearanceTop - 230, appearanceWidth - 70, 24)];
+  self.scaleSlider.minValue = 0.85;
+  self.scaleSlider.maxValue = 1.25;
+  NSDictionary *appearanceState = self.state[@"appearance"];
+  double initialScale = 1.0;
+  if ([appearanceState isKindOfClass:[NSDictionary class]]) {
+    id rawScale = appearanceState[@"widget_scale"];
+    if ([rawScale isKindOfClass:[NSNumber class]]) {
+      initialScale = [rawScale doubleValue];
+    } else if ([rawScale isKindOfClass:[NSString class]]) {
+      initialScale = [rawScale doubleValue];
+    }
+  }
+  if (initialScale < 0.85 || initialScale > 1.25) {
+    initialScale = 1.0;
+  }
+  self.scaleSlider.doubleValue = initialScale;
+  self.scaleSlider.continuous = YES;
+  self.scaleSlider.target = self;
+  self.scaleSlider.action = @selector(scaleChanged:);
+  [appearanceContent addSubview:self.scaleSlider];
+  self.scaleValueLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(appearanceWidth - 55, appearanceTop - 225, 45, 18)];
+  [self.scaleValueLabel setBezeled:NO];
+  [self.scaleValueLabel setEditable:NO];
+  [self.scaleValueLabel setDrawsBackground:NO];
+  [self.scaleValueLabel setAlignment:NSTextAlignmentRight];
+  [appearanceContent addSubview:self.scaleValueLabel];
+  [self updateScaleIndicator:initialScale];
+
+  NSBox *widgetColorBox = [[NSBox alloc] initWithFrame:NSMakeRect(360, 300, 340, 110)];
+  [widgetColorBox setTitle:@"Widget Color"];
+  [content addSubview:widgetColorBox];
+  NSView *widgetColorContent = [widgetColorBox contentView];
+  CGFloat widgetColorWidth = widgetColorContent.bounds.size.width - 20;
+  self.widgetSelector = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(10, widgetColorContent.bounds.size.height - 40, widgetColorWidth, 26)];
+  for (NSString *widget in widgets) {
+    [self.widgetSelector addItemWithTitle:widget];
+  }
+  [widgetColorContent addSubview:self.widgetSelector];
+  NSArray *widgetColorOptions = @[
+    @{ @"title": @"Default", @"value": @"0x00000000" },
+    @{ @"title": @"Catppuccin Blue", @"value": @"0xFF89b4fa" },
+    @{ @"title": @"Catppuccin Mauve", @"value": @"0xFFcba6f7" },
+    @{ @"title": @"Catppuccin Green", @"value": @"0xffa6e3a1" },
+    @{ @"title": @"Slate", @"value": @"0xFF1e1e2e" }
+  ];
+  self.widgetColorMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(10, widgetColorContent.bounds.size.height - 75, widgetColorWidth, 26)];
+  for (NSDictionary *option in widgetColorOptions) {
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:option[@"title"] action:NULL keyEquivalent:@""];
+    item.representedObject = option[@"value"];
+    [self.widgetColorMenu.menu addItem:item];
+  }
+  self.widgetColorMenu.target = self;
+  self.widgetColorMenu.action = @selector(widgetColorChanged:);
+  [widgetColorContent addSubview:self.widgetColorMenu];
+
+  NSBox *spaceIconBox = [[NSBox alloc] initWithFrame:NSMakeRect(720, 300, 340, 140)];
+  [spaceIconBox setTitle:@"Space Icons"];
+  [content addSubview:spaceIconBox];
+  NSView *spaceIconContent = [spaceIconBox contentView];
+  CGFloat spaceWidth = spaceIconContent.bounds.size.width - 20;
+  CGFloat spaceTop = spaceIconContent.bounds.size.height - 40;
+  self.spaceSelector = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(10, spaceTop, 120, 26)];
+  for (NSInteger idx = 1; idx <= 10; idx++) {
+    [self.spaceSelector addItemWithTitle:[NSString stringWithFormat:@"%ld", (long)idx]];
+  }
+  self.spaceSelector.target = self;
+  self.spaceSelector.action = @selector(spaceSelectionChanged:);
+  [spaceIconContent addSubview:self.spaceSelector];
+  self.spaceIconField = [[NSTextField alloc] initWithFrame:NSMakeRect(140, spaceTop, spaceWidth - 130, 24)];
+  self.spaceIconField.placeholderString = @"Glyph";
+  self.spaceIconField.delegate = self;
+  [spaceIconContent addSubview:self.spaceIconField];
+  spaceTop -= 40;
+  NSTextField *spacePreviewLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, spaceTop, spaceWidth, 18)];
+  [spacePreviewLabel setBezeled:NO];
+  [spacePreviewLabel setEditable:NO];
+  [spacePreviewLabel setDrawsBackground:NO];
+  [spacePreviewLabel setStringValue:@"Preview"];
+  [spaceIconContent addSubview:spacePreviewLabel];
+  spaceTop -= 46;
+  self.spaceIconPreviewField = [[NSTextField alloc] initWithFrame:NSMakeRect(10, spaceTop, spaceWidth, 40)];
+  [self.spaceIconPreviewField setBezeled:NO];
+  [self.spaceIconPreviewField setEditable:NO];
+  [self.spaceIconPreviewField setDrawsBackground:NO];
+  [self.spaceIconPreviewField setAlignment:NSTextAlignmentCenter];
+  NSFont *spacePreviewFont = [NSFont fontWithName:@"Hack Nerd Font" size:28.0];
+  if (!spacePreviewFont) {
+    spacePreviewFont = [NSFont systemFontOfSize:28.0 weight:NSFontWeightMedium];
+  }
+  [self.spaceIconPreviewField setFont:spacePreviewFont];
+  [spaceIconContent addSubview:self.spaceIconPreviewField];
+  NSButton *saveSpaceIcon = [[NSButton alloc] initWithFrame:NSMakeRect(10, 10, spaceWidth, 26)];
+  [saveSpaceIcon setTitle:@"Save Space Icon"];
+  [saveSpaceIcon setButtonType:NSButtonTypeMomentaryPushIn];
+  [saveSpaceIcon setBezelStyle:NSBezelStyleRounded];
+  saveSpaceIcon.target = self;
+  saveSpaceIcon.action = @selector(saveSpaceIcon:);
+  [spaceIconContent addSubview:saveSpaceIcon];
+
+  [self updateIconPreview];
+  [self updateSpaceSelectionFromState];
+
+  self.systemInfoMap = @{@0:@"cpu", @1:@"mem", @2:@"disk", @3:@"net", @4:@"docs", @5:@"actions"};
+  NSBox *systemInfoBox = [[NSBox alloc] initWithFrame:NSMakeRect(720, 190, 340, 110)];
+  [systemInfoBox setTitle:@"System Info Sections"];
+  [content addSubview:systemInfoBox];
+  NSView *systemInfoContent = [systemInfoBox contentView];
+  NSDictionary *infoState = self.state[@"system_info_items"];
+  for (NSInteger idx = 0; idx < 6; idx++) {
+    NSInteger row = idx / 3;
+    NSInteger col = idx % 3;
+    CGFloat infoX = 10 + (col * 110);
+    CGFloat infoY = systemInfoContent.bounds.size.height - 35 - (row * 32);
+    NSButton *checkbox = [[NSButton alloc] initWithFrame:NSMakeRect(infoX, infoY, 100, 24)];
+    checkbox.buttonType = NSButtonTypeSwitch;
+    checkbox.tag = idx;
+    checkbox.target = self;
+    checkbox.action = @selector(toggleSystemInfo:);
+    switch (idx) {
+      case 0: checkbox.title = @"CPU"; break;
+      case 1: checkbox.title = @"Memory"; break;
+      case 2: checkbox.title = @"Disk"; break;
+      case 3: checkbox.title = @"Network"; break;
+      case 4: checkbox.title = @"Docs"; break;
+      case 5: checkbox.title = @"Actions"; break;
+    }
+    BOOL enabled = YES;
+    if ([infoState isKindOfClass:[NSDictionary class]]) {
+      id raw = infoState[self.systemInfoMap[@(idx)]];
+      if ([raw isKindOfClass:[NSNumber class]]) {
+        enabled = [raw boolValue];
+      }
+    }
+    checkbox.state = enabled ? NSControlStateValueOn : NSControlStateValueOff;
+    [systemInfoContent addSubview:checkbox];
+  }
+
+  NSBox *menuIconBox = [[NSBox alloc] initWithFrame:NSMakeRect(720, 100, 340, 90)];
+  [menuIconBox setTitle:@"Menu Icons"];
+  [content addSubview:menuIconBox];
+  NSView *menuIconContent = [menuIconBox contentView];
+  NSArray *iconChoices = @[
+    @{ @"title": @"Apple", @"glyph": @"" },
+    @{ @"title": @"Alt Apple", @"glyph": @"" },
+    @{ @"title": @"Gear", @"glyph": @"" },
+    @{ @"title": @"Triforce", @"glyph": @"󰊠" },
+    @{ @"title": @"Quest", @"glyph": @"" },
+    @{ @"title": @"Gamepad", @"glyph": @"󰍳" }
+  ];
+  CGFloat menuWidth = menuIconContent.bounds.size.width;
+  CGFloat halfWidth = (menuWidth - 30) / 2.0;
+  self.appleIconMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(10, menuIconContent.bounds.size.height - 35, halfWidth, 26)];
+  for (NSDictionary *option in iconChoices) {
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:option[@"title"] action:NULL keyEquivalent:@""];
+    item.representedObject = option[@"glyph"];
+    [self.appleIconMenu.menu addItem:item];
+  }
+  NSString *appleCurrent = self.state[@"icons"][@"apple"];
+  if ([appleCurrent isKindOfClass:[NSString class]]) {
+    for (NSMenuItem *item in self.appleIconMenu.itemArray) {
+      if ([item.representedObject isEqual:appleCurrent]) {
+        [self.appleIconMenu selectItem:item];
+        break;
+      }
+    }
+  }
+  self.appleIconMenu.tag = 0;
+  self.appleIconMenu.target = self;
+  self.appleIconMenu.action = @selector(menuIconChanged:);
+  [menuIconContent addSubview:self.appleIconMenu];
+
+  self.questIconMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(20 + halfWidth, menuIconContent.bounds.size.height - 35, halfWidth, 26)];
+  for (NSDictionary *option in iconChoices) {
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:option[@"title"] action:NULL keyEquivalent:@""];
+    item.representedObject = option[@"glyph"];
+    [self.questIconMenu.menu addItem:item];
+  }
+  NSString *questCurrent = self.state[@"icons"][@"quest"];
+  if ([questCurrent isKindOfClass:[NSString class]]) {
+    for (NSMenuItem *item in self.questIconMenu.itemArray) {
+      if ([item.representedObject isEqual:questCurrent]) {
+        [self.questIconMenu selectItem:item];
+        break;
+      }
+    }
+  }
+  self.questIconMenu.tag = 1;
+  self.questIconMenu.target = self;
+  self.questIconMenu.action = @selector(menuIconChanged:);
+  [menuIconContent addSubview:self.questIconMenu];
+
+  NSBox *fontBox = [[NSBox alloc] initWithFrame:NSMakeRect(360, 200, 340, 90)];
+  [fontBox setTitle:@"Widget Fonts"];
+  [content addSubview:fontBox];
+  NSView *fontContent = [fontBox contentView];
+
+  // Clock font selector
+  NSTextField *clockFontLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, fontContent.bounds.size.height - 25, 60, 18)];
+  [clockFontLabel setBezeled:NO];
+  [clockFontLabel setEditable:NO];
+  [clockFontLabel setDrawsBackground:NO];
+  [clockFontLabel setStringValue:@"Clock:"];
+  [fontContent addSubview:clockFontLabel];
+
+  self.clockFontMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(70, fontContent.bounds.size.height - 35, fontContent.bounds.size.width - 80, 26)];
+  NSArray *fontOptions = @[ @"Regular", @"Medium", @"Semibold", @"Bold", @"Heavy" ];
+  for (NSString *option in fontOptions) {
+    [self.clockFontMenu addItemWithTitle:option];
+  }
+  NSString *currentFont = self.state[@"appearance"][@"clock_font_style"];
+  if ([currentFont isKindOfClass:[NSString class]]) {
+    [self.clockFontMenu selectItemWithTitle:currentFont];
+  }
+  self.clockFontMenu.target = self;
+  self.clockFontMenu.action = @selector(clockFontChanged:);
+  [fontContent addSubview:self.clockFontMenu];
+
+  NSBox *shortcutsBox = [[NSBox alloc] initWithFrame:NSMakeRect(360, 110, 340, 90)];
+  [shortcutsBox setTitle:@"Space Switching"];
+  [content addSubview:shortcutsBox];
+  NSView *shortcutsContent = [shortcutsBox contentView];
+  self.shortcutToggle = [[NSSegmentedControl alloc] initWithFrame:NSMakeRect(10, shortcutsContent.bounds.size.height - 40, shortcutsContent.bounds.size.width - 20, 30)];
+  [self.shortcutToggle setSegmentCount:2];
+  [self.shortcutToggle setLabel:@"Yabai" forSegment:0];
+  [self.shortcutToggle setLabel:@"Native" forSegment:1];
+  BOOL shortcutsOn = YES;
+  id toggle = self.state[@"toggles"][@"yabai_shortcuts"];
+  if ([toggle isKindOfClass:[NSNumber class]]) {
+    shortcutsOn = [toggle boolValue];
+  }
+  [self.shortcutToggle setSelected:shortcutsOn forSegment:0];
+  [self.shortcutToggle setSelected:!shortcutsOn forSegment:1];
+  self.shortcutToggle.target = self;
+  self.shortcutToggle.action = @selector(shortcutModeChanged:);
+  [shortcutsContent addSubview:self.shortcutToggle];
+
+  NSBox *integrationsBox = [[NSBox alloc] initWithFrame:NSMakeRect(360, 60, 340, 140)];
+  [integrationsBox setTitle:@"Integration Status"];
+  [content addSubview:integrationsBox];
+  NSView *integrationsContent = [integrationsBox contentView];
+  CGFloat integrationWidth = integrationsContent.bounds.size.width - 20;
+
+  // Yaze status
+  NSTextField *yazeLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, integrationsContent.bounds.size.height - 30, 100, 20)];
+  [yazeLabel setBezeled:NO];
+  [yazeLabel setEditable:NO];
+  [yazeLabel setDrawsBackground:NO];
+  [yazeLabel setStringValue:@"󰊠 Yaze ROM:"];
+  [integrationsContent addSubview:yazeLabel];
+
+  NSTextField *yazeStatus = [[NSTextField alloc] initWithFrame:NSMakeRect(120, integrationsContent.bounds.size.height - 30, integrationWidth - 110, 20)];
+  [yazeStatus setBezeled:NO];
+  [yazeStatus setEditable:NO];
+  [yazeStatus setDrawsBackground:NO];
+  NSString *yazeBuild = [self checkYazeBuildStatus];
+  [yazeStatus setStringValue:yazeBuild];
+  if ([yazeBuild isEqualToString:@"✨ Ready"]) {
+    [yazeStatus setTextColor:[NSColor systemGreenColor]];
+  } else if ([yazeBuild isEqualToString:@"⚠ Not Built"]) {
+    [yazeStatus setTextColor:[NSColor systemOrangeColor]];
+  } else {
+    [yazeStatus setTextColor:[NSColor secondaryLabelColor]];
+  }
+  [integrationsContent addSubview:yazeStatus];
+
+  // Emacs status
+  NSTextField *emacsLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, integrationsContent.bounds.size.height - 60, 100, 20)];
+  [emacsLabel setBezeled:NO];
+  [emacsLabel setEditable:NO];
+  [emacsLabel setDrawsBackground:NO];
+  [emacsLabel setStringValue:@" Emacs:"];
+  [integrationsContent addSubview:emacsLabel];
+
+  NSTextField *emacsStatus = [[NSTextField alloc] initWithFrame:NSMakeRect(120, integrationsContent.bounds.size.height - 60, integrationWidth - 110, 20)];
+  [emacsStatus setBezeled:NO];
+  [emacsStatus setEditable:NO];
+  [emacsStatus setDrawsBackground:NO];
+  BOOL emacsRunning = [self checkEmacsRunning];
+  if (emacsRunning) {
+    [emacsStatus setStringValue:@"✓ Running"];
+    [emacsStatus setTextColor:[NSColor systemGreenColor]];
+  } else {
+    [emacsStatus setStringValue:@"○ Not Running"];
+    [emacsStatus setTextColor:[NSColor secondaryLabelColor]];
+  }
+  [integrationsContent addSubview:emacsStatus];
+
+  // Quick launch buttons
+  NSButton *yazeButton = [[NSButton alloc] initWithFrame:NSMakeRect(10, integrationsContent.bounds.size.height - 95, integrationWidth / 2 - 10, 26)];
+  [yazeButton setTitle:@"Launch Yaze"];
+  [yazeButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [yazeButton setBezelStyle:NSBezelStyleRounded];
+  yazeButton.target = self;
+  yazeButton.action = @selector(launchYaze:);
+  [integrationsContent addSubview:yazeButton];
+
+  NSButton *emacsButton = [[NSButton alloc] initWithFrame:NSMakeRect(integrationWidth / 2 + 10, integrationsContent.bounds.size.height - 95, integrationWidth / 2 - 10, 26)];
+  [emacsButton setTitle:@"Launch Emacs"];
+  [emacsButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [emacsButton setBezelStyle:NSBezelStyleRounded];
+  emacsButton.target = self;
+  emacsButton.action = @selector(launchEmacs:);
+  [integrationsContent addSubview:emacsButton];
+
+  NSBox *actionsBox = [[NSBox alloc] initWithFrame:NSMakeRect(20, 60, 320, 140)];
+  [actionsBox setTitle:@"Actions"];
+  [content addSubview:actionsBox];
+  NSView *actionsContent = [actionsBox contentView];
+  CGFloat actionsWidth = actionsContent.bounds.size.width - 20;
+  NSButton *reloadButton = [[NSButton alloc] initWithFrame:NSMakeRect(10, actionsContent.bounds.size.height - 35, actionsWidth, 26)];
+  [reloadButton setTitle:@"Reload Bar"];
+  [reloadButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [reloadButton setBezelStyle:NSBezelStyleRounded];
+  reloadButton.target = self;
+  reloadButton.action = @selector(reloadBar:);
+  [actionsContent addSubview:reloadButton];
+  NSButton *logsButton = [[NSButton alloc] initWithFrame:NSMakeRect(10, actionsContent.bounds.size.height - 70, actionsWidth, 26)];
+  [logsButton setTitle:@"Open Logs"];
+  [logsButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [logsButton setBezelStyle:NSBezelStyleRounded];
+  logsButton.target = self;
+  logsButton.action = @selector(openLogs:);
+  [actionsContent addSubview:logsButton];
+  NSButton *accessibilityButton = [[NSButton alloc] initWithFrame:NSMakeRect(10, actionsContent.bounds.size.height - 105, actionsWidth, 26)];
+  [accessibilityButton setTitle:@"Repair Accessibility Services"];
+  [accessibilityButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [accessibilityButton setBezelStyle:NSBezelStyleRounded];
+  accessibilityButton.target = self;
+  accessibilityButton.action = @selector(runAccessibilityFix:);
+  [actionsContent addSubview:accessibilityButton];
+}
+
+- (void)toggleWidget:(NSButton *)sender {
+  NSString *widget = self.widgetMap[@(sender.tag)];
+  if (!widget) return;
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"widget_toggle.sh"];
+  NSString *state = sender.state == NSControlStateValueOn ? @"on" : @"off";
+  [self runScript:script arguments:@[widget, state]];
+}
+
+- (void)heightChanged:(NSSlider *)sender {
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"set_appearance.sh"];
+  [self runScript:script arguments:@[@"--height", [NSString stringWithFormat:@"%0.0f", sender.doubleValue]]];
+}
+
+- (void)cornerChanged:(NSSlider *)sender {
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"set_appearance.sh"];
+  [self runScript:script arguments:@[@"--corner", [NSString stringWithFormat:@"%0.0f", sender.doubleValue]]];
+}
+
+- (void)colorChanged:(NSPopUpButton *)sender {
+  NSString *value = sender.selectedItem.representedObject;
+  if (!value) return;
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"set_appearance.sh"];
+  [self runScript:script arguments:@[@"--color", value]];
+}
+
+- (void)scaleChanged:(NSSlider *)sender {
+  double value = sender.doubleValue;
+  [self updateScaleIndicator:value];
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"set_appearance.sh"];
+  NSString *formatted = [NSString stringWithFormat:@"%0.2f", value];
+  [self runScript:script arguments:@[@"--scale", formatted]];
+}
+
+- (void)updateScaleIndicator:(double)value {
+  if (!self.scaleValueLabel) return;
+  [self.scaleValueLabel setStringValue:[NSString stringWithFormat:@"%0.2fx", value]];
+}
+
+- (void)shortcutModeChanged:(NSSegmentedControl *)sender {
+  BOOL shortcutsOn = sender.selectedSegment == 0;
+  NSString *mode = shortcutsOn ? @"on" : @"off";
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"toggle_yabai_shortcuts.sh"];
+  [self runScript:script arguments:@[mode]];
+}
+
+- (void)widgetColorChanged:(NSPopUpButton *)sender {
+  NSString *widget = self.widgetSelector.selectedItem.title;
+  NSString *color = sender.selectedItem.representedObject;
+  if (!widget || !color) return;
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"set_widget_color.sh"];
+  [self runScript:script arguments:@[widget, color]];
+}
+
+- (void)saveIconMapping:(id)sender {
+  NSString *appName = self.iconAppField.stringValue;
+  NSString *glyph = self.iconGlyphField.stringValue;
+  if (appName.length == 0 || glyph.length == 0) return;
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"set_app_icon.sh"];
+  [self runScript:script arguments:@[appName, glyph]];
+}
+
+- (void)iconLibraryChanged:(NSPopUpButton *)sender {
+  NSString *glyph = sender.selectedItem.representedObject;
+  if (!glyph) return;
+  [self.iconGlyphField setStringValue:glyph];
+  [self updateIconPreview];
+}
+
+- (void)saveSpaceIcon:(id)sender {
+  NSString *space = self.spaceSelector.selectedItem.title;
+  NSString *glyph = self.spaceIconField.stringValue;
+  if (space.length == 0 || glyph.length == 0) return;
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"set_space_icon.sh"];
+  [self runScript:script arguments:@[space, glyph]];
+  [self updateSpaceIconPreview];
+  [self refreshStateAndUpdateSpaceIcons];
+}
+
+- (void)spaceSelectionChanged:(id)sender {
+  [self updateSpaceSelectionFromState];
+}
+
+- (NSString *)glyphForSpace:(NSString *)space {
+  if (space.length == 0) return @"";
+  NSDictionary *icons = self.state[@"space_icons"];
+  if ([icons isKindOfClass:[NSDictionary class]]) {
+    id value = icons[space];
+    if ([value isKindOfClass:[NSString class]]) {
+      return value;
+    }
+  }
+  return @"";
+}
+
+- (void)updateSpaceSelectionFromState {
+  if (!self.spaceSelector || !self.spaceIconField) return;
+  NSString *space = self.spaceSelector.selectedItem.title ?: @"";
+  NSString *glyph = [self glyphForSpace:space];
+  if (glyph.length > 0) {
+    [self.spaceIconField setStringValue:glyph];
+  } else {
+    [self.spaceIconField setStringValue:@""];
+  }
+  [self updateSpaceIconPreview];
+}
+
+- (void)refreshStateAndUpdateSpaceIcons {
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    [self refreshState];
+    [self updateSpaceSelectionFromState];
+  });
+}
+
+- (void)updateIconPreview {
+  if (!self.iconPreviewField) return;
+  NSString *glyph = self.iconGlyphField.stringValue ?: @"";
+  if (glyph.length == 0) {
+    [self.iconPreviewField setStringValue:@"Preview"];
+    [self.iconPreviewField setTextColor:[NSColor secondaryLabelColor]];
+  } else {
+    [self.iconPreviewField setStringValue:glyph];
+    [self.iconPreviewField setTextColor:[NSColor labelColor]];
+  }
+}
+
+- (void)updateSpaceIconPreview {
+  if (!self.spaceIconPreviewField) return;
+  NSString *glyph = self.spaceIconField.stringValue ?: @"";
+  if (glyph.length == 0) {
+    [self.spaceIconPreviewField setStringValue:@"Preview"];
+    [self.spaceIconPreviewField setTextColor:[NSColor secondaryLabelColor]];
+  } else {
+    [self.spaceIconPreviewField setStringValue:glyph];
+    [self.spaceIconPreviewField setTextColor:[NSColor labelColor]];
+  }
+}
+
+- (void)menuIconChanged:(NSPopUpButton *)sender {
+  NSString *glyph = sender.selectedItem.representedObject;
+  if (!glyph) return;
+  NSString *target = sender.tag == 0 ? @"apple" : @"quest";
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"set_menu_icon.sh"];
+  [self runScript:script arguments:@[target, glyph]];
+}
+
+- (void)toggleSystemInfo:(NSButton *)sender {
+  NSString *key = self.systemInfoMap[@(sender.tag)];
+  if (!key) return;
+  NSString *state = sender.state == NSControlStateValueOn ? @"on" : @"off";
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"toggle_system_info_item.sh"];
+  [self runScript:script arguments:@[key, state]];
+}
+
+- (void)clockFontChanged:(NSPopUpButton *)sender {
+  NSString *style = sender.selectedItem.title;
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"set_clock_font.sh"];
+  [self runScript:script arguments:@[style]];
+}
+
+- (void)reloadBar:(id)sender {
+  [self runCommand:@"/opt/homebrew/opt/sketchybar/bin/sketchybar" arguments:@[@"--reload"]];
+}
+
+- (void)openLogs:(id)sender {
+  NSURL *url = [NSURL fileURLWithPath:@"/opt/homebrew/var/log/sketchybar"];
+  [[NSWorkspace sharedWorkspace] openURL:url];
+}
+
+- (void)openIconBrowser:(id)sender {
+  NSString *guiPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/sketchybar/gui/bin/icon_browser"];
+  if (![[NSFileManager defaultManager] isExecutableFileAtPath:guiPath]) {
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Icon Browser Not Found"];
+    [alert setInformativeText:@"The icon browser binary is not built. Run 'make' in the gui/ directory."];
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+    return;
+  }
+  [self runCommand:guiPath arguments:@[]];
+}
+
+- (void)openIconMap:(id)sender {
+  NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar/icon_map.json"];
+  NSFileManager *fm = [NSFileManager defaultManager];
+  if (![fm fileExistsAtPath:path]) {
+    NSData *empty = [@"{}\n" dataUsingEncoding:NSUTF8StringEncoding];
+    [fm createFileAtPath:path contents:empty attributes:nil];
+  }
+  NSURL *url = [NSURL fileURLWithPath:path];
+  [[NSWorkspace sharedWorkspace] openURL:url];
+}
+
+- (void)openDoc:(NSButton *)sender {
+  NSString *path = sender.toolTip;
+  if (!path) return;
+  NSString *fullPath = [NSHomeDirectory() stringByAppendingPathComponent:path];
+  NSURL *url = [NSURL fileURLWithPath:fullPath];
+  [[NSWorkspace sharedWorkspace] openURL:url];
+}
+
+- (void)runAccessibilityFix:(id)sender {
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"yabai_accessibility_fix.sh"];
+  [self runScript:script arguments:@[]];
+}
+
+- (NSString *)checkYazeBuildStatus {
+  NSString *yazePath = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/yaze"];
+  NSString *buildBinary = [yazePath stringByAppendingPathComponent:@"build/bin/yaze"];
+
+  NSFileManager *fm = [NSFileManager defaultManager];
+  if (![fm fileExistsAtPath:yazePath]) {
+    return @"Not Installed";
+  }
+
+  if ([fm fileExistsAtPath:buildBinary]) {
+    return @"✨ Ready";
+  } else {
+    return @"⚠ Not Built";
+  }
+}
+
+- (BOOL)checkEmacsRunning {
+  NSTask *task = [[NSTask alloc] init];
+  task.launchPath = @"/usr/bin/pgrep";
+  task.arguments = @[@"-x", @"Emacs"];
+
+  NSPipe *pipe = [NSPipe pipe];
+  task.standardOutput = pipe;
+  task.standardError = pipe;
+
+  @try {
+    [task launch];
+    [task waitUntilExit];
+    return task.terminationStatus == 0;
+  } @catch (NSException *exception) {
+    return NO;
+  }
+}
+
+- (void)launchYaze:(id)sender {
+  NSString *yazePath = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/yaze/build/bin/yaze"];
+
+  if (![[NSFileManager defaultManager] fileExistsAtPath:yazePath]) {
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Yaze Not Found"];
+    [alert setInformativeText:@"Build Yaze first: cd ~/Code/yaze && make"];
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+    return;
+  }
+
+  [self runCommand:yazePath arguments:@[]];
+}
+
+- (void)launchEmacs:(id)sender {
+  NSString *emacsPath = @"/Applications/Emacs.app";
+
+  if (![[NSFileManager defaultManager] fileExistsAtPath:emacsPath]) {
+    emacsPath = @"/opt/homebrew/Cellar/emacs-plus@30/30.0.92/Emacs.app";
+  }
+
+  if ([[NSFileManager defaultManager] fileExistsAtPath:emacsPath]) {
+    [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:emacsPath]];
+  } else {
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Emacs Not Found"];
+    [alert setInformativeText:@"Install Emacs first"];
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+  }
+}
+
+- (void)applyTheme:(NSButton *)sender {
+  NSString *theme = sender.toolTip;
+  if (!theme || theme.length == 0) return;
+
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"runtime_update.sh"];
+  if (![[NSFileManager defaultManager] isExecutableFileAtPath:script]) {
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Runtime Script Not Found"];
+    [alert setInformativeText:@"Cannot find runtime_update.sh in ~/.config/scripts"];
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+    return;
+  }
+
+  [self runScript:script arguments:@[@"theme", theme]];
+
+  // Show confirmation
+  NSAlert *alert = [[NSAlert alloc] init];
+  [alert setMessageText:[NSString stringWithFormat:@"Applied %@ Theme", [sender.title substringFromIndex:2]]];
+  [alert setInformativeText:@"Theme changes applied in real-time"];
+  [alert addButtonWithTitle:@"OK"];
+  alert.alertStyle = NSAlertStyleInformational;
+  [alert runModal];
+}
+
+- (void)controlTextDidChange:(NSNotification *)notification {
+  if (notification.object == self.iconGlyphField) {
+    [self updateIconPreview];
+  } else if (notification.object == self.spaceIconField) {
+    [self updateSpaceIconPreview];
+  }
+}
+
+- (void)runScript:(NSString *)script arguments:(NSArray<NSString *> *)arguments {
+  if (![[NSFileManager defaultManager] isExecutableFileAtPath:script]) return;
+  [self runCommand:script arguments:arguments];
+}
+
+- (void)runCommand:(NSString *)command arguments:(NSArray<NSString *> *)arguments {
+  NSTask *task = [[NSTask alloc] init];
+  task.launchPath = command;
+  task.arguments = arguments;
+  NSMutableDictionary *env = [NSMutableDictionary dictionaryWithDictionary:[[NSProcessInfo processInfo] environment]];
+  NSString *path = env[@"PATH"] ?: @"";
+  env[@"PATH"] = [NSString stringWithFormat:@"/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:%@", path];
+  task.environment = env;
+  [task launch];
+}
+
+- (void)windowDidResignKey:(NSNotification *)notification {
+  [NSApp terminate:nil];
+}
+
+@end
+
+int main(int argc, const char **argv) {
+  @autoreleasepool {
+    NSApplication *app = [NSApplication sharedApplication];
+    MenuController *delegate = [MenuController new];
+    app.delegate = delegate;
+    [app setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    [app run];
+  }
+  return 0;
+}

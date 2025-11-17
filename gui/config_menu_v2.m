@@ -751,11 +751,30 @@
 - (void)loadSpaceSettings {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
 
+  // Validate config and state exist
+  if (!config || !config.state) {
+    NSLog(@"Config manager or state not initialized");
+    self.iconField.stringValue = @"";
+    self.iconPreview.stringValue = @"󰝚";
+    [self.modeSelector setSelectedSegment:0];
+    return;
+  }
+
+  // Ensure space_icons dictionary exists
+  if (!config.state[@"space_icons"]) {
+    config.state[@"space_icons"] = [NSMutableDictionary dictionary];
+  }
+
+  // Ensure space_modes dictionary exists
+  if (!config.state[@"space_modes"]) {
+    config.state[@"space_modes"] = [NSMutableDictionary dictionary];
+  }
+
   // Load icon
   NSString *keyPath = [NSString stringWithFormat:@"space_icons.%ld", (long)self.currentSpace];
   NSString *icon = [config valueForKeyPath:keyPath defaultValue:@""];
-  self.iconField.stringValue = icon;
-  self.iconPreview.stringValue = [icon length] > 0 ? icon : @"󰝚";
+  self.iconField.stringValue = icon ? icon : @"";
+  self.iconPreview.stringValue = ([icon length] > 0) ? icon : @"󰝚";
 
   // Load mode
   keyPath = [NSString stringWithFormat:@"space_modes.%ld", (long)self.currentSpace];

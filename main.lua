@@ -332,10 +332,10 @@ sbar.default({
 -- Apple Menu (with popup_guard to prevent premature closing when submenus are open)
 sbar.add("item", "apple_menu", {
   position = "left",
-  icon = c_bridge.icons.get("apple", icon_for("apple", "")),  -- Use C bridge with fallback chain
+  icon = "󰀵",  -- Simple menu icon that actually works
   label = { drawing = false },
   click_script = PLUGIN_DIR .. "/apple_menu.sh",
-  script = POPUP_GUARD_SCRIPT,  -- Use popup_guard instead of popup_anchor
+  script = POPUP_GUARD_SCRIPT,
   background = {
     color = "0x00000000",
     corner_radius = widget_corner_radius,
@@ -799,12 +799,5 @@ sbar.exec("sketchybar --update battery")
 
 -- End configuration
 sbar.end_config()
-
--- Fix: Ensure apple icon loads from state after initialization
-local apple_icon_value = state_module.get_icon(state, "apple")
-if apple_icon_value and apple_icon_value ~= "" then
-  -- Set apple icon after bar is fully initialized
-  sbar.exec(string.format("sketchybar --set apple_menu icon='%s'", apple_icon_value))
-end
 
 sbar.event_loop()

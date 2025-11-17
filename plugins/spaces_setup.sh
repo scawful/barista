@@ -82,13 +82,13 @@ for entry in "${SPACE_LINES[@]}"; do
   space_index="${entry##* }"
   item="space.$space_index"
 
-  icon="${space_icons[$icon_idx]}"
-  if [ -z "${icon:-}" ]; then
-    icon="$space_index"
-  fi
+  # Check for custom icon from state.json first
   custom_icon=$(get_custom_icon "$space_index")
   if [ -n "$custom_icon" ]; then
     icon="$custom_icon"
+  else
+    # Use space number as default (prevents icon switching on reload)
+    icon="$space_index"
   fi
 
   sketchybar --add space "$item" left \

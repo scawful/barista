@@ -1,9 +1,9 @@
 #!/bin/sh
 
-GREEN_COLOR=
-YELLOW_COLOR=$2
-RED_COLOR=$3
-BLUE_COLOR=$4
+GREEN_COLOR=${1:-"0xffa6e3a1"}
+YELLOW_COLOR=${2:-"0xfff9e2af"}
+RED_COLOR=${3:-"0xfff38ba8"}
+BLUE_COLOR=${4:-"0xff89b4fa"}
 
 PERCENTAGE="$(pmset -g batt | grep -Eo "\d+%" | cut -d% -f1)"
 CHARGING="$(pmset -g batt | grep 'AC Power')"
@@ -41,4 +41,4 @@ fi
 
 # The item invoking this script (name $NAME) will get its icon and label
 # updated with the current battery status
-sketchybar --set "$NAME" icon="$ICON" label="${PERCENTAGE}%" background.color="$COLOR"
+sketchybar --set "$NAME" icon="$ICON" label="${PERCENTAGE}%" icon.color="$COLOR" label.color="$COLOR"

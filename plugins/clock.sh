@@ -1,8 +1,17 @@
 #!/bin/sh
+set -euo pipefail
 
-# The $NAME variable is passed from sketchybar and holds the name of
-# the item invoking this script:
-# https://felixkratz.github.io/SketchyBar/config/events#events-and-scripting
+CLOCK_WIDGET_BIN="${CLOCK_WIDGET_BIN:-$HOME/.config/sketchybar/bin/clock_widget}"
+if [ -x "$CLOCK_WIDGET_BIN" ]; then
+  exec "$CLOCK_WIDGET_BIN"
+fi
 
-sketchybar --set "$NAME" label="$(date '+%m/%d %H:%M')"
+case "${SENDER:-}" in
+  "mouse.exited.global")
+    sketchybar --set "$NAME" popup.drawing=off
+    exit 0
+    ;;
+esac
 
+# Update label only - preserve icon configuration from main.lua
+sketchybar --set "$NAME" label="$(date '+%a %m/%d %I:%M %p')"

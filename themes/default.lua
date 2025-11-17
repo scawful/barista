@@ -4,6 +4,7 @@ return {
   },
   clock = 0x80111111,
   volume = 0x8020B2AA,
+  battery = 0x80111111,  -- Dark background matching clock
   ROSEWATER = "0xFFf5e0dc",
   FLAMINGO = "0xFFf2cdcd",
   PINK = "0xFFf5c2e7",

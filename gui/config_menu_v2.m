@@ -1595,9 +1595,9 @@
 }
 
 - (BOOL)windowShouldClose:(NSWindow *)sender {
-  // Don't terminate, just hide
-  [sender orderOut:nil];
-  return NO;
+  // Quit app when window is closed
+  [NSApp terminate:nil];
+  return YES;
 }
 
 - (void)showWindow:(id)sender {
@@ -1625,7 +1625,7 @@
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
-  return NO; // Keep app running even when window is closed
+  return YES; // Quit app when window is closed
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {

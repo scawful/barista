@@ -142,7 +142,7 @@ function widgets.create_factory(sbar, theme, settings, state_data)
       drawing = state_data.widgets.battery ~= false,
       update_freq = 120,
       background = {
-        color = widget_color("battery", theme.LAVENDER or theme.BG_SEC_COLR),
+        color = widget_color("battery", theme.battery or theme.BG_SEC_COLR),
         corner_radius = widget_corner_radius,
         height = widget_height,
       },

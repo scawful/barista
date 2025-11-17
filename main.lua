@@ -40,9 +40,10 @@ local function compiled_script(binary_name, fallback)
   return fallback
 end
 
-local HOVER_SCRIPT = PLUGIN_DIR .. "/popup_hover.sh"
+local HOVER_SCRIPT = compiled_script("popup_hover", PLUGIN_DIR .. "/popup_hover.sh")
 local POPUP_ANCHOR_SCRIPT = compiled_script("popup_anchor", PLUGIN_DIR .. "/popup_anchor.sh")
 local SUBMENU_HOVER_SCRIPT = compiled_script("submenu_hover", PLUGIN_DIR .. "/submenu_hover.sh")
+local POPUP_MANAGER_SCRIPT = compiled_script("popup_manager", PLUGIN_DIR .. "/popup_manager.sh")
 
 -- Environment
 local NET_INTERFACE = os.getenv("SKETCHYBAR_NET_INTERFACE") or "en0"
@@ -246,6 +247,14 @@ sbar.exec("sketchybar --add event space_change >/dev/null 2>&1 || true")
 sbar.exec("sketchybar --add event space_mode_refresh >/dev/null 2>&1 || true")
 sbar.exec("sketchybar --add event whichkey_toggle >/dev/null 2>&1 || true")
 
+-- Global popup manager (invisible item that handles popup dismissal)
+sbar.add("item", "popup_manager", {
+  position = "left",
+  drawing = false,
+  script = POPUP_MANAGER_SCRIPT,
+})
+sbar.exec("sketchybar --subscribe popup_manager space_change display_changed display_added display_removed system_woke front_app_switched")
+
 -- Bar configuration
 sbar.bar({
   position = "top",
@@ -294,6 +303,13 @@ sbar.add("item", "apple_menu", {
   label = { drawing = false },
   click_script = PLUGIN_DIR .. "/apple_menu.sh",
   script = POPUP_ANCHOR_SCRIPT,
+  background = {
+    color = "0x00000000",
+    corner_radius = widget_corner_radius,
+    height = widget_height,
+    padding_left = 4,
+    padding_right = 4,
+  },
   popup = {
     background = {
       border_width = 2,
@@ -305,6 +321,8 @@ sbar.add("item", "apple_menu", {
 })
 
 subscribe_popup_autoclose("apple_menu")
+-- Add hover effect to apple menu icon
+attach_hover("apple_menu")
 
 -- Menu context for rendering
 local menu_context = {
@@ -379,6 +397,11 @@ sbar.add("item", "front_app", {
   label = { drawing = true },
   script = PLUGIN_DIR .. "/front_app.sh",
   click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
+  background = {
+    color = "0x00000000",
+    corner_radius = widget_corner_radius,
+    height = widget_height,
+  },
   popup = {
     background = {
       border_width = 2,
@@ -390,6 +413,7 @@ sbar.add("item", "front_app", {
 })
 sbar.exec("sketchybar --subscribe front_app front_app_switched")
 subscribe_popup_autoclose("front_app")
+attach_hover("front_app")
 
 -- Render front app menu
 menu_module.render_front_app(menu_context)
@@ -407,6 +431,7 @@ if yabai_available() then
     background_color = state_module.get_widget_color(state, "system_info", theme.BG_SEC_COLR),
   })
   subscribe_popup_autoclose("yabai_status")
+  attach_hover("yabai_status")
   sbar.exec("sketchybar --add event yabai_status_refresh")
   sbar.exec("sketchybar --subscribe yabai_status yabai_status_refresh system_woke front_app_switched space_change")
   sbar.exec("sketchybar --trigger yabai_status_refresh")
@@ -428,7 +453,7 @@ if yabai_available() then
   local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
   add_yabai_popup_item("yabai.status.header", {
     icon = "",
-    label = "Space Modes",
+    label = "Space Layout Modes",
     ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
     background = { drawing = false },
   })
@@ -436,10 +461,73 @@ if yabai_available() then
     { name = "yabai.status.float", icon = "󰒄", label = "Float (default)", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "float") },
     { name = "yabai.status.bsp", icon = "󰆾", label = "BSP Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "bsp") },
     { name = "yabai.status.stack", icon = "󰓩", label = "Stack Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "stack") },
-    { name = "yabai.status.balance", icon = "󰓅", label = "Balance", action = call_script(YABAI_CONTROL_SCRIPT, "balance") },
-    { name = "yabai.status.toggle", icon = "󱂬", label = "Toggle BSP/Stack", action = call_script(YABAI_CONTROL_SCRIPT, "toggle-layout") },
   }
   for _, entry in ipairs(mode_actions) do
+    add_yabai_popup_item(entry.name, {
+      icon = entry.icon,
+      label = entry.label,
+      click_script = entry.action,
+      ["label.font"] = font_small,
+    })
+  end
+
+  -- Add separator
+  add_yabai_popup_item("yabai.status.sep1", {
+    icon = "",
+    label = "───────────────",
+    ["label.font"] = font_string(settings.font.text, settings.font.style_map["Regular"], settings.font.sizes.small),
+    ["label.color"] = theme.DARK_WHITE,
+    background = { drawing = false },
+  })
+
+  -- Add window management section
+  add_yabai_popup_item("yabai.status.window.header", {
+    icon = "",
+    label = "Window Management",
+    ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+    background = { drawing = false },
+  })
+
+  local window_actions = {
+    { name = "yabai.status.balance", icon = "󰓅", label = "Balance Windows", action = call_script(YABAI_CONTROL_SCRIPT, "balance"), shortcut = "⌃⌥B" },
+    { name = "yabai.status.rotate", icon = "󰑞", label = "Rotate Layout", action = call_script(YABAI_CONTROL_SCRIPT, "space-rotate"), shortcut = "⌃⌥R" },
+    { name = "yabai.status.toggle", icon = "󱂬", label = "Toggle BSP/Stack", action = call_script(YABAI_CONTROL_SCRIPT, "toggle-layout") },
+    { name = "yabai.status.flip_x", icon = "󰯌", label = "Flip Horizontal", action = call_script(YABAI_CONTROL_SCRIPT, "space-mirror-x") },
+    { name = "yabai.status.flip_y", icon = "󰯎", label = "Flip Vertical", action = call_script(YABAI_CONTROL_SCRIPT, "space-mirror-y") },
+  }
+  for _, entry in ipairs(window_actions) do
+    add_yabai_popup_item(entry.name, {
+      icon = entry.icon,
+      label = entry.label,
+      click_script = entry.action,
+      ["label.font"] = font_small,
+    })
+  end
+
+  -- Add space navigation section
+  add_yabai_popup_item("yabai.status.sep2", {
+    icon = "",
+    label = "───────────────",
+    ["label.font"] = font_string(settings.font.text, settings.font.style_map["Regular"], settings.font.sizes.small),
+    ["label.color"] = theme.DARK_WHITE,
+    background = { drawing = false },
+  })
+
+  add_yabai_popup_item("yabai.status.nav.header", {
+    icon = "",
+    label = "Space Navigation",
+    ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+    background = { drawing = false },
+  })
+
+  local nav_actions = {
+    { name = "yabai.status.space.prev", icon = "󰆽", label = "Previous Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-prev"), shortcut = "⌃⌥←" },
+    { name = "yabai.status.space.next", icon = "󰆼", label = "Next Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-next"), shortcut = "⌃⌥→" },
+    { name = "yabai.status.space.recent", icon = "󰔰", label = "Recent Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-recent"), shortcut = "⌃⌥⌫" },
+    { name = "yabai.status.space.first", icon = "󰆿", label = "First Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-first") },
+    { name = "yabai.status.space.last", icon = "󰆾", label = "Last Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-last") },
+  }
+  for _, entry in ipairs(nav_actions) do
     add_yabai_popup_item(entry.name, {
       icon = entry.icon,
       label = entry.label,
@@ -471,6 +559,7 @@ widget_factory.create_clock({
   }
 })
 subscribe_popup_autoclose("clock")
+attach_hover("clock")
 
 -- Calendar popup items
 local calendar_items = {
@@ -556,12 +645,14 @@ end
 widget_factory.create_network({
   script = PLUGIN_DIR .. "/network.sh",
 })
+attach_hover("network")
 
 -- System Info widget
 widget_factory.create_system_info({
   script = PLUGIN_DIR .. "/system_info.sh",
 })
 subscribe_popup_autoclose("system_info")
+attach_hover("system_info")
 
 -- System info popup items
 local info_flags = state.system_info_items or {}
@@ -626,12 +717,14 @@ widget_factory.create_volume({
   script = PLUGIN_DIR .. "/volume.sh",
 })
 sbar.exec("sketchybar --subscribe volume volume_change")
+attach_hover("volume")
 
 -- Battery widget
 widget_factory.create_battery({
   script = PLUGIN_DIR .. "/battery.sh '" .. theme.GREEN .. "' '" .. theme.YELLOW .. "' '" .. theme.RED .. "' '" .. theme.BLUE .. "'",
 })
 sbar.exec("sketchybar --subscribe battery system_woke power_source_change")
+attach_hover("battery")
 
 -- End configuration
 sbar.end_config()

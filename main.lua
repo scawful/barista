@@ -64,6 +64,8 @@ end
 
 local yaze_enabled = integration_enabled("yaze")
 local emacs_enabled = integration_enabled("emacs")
+local halext_enabled = integration_enabled("halext")
+local halext_module = halext_enabled and require("halext") or nil
 
 -- Utility functions
 local function clamp(value, min_value, max_value)
@@ -372,12 +374,12 @@ local menu_context = {
   integrations = {
     yaze = yaze_enabled and yaze_module or nil,
     emacs = emacs_enabled and emacs_module or nil,
-    halext = require("modules.integrations.halext"),
+    halext = halext_enabled and halext_module or nil,
   },
   integration_flags = {
     yaze = yaze_enabled,
     emacs = emacs_enabled,
-    halext = state.get(config, "integrations.halext.enabled", false),
+    halext = halext_enabled,
   },
 }
 

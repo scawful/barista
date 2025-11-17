@@ -86,6 +86,13 @@ Located in `helpers/`:
 - Low-CPU alternatives to shell scripts for frequently-updating widgets
 - Built with `cd helpers && make install`
 - Configuration automatically falls back to shell scripts if binaries missing
+- Key helpers:
+  * `popup_manager`: Global popup dismissal on system events
+  * `popup_hover`: Fast hover highlighting
+  * `submenu_hover`: Nested menu hover handling
+  * `popup_anchor`: Token-based popup anchoring
+  * `menu_action`: Async action dispatcher
+  * `clock_widget`, `system_info_widget`: High-frequency data providers
 
 ### GUI Tools
 Located in `gui/`:
@@ -157,10 +164,17 @@ The configuration deeply integrates with Yabai window manager:
 
 **Widget Scaling**: All font sizes and padding automatically scale based on `widget_scale` state value. Use `scaled(value)` helper when adding new widgets.
 
-**Popup Management**: Popups require subscription to auto-close events:
+**Popup Management**:
+- Popups require subscription to auto-close events: `subscribe_popup_autoclose("widget_name")`
+- Global popup manager automatically dismisses all popups on space/display changes
+- Prevents popups from appearing on wrong spaces
+- Add hover effects with: `attach_hover("widget_name")`
+
+**Hover Effects**: All interactive widgets support hover highlighting:
 ```lua
-subscribe_popup_autoclose("widget_name")
+attach_hover("widget_name")
 ```
+Uses compiled C helper for fast performance. Automatically subscribes to mouse.entered/mouse.exited.
 
 **Icon Resolution**: Icons are resolved in order:
 1. Custom icon from state (`state_module.get_icon()`)

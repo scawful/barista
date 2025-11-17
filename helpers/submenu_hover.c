@@ -16,13 +16,14 @@ static const char *SUBMENUS[] = {
   "menu.windows.section",
   "menu.rom.section",
   "menu.emacs.section",
+  "menu.halext.section",
   "menu.apps.section",
   "menu.dev.section",
   "menu.help.section"
 };
 static const size_t SUBMENU_COUNT = sizeof(SUBMENUS) / sizeof(SUBMENUS[0]);
 
-static double CLOSE_DELAY = 0.15;
+static double CLOSE_DELAY = 0.25;  // Increased default for better reliability
 static char state_file[PATH_MAX];
 
 static void run_cmd(const char *fmt, ...) {

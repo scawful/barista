@@ -11,8 +11,10 @@ local HOME = os.getenv("HOME")
 local CONFIG_DIR = HOME .. "/.config/sketchybar"
 package.path = package.path .. ";" .. CONFIG_DIR .. "/modules/?.lua"
 package.path = package.path .. ";" .. CONFIG_DIR .. "/modules/integrations/?.lua"
+package.path = package.path .. ";" .. CONFIG_DIR .. "/?.lua"
 
 local state_module = require("state")
+local profile_module = require("profile")
 local icons_module = require("icons")
 local widgets_module = require("widgets")
 local menu_module = require("menu")
@@ -48,8 +50,16 @@ local POPUP_MANAGER_SCRIPT = compiled_script("popup_manager", PLUGIN_DIR .. "/po
 -- Environment
 local NET_INTERFACE = os.getenv("SKETCHYBAR_NET_INTERFACE") or "en0"
 
--- Load state
+-- Load state and profile
 local state = state_module.load()
+local profile_name = profile_module.get_selected_profile(state)
+local user_profile = profile_module.load(profile_name)
+
+-- Merge profile configuration with state
+if user_profile then
+  state = profile_module.merge_config(state, user_profile)
+  print("Loaded profile: " .. user_profile.name)
+end
 
 local function integration_enabled(name)
   local entry = state_module.get_integration(state, name)
@@ -381,7 +391,16 @@ local menu_context = {
     emacs = emacs_enabled,
     halext = halext_enabled,
   },
+  profile = user_profile,
+  profile_name = profile_name,
 }
+
+-- Merge profile-specific paths if available
+if user_profile and user_profile.paths then
+  for k, v in pairs(user_profile.paths) do
+    menu_context.paths[k] = v
+  end
+end
 
 -- Render Apple menu
 menu_module.render_apple(menu_context)

@@ -3,7 +3,7 @@ set -euo pipefail
 
 CONFIG_DIR="${HOME}/.config/sketchybar"
 GUI_DIR="${CONFIG_DIR}/gui"
-PANEL_BIN="${GUI_DIR}/bin/config_menu"
+PANEL_BIN="${GUI_DIR}/bin/config_menu_v2"
 LOG_FILE="/tmp/sketchybar_config_menu.log"
 BUILD_LOG="/tmp/sketchybar_gui_build.log"
 

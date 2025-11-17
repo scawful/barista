@@ -323,7 +323,7 @@ sbar.default({
 -- Apple Menu (with popup_guard to prevent premature closing when submenus are open)
 sbar.add("item", "apple_menu", {
   position = "left",
-  icon = icon_for("apple", ""),
+  icon = state_module.get_icon(state, "apple", ""),
   label = { drawing = false },
   click_script = PLUGIN_DIR .. "/apple_menu.sh",
   script = POPUP_GUARD_SCRIPT,  -- Use popup_guard instead of popup_anchor
@@ -726,17 +726,20 @@ end
 if info_enabled("net") then
   table.insert(system_info_items, { name = "system_info.net", icon = "󰖩", label = "Net …" })
 end
-if info_enabled("docs") then
-  table.insert(system_info_items, { name = "system_info.docs.tasks", icon = "󰩹", label = "Tasks.org", action = open_path(CODE_DIR .. "/docs/workflow/tasks.org") })
-  table.insert(system_info_items, { name = "system_info.docs.rom", icon = "󰊕", label = "ROM Workflow", action = open_path(CODE_DIR .. "/docs/workflow/rom-hacking.org") })
-  table.insert(system_info_items, { name = "system_info.docs.dev", icon = "", label = "Dev Workflow", action = open_path(CODE_DIR .. "/docs/workflow/development.org") })
-end
-if info_enabled("actions") then
-  table.insert(system_info_items, { name = "system_info.action.reload", icon = "󰑐", label = "Reload Bar", action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload" })
-  table.insert(system_info_items, { name = "system_info.action.logs", icon = "󰍛", label = "Open Logs", action = open_path("/opt/homebrew/var/log/sketchybar") })
-  table.insert(system_info_items, { name = "system_info.action.config", icon = "󰒓", label = "Edit Config", action = "open -a 'Visual Studio Code' " .. CONFIG_DIR })
-  table.insert(system_info_items, { name = "system_info.action.help", icon = "󰋖", label = "Help & Tips", action = string.format("open -a 'Preview' %q", CONFIG_DIR .. "/README.md") })
-end
+
+-- System Info menu is now informational only
+-- Docs and actions moved to Apple menu or removed per user request
+-- if info_enabled("docs") then
+--   table.insert(system_info_items, { name = "system_info.docs.tasks", icon = "󰩹", label = "Tasks.org", action = open_path(CODE_DIR .. "/docs/workflow/tasks.org") })
+--   table.insert(system_info_items, { name = "system_info.docs.rom", icon = "󰊕", label = "ROM Workflow", action = open_path(CODE_DIR .. "/docs/workflow/rom-hacking.org") })
+--   table.insert(system_info_items, { name = "system_info.docs.dev", icon = "", label = "Dev Workflow", action = open_path(CODE_DIR .. "/docs/workflow/development.org") })
+-- end
+-- if info_enabled("actions") then
+--   table.insert(system_info_items, { name = "system_info.action.reload", icon = "󰑐", label = "Reload Bar", action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload" })
+--   table.insert(system_info_items, { name = "system_info.action.logs", icon = "󰍛", label = "Open Logs", action = open_path("/opt/homebrew/var/log/sketchybar") })
+--   table.insert(system_info_items, { name = "system_info.action.config", icon = "󰒓", label = "Edit Config", action = "open -a 'Visual Studio Code' " .. CONFIG_DIR })
+--   table.insert(system_info_items, { name = "system_info.action.help", icon = "󰋖", label = "Help & Tips", action = string.format("open -a 'Preview' %q", CONFIG_DIR .. "/README.md") })
+-- end
 
 for _, item in ipairs(system_info_items) do
   local opts = {
@@ -771,10 +774,23 @@ attach_hover("volume")
 -- Battery widget
 widget_factory.create_battery({
   script = PLUGIN_DIR .. "/battery.sh '" .. theme.GREEN .. "' '" .. theme.YELLOW .. "' '" .. theme.RED .. "' '" .. theme.BLUE .. "'",
+  update_freq = 120,
 })
 sbar.exec("sketchybar --subscribe battery system_woke power_source_change")
 attach_hover("battery")
 
+-- Trigger initial updates for reactive widgets
+sbar.exec("sketchybar --trigger volume_change")
+sbar.exec("sketchybar --update battery")
+
 -- End configuration
 sbar.end_config()
+
+-- Fix: Ensure apple icon loads from state after initialization
+local apple_icon_value = state_module.get_icon(state, "apple")
+if apple_icon_value and apple_icon_value ~= "" then
+  -- Set apple icon after bar is fully initialized
+  sbar.exec(string.format("sketchybar --set apple_menu icon='%s'", apple_icon_value))
+end
+
 sbar.event_loop()

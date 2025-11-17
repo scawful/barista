@@ -37,17 +37,16 @@ COLOR="0xffa6e3a1"
 LABEL="offline"
 
 if [ "$STATE" = "active" ]; then
+  # Show only SSID for wifi or "Connected" for ethernet
+  # No IP address display per user request
   if [ -n "$SSID" ]; then
-    if [ -n "$IP" ]; then
-      LABEL="$SSID · $IP"
-    else
-      LABEL="$SSID"
-    fi
+    LABEL="$SSID"
   else
-    LABEL=${IP:-"active"}
+    LABEL="Connected"
   fi
 else
   COLOR="0xfff38ba8"
+  ICON="󰖪"
 fi
 
 sketchybar --set "$NAME" icon="$ICON" icon.color="$COLOR" label="$LABEL"

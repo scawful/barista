@@ -59,19 +59,17 @@ if [ -z "$disk_line" ]; then disk_line="n/a"; fi
 if [ -z "$net_info" ]; then net_info="offline"; fi
 if [ -z "$load_avg" ]; then load_avg="0.00"; fi
 
-# CPU icon and color based on load
-cpu_icon="󰍛"
+# CPU color based on load (single icon, color changes)
+cpu_icon="󰻠"  # Single consistent CPU icon
 cpu_color="0xFFa6e3a1"  # Green
 if [ "${cpu_used%%.*}" -gt 80 ]; then
-  cpu_icon="󰈸"  # Hot CPU
-  cpu_color="0xFFf38ba8"  # Red
+  cpu_color="0xFFf38ba8"  # Red for high load
 elif [ "${cpu_used%%.*}" -gt 50 ]; then
-  cpu_icon="󰔄"  # Warm CPU
-  cpu_color="0xFFfab387"  # Peach
+  cpu_color="0xFFfab387"  # Peach for medium load
 fi
 
-# Main widget summary - clean and modern
-summary="CPU ${cpu_used}%"
+# Main widget summary - clean percentage only
+summary="${cpu_used}%"
 
 # Update main widget with color
 sketchybar --set system_info \

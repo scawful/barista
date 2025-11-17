@@ -1,1 +1,10 @@
 bin
+
+# v2.0 Refactor - Temporary and backup files
+fix_icons.lua
+test_icons.lua
+test_apple_icon.sh
+state.json.*backup
+*.icon_backup
+modules/icons_enhanced.lua
+modules/menu_fixed.lua

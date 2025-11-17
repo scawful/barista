@@ -24,6 +24,9 @@ logs
 
 # User configuration (should not be committed)
 state.json
+component_settings.json
+*.icon_backup
+state.json.*backup
 
 # Cache
 cache/

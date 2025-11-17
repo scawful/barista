@@ -24,6 +24,15 @@ local yaze_module = require("yaze")
 local emacs_module = require("emacs")
 local whichkey_module = require("whichkey")
 
+-- Initialize component switcher for C/Lua hybrid architecture
+local component_switcher = require("component_switcher")
+local c_bridge = require("c_bridge")
+
+-- Initialize C components with Lua fallback
+component_switcher.init()
+component_switcher.set_mode("auto")  -- Auto-select C when available, fallback to Lua
+c_bridge.init()  -- Pre-cache common operations
+
 -- Import existing icons into icon_manager for backwards compatibility
 icon_manager.import_from_module(icons_module)
 
@@ -323,7 +332,7 @@ sbar.default({
 -- Apple Menu (with popup_guard to prevent premature closing when submenus are open)
 sbar.add("item", "apple_menu", {
   position = "left",
-  icon = state_module.get_icon(state, "apple", ""),
+  icon = c_bridge.icons.get("apple", icon_for("apple", "")),  -- Use C bridge with fallback chain
   label = { drawing = false },
   click_script = PLUGIN_DIR .. "/apple_menu.sh",
   script = POPUP_GUARD_SCRIPT,  -- Use popup_guard instead of popup_anchor
@@ -589,9 +598,10 @@ end
 -- Create widget factory
 local widget_factory = widgets_module.create_factory(sbar, theme, settings, state)
 
--- Clock widget
+-- Clock widget (uses C component if available, falls back to shell script)
 widget_factory.create_clock({
-  script = PLUGIN_DIR .. "/clock.sh",
+  script = compiled_script("clock_widget", PLUGIN_DIR .. "/clock.sh"),
+  update_freq = 1,  -- Update every second for accurate time
   click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
   popup = {
     align = "right",
@@ -764,9 +774,13 @@ sbar.add("bracket", { "clock", "network", "system_info" }, {
   }
 })
 
--- Volume widget
+-- Volume widget (click to open Sound preferences)
 widget_factory.create_volume({
   script = PLUGIN_DIR .. "/volume.sh",
+  click_script = [[osascript -e 'tell application "System Settings"
+    activate
+    reveal pane id "com.apple.Sound-Settings.extension"
+  end tell']],
 })
 sbar.exec("sketchybar --subscribe volume volume_change")
 attach_hover("volume")

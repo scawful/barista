@@ -1,220 +1,638 @@
+-- SketchyBar Configuration
+-- Modular, modern macOS status bar with Yabai integration
+
 local sbar = require("sketchybar")
 local theme = require("theme")
+local json = require("json")
+local utf8 = require("utf8")
 
-local PLUGIN_DIR = "/Users/scawful/.config/sketchybar/plugins"
+-- Load modules
+local HOME = os.getenv("HOME")
+local CONFIG_DIR = HOME .. "/.config/sketchybar"
+package.path = package.path .. ";" .. CONFIG_DIR .. "/modules/?.lua"
+package.path = package.path .. ";" .. CONFIG_DIR .. "/modules/integrations/?.lua"
 
-sbar.begin_config()
+local state_module = require("state")
+local icons_module = require("icons")
+local widgets_module = require("widgets")
+local menu_module = require("menu")
+local yaze_module = require("yaze")
+local emacs_module = require("emacs")
+local whichkey_module = require("whichkey")
 
+-- Paths
+local PLUGIN_DIR = CONFIG_DIR .. "/plugins"
+local EVENT_DIR = CONFIG_DIR .. "/helpers/event_providers"
+local SCRIPTS_DIR = HOME .. "/.config/scripts"
+local CODE_DIR = HOME .. "/Code"
+
+-- Scripts
+local YABAI_CONTROL_SCRIPT = SCRIPTS_DIR .. "/yabai_control.sh"
+local SKHD_CONTROL_SCRIPT = SCRIPTS_DIR .. "/skhd_control.sh"
+local FRONT_APP_ACTION_SCRIPT = SCRIPTS_DIR .. "/front_app_action.sh"
+local function compiled_script(binary_name, fallback)
+  local path = string.format("%s/bin/%s", CONFIG_DIR, binary_name)
+  local file = io.open(path, "r")
+  if file then
+    file:close()
+    return path
+  end
+  return fallback
+end
+
+local HOVER_SCRIPT = PLUGIN_DIR .. "/popup_hover.sh"
+local POPUP_ANCHOR_SCRIPT = compiled_script("popup_anchor", PLUGIN_DIR .. "/popup_anchor.sh")
+local SUBMENU_HOVER_SCRIPT = compiled_script("submenu_hover", PLUGIN_DIR .. "/submenu_hover.sh")
+
+-- Environment
+local NET_INTERFACE = os.getenv("SKETCHYBAR_NET_INTERFACE") or "en0"
+
+-- Load state
+local state = state_module.load()
+
+local function integration_enabled(name)
+  local entry = state_module.get_integration(state, name)
+  if type(entry) ~= "table" then
+    return true
+  end
+  if entry.enabled == nil then
+    return true
+  end
+  return entry.enabled ~= false
+end
+
+local yaze_enabled = integration_enabled("yaze")
+local emacs_enabled = integration_enabled("emacs")
+
+-- Utility functions
+local function clamp(value, min_value, max_value)
+  if value < min_value then return min_value end
+  if value > max_value then return max_value end
+  return value
+end
+
+local function font_string(family, style, size)
+  return string.format("%s:%s:%0.1f", family, style, size)
+end
+
+local function shell_exec(cmd)
+  sbar.exec(string.format("bash -lc %q", cmd))
+end
+
+local function open_path(path)
+  return string.format("open %q", path)
+end
+
+local function call_script(script_path, ...)
+  if not script_path or script_path == "" then
+    return ""
+  end
+  local cmd = string.format("bash %q", script_path)
+  local args = { ... }
+  if #args > 0 then
+    local parts = {}
+    for _, arg in ipairs(args) do
+      table.insert(parts, string.format("%q", tostring(arg)))
+    end
+    cmd = string.format("%s %s", cmd, table.concat(parts, " "))
+  end
+  return cmd
+end
+
+local function yabai_available()
+  local handle = io.popen("command -v yabai >/dev/null 2>&1 && echo 1 || echo 0")
+  if not handle then return false end
+  local result = handle:read("*a")
+  handle:close()
+  return result and result:match("1")
+end
+
+local function safe_icon(value)
+  if type(value) ~= "string" then
+    return nil
+  end
+  local ok = pcall(function()
+    utf8.len(value)
+  end)
+  if ok then
+    return value
+  end
+  return nil
+end
+
+local function icon_for(name, fallback)
+  -- First try state icons
+  local state_icon = state_module.get_icon(state, name)
+  if state_icon then
+    local icon = safe_icon(state_icon)
+    if icon then return icon end
+  end
+
+  -- Then try icon library
+  local lib_icon = icons_module.find(name)
+  if lib_icon then
+    return safe_icon(lib_icon) or fallback
+  end
+
+  return safe_icon(fallback) or fallback
+end
+
+_G.icon_for = icon_for
+
+local function attach_hover(name)
+  shell_exec(string.format("sketchybar --set %s script=%s", name, HOVER_SCRIPT))
+  shell_exec(string.format("sketchybar --subscribe %s mouse.entered mouse.exited", name))
+end
+
+local function subscribe_popup_autoclose(name)
+  shell_exec(string.format("sketchybar --subscribe %s mouse.entered mouse.exited mouse.exited.global", name))
+end
+
+local function parse_color(value)
+  if type(value) == "string" then
+    local num = tonumber(value)
+    if num then
+      return num
+    end
+  end
+  return value
+end
+
+-- Spaces management
+local function refresh_spaces()
+  local cmd = string.format("CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR)
+  shell_exec(cmd)
+end
+
+local function watch_spaces()
+  local refresh_action = string.format("CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR)
+  local change_action = "sketchybar --trigger space_change"
+  shell_exec("yabai -m signal --remove sketchybar_space_change >/dev/null 2>&1 || true")
+  shell_exec("yabai -m signal --remove sketchybar_space_created >/dev/null 2>&1 || true")
+  shell_exec("yabai -m signal --remove sketchybar_space_destroyed >/dev/null 2>&1 || true")
+  shell_exec("yabai -m signal --remove sketchybar_display_changed >/dev/null 2>&1 || true")
+  shell_exec("yabai -m signal --remove sketchybar_display_added >/dev/null 2>&1 || true")
+  shell_exec("yabai -m signal --remove sketchybar_display_removed >/dev/null 2>&1 || true")
+  shell_exec(string.format("yabai -m signal --add event=space_changed label=sketchybar_space_change action=%q", change_action))
+  shell_exec(string.format("yabai -m signal --add event=space_created label=sketchybar_space_created action=%q", refresh_action))
+  shell_exec(string.format("yabai -m signal --add event=space_destroyed label=sketchybar_space_destroyed action=%q", refresh_action))
+  shell_exec(string.format("yabai -m signal --add event=display_changed label=sketchybar_display_changed action=%q", refresh_action))
+  shell_exec(string.format("yabai -m signal --add event=display_added label=sketchybar_display_added action=%q", refresh_action))
+  shell_exec(string.format("yabai -m signal --add event=display_removed label=sketchybar_display_removed action=%q", refresh_action))
+end
+
+-- Calculate appearance values
+local bar_height = state_module.get_appearance(state, "bar_height", 28)
+local bar_corner_radius = state_module.get_appearance(state, "corner_radius", 0)
+local bar_color = parse_color(state_module.get_appearance(state, "bar_color", theme.bar.bg))
+local bar_blur_radius = tonumber(state_module.get_appearance(state, "blur_radius", 30))
+local clock_font_style = state_module.get_appearance(state, "clock_font_style", "Semibold")
+local widget_scale = tonumber(state_module.get_appearance(state, "widget_scale", 1.0)) or 1.0
+widget_scale = clamp(widget_scale, 0.85, 1.25)
+
+local widget_corner_radius = state.appearance.widget_corner_radius
+if type(widget_corner_radius) ~= "number" then
+  if bar_corner_radius and bar_corner_radius > 0 then
+    widget_corner_radius = math.max(bar_corner_radius - 1, 4)
+  else
+    widget_corner_radius = 6
+  end
+end
+
+local function scaled(value)
+  return math.floor(value * widget_scale + 0.5)
+end
+
+local icon_font_size = clamp(scaled(16), 12, 20)
+local label_font_size = clamp(scaled(14), 11, 18)
+local number_font_size = clamp(scaled(14), 11, 20)
+local small_font_size = clamp(scaled(13), 10, 16)
+local icon_padding = clamp(scaled(4), 3, 8)
+local label_padding = clamp(scaled(4), 3, 8)
+local item_padding = clamp(scaled(5), 4, 9)
+local base_widget_height = math.max(bar_height - 5, 18)
+local widget_height = clamp(
+  math.floor(base_widget_height * widget_scale + 0.5),
+  16,
+  math.max(bar_height - 2, base_widget_height + 4)
+)
+
+-- Settings object
 local settings = {
   font = {
     icon = "Hack Nerd Font",
-    text = "Source Code Pro", -- Used for text
-    numbers = "SF Mono", -- Used for numbers
+    text = "Source Code Pro",
+    numbers = "SF Mono",
     style_map = {
       Regular = "Regular",
+      Medium = "Medium",
+      Semibold = "Semibold",
       Bold = "Bold",
-      Heavy = "Heavy",
-      Semibold = "Semibold"
+      Heavy = "Heavy"
+    },
+    sizes = {
+      icon = icon_font_size,
+      text = label_font_size,
+      numbers = number_font_size,
+      small = small_font_size,
     }
   },
-  paddings = 5
+  paddings = item_padding
 }
 
--- Bar Config
+-- Begin configuration
+sbar.begin_config()
+sbar.exec("sketchybar --add event space_change >/dev/null 2>&1 || true")
+sbar.exec("sketchybar --add event space_mode_refresh >/dev/null 2>&1 || true")
+sbar.exec("sketchybar --add event whichkey_toggle >/dev/null 2>&1 || true")
+
+-- Bar configuration
 sbar.bar({
   position = "top",
-  height = 25,
-  blur_radius = 30,
-  color = theme.bar.bg,
-  margin = 5,
-  padding_left = 5,
-  padding_right = 5,
-  corner_radius = 7,
-  y_offset = 5,
+  height = bar_height,
+  blur_radius = bar_blur_radius,
+  color = bar_color,
+  margin = 0,
+  padding_left = 14,
+  padding_right = 14,
+  corner_radius = bar_corner_radius,
+  y_offset = 0,
   display = "all",
 })
+
+-- Update external bar (yabai)
+local function update_external_bar()
+  local script = string.format("%s/update_external_bar.sh %d", SCRIPTS_DIR, bar_height)
+  shell_exec(script)
+end
+update_external_bar()
 
 -- Defaults
 sbar.default({
   updates = "when_shown",
-  padding_left = 5,
-  padding_right = 5,
-  color = theme.bar.bg,
-  height = 25,
-  blur_radius = 30,
-  icon = {
-    font = {
-      family = settings.font.icon,
-      style = settings.font.style_map["Bold"],
-      size = 16.0
-    },
-    color = theme.WHITE,
-    padding_left = 4,
-    padding_right = 4,
-  },
-  label = {
-    font = {
-      family = settings.font.text,
-      style = settings.font.style_map["Semibold"],
-      size = 14.0
-    },
-    color = theme.WHITE,
-    padding_left = 4,
-    padding_right = 4,
+  padding_left = item_padding,
+  padding_right = item_padding,
+  ["icon.font"] = font_string(settings.font.icon, settings.font.style_map["Bold"], settings.font.sizes.icon),
+  ["icon.color"] = theme.WHITE,
+  ["icon.padding_left"] = icon_padding,
+  ["icon.padding_right"] = icon_padding,
+  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.text),
+  ["label.color"] = theme.WHITE,
+  ["label.padding_left"] = label_padding,
+  ["label.padding_right"] = label_padding,
+  background = {
+    color = bar_color,
+    corner_radius = widget_corner_radius,
+    height = widget_height,
   },
 })
 
--- Zelda Main Button
-sbar.add("item", "zelda", {
+-- Apple Menu
+sbar.add("item", "apple_menu", {
   position = "left",
-  icon = "󰀵",
-  icon_font = "SF Pro:Black:16.0",
+  icon = icon_for("apple", ""),
   label = { drawing = false },
-  click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
+  click_script = PLUGIN_DIR .. "/apple_menu.sh",
+  script = POPUP_ANCHOR_SCRIPT,
   popup = {
     background = {
       border_width = 2,
-      corner_radius = 3,
+      corner_radius = 4,
       border_color = theme.WHITE,
       color = theme.bar.bg
     }
   }
 })
 
--- Zelda Popup Apps
-local popup_apps = {
-  yaze = {
-    icon = "󰯙",
-    label = "Yaze",
-    script = "open -a ~/Code/yaze/build/bin/yaze.app/Contents/MacOS/yaze"
+subscribe_popup_autoclose("apple_menu")
+
+-- Menu context for rendering
+local menu_context = {
+  sbar = sbar,
+  settings = settings,
+  theme = theme,
+  widget_height = widget_height,
+  shell_exec = shell_exec,
+  attach_hover = attach_hover,
+  subscribe_popup_autoclose = subscribe_popup_autoclose,
+  call_script = call_script,
+  open_path = open_path,
+  HOVER_SCRIPT = HOVER_SCRIPT,
+  SUBMENU_HOVER_SCRIPT = SUBMENU_HOVER_SCRIPT,
+  scripts = {
+    set_appearance = SCRIPTS_DIR .. "/set_appearance.sh",
+    yabai_control = YABAI_CONTROL_SCRIPT,
+    skhd_control = SKHD_CONTROL_SCRIPT,
+    front_app_action = FRONT_APP_ACTION_SCRIPT,
+    toggle_shortcuts = SCRIPTS_DIR .. "/toggle_yabai_shortcuts.sh",
+    accessibility = SCRIPTS_DIR .. "/yabai_accessibility_fix.sh",
+    logs = SCRIPTS_DIR .. "/bar_logs.sh",
+    space_mode = CONFIG_DIR .. "/plugins/set_space_mode.sh",
+    menu_action = compiled_script("menu_action", PLUGIN_DIR .. "/menu_action.sh"),
+    ollama_prompt = PLUGIN_DIR .. "/ollama_prompt.sh",
+    z3_launcher = PLUGIN_DIR .. "/z3ed_launcher.sh",
+    apply_profile = CONFIG_DIR .. "/bin/apply_profile.sh",
   },
-  mesen = {
-    icon = "󰺷",
-    label = "Mesen",
-    script = "open -a mesen"
+  paths = {
+    readme = CONFIG_DIR .. "/README.md",
+    handoff = CONFIG_DIR .. "/HANDOFF.md",
+    rom_doc = CODE_DIR .. "/docs/workflow/rom-hacking.org",
+    yaze = CODE_DIR .. "/yaze",
+    apple_launcher = PLUGIN_DIR .. "/apple_menu.sh",
+    workflow_data = CONFIG_DIR .. "/data/workflow_shortcuts.json",
+    help_center = CONFIG_DIR .. "/gui/bin/help_center",
+    whichkey_plan = CONFIG_DIR .. "/docs/WHICHKEY_PLAN.md",
+    sharing = CONFIG_DIR .. "/docs/SHARING.md",
+    menu_data = CONFIG_DIR .. "/data",
+    home = HOME,
+    config = CONFIG_DIR,
   },
-  ["apple.activity"] = {
-    icon = "󰨇",
-    label = "Activity",
-    script = "open -a 'Activity Monitor'"
+  helpers = {
+    help_center = CONFIG_DIR .. "/gui/bin/help_center",
   },
-  ["apple.preferences"] = {
-    icon = "",
-    label = "Preferences",
-    script = "open -a 'System Preferences'"
+  integrations = {
+    yaze = yaze_enabled and yaze_module or nil,
+    emacs = emacs_enabled and emacs_module or nil,
   },
-  ["sketchybar.reload"] = {
-    icon = "󰑐",
-    label = "Reload",
-    script = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload"
+  integration_flags = {
+    yaze = yaze_enabled,
+    emacs = emacs_enabled,
   },
-  ["app.terminal"] = {
-    icon = "terminal",
-    label = "Terminal",
-    script = "open -a Terminal"
-  },
-  ["app.finder"] = {
-    icon = "",
-    label = "Finder",
-    script = "open -a Finder"
-  },
-  ["app.vscode"] = {
-    icon = "󰨞",
-    label = "VSCode",
-    script = "open -a \"Visual Studio Code\""
-  }
 }
 
-for name, opts in pairs(popup_apps) do
-  sbar.add("item", name, {
-    position = "popup.zelda",
-    icon = opts.icon,
-    label = opts.label,
-    click_script = opts.script .. "; sketchybar -m --set zelda popup.drawing=off"
-  })
-end
+-- Render Apple menu
+menu_module.render_apple(menu_context)
+whichkey_module.setup(menu_context)
 
 -- Spaces
-local space_icons = { "", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }
-
-for i, icon in ipairs(space_icons) do
-  local index = tostring(i)  -- Use space index (1-based)
-  sbar.add("space", "space." .. index, {
-    position = "left",
-    space = index,
-    icon = icon,
-    icon_padding_left = 5,
-    icon_padding_right = 5,
-    label = { drawing = false },
-    background = {
-      color = "0x20ffffff",
-      corner_radius = 7,
-      height = 18
-    },
-    script = PLUGIN_DIR .. "/space.sh",
-    click_script = "yabai -m space --focus " .. index
-  })
+refresh_spaces()
+if yabai_available() then
+  watch_spaces()
 end
+shell_exec("sketchybar --trigger space_change")
+shell_exec("sketchybar --trigger space_mode_refresh")
 
-sbar.add("bracket", { "/space\\..*/" }, {
-  background = {
-    color = "0x40000000",
-    corner_radius = 7,
-    height = 20
-  }
-})
-
--- App Name on Left
+-- Front App
 sbar.add("item", "front_app", {
   position = "left",
   icon = { drawing = true },
+  label = { drawing = true },
   script = PLUGIN_DIR .. "/front_app.sh",
+  click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
+  popup = {
+    background = {
+      border_width = 2,
+      corner_radius = 4,
+      border_color = theme.WHITE,
+      color = theme.bar.bg
+    }
+  }
 })
 sbar.exec("sketchybar --subscribe front_app front_app_switched")
+subscribe_popup_autoclose("front_app")
 
--- Clock
-sbar.add("item", "clock", {
-  position = "right",
-  icon = "",
-  update_freq = 10,
+-- Render front app menu
+menu_module.render_front_app(menu_context)
+
+-- Yabai status widget
+if yabai_available() then
+  local widget_factory = widgets_module.create_factory(sbar, theme, settings, state)
+  widget_factory.create("yabai_status", {
+    position = "left",
+    icon = "󱂬",
+    label = "yabai…",
+    update_freq = 60,
+    script = PLUGIN_DIR .. "/yabai_status.sh",
+    click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
+    background_color = state_module.get_widget_color(state, "system_info", theme.BG_SEC_COLR),
+  })
+  subscribe_popup_autoclose("yabai_status")
+  sbar.exec("sketchybar --add event yabai_status_refresh")
+  sbar.exec("sketchybar --subscribe yabai_status yabai_status_refresh system_woke front_app_switched space_change")
+  sbar.exec("sketchybar --trigger yabai_status_refresh")
+  local function add_yabai_popup_item(id, props)
+    local defaults = {
+      position = "popup.yabai_status",
+      script = HOVER_SCRIPT,
+      ["icon.padding_left"] = 6,
+      ["icon.padding_right"] = 6,
+      ["label.padding_left"] = 8,
+      ["label.padding_right"] = 8,
+      background = { drawing = false },
+    }
+    for k, v in pairs(props) do
+      defaults[k] = v
+    end
+    sbar.add("item", id, defaults)
+  end
+  local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
+  add_yabai_popup_item("yabai.status.header", {
+    icon = "",
+    label = "Space Modes",
+    ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+    background = { drawing = false },
+  })
+  local mode_actions = {
+    { name = "yabai.status.float", icon = "󰒄", label = "Float (default)", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "float") },
+    { name = "yabai.status.bsp", icon = "󰆾", label = "BSP Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "bsp") },
+    { name = "yabai.status.stack", icon = "󰓩", label = "Stack Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "stack") },
+    { name = "yabai.status.balance", icon = "󰓅", label = "Balance", action = call_script(YABAI_CONTROL_SCRIPT, "balance") },
+    { name = "yabai.status.toggle", icon = "󱂬", label = "Toggle BSP/Stack", action = call_script(YABAI_CONTROL_SCRIPT, "toggle-layout") },
+  }
+  for _, entry in ipairs(mode_actions) do
+    add_yabai_popup_item(entry.name, {
+      icon = entry.icon,
+      label = entry.label,
+      click_script = entry.action,
+      ["label.font"] = font_small,
+    })
+  end
+end
+
+-- Create widget factory
+local widget_factory = widgets_module.create_factory(sbar, theme, settings, state)
+
+-- Clock widget
+widget_factory.create_clock({
   script = PLUGIN_DIR .. "/clock.sh",
-  background = {
-    color = theme.clock,
-    corner_radius = 7,
-    height = 20
+  click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
+  popup = {
+    align = "right",
+    background = {
+      border_width = 2,
+      corner_radius = 6,
+      border_color = theme.WHITE,
+      color = theme.bar.bg,
+      padding_left = 12,
+      padding_right = 12,
+      padding_top = 8,
+      padding_bottom = 10
+    }
+  }
+})
+subscribe_popup_autoclose("clock")
+
+-- Calendar popup items
+local calendar_items = {
+  {
+    name = "clock.calendar.header",
+    icon = "",
+    script = PLUGIN_DIR .. "/calendar.sh",
+    update_freq = 1800,
+    font_style = "Semibold",
+    color = theme.LAVENDER,
+    ["icon.font"] = font_string(settings.font.icon, settings.font.style_map["Bold"], settings.font.sizes.small)
   },
-  font = {
-    family = settings.font.numbers,
-    style = settings.font.style_map["Regular"],
-    size = 14.0
+  {
+    name = "clock.calendar.weekdays",
+    icon = "",
+    font_style = "Bold",
+    color = theme.DARK_WHITE
+  },
+}
+
+for i = 1, 6 do
+  table.insert(calendar_items, {
+    name = string.format("clock.calendar.week%d", i),
+    icon = "",
+    font_style = "Regular",
+    color = theme.WHITE
+  })
+end
+
+table.insert(calendar_items, {
+  name = "clock.calendar.summary",
+  icon = "",
+  font_style = "Semibold",
+  color = theme.YELLOW
+})
+
+table.insert(calendar_items, {
+  name = "clock.calendar.footer",
+  icon = "",
+  font_style = "Regular",
+  color = theme.DARK_WHITE
+})
+
+for _, item in ipairs(calendar_items) do
+  local is_header = item.name == "clock.calendar.header"
+  local is_summary = item.name == "clock.calendar.summary"
+  local is_footer = item.name == "clock.calendar.footer"
+
+  -- Use monospace font for calendar grid
+  local item_font = settings.font.numbers
+  if is_header or is_summary or is_footer then
+    item_font = settings.font.text
+  end
+
+  local opts = {
+    position = "popup.clock",
+    icon = item.icon or "",
+    label = "",
+    ["label.font"] = font_string(
+      item_font,
+      settings.font.style_map[item.font_style or "Regular"] or settings.font.style_map["Regular"],
+      is_header and settings.font.sizes.text or settings.font.sizes.small
+    ),
+    ["label.color"] = item.color or theme.WHITE,
+    ["icon.font"] = item["icon.font"] or font_string(settings.font.icon, settings.font.style_map["Bold"], settings.font.sizes.small),
+    ["icon.drawing"] = item.icon ~= "" and true or false,
+    ["label.padding_left"] = 6,
+    ["label.padding_right"] = 6,
+    ["label.padding_top"] = (is_header or is_summary) and 4 or 1,
+    ["label.padding_bottom"] = (is_footer or is_summary) and 4 or 1,
+    background = { drawing = false },
+  }
+  if item.script then
+    opts.script = item.script
+  end
+  if item.update_freq then
+    opts.update_freq = item.update_freq
+  end
+  sbar.add("item", item.name, opts)
+end
+
+-- Network widget
+widget_factory.create_network({
+  script = PLUGIN_DIR .. "/network.sh",
+})
+
+-- System Info widget
+widget_factory.create_system_info({
+  script = PLUGIN_DIR .. "/system_info.sh",
+})
+subscribe_popup_autoclose("system_info")
+
+-- System info popup items
+local info_flags = state.system_info_items or {}
+local function info_enabled(key)
+  local value = info_flags[key]
+  if value == nil then
+    return true
+  end
+  return value
+end
+
+local system_info_items = {}
+if info_enabled("cpu") then
+  table.insert(system_info_items, { name = "system_info.cpu", icon = "", label = "CPU …" })
+end
+if info_enabled("mem") then
+  table.insert(system_info_items, { name = "system_info.mem", icon = "", label = "Mem …" })
+end
+if info_enabled("disk") then
+  table.insert(system_info_items, { name = "system_info.disk", icon = "", label = "Disk …" })
+end
+if info_enabled("net") then
+  table.insert(system_info_items, { name = "system_info.net", icon = "󰖩", label = "Net …" })
+end
+if info_enabled("docs") then
+  table.insert(system_info_items, { name = "system_info.docs.tasks", icon = "󰩹", label = "Tasks.org", action = open_path(CODE_DIR .. "/docs/workflow/tasks.org") })
+  table.insert(system_info_items, { name = "system_info.docs.rom", icon = "󰊕", label = "ROM Workflow", action = open_path(CODE_DIR .. "/docs/workflow/rom-hacking.org") })
+  table.insert(system_info_items, { name = "system_info.docs.dev", icon = "", label = "Dev Workflow", action = open_path(CODE_DIR .. "/docs/workflow/development.org") })
+end
+if info_enabled("actions") then
+  table.insert(system_info_items, { name = "system_info.action.reload", icon = "󰑐", label = "Reload Bar", action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload" })
+  table.insert(system_info_items, { name = "system_info.action.logs", icon = "󰍛", label = "Open Logs", action = open_path("/opt/homebrew/var/log/sketchybar") })
+  table.insert(system_info_items, { name = "system_info.action.config", icon = "󰒓", label = "Edit Config", action = "open -a 'Visual Studio Code' " .. CONFIG_DIR })
+  table.insert(system_info_items, { name = "system_info.action.help", icon = "󰋖", label = "Help & Tips", action = string.format("open -a 'Preview' %q", CONFIG_DIR .. "/README.md") })
+end
+
+for _, item in ipairs(system_info_items) do
+  local opts = {
+    position = "popup.system_info",
+    icon = item.icon,
+    label = item.label,
+    script = HOVER_SCRIPT,
+  }
+  if item.action then
+    opts.click_script = item.action .. "; sketchybar -m --set system_info popup.drawing=off"
+  end
+  sbar.add("item", item.name, opts)
+  attach_hover(item.name)
+end
+
+-- Bracket for right widgets
+sbar.add("bracket", { "clock", "network", "system_info" }, {
+  background = {
+    color = "0x40111111",
+    corner_radius = math.max(widget_corner_radius, 2),
+    height = math.max(widget_height + 2, 18)
   }
 })
 
--- Volume
-sbar.add("item", "volume", {
-  position = "right",
+-- Volume widget
+widget_factory.create_volume({
   script = PLUGIN_DIR .. "/volume.sh",
-  background = {
-    color = theme.volume,
-    corner_radius = 7,
-    height = 20
-  },
 })
 sbar.exec("sketchybar --subscribe volume volume_change")
 
--- Battery
-sbar.add("item", "battery", {
-  position = "right",
-  update_freq = 120,
+-- Battery widget
+widget_factory.create_battery({
   script = PLUGIN_DIR .. "/battery.sh '" .. theme.GREEN .. "' '" .. theme.YELLOW .. "' '" .. theme.RED .. "' '" .. theme.BLUE .. "'",
-  background = {
-    color = theme.LAVENDER,
-    corner_radius = 7,
-    height = 20
-  },
 })
 sbar.exec("sketchybar --subscribe battery system_woke power_source_change")
 
+-- End configuration
 sbar.end_config()
-
 sbar.event_loop()

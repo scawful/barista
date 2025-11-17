@@ -22,7 +22,7 @@ static const char *SUBMENUS[] = {
 };
 static const size_t SUBMENU_COUNT = sizeof(SUBMENUS) / sizeof(SUBMENUS[0]);
 
-static double CLOSE_DELAY = 0.25;
+static double CLOSE_DELAY = 0.15;
 static char state_file[PATH_MAX];
 
 static void run_cmd(const char *fmt, ...) {
@@ -58,12 +58,21 @@ static void clear_active() {
 }
 
 static void close_other_submenus(const char *current) {
+  // Build a single batched command for efficiency
+  char cmd[4096] = "sketchybar";
+
   for (size_t i = 0; i < SUBMENU_COUNT; i++) {
     const char *submenu = SUBMENUS[i];
     if (strcmp(submenu, current) == 0) continue;
-    run_cmd("sketchybar --set %s popup.drawing=off background.drawing=off background.color=%s",
-            submenu, IDLE_BG);
+
+    char part[256];
+    snprintf(part, sizeof(part),
+             " --set %s popup.drawing=off background.drawing=off background.color=%s",
+             submenu, IDLE_BG);
+    strncat(cmd, part, sizeof(cmd) - strlen(cmd) - 1);
   }
+
+  system(cmd);
 }
 
 static void schedule_close(const char *name) {
@@ -71,12 +80,18 @@ static void schedule_close(const char *name) {
   if (pid != 0) {
     return;
   }
+
+  // Wait for delay
   usleep((useconds_t)(CLOSE_DELAY * 1000000.0));
+
+  // Check if still active
   char current[256];
   if (!read_active(current, sizeof(current)) || strcmp(current, name) != 0) {
+    // Close submenu and reset background
     run_cmd("sketchybar --set %s popup.drawing=off background.drawing=off background.color=%s",
             name, IDLE_BG);
   }
+
   _exit(0);
 }
 

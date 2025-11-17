@@ -429,6 +429,19 @@ if yabai_available() then
     script = PLUGIN_DIR .. "/yabai_status.sh",
     click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
     background_color = state_module.get_widget_color(state, "system_info", theme.BG_SEC_COLR),
+    popup = {
+      align = "left",
+      background = {
+        border_width = 2,
+        corner_radius = 6,
+        border_color = theme.WHITE,
+        color = theme.bar.bg,
+        padding_left = 8,
+        padding_right = 8,
+        padding_top = 6,
+        padding_bottom = 8
+      }
+    }
   })
   subscribe_popup_autoclose("yabai_status")
   attach_hover("yabai_status")

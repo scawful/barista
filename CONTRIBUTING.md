@@ -54,8 +54,8 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/sketchybar-config
-cd sketchybar-config
+git clone https://github.com/YOUR_USERNAME/barista
+cd barista
 
 # Install dependencies
 brew install sketchybar lua jq
@@ -298,7 +298,7 @@ To add a new integration:
 
 ## Questions?
 
-- Open a [discussion](https://github.com/scawful/sketchybar-config/discussions)
+- Open a [discussion](https://github.com/scawful/barista/discussions)
 - Comment on relevant issue
 - Reach out to maintainers
 

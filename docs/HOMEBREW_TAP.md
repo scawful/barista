@@ -98,8 +98,8 @@ end
 ```ruby
 class SketchybarHalext < Formula
   desc "SketchyBar integration for halext-org"
-  homepage "https://github.com/scawful/sketchybar-config"
-  url "https://github.com/scawful/sketchybar-config/releases/download/v1.0.0/halext-integration.tar.gz"
+  homepage "https://github.com/scawful/barista"
+  url "https://github.com/scawful/barista/releases/download/v1.0.0/halext-integration.tar.gz"
   sha256 "..."
   license "MIT"
 
@@ -276,8 +276,8 @@ Good for: Compiled components, standalone tools
 ```ruby
 class SketchybarConfig < Formula
   desc "Advanced SketchyBar configuration with integrations"
-  homepage "https://github.com/scawful/sketchybar-config"
-  url "https://github.com/scawful/sketchybar-config/archive/v1.0.0.tar.gz"
+  homepage "https://github.com/scawful/barista"
+  url "https://github.com/scawful/barista/archive/v1.0.0.tar.gz"
   sha256 "..."
 
   depends_on "felixkratz/formulae/sketchybar"
@@ -331,7 +331,7 @@ Keep it simple for users:
 ```bash
 # In README.md
 brew tap scawful/halext
-brew install sketchybar-config
+brew install barista
 ```
 
 ## CI/CD Integration

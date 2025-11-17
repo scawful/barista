@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 INSTALL_DIR="${HOME}/.config/sketchybar"
-REPO_URL="https://github.com/scawful/sketchybar-config"  # TODO: Update when uploaded
+REPO_URL="https://github.com/scawful/barista"  # TODO: Update when uploaded
 DEFAULT_PROFILE="minimal"
 
 echo_info() {

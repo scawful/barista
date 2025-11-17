@@ -1,4 +1,6 @@
-# SketchyBar Configuration
+# ☕ barista
+
+> *Brewing the perfect macOS status bar experience*
 
 A powerful, modular, and portable SketchyBar configuration with native macOS control panel, performance optimizations, and extensible integration system.
 
@@ -56,11 +58,12 @@ A powerful, modular, and portable SketchyBar configuration with native macOS con
 ### Installation
 
 ```bash
-# Clone repository
-git clone https://github.com/scawful/sketchybar-config ~/.config/sketchybar
-cd ~/.config/sketchybar
+# One-command install
+curl -fsSL https://raw.githubusercontent.com/scawful/barista/master/install.sh | bash
 
-# Run installer
+# Or clone and install manually
+git clone https://github.com/scawful/barista ~/.config/sketchybar
+cd ~/.config/sketchybar
 ./install.sh
 ```
 
@@ -161,5 +164,11 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ---
 
 <div align="center">
+
+**barista** - Brewing the perfect macOS status bar ☕
+
 Made with ❤️ for the macOS community
+
+[Report Bug](https://github.com/scawful/barista/issues) · [Request Feature](https://github.com/scawful/barista/issues) · [Discussions](https://github.com/scawful/barista/discussions)
+
 </div>

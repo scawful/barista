@@ -1,0 +1,41 @@
+{
+  "docs": [
+    {"id": "tasks", "title": "tasks.org", "path": "Code/docs/workflow/tasks.org", "description": "Master GTD list"},
+    {"id": "rom", "title": "rom-hacking.org", "path": "Code/docs/workflow/rom-hacking.org", "description": "ROM hacking notes"},
+    {"id": "dev", "title": "development.org", "path": "Code/docs/workflow/development.org", "description": "Daily dev journal"},
+    {"id": "menu", "title": "Sketchybar Menu", "path": "Code/docs/workflow/SKETCHYBAR-CUSTOM-MENU.md", "description": "Menu architecture"},
+    {"id": "handoff", "title": "Sketchybar Handoff", "path": ".config/sketchybar/HANDOFF.md", "description": "Handoff notes"}
+  ],
+  "actions": [
+    {"id": "reload_bar", "title": "Reload Bar", "selector": "reloadBar:", "description": "Restart Sketchybar"},
+    {"id": "open_logs", "title": "Open Logs", "selector": "openLogs:", "description": "Tail Sketchybar logs"},
+    {"id": "repair_accessibility", "title": "Repair Accessibility", "selector": "runAccessibilityFix:", "description": "Fix yabai permissions"},
+    {"id": "focus_emacs", "title": "Focus Emacs Space", "selector": "focusEmacsSpace:", "description": "Jump to Emacs workspace"},
+    {"id": "launch_yaze", "title": "Launch Yaze", "selector": "launchYaze:", "description": "Open ROM tools"}
+  ],
+  "keymap": [
+    {
+      "section": "Spaces & Windows",
+      "items": [
+        {"keys": "⇧⌥⌘?", "description": "Open WhichKey HUD"},
+        {"keys": "⌃⌥←/→", "description": "Focus spaces (skhd)"},
+        {"keys": "⌃⌥Y", "description": "Toggle yabai shortcuts"},
+        {"keys": "⌃⌥L", "description": "Toggle yabai layout"},
+        {"keys": "⇧⌥⌘←/→", "description": "Send window to prev/next space"}
+      ]
+    },
+    {
+      "section": "Workflow",
+      "items": [
+        {"keys": "⌃⌥R", "description": "Reload bar & widgets"},
+        {"keys": "⌃⌥E", "description": "Focus Emacs space"},
+        {"keys": "⌃⌥O", "description": "Open workflow docs"}
+      ]
+    }
+  ],
+  "repos": [
+    {"id": "sketchybar", "name": "Sketchybar Config", "path": "~/Code/sketchybar"},
+    {"id": "yaze", "name": "Yaze", "path": "~/Code/yaze"},
+    {"id": "docs", "name": "Docs", "path": "~/Code/docs"}
+  ]
+}

@@ -18,6 +18,13 @@ gui/bin/
 checks.json
 build_complete.sh
 
+# Test and temporary scripts (from v2.0 refactor)
+fix_icons.lua
+test_icons.lua
+test_apple_icon.sh
+modules/icons_enhanced.lua
+modules/menu_fixed.lua
+
 # Logs
 logs
 *.log

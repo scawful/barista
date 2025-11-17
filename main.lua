@@ -350,6 +350,7 @@ local menu_context = {
     ollama_prompt = PLUGIN_DIR .. "/ollama_prompt.sh",
     z3_launcher = PLUGIN_DIR .. "/z3ed_launcher.sh",
     apply_profile = CONFIG_DIR .. "/bin/apply_profile.sh",
+    halext_menu = PLUGIN_DIR .. "/halext_menu.sh",
   },
   paths = {
     readme = CONFIG_DIR .. "/README.md",
@@ -371,10 +372,12 @@ local menu_context = {
   integrations = {
     yaze = yaze_enabled and yaze_module or nil,
     emacs = emacs_enabled and emacs_module or nil,
+    halext = require("modules.integrations.halext"),
   },
   integration_flags = {
     yaze = yaze_enabled,
     emacs = emacs_enabled,
+    halext = state.get(config, "integrations.halext.enabled", false),
   },
 }
 

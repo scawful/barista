@@ -223,6 +223,37 @@ local function emacs_items(ctx)
   }
 end
 
+local function halext_items(ctx)
+  -- halext-org integration menu items with room for future expansion
+  if ctx.integration_flags and ctx.integration_flags.halext == false then
+    return {
+      { type = "item", name = "menu.halext.configure", icon = "", label = "Configure halext-org", action = ctx.call_script(ctx.scripts.halext_menu, "configure") },
+    }
+  end
+
+  -- Use halext integration if available
+  if ctx.integrations and ctx.integrations.halext then
+    return ctx.integrations.halext.create_menu_items(ctx)
+  end
+
+  -- Dynamic items based on halext state
+  local halext_script = ctx.scripts.halext_menu or ""
+
+  return {
+    { type = "header", name = "menu.halext.header", label = "halext-org" },
+    { type = "item", name = "menu.halext.tasks", icon = "", label = "View Tasks", action = ctx.call_script(halext_script, "open_tasks") },
+    { type = "item", name = "menu.halext.calendar", icon = "", label = "View Calendar", action = ctx.call_script(halext_script, "open_calendar") },
+    { type = "item", name = "menu.halext.suggestions", icon = "󰚩", label = "LLM Suggestions", action = ctx.call_script(halext_script, "open_suggestions") },
+    { type = "separator", name = "menu.halext.sep1" },
+    { type = "item", name = "menu.halext.refresh", icon = "󰑐", label = "Refresh Data", action = ctx.call_script(halext_script, "refresh") },
+    { type = "item", name = "menu.halext.configure", icon = "", label = "Configure Integration", action = ctx.call_script(halext_script, "configure") },
+    -- Future expansion placeholders:
+    -- { type = "item", name = "menu.halext.notes", icon = "󰠮", label = "Quick Notes", action = "..." },
+    -- { type = "item", name = "menu.halext.search", icon = "", label = "Search", action = "..." },
+    -- { type = "submenu", name = "menu.halext.projects", icon = "󰉋", label = "Projects", items = {...} },
+  }
+end
+
 local function help_items(ctx)
   local data = load_menu_section(ctx, "menu_help")
   local items = {}
@@ -364,6 +395,7 @@ function menu.render_apple(ctx)
     { type = "submenu", name = "menu.windows.section", icon = "󰍿", label = "Window Actions", items = window_action_items },
     { type = "submenu", name = "menu.rom.section", icon = "󰊕", label = "ROM Hacking", items = rom_hacking_items(ctx) },
     { type = "submenu", name = "menu.emacs.section", icon = "", label = "Emacs Workspace", items = emacs_items(ctx) },
+    { type = "submenu", name = "menu.halext.section", icon = "󱓷", label = "halext-org", items = halext_items(ctx) },
     { type = "submenu", name = "menu.apps.section", icon = "󰖟", label = "Apps & Tools", items = app_tool_items },
     { type = "submenu", name = "menu.dev.section", icon = "󰙨", label = "Dev Utilities", items = dev_tool_items },
     { type = "submenu", name = "menu.help.section", icon = "󰋖", label = "Help & Tips", items = help_items(ctx) },

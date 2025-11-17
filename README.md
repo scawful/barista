@@ -22,6 +22,14 @@ A powerful, modular, and portable SketchyBar configuration with native macOS con
 - **Smart Caching**: 5-minute TTL for external integrations
 - **Zero-Latency Feedback**: Instant visual responses
 
+### 🎨 Advanced Icon & Shortcut Management
+- **Multi-Font Icon System**: Automatic fallback between Hack Nerd Font, SF Symbols, SF Pro
+- **Font-Agnostic**: Icons work regardless of installed fonts
+- **Centralized Management**: One place to manage all icons
+- **Non-Conflicting Shortcuts**: Using ctrl+alt combinations that don't interfere with apps
+- **fn Key Support**: Future-ready for fn-key combinations (macOS Ventura+)
+- **19 Global Shortcuts**: Pre-configured, conflict-free keyboard shortcuts
+
 ### 🔧 Modular Architecture
 - **Profile System**: Easy switching between personal, work, and custom setups
 - **Lua Modules**: Clean, maintainable code structure
@@ -88,6 +96,7 @@ After installation:
 ## 📚 Documentation
 
 - **[Control Panel Guide](docs/CONTROL_PANEL_V2.md)**: Complete GUI documentation
+- **[Icons & Shortcuts](docs/ICONS_AND_SHORTCUTS.md)**: Icon management and keyboard shortcuts
 - **[Themes Guide](docs/THEMES.md)**: Available themes and customization
 - **[License Analysis](docs/LICENSE_ANALYSIS.md)**: Commercial use and licensing details
 - **[Improvements Overview](docs/IMPROVEMENTS.md)**: Architecture and performance details

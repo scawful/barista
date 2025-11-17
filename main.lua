@@ -16,11 +16,16 @@ package.path = package.path .. ";" .. CONFIG_DIR .. "/?.lua"
 local state_module = require("state")
 local profile_module = require("profile")
 local icons_module = require("icons")
+local icon_manager = require("icon_manager")  -- Centralized icon management with multi-font support
+local shortcuts = require("shortcuts")  -- Keyboard shortcut management
 local widgets_module = require("widgets")
 local menu_module = require("menu")
 local yaze_module = require("yaze")
 local emacs_module = require("emacs")
 local whichkey_module = require("whichkey")
+
+-- Import existing icons into icon_manager for backwards compatibility
+icon_manager.import_from_module(icons_module)
 
 -- Paths
 local PLUGIN_DIR = CONFIG_DIR .. "/plugins"
@@ -142,7 +147,13 @@ local function icon_for(name, fallback)
     if icon then return icon end
   end
 
-  -- Then try icon library
+  -- Then try icon_manager (with multi-font support)
+  local icon_char = icon_manager.get_char(name)
+  if icon_char and icon_char ~= "" then
+    return safe_icon(icon_char) or fallback
+  end
+
+  -- Fallback to old icon library for compatibility
   local lib_icon = icons_module.find(name)
   if lib_icon then
     return safe_icon(lib_icon) or fallback

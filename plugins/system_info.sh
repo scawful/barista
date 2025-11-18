@@ -1,107 +1,90 @@
 #!/bin/bash
 
-# Modern System Info - Icons and clean formatting
+# System Info Widget - CPU, Mem, Disk, Net
+# Designed for Barista - Clean, efficient system monitoring
 
+set -euo pipefail
+
+# Fallback binary usage if needed
 SYSTEM_INFO_BIN="${SYSTEM_INFO_BIN:-$HOME/.config/sketchybar/bin/system_info_widget}"
 if [ -x "$SYSTEM_INFO_BIN" ]; then
   exec "$SYSTEM_INFO_BIN"
 fi
 
-set -euo pipefail
+# Configuration
+ICON_COLOR="0xffa6adc8"
+LABEL_COLOR="0xffcdd6f4"
+RED="0xfff38ba8"
+YELLOW="0xfff9e2af"
+GREEN="0xffa6e3a1"
+BLUE="0xff89b4fa"
 
+# Handle mouse events
 if [ "${SENDER:-}" = "mouse.exited.global" ]; then
   sketchybar --set system_info popup.drawing=off
   exit 0
 fi
 
-# Get system stats
-top_snapshot="$(top -l 1 -n 0)"
+# --- Statistics Gathering ---
 
-# CPU usage with color coding
-cpu_used=$(printf '%s\n' "$top_snapshot" | awk '
-  /CPU usage/ {
-    u=$3; gsub("[^0-9.]", "", u);
-    s=$5; gsub("[^0-9.]", "", s);
-    printf "%.0f", u + s;
-    exit
-  }
-')
+# CPU: Top 1 sample, parse user+sys usage
+cpu_usage=$(top -l 1 -n 0 | awk '/CPU usage/ {printf "%.0f", $3 + $5}')
+cpu_load=$(sysctl -n vm.loadavg | awk '{print $2}')
 
-# Memory info
-physmem_line=$(printf '%s\n' "$top_snapshot" | awk '/PhysMem/ {sub("PhysMem: ",""); print; exit}')
-if [ -z "$physmem_line" ]; then
-  physmem_line="unavailable"
-fi
+# Memory: Wired + Active pages (approximate used) or use top's PhysMem
+# Using vm_stat for speed if possible, otherwise top fallback
+mem_usage=$(ps -A -o %mem | awk '{s+=$1} END {printf "%.0f", s}')
 
-# Parse memory for better display
-mem_used=$(echo "$physmem_line" | awk '{print $1}')
-mem_wired=$(echo "$physmem_line" | grep -o '[0-9.]*[KMGT] wired' | awk '{print $1}')
+# Disk: Root usage
+disk_usage=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
+disk_label=$(df -h / | awk 'NR==2 {printf "%s/%s", $3, $2}')
 
-# Disk info
-disk_line=$(df -h / | awk 'NR==2 {printf "%s / %s (%s)", $3, $2, $5}')
-
-# Network info
+# Network: IP and SSID
 wifi_interface="${SKETCHYBAR_NET_INTERFACE:-en0}"
-net_info=$(ifconfig "$wifi_interface" 2>/dev/null | awk '/inet / && $2 != "127.0.0.1" {print $2; exit}')
-wifi_ssid=$(networksetup -getairportnetwork "$wifi_interface" 2>/dev/null | sed 's/Current Wi-Fi Network: //')
+ip_address=$(ifconfig "$wifi_interface" 2>/dev/null | awk '/inet / {print $2}')
+ssid=$(networksetup -getairportnetwork "$wifi_interface" 2>/dev/null | sed 's/Current Wi-Fi Network: //')
 
-# Load average
-load_avg=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')
+# --- Widget Logic ---
 
-# Battery info (if available)
-battery_percent=$(pmset -g batt | grep -o '[0-9]*%' | tr -d '%')
-battery_charging=$(pmset -g batt | grep -q 'AC Power' && echo "⚡" || echo "")
-
-# Uptime
-uptime_days=$(uptime | awk '{print $3}' | tr -d ',')
-
-# Defaults for missing values
-if [ -z "$cpu_used" ]; then cpu_used="0"; fi
-if [ -z "$disk_line" ]; then disk_line="n/a"; fi
-if [ -z "$net_info" ]; then net_info="offline"; fi
-if [ -z "$load_avg" ]; then load_avg="0.00"; fi
-
-# CPU color based on load (single icon, color changes)
-cpu_icon="󰻠"  # Single consistent CPU icon
-cpu_color="0xFFa6e3a1"  # Green
-if [ "${cpu_used%%.*}" -gt 80 ]; then
-  cpu_color="0xFFf38ba8"  # Red for high load
-elif [ "${cpu_used%%.*}" -gt 50 ]; then
-  cpu_color="0xFFfab387"  # Peach for medium load
+# CPU Status Color
+cpu_status_color="$GREEN"
+if [ "$cpu_usage" -gt 80 ]; then
+  cpu_status_color="$RED"
+elif [ "$cpu_usage" -gt 50 ]; then
+  cpu_status_color="$YELLOW"
 fi
 
-# Main widget summary - clean percentage only
-summary="${cpu_used}%"
-
-# Update main widget with color
+# Main Widget Update
 sketchybar --set system_info \
-  icon="$cpu_icon" \
-  label="$summary" \
-  icon.color="$cpu_color" \
-  label.font.style="Semibold"
+  icon="󰻠" \
+  label="${cpu_usage}%" \
+  icon.color="$cpu_status_color" \
+  label.color="$LABEL_COLOR"
 
-# Update popup items with clean labels (no duplicate icons)
+# Popup Items Update
 sketchybar --set system_info.cpu \
-  label="CPU ${cpu_used}%    Load ${load_avg}"
+  label="CPU Usage: ${cpu_usage}% (Load: ${cpu_load})" \
+  icon="󰻠" \
+  icon.color="$cpu_status_color"
 
 sketchybar --set system_info.mem \
-  label="Memory ${mem_used}"
+  label="Memory Usage: ${mem_usage}%" \
+  icon="󰘚" \
+  icon.color="$BLUE"
 
 sketchybar --set system_info.disk \
-  label="Disk ${disk_line}"
+  label="Disk Usage: ${disk_usage}% (${disk_label})" \
+  icon="󰋊" \
+  icon.color="$YELLOW"
 
-# Network with better formatting and color
-if [ "$net_info" = "offline" ]; then
+if [ -n "$ip_address" ]; then
   sketchybar --set system_info.net \
-    label="Wi-Fi Offline" \
-    icon.color="0xFFf38ba8"
+    label="Wi-Fi: ${ssid} (${ip_address})" \
+    icon="󰖩" \
+    icon.color="$GREEN"
 else
-  if [ -n "$wifi_ssid" ]; then
-    wifi_label="Wi-Fi ${wifi_ssid} (${net_info})"
-  else
-    wifi_label="Wi-Fi ${net_info}"
-  fi
   sketchybar --set system_info.net \
-    label="$wifi_label" \
-    icon.color="0xFFa6e3a1"
+    label="Wi-Fi: Disconnected" \
+    icon="󰖪" \
+    icon.color="$RED"
 fi

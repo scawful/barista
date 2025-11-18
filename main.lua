@@ -175,7 +175,8 @@ end
 _G.icon_for = icon_for
 
 local function attach_hover(name)
-  shell_exec(string.format("sketchybar --set %s script=%s", name, HOVER_SCRIPT))
+  -- Hover script is now integrated into the widgets' own scripts for better performance
+  -- We only need to subscribe to mouse events
   shell_exec(string.format("sketchybar --subscribe %s mouse.entered mouse.exited", name))
 end
 

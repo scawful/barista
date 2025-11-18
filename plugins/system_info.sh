@@ -5,6 +5,24 @@
 
 set -euo pipefail
 
+HIGHLIGHT="0x40f5c2e7"
+
+# Handle mouse events
+case "${SENDER:-}" in
+  "mouse.entered")
+    sketchybar --set "$NAME" background.drawing=on background.color="$HIGHLIGHT"
+    exit 0
+    ;;
+  "mouse.exited")
+    sketchybar --set "$NAME" background.drawing=off
+    exit 0
+    ;;
+  "mouse.exited.global")
+    sketchybar --set system_info popup.drawing=off
+    exit 0
+    ;;
+esac
+
 # Fallback binary usage if needed
 SYSTEM_INFO_BIN="${SYSTEM_INFO_BIN:-$HOME/.config/sketchybar/bin/system_info_widget}"
 if [ -x "$SYSTEM_INFO_BIN" ]; then
@@ -18,12 +36,6 @@ RED="0xfff38ba8"
 YELLOW="0xfff9e2af"
 GREEN="0xffa6e3a1"
 BLUE="0xff89b4fa"
-
-# Handle mouse events
-if [ "${SENDER:-}" = "mouse.exited.global" ]; then
-  sketchybar --set system_info popup.drawing=off
-  exit 0
-fi
 
 # --- Statistics Gathering ---
 

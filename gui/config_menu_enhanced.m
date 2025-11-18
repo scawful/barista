@@ -20,7 +20,7 @@
 @property (copy) void (^updateHandler)(NSDictionary *config);
 @end
 
-@interface EnhancedMenuController : NSObject <NSApplicationDelegate, NSWindowDelegate, NSTabViewDelegate>
+@interface EnhancedMenuController : NSObject <NSApplicationDelegate, NSWindowDelegate, NSTabViewDelegate, NSTableViewDataSource, NSTableViewDelegate>
 @property (strong) NSWindow *window;
 @property (strong) NSTabView *tabView;
 
@@ -58,6 +58,24 @@
 @property (strong) NSTextField *updateRateLabel;
 @property (strong) NSButton *daemonToggle;
 @property (strong) NSPopUpButton *updateModeMenu;
+
+// Launch Agents Tab
+@property (strong) NSTableView *launchAgentsTable;
+@property (strong) NSSearchField *launchAgentSearchField;
+@property (strong) NSTextField *launchAgentStatusLabel;
+@property (strong) NSButton *startAgentButton;
+@property (strong) NSButton *stopAgentButton;
+@property (strong) NSButton *restartAgentButton;
+@property (strong) NSMutableArray *launchAgents;
+@property (strong) NSArray *filteredLaunchAgents;
+
+// Debug Tab
+@property (strong) NSButton *debugVerboseToggle;
+@property (strong) NSButton *debugHotloadToggle;
+@property (strong) NSButton *debugMenuHoverToggle;
+@property (strong) NSSlider *debugRefreshSlider;
+@property (strong) NSTextField *debugRefreshLabel;
+@property (strong) NSTextField *debugStatusLabel;
 
 // Live Preview
 @property (strong) NSView *previewBar;
@@ -370,6 +388,8 @@ didSelectItemsAtIndexPaths:(NSSet<NSIndexPath *> *)indexPaths {
     // Create tab view
     self.tabView = [[NSTabView alloc] initWithFrame:NSMakeRect(0, 50, frame.size.width, frame.size.height - 100)];
     self.tabView.delegate = self;
+    self.launchAgents = [NSMutableArray array];
+    self.filteredLaunchAgents = @[];
 
     // Add tabs
     [self buildAppearanceTab];
@@ -377,6 +397,8 @@ didSelectItemsAtIndexPaths:(NSSet<NSIndexPath *> *)indexPaths {
     [self buildIconsTab];
     [self buildSpacesTab];
     [self buildPerformanceTab];
+    [self buildLaunchAgentsTab];
+    [self buildDebugTab];
 
     [self.window.contentView addSubview:self.tabView];
 
@@ -644,6 +666,506 @@ didSelectItemsAtIndexPaths:(NSSet<NSIndexPath *> *)indexPaths {
 
     tab.view = view;
     [self.tabView addTabViewItem:tab];
+}
+
+- (void)buildLaunchAgentsTab {
+    NSTabViewItem *tab = [[NSTabViewItem alloc] init];
+    tab.label = @"Launch Agents";
+
+    NSView *view = [[NSView alloc] initWithFrame:NSZeroRect];
+
+    self.launchAgentSearchField = [[NSSearchField alloc] initWithFrame:NSMakeRect(30, 700, 320, 24)];
+    self.launchAgentSearchField.placeholderString = @"Filter by label or path";
+    self.launchAgentSearchField.target = self;
+    self.launchAgentSearchField.action = @selector(filterLaunchAgents:);
+    [view addSubview:self.launchAgentSearchField];
+
+    NSButton *refreshButton = [[NSButton alloc] initWithFrame:NSMakeRect(370, 700, 100, 24)];
+    refreshButton.title = @"Refresh";
+    refreshButton.target = self;
+    refreshButton.action = @selector(loadLaunchAgents:);
+    [view addSubview:refreshButton];
+
+    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(30, 120, 900, 560)];
+    scrollView.hasVerticalScroller = YES;
+    self.launchAgentsTable = [[NSTableView alloc] initWithFrame:scrollView.bounds];
+    self.launchAgentsTable.delegate = self;
+    self.launchAgentsTable.dataSource = self;
+    self.launchAgentsTable.rowHeight = 26.0;
+
+    NSTableColumn *stateColumn = [[NSTableColumn alloc] initWithIdentifier:@"state"];
+    stateColumn.title = @"State";
+    stateColumn.width = 140;
+    [self.launchAgentsTable addTableColumn:stateColumn];
+
+    NSTableColumn *labelColumn = [[NSTableColumn alloc] initWithIdentifier:@"label"];
+    labelColumn.title = @"Label";
+    labelColumn.width = 320;
+    [self.launchAgentsTable addTableColumn:labelColumn];
+
+    NSTableColumn *pidColumn = [[NSTableColumn alloc] initWithIdentifier:@"pid"];
+    pidColumn.title = @"PID";
+    pidColumn.width = 80;
+    [self.launchAgentsTable addTableColumn:pidColumn];
+
+    NSTableColumn *statusColumn = [[NSTableColumn alloc] initWithIdentifier:@"status"];
+    statusColumn.title = @"Exit Status";
+    statusColumn.width = 160;
+    [self.launchAgentsTable addTableColumn:statusColumn];
+
+    NSTableColumn *plistColumn = [[NSTableColumn alloc] initWithIdentifier:@"plist"];
+    plistColumn.title = @"Plist";
+    plistColumn.width = 180;
+    [self.launchAgentsTable addTableColumn:plistColumn];
+
+    scrollView.documentView = self.launchAgentsTable;
+    [view addSubview:scrollView];
+
+    CGFloat buttonY = 200;
+    self.startAgentButton = [[NSButton alloc] initWithFrame:NSMakeRect(960, buttonY + 120, 160, 32)];
+    self.startAgentButton.title = @"Start";
+    self.startAgentButton.target = self;
+    self.startAgentButton.action = @selector(startSelectedLaunchAgent:);
+    [view addSubview:self.startAgentButton];
+
+    self.stopAgentButton = [[NSButton alloc] initWithFrame:NSMakeRect(960, buttonY + 70, 160, 32)];
+    self.stopAgentButton.title = @"Stop";
+    self.stopAgentButton.target = self;
+    self.stopAgentButton.action = @selector(stopSelectedLaunchAgent:);
+    [view addSubview:self.stopAgentButton];
+
+    self.restartAgentButton = [[NSButton alloc] initWithFrame:NSMakeRect(960, buttonY + 20, 160, 32)];
+    self.restartAgentButton.title = @"Restart";
+    self.restartAgentButton.target = self;
+    self.restartAgentButton.action = @selector(restartSelectedLaunchAgent:);
+    [view addSubview:self.restartAgentButton];
+
+    self.launchAgentStatusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(30, 80, 1090, 24)];
+    self.launchAgentStatusLabel.editable = NO;
+    self.launchAgentStatusLabel.bezeled = NO;
+    self.launchAgentStatusLabel.backgroundColor = [NSColor clearColor];
+    self.launchAgentStatusLabel.stringValue = @"No agents loaded.";
+    [view addSubview:self.launchAgentStatusLabel];
+
+    tab.view = view;
+    [self.tabView addTabViewItem:tab];
+
+    [self loadLaunchAgents:nil];
+}
+
+- (void)buildDebugTab {
+    NSTabViewItem *tab = [[NSTabViewItem alloc] init];
+    tab.label = @"Debug";
+
+    NSView *view = [[NSView alloc] initWithFrame:NSZeroRect];
+
+    CGFloat x = 60;
+    CGFloat y = 680;
+
+    NSTextField *togglesTitle = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y, 300, 24)];
+    togglesTitle.stringValue = @"Runtime Toggles";
+    togglesTitle.font = [NSFont boldSystemFontOfSize:16];
+    togglesTitle.editable = NO;
+    togglesTitle.bezeled = NO;
+    togglesTitle.backgroundColor = [NSColor clearColor];
+    [view addSubview:togglesTitle];
+
+    y -= 40;
+    self.debugVerboseToggle = [[NSButton alloc] initWithFrame:NSMakeRect(x, y, 260, 24)];
+    self.debugVerboseToggle.buttonType = NSButtonTypeSwitch;
+    self.debugVerboseToggle.title = @"Verbose logging";
+    self.debugVerboseToggle.identifier = @"verbose_logging";
+    self.debugVerboseToggle.target = self;
+    self.debugVerboseToggle.action = @selector(toggleDebugOption:);
+    [view addSubview:self.debugVerboseToggle];
+
+    y -= 30;
+    self.debugHotloadToggle = [[NSButton alloc] initWithFrame:NSMakeRect(x, y, 260, 24)];
+    self.debugHotloadToggle.buttonType = NSButtonTypeSwitch;
+    self.debugHotloadToggle.title = @"Enable hotload";
+    self.debugHotloadToggle.identifier = @"hotload_enabled";
+    self.debugHotloadToggle.target = self;
+    self.debugHotloadToggle.action = @selector(toggleDebugOption:);
+    [view addSubview:self.debugHotloadToggle];
+
+    y -= 30;
+    self.debugMenuHoverToggle = [[NSButton alloc] initWithFrame:NSMakeRect(x, y, 260, 24)];
+    self.debugMenuHoverToggle.buttonType = NSButtonTypeSwitch;
+    self.debugMenuHoverToggle.title = @"Popup hover outline";
+    self.debugMenuHoverToggle.identifier = @"popup_debug";
+    self.debugMenuHoverToggle.target = self;
+    self.debugMenuHoverToggle.action = @selector(toggleDebugOption:);
+    [view addSubview:self.debugMenuHoverToggle];
+
+    y -= 60;
+    [self addLabel:@"Widget Refresh (ms):" at:NSMakePoint(x, y) to:view];
+    self.debugRefreshSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(x + 200, y, 200, 24)];
+    self.debugRefreshSlider.minValue = 100;
+    self.debugRefreshSlider.maxValue = 2000;
+    self.debugRefreshSlider.target = self;
+    self.debugRefreshSlider.action = @selector(debugRefreshChanged:);
+    [view addSubview:self.debugRefreshSlider];
+
+    self.debugRefreshLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(x + 420, y, 80, 24)];
+    self.debugRefreshLabel.editable = NO;
+    self.debugRefreshLabel.bezeled = NO;
+    self.debugRefreshLabel.backgroundColor = [NSColor clearColor];
+    self.debugRefreshLabel.stringValue = @"0 ms";
+    [view addSubview:self.debugRefreshLabel];
+
+    CGFloat buttonY = 320;
+    NSButton *rebuildButton = [[NSButton alloc] initWithFrame:NSMakeRect(x, buttonY + 120, 200, 32)];
+    rebuildButton.title = @"Rebuild & Reload";
+    rebuildButton.target = self;
+    rebuildButton.action = @selector(rebuildAndReload:);
+    [view addSubview:rebuildButton];
+
+    NSButton *logsButton = [[NSButton alloc] initWithFrame:NSMakeRect(x, buttonY + 70, 200, 32)];
+    logsButton.title = @"Open Logs";
+    logsButton.target = self;
+    logsButton.action = @selector(openLogs:);
+    [view addSubview:logsButton];
+
+    NSButton *flushButton = [[NSButton alloc] initWithFrame:NSMakeRect(x, buttonY + 20, 200, 32)];
+    flushButton.title = @"Flush Menu Cache";
+    flushButton.target = self;
+    flushButton.action = @selector(flushMenuCache:);
+    [view addSubview:flushButton];
+
+    self.debugStatusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(x, 180, 900, 24)];
+    self.debugStatusLabel.editable = NO;
+    self.debugStatusLabel.bezeled = NO;
+    self.debugStatusLabel.backgroundColor = [NSColor clearColor];
+    self.debugStatusLabel.stringValue = @"Ready.";
+    [view addSubview:self.debugStatusLabel];
+
+    [self loadDebugDefaults];
+
+    tab.view = view;
+    [self.tabView addTabViewItem:tab];
+}
+
+- (NSString *)launchAgentHelperPath {
+    return [self.configPath stringByAppendingPathComponent:@"helpers/launch_agent_manager.sh"];
+}
+
+- (void)loadLaunchAgents:(id)sender {
+    NSString *helper = [self.launchAgentHelperPath stringByStandardizingPath];
+    if (![[NSFileManager defaultManager] isExecutableFileAtPath:helper]) {
+        self.launchAgentStatusLabel.stringValue = @"helpers/launch_agent_manager.sh not found (build agent helper first).";
+        self.launchAgents = [NSMutableArray array];
+        self.filteredLaunchAgents = @[];
+        [self.launchAgentsTable reloadData];
+        [self updateLaunchAgentButtons];
+        return;
+    }
+
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = helper;
+    task.arguments = @[@"list"];
+    NSPipe *pipe = [NSPipe pipe];
+    task.standardOutput = pipe;
+    task.standardError = pipe;
+    [task launch];
+    [task waitUntilExit];
+
+    NSData *data = [[pipe fileHandleForReading] readDataToEndOfFile];
+    if (task.terminationStatus != 0) {
+        NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+        self.launchAgentStatusLabel.stringValue = output.length ? output : @"Failed to list launch agents.";
+        return;
+    }
+
+    NSError *error = nil;
+    NSArray *agents = [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingMutableContainers error:&error];
+    if (!agents || ![agents isKindOfClass:[NSArray class]]) {
+        self.launchAgentStatusLabel.stringValue = @"Unable to parse launch agent JSON.";
+        return;
+    }
+
+    self.launchAgents = [agents mutableCopy];
+    [self applyLaunchAgentFilter];
+}
+
+- (void)filterLaunchAgents:(id)sender {
+    [self applyLaunchAgentFilter];
+}
+
+- (void)applyLaunchAgentFilter {
+    NSString *query = [[self.launchAgentSearchField stringValue] lowercaseString];
+    if (!query) { query = @""; }
+
+    if (query.length == 0) {
+        self.filteredLaunchAgents = [self.launchAgents copy];
+    } else {
+        NSMutableArray *filtered = [NSMutableArray array];
+        for (NSDictionary *agent in self.launchAgents) {
+            NSString *label = [[agent[@"label"] description] lowercaseString];
+            NSString *plist = [[agent[@"plist"] description] lowercaseString];
+            if ((label && [label containsString:query]) || (plist && [plist containsString:query])) {
+                [filtered addObject:agent];
+            }
+        }
+        self.filteredLaunchAgents = filtered;
+    }
+    [self.launchAgentsTable reloadData];
+    [self updateLaunchAgentButtons];
+    self.launchAgentStatusLabel.stringValue = [NSString stringWithFormat:@"%lu agents", (unsigned long)self.filteredLaunchAgents.count];
+}
+
+- (NSDictionary *)selectedLaunchAgent {
+    NSInteger row = self.launchAgentsTable.selectedRow;
+    if (row < 0 || row >= (NSInteger)self.filteredLaunchAgents.count) {
+        return nil;
+    }
+    return self.filteredLaunchAgents[row];
+}
+
+- (void)startSelectedLaunchAgent:(id)sender {
+    NSDictionary *agent = [[self selectedLaunchAgent] copy];
+    if (!agent) return;
+    [self runLaunchAgentCommand:@[@"start", agent[@"label"] ?: @""] successMessage:@"Agent started."];
+}
+
+- (void)stopSelectedLaunchAgent:(id)sender {
+    NSDictionary *agent = [[self selectedLaunchAgent] copy];
+    if (!agent) return;
+    [self runLaunchAgentCommand:@[@"stop", agent[@"label"] ?: @""] successMessage:@"Agent stopped."];
+}
+
+- (void)restartSelectedLaunchAgent:(id)sender {
+    NSDictionary *agent = [[self selectedLaunchAgent] copy];
+    if (!agent) return;
+    [self runLaunchAgentCommand:@[@"restart", agent[@"label"] ?: @""] successMessage:@"Agent restarted."];
+}
+
+- (void)runLaunchAgentCommand:(NSArray<NSString *> *)arguments successMessage:(NSString *)message {
+    NSString *helper = [self.launchAgentHelperPath stringByStandardizingPath];
+    if (![[NSFileManager defaultManager] isExecutableFileAtPath:helper]) {
+        self.launchAgentStatusLabel.stringValue = @"launch_agent_manager.sh not found.";
+        return;
+    }
+
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = helper;
+    task.arguments = arguments;
+    NSPipe *pipe = [NSPipe pipe];
+    task.standardOutput = pipe;
+    task.standardError = pipe;
+    [task launch];
+    [task waitUntilExit];
+
+    NSData *data = [[pipe fileHandleForReading] readDataToEndOfFile];
+    NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+    if (task.terminationStatus == 0) {
+        self.launchAgentStatusLabel.stringValue = output.length ? [output stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] : message;
+        [self loadLaunchAgents:nil];
+    } else {
+        self.launchAgentStatusLabel.stringValue = output.length ? output : @"Command failed.";
+    }
+}
+
+- (void)updateLaunchAgentButtons {
+    NSDictionary *agent = [self selectedLaunchAgent];
+    if (!agent) {
+        self.startAgentButton.enabled = NO;
+        self.stopAgentButton.enabled = NO;
+        self.restartAgentButton.enabled = NO;
+        return;
+    }
+    BOOL running = [agent[@"running"] boolValue];
+    self.startAgentButton.enabled = !running;
+    self.stopAgentButton.enabled = running;
+    self.restartAgentButton.enabled = YES;
+}
+
+- (void)loadDebugDefaults {
+    NSMutableDictionary *debug = [self debugState];
+    BOOL verbose = [debug[@"verbose_logging"] boolValue];
+    BOOL hotload = [debug[@"hotload_enabled"] boolValue];
+    BOOL popup = [debug[@"popup_debug"] boolValue];
+    double refresh = debug[@"widget_refresh_ms"] ? [debug[@"widget_refresh_ms"] doubleValue] : 500.0;
+
+    self.debugVerboseToggle.state = verbose ? NSControlStateValueOn : NSControlStateValueOff;
+    self.debugHotloadToggle.state = hotload ? NSControlStateValueOn : NSControlStateValueOff;
+    self.debugMenuHoverToggle.state = popup ? NSControlStateValueOn : NSControlStateValueOff;
+    self.debugRefreshSlider.doubleValue = refresh;
+    self.debugRefreshLabel.stringValue = [NSString stringWithFormat:@"%.0f ms", refresh];
+}
+
+- (NSMutableDictionary *)debugState {
+    NSMutableDictionary *debug = self.state[@"debug"];
+    if (!debug) {
+        debug = [NSMutableDictionary dictionary];
+        self.state[@"debug"] = debug;
+    }
+    return debug;
+}
+
+- (void)toggleDebugOption:(NSButton *)sender {
+    if (!sender.identifier) {
+        return;
+    }
+    BOOL enabled = (sender.state == NSControlStateValueOn);
+    NSMutableDictionary *debug = [self debugState];
+    debug[sender.identifier] = @(enabled);
+    [self persistStateToDisk];
+    self.debugStatusLabel.stringValue = [NSString stringWithFormat:@"%@ %@", sender.title, enabled ? @"enabled" : @"disabled"];
+
+    if ([sender.identifier isEqualToString:@"hotload_enabled"]) {
+        [self runSketchybarCommand:@[@"--hotload", enabled ? @"on" : @"off"]];
+    }
+}
+
+- (void)debugRefreshChanged:(id)sender {
+    double value = self.debugRefreshSlider.doubleValue;
+    self.debugRefreshLabel.stringValue = [NSString stringWithFormat:@"%.0f ms", value];
+    NSMutableDictionary *debug = [self debugState];
+    debug[@"widget_refresh_ms"] = @(value);
+    [self persistStateToDisk];
+}
+
+- (void)persistStateToDisk {
+    NSString *statePath = [self.configPath stringByAppendingPathComponent:@"state.json"];
+    NSError *error = nil;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:self.state options:NSJSONWritingPrettyPrinted error:&error];
+    if (data) {
+        [data writeToFile:statePath atomically:YES];
+    }
+}
+
+- (NSString *)runTask:(NSString *)launchPath arguments:(NSArray<NSString *> *)arguments {
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = launchPath;
+    task.arguments = arguments;
+    NSPipe *pipe = [NSPipe pipe];
+    task.standardOutput = pipe;
+    task.standardError = pipe;
+    [task launch];
+    [task waitUntilExit];
+    NSData *data = [[pipe fileHandleForReading] readDataToEndOfFile];
+    NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+    if (task.terminationStatus != 0 && output.length == 0) {
+        output = [NSString stringWithFormat:@"%@ exited with %d", [launchPath lastPathComponent], task.terminationStatus];
+    }
+    return output;
+}
+
+- (void)rebuildAndReload:(id)sender {
+    NSString *helpersDir = [self.configPath stringByAppendingPathComponent:@"helpers"];
+    NSString *guiDir = [self.configPath stringByAppendingPathComponent:@"gui"];
+    NSMutableArray *messages = [NSMutableArray array];
+
+    if ([[NSFileManager defaultManager] fileExistsAtPath:helpersDir]) {
+        NSString *msg = [self runTask:@"/usr/bin/make" arguments:@[@"-C", helpersDir, @"all"]];
+        [messages addObject:msg];
+    }
+    if ([[NSFileManager defaultManager] fileExistsAtPath:guiDir]) {
+        NSString *msg = [self runTask:@"/usr/bin/make" arguments:@[@"-C", guiDir, @"all"]];
+        [messages addObject:msg];
+    }
+
+    if ([[NSFileManager defaultManager] isExecutableFileAtPath:[self launchAgentHelperPath]]) {
+        [self runLaunchAgentCommand:@[@"restart", @"homebrew.mxcl.sketchybar"] successMessage:@"SketchyBar restarted via launch agent."];
+    } else {
+        NSString *reloadMsg = [self runTask:@"/opt/homebrew/opt/sketchybar/bin/sketchybar" arguments:@[@"--reload"]];
+        [messages addObject:reloadMsg];
+    }
+
+    self.debugStatusLabel.stringValue = [messages componentsJoinedByString:@" • "];
+}
+
+- (void)openLogs:(id)sender {
+    NSString *logScript = [self.scriptsPath stringByAppendingPathComponent:@"bar_logs.sh"];
+    if (![[NSFileManager defaultManager] isExecutableFileAtPath:logScript]) {
+        self.debugStatusLabel.stringValue = @"bar_logs.sh not found in ~/.config/scripts.";
+        return;
+    }
+
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = logScript;
+    task.arguments = @[@"sketchybar", @"80"];
+    [task launch];
+    self.debugStatusLabel.stringValue = @"Streaming logs via bar_logs.sh (check Terminal).";
+}
+
+- (void)flushMenuCache:(id)sender {
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = @"/bin/bash";
+    task.arguments = @[@"-lc", @"rm -f /tmp/sketchybar_menu_*.cache 2>/dev/null || true"];
+    [task launch];
+    [task waitUntilExit];
+    self.debugStatusLabel.stringValue = @"Cleared cached menu render files.";
+}
+
+- (void)runSketchybarCommand:(NSArray<NSString *> *)arguments {
+    NSString *binary = @"/opt/homebrew/opt/sketchybar/bin/sketchybar";
+    if (![[NSFileManager defaultManager] isExecutableFileAtPath:binary]) {
+        return;
+    }
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = binary;
+    task.arguments = arguments;
+    [task launch];
+}
+
+#pragma mark - NSTableViewDataSource
+
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
+    if (tableView == self.launchAgentsTable) {
+        return self.filteredLaunchAgents.count;
+    }
+    return 0;
+}
+
+- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
+    if (tableView != self.launchAgentsTable) {
+        return nil;
+    }
+    NSTableCellView *cell = [tableView makeViewWithIdentifier:tableColumn.identifier owner:self];
+    if (!cell) {
+        cell = [[NSTableCellView alloc] initWithFrame:NSMakeRect(0, 0, tableColumn.width, 24)];
+        NSTextField *textField = [[NSTextField alloc] initWithFrame:cell.bounds];
+        textField.autoresizingMask = NSViewWidthSizable;
+        textField.editable = NO;
+        textField.bezeled = NO;
+        textField.backgroundColor = [NSColor clearColor];
+        textField.font = [NSFont systemFontOfSize:12];
+        cell.textField = textField;
+        cell.identifier = tableColumn.identifier;
+        [cell addSubview:textField];
+    }
+
+    NSDictionary *agent = self.filteredLaunchAgents[row];
+    NSString *value = @"";
+    if ([tableColumn.identifier isEqualToString:@"state"]) {
+        BOOL running = [agent[@"running"] boolValue];
+        value = running ? @"● Running" : @"○ Stopped";
+    } else if ([tableColumn.identifier isEqualToString:@"label"]) {
+        value = [agent[@"label"] description] ?: @"";
+    } else if ([tableColumn.identifier isEqualToString:@"pid"]) {
+        id pid = agent[@"pid"];
+        value = (pid && pid != [NSNull null]) ? [pid stringValue] : @"—";
+    } else if ([tableColumn.identifier isEqualToString:@"status"]) {
+        id status = agent[@"status"];
+        if (!status || status == [NSNull null]) {
+            value = @"—";
+        } else if ([status isKindOfClass:[NSNumber class]]) {
+            value = [NSString stringWithFormat:@"%@", status];
+        } else {
+            value = [status description];
+        }
+    } else if ([tableColumn.identifier isEqualToString:@"plist"]) {
+        value = [[agent[@"plist"] description] stringByAbbreviatingWithTildeInPath] ?: @"";
+    }
+    cell.textField.stringValue = value ?: @"";
+    return cell;
+}
+
+- (void)tableViewSelectionDidChange:(NSNotification *)notification {
+    if (notification.object == self.launchAgentsTable) {
+        [self updateLaunchAgentButtons];
+    }
 }
 
 - (void)buildPreviewBar {

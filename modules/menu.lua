@@ -315,7 +315,7 @@ local function help_items(ctx)
   return items
 end
 
-function menu.render_apple(ctx)
+function menu.render_control_center(ctx)
   local renderer = create_renderer(ctx)
   local render_menu_items = renderer.render
   local appearance_action = renderer.appearance_action
@@ -363,6 +363,35 @@ function menu.render_apple(ctx)
     { type = "item", name = "menu.skhd.status", icon = "󰣇", label = "skhd Status", action = ctx.call_script(ctx.scripts.skhd_control, "status") },
   }
 
+  local application_control_items = {
+    { type = "item", name = "menu.app.show", icon = "", label = "Bring to Front", action = ctx.call_script(ctx.scripts.front_app_action, "show"), shortcut = "⌘⇥" },
+    { type = "item", name = "menu.app.hide", icon = "", label = "Hide App", action = ctx.call_script(ctx.scripts.front_app_action, "hide"), shortcut = "⌘H" },
+    { type = "item", name = "menu.app.quit", icon = "", label = "Quit App", action = ctx.call_script(ctx.scripts.front_app_action, "quit"), shortcut = "⌘Q" },
+    { type = "item", name = "menu.app.forcequit", icon = "", label = "Force Quit", action = ctx.call_script(ctx.scripts.front_app_action, "force-quit") },
+  }
+
+  local space_management_items = {
+    { type = "header", name = "menu.spaces.header.displays", label = "Displays" },
+    { type = "item", name = "menu.spaces.display.next", icon = "", label = "Send to Next Display", action = ctx.call_script(ctx.scripts.yabai_control, "window-display-next"), shortcut = "⌃⌥→" },
+    { type = "item", name = "menu.spaces.display.prev", icon = "", label = "Send to Prev Display", action = ctx.call_script(ctx.scripts.yabai_control, "window-display-prev"), shortcut = "⌃⌥←" },
+    { type = "separator", name = "menu.spaces.sep1" },
+    { type = "header", name = "menu.spaces.header.assign", label = "Spaces" },
+    { type = "item", name = "menu.spaces.space.next", icon = "", label = "Send to Next Space", action = ctx.call_script(ctx.scripts.yabai_control, "window-space-next"), shortcut = "⌃⌥⌘→" },
+    { type = "item", name = "menu.spaces.space.prev", icon = "", label = "Send to Prev Space", action = ctx.call_script(ctx.scripts.yabai_control, "window-space-prev"), shortcut = "⌃⌥⌘←" },
+    { type = "item", name = "menu.spaces.space.1", icon = "1", label = "Send to Space 1", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "1"), shortcut = "⌃⌥⌘1" },
+    { type = "item", name = "menu.spaces.space.2", icon = "2", label = "Send to Space 2", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "2"), shortcut = "⌃⌥⌘2" },
+    { type = "item", name = "menu.spaces.space.3", icon = "3", label = "Send to Space 3", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "3"), shortcut = "⌃⌥⌘3" },
+    { type = "item", name = "menu.spaces.space.4", icon = "4", label = "Send to Space 4", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "4"), shortcut = "⌃⌥⌘4" },
+    { type = "item", name = "menu.spaces.space.5", icon = "5", label = "Send to Space 5", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "5"), shortcut = "⌃⌥⌘5" },
+  }
+
+  local space_layout_items = {
+    { type = "header", name = "menu.yabai.layout.header", label = "Current Space Layout" },
+    { type = "item", name = "menu.yabai.layout.bsp", icon = "", label = "Enable BSP Tiling", action = ctx.call_script(ctx.scripts.space_mode, "current", "bsp") },
+    { type = "item", name = "menu.yabai.layout.stack", icon = "", label = "Enable Stack Tiling", action = ctx.call_script(ctx.scripts.space_mode, "current", "stack") },
+    { type = "item", name = "menu.yabai.layout.float", icon = "", label = "Disable Tiling", action = ctx.call_script(ctx.scripts.space_mode, "current", "float") },
+  }
+
   local app_tool_items = {
     { type = "item", name = "menu.apps.appstore", icon = "󰓇", label = "App Store…", action = "open -a 'App Store'" },
     { type = "item", name = "menu.apps.terminal", icon = "", label = "Terminal", action = "open -a Terminal", shortcut = "⌃⌥T" },
@@ -380,7 +409,33 @@ function menu.render_apple(ctx)
     { type = "item", name = "menu.dev.profile.full", icon = "󰑈", label = "Restore Full Profile", action = ctx.call_script(ctx.scripts.apply_profile, "full") },
   }
 
-  local apple_menu_items = {
+  local function agent_action(script, ...)
+    if not script or script == "" then
+      return ""
+    end
+    return ctx.call_script(script, ...)
+  end
+
+  local launch_agent_items = {
+    { type = "item", name = "menu.agents.open_panel", icon = "󰘦", label = "Launch Agents Tab", action = ctx.call_script(ctx.scripts.open_control_panel) },
+    { type = "separator", name = "menu.agents.sep0" },
+    { type = "item", name = "menu.agents.sketchybar.restart", icon = "󰑓", label = "Restart SketchyBar", action = agent_action(ctx.scripts.launch_agent_helper, "restart", "homebrew.mxcl.sketchybar") or agent_action(ctx.scripts.rebuild_sketchybar, "--reload-only") },
+    { type = "item", name = "menu.agents.sketchybar.stop", icon = "󰅘", label = "Stop SketchyBar", action = agent_action(ctx.scripts.launch_agent_helper, "stop", "homebrew.mxcl.sketchybar") },
+    { type = "item", name = "menu.agents.sketchybar.start", icon = "󰅂", label = "Start SketchyBar", action = agent_action(ctx.scripts.launch_agent_helper, "start", "homebrew.mxcl.sketchybar") },
+    { type = "separator", name = "menu.agents.sep1" },
+    { type = "item", name = "menu.agents.yabai.restart", icon = "󱂬", label = "Restart Yabai", action = agent_action(ctx.scripts.launch_agent_helper, "restart", "org.nbirrell.yabai") },
+    { type = "item", name = "menu.agents.skhd.restart", icon = "󰚌", label = "Restart skhd", action = agent_action(ctx.scripts.launch_agent_helper, "restart", "org.nbirrell.skhd") },
+  }
+
+  local debug_tool_items = {
+    { type = "item", name = "menu.debug.rebuild", icon = "󰑓", label = "Rebuild + Reload (⌃⌥⇧R)", action = agent_action(ctx.scripts.rebuild_sketchybar) },
+    { type = "item", name = "menu.debug.reload", icon = "󰑐", label = "Reload SketchyBar", action = agent_action(ctx.scripts.rebuild_sketchybar, "--reload-only") },
+    { type = "item", name = "menu.debug.panel", icon = "󰘦", label = "Open Control Panel (⌃⌥P)", action = agent_action(ctx.scripts.open_control_panel) },
+    { type = "item", name = "menu.debug.logs", icon = "󰍛", label = "Follow Logs (Terminal)", action = agent_action(ctx.scripts.logs, "sketchybar", "80") },
+    { type = "item", name = "menu.debug.control_center", icon = "󰤘", label = "Toggle Control Center", action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --set control_center popup.drawing=toggle" },
+  }
+
+  local control_center_items = {
     { type = "header", name = "menu.system.header", label = "System" },
     { type = "item", name = "menu.system.about", icon = "󰋗", label = "About This Mac", action = "open -a 'System Information'" },
     { type = "item", name = "menu.system.settings", icon = "", label = "System Settings…", action = "open -a 'System Settings'", shortcut = "⌘," },
@@ -389,56 +444,24 @@ function menu.render_apple(ctx)
     { type = "item", name = "menu.system.sleep", icon = "󰒲", label = "Sleep Display", action = "pmset displaysleepnow" },
     { type = "item", name = "menu.system.lock", icon = "󰷛", label = "Lock Screen", action = [[osascript -e 'tell application "System Events" to keystroke "q" using {control down, command down}']], shortcut = "⌃⌘Q" },
     { type = "separator", name = "menu.system.sep2" },
+    { type = "submenu", name = "menu.control_center.app", icon = "󰣇", label = "Application Controls", items = application_control_items },
+    { type = "submenu", name = "menu.windows.section", icon = "󰍿", label = "Window Actions", items = window_action_items },
+    { type = "submenu", name = "menu.control_center.spaces", icon = "󰊠", label = "Spaces Management", items = space_management_items },
+    { type = "submenu", name = "menu.control_center.layouts", icon = "󰆾", label = "Space Layout", items = space_layout_items },
+    { type = "submenu", name = "menu.yabai.section", icon = "󱂬", label = "Yabai Controls", items = yabai_control_items },
     { type = "submenu", name = "menu.sketchybar.styles", icon = "󰔇", label = "SketchyBar Styles", items = style_items },
     { type = "submenu", name = "menu.sketchybar.tools", icon = "󰒓", label = "SketchyBar Tools", items = sketchybar_tool_items },
-    { type = "submenu", name = "menu.yabai.section", icon = "󱂬", label = "Yabai Controls", items = yabai_control_items },
-    { type = "submenu", name = "menu.windows.section", icon = "󰍿", label = "Window Actions", items = window_action_items },
     { type = "submenu", name = "menu.rom.section", icon = "󰊕", label = "ROM Hacking", items = rom_hacking_items(ctx) },
     { type = "submenu", name = "menu.emacs.section", icon = "", label = "Emacs Workspace", items = emacs_items(ctx) },
     { type = "submenu", name = "menu.halext.section", icon = "󱓷", label = "halext-org", items = halext_items(ctx) },
     { type = "submenu", name = "menu.apps.section", icon = "󰖟", label = "Apps & Tools", items = app_tool_items },
     { type = "submenu", name = "menu.dev.section", icon = "󰙨", label = "Dev Utilities", items = dev_tool_items },
     { type = "submenu", name = "menu.help.section", icon = "󰋖", label = "Help & Tips", items = help_items(ctx) },
+    { type = "submenu", name = "menu.agents.section", icon = "󰳟", label = "Launch Agents", items = launch_agent_items },
+    { type = "submenu", name = "menu.debug.section", icon = "󰃤", label = "Debug & Tools", items = debug_tool_items },
   }
 
-  render_menu_items("apple_menu", apple_menu_items)
-end
-
-function menu.render_front_app(ctx)
-  local render_menu_items = create_renderer(ctx).render
-
-  local front_app_menu = {
-    { type = "header", name = "front_app.menu.header", label = "App Controls" },
-    { type = "item", name = "front_app.menu.show", icon = "", label = "Bring to Front", action = ctx.call_script(ctx.scripts.front_app_action, "show"), shortcut = "⌘⇥" },
-    { type = "item", name = "front_app.menu.hide", icon = "", label = "Hide App", action = ctx.call_script(ctx.scripts.front_app_action, "hide"), shortcut = "⌘H" },
-    { type = "item", name = "front_app.menu.quit", icon = "", label = "Quit App", action = ctx.call_script(ctx.scripts.front_app_action, "quit"), shortcut = "⌘Q" },
-    { type = "item", name = "front_app.menu.forcequit", icon = "", label = "Force Quit", action = ctx.call_script(ctx.scripts.front_app_action, "force-quit") },
-    { type = "separator", name = "front_app.menu.sep1", label = "Window Management" },
-    { type = "item", name = "front_app.menu.float", icon = "", label = "Toggle Float", action = ctx.call_script(ctx.scripts.yabai_control, "window-toggle-float"), shortcut = "⌃⌥F" },
-    { type = "item", name = "front_app.menu.sticky", icon = "", label = "Toggle Sticky", action = ctx.call_script(ctx.scripts.yabai_control, "window-toggle-sticky") },
-    { type = "item", name = "front_app.menu.fullscreen", icon = "", label = "Toggle Fullscreen", action = ctx.call_script(ctx.scripts.yabai_control, "window-toggle-fullscreen"), shortcut = "⌃⌥↩" },
-    { type = "item", name = "front_app.menu.center", icon = "", label = "Center Window", action = ctx.call_script(ctx.scripts.yabai_control, "window-center") },
-    { type = "item", name = "front_app.menu.zoom", icon = "", label = "Zoom Fullscreen", action = ctx.call_script(ctx.scripts.yabai_control, "window-toggle-zoom-fullscreen") },
-    { type = "item", name = "front_app.menu.rotate", icon = "", label = "Rotate Layout", action = ctx.call_script(ctx.scripts.yabai_control, "space-rotate"), shortcut = "⌃⌥R" },
-    { type = "item", name = "front_app.menu.balance", icon = "", label = "Balance Windows", action = ctx.call_script(ctx.scripts.yabai_control, "balance"), shortcut = "⌃⌥B" },
-    { type = "separator", name = "front_app.menu.sep2", label = "Display Management" },
-    { type = "item", name = "front_app.menu.display.next", icon = "", label = "Send to Next Display", action = ctx.call_script(ctx.scripts.yabai_control, "window-display-next"), shortcut = "⌃⌥→" },
-    { type = "item", name = "front_app.menu.display.prev", icon = "", label = "Send to Prev Display", action = ctx.call_script(ctx.scripts.yabai_control, "window-display-prev"), shortcut = "⌃⌥←" },
-    { type = "separator", name = "front_app.menu.sep3", label = "Space Management" },
-    { type = "item", name = "front_app.menu.space.next", icon = "", label = "Send to Next Space", action = ctx.call_script(ctx.scripts.yabai_control, "window-space-next"), shortcut = "⌃⌥⌘→" },
-    { type = "item", name = "front_app.menu.space.prev", icon = "", label = "Send to Prev Space", action = ctx.call_script(ctx.scripts.yabai_control, "window-space-prev"), shortcut = "⌃⌥⌘←" },
-    { type = "item", name = "front_app.menu.space.1", icon = "1", label = "Send to Space 1", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "1"), shortcut = "⌃⌥⌘1" },
-    { type = "item", name = "front_app.menu.space.2", icon = "2", label = "Send to Space 2", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "2"), shortcut = "⌃⌥⌘2" },
-    { type = "item", name = "front_app.menu.space.3", icon = "3", label = "Send to Space 3", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "3"), shortcut = "⌃⌥⌘3" },
-    { type = "item", name = "front_app.menu.space.4", icon = "4", label = "Send to Space 4", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "4"), shortcut = "⌃⌥⌘4" },
-    { type = "item", name = "front_app.menu.space.5", icon = "5", label = "Send to Space 5", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "5"), shortcut = "⌃⌥⌘5" },
-    { type = "separator", name = "front_app.menu.sep4", label = "Current Space Layout" },
-    { type = "item", name = "front_app.menu.space.bsp", icon = "", label = "Enable BSP Tiling", action = ctx.call_script(ctx.scripts.space_mode, "current", "bsp") },
-    { type = "item", name = "front_app.menu.space.stack", icon = "", label = "Enable Stack Tiling", action = ctx.call_script(ctx.scripts.space_mode, "current", "stack") },
-    { type = "item", name = "front_app.menu.space.float", icon = "", label = "Disable Tiling", action = ctx.call_script(ctx.scripts.space_mode, "current", "float") },
-  }
-
-  render_menu_items("front_app", front_app_menu)
+  render_menu_items("control_center", control_center_items)
 end
 
 return menu

@@ -1,17 +1,15 @@
 #!/bin/sh
 set -euo pipefail
 
-CLOCK_WIDGET_BIN="${CLOCK_WIDGET_BIN:-$HOME/.config/sketchybar/bin/clock_widget}"
-if [ -x "$CLOCK_WIDGET_BIN" ]; then
-  exec "$CLOCK_WIDGET_BIN"
+# Handle mouse events first
+if [ "${SENDER:-}" = "mouse.exited.global" ]; then
+  sketchybar --set "$NAME" popup.drawing=off
+  exit 0
 fi
 
-case "${SENDER:-}" in
-  "mouse.exited.global")
-    sketchybar --set "$NAME" popup.drawing=off
-    exit 0
-    ;;
-esac
-
 # Update label only - preserve icon configuration from main.lua
+if [ -z "${NAME:-}" ]; then
+  NAME="clock"
+fi
+
 sketchybar --set "$NAME" label="$(date '+%a %m/%d %I:%M %p')"

@@ -354,12 +354,13 @@ fi
 sketchybar --set "$NAME" icon="$ICON" label="$APP_NAME"
 ```
 
-### 4.3 Front App Menu (menu_module.render_front_app)
+### 4.3 Control Center Application Sections
 
-Renders menu items in popup.front_app:
-- Header: "App Controls · <APP_NAME>" (updated by front_app.sh)
-- Separators and action items
-- Dynamically populated via JSON menu data
+Front-app window controls are now embedded inside the `control_center` popup:
+- **Application Controls:** show/hide/quit/force quit via `front_app_action`.
+- **Window Actions:** Float, Sticky, Fullscreen, Center, Restart skhd, etc.
+- **Spaces Management:** Move windows between displays/spaces, send to slots 1‑5.
+- **Space Layout:** Toggle BSP/Stack/Float through `set_space_mode.sh`.
 
 ---
 
@@ -370,8 +371,7 @@ Renders menu items in popup.front_app:
 **Entry Point:** main.lua, lines 427-464
 
 ```lua
-menu_module.render_apple(menu_context)      -- Apple menu
-menu_module.render_front_app(menu_context)  -- App-specific menu
+menu_module.render_control_center(menu_context)      -- Unified Control Center
 ```
 
 **Menu Context:** Large table (lines 361-417) containing:

@@ -18,6 +18,7 @@ typedef struct {
     unsigned long long mem_used_gb;
     char disk_info[128];
     char net_ip[64];
+    char net_name[64];
     int net_online;
 } SystemInfo;
 
@@ -82,6 +83,27 @@ void get_network_info(SystemInfo *info) {
     } else {
         info->net_online = 0;
         strcpy(info->net_ip, "offline");
+    }
+
+    if (info->net_online) {
+        FILE *ssid_fp = popen("networksetup -getairportnetwork en0 2>/dev/null", "r");
+        if (ssid_fp) {
+            if (fgets(info->net_name, sizeof(info->net_name), ssid_fp)) {
+                char *colon = strchr(info->net_name, ':');
+                if (colon && *(colon + 1)) {
+                    colon += 1;
+                    while (*colon == ' ') colon++;
+                    memmove(info->net_name, colon, strlen(colon) + 1);
+                }
+                info->net_name[strcspn(info->net_name, "\n")] = 0;
+            }
+            pclose(ssid_fp);
+        }
+        if (info->net_name[0] == '\0') {
+            strcpy(info->net_name, "Wi-Fi");
+        }
+    } else {
+        info->net_name[0] = '\0';
     }
 }
 
@@ -150,15 +172,17 @@ int main(int argc, char *argv[]) {
 
     // Network
     if (info.net_online) {
+        const char *ssid = info.net_name[0] ? info.net_name : "Wi-Fi";
         snprintf(cmd, sizeof(cmd),
                  "sketchybar --set system_info.net "
-                 "label=\"Network %s\" "
+                 "label=\"%s (%s)\" "
                  "icon.color=\"0xFFa6e3a1\"",
+                 ssid,
                  info.net_ip);
     } else {
         snprintf(cmd, sizeof(cmd),
                  "sketchybar --set system_info.net "
-                 "label=\"Network Offline\" "
+                 "label=\"Wi-Fi Offline\" "
                  "icon.color=\"0xFFf38ba8\"");
     }
     system(cmd);

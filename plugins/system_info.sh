@@ -41,7 +41,9 @@ mem_wired=$(echo "$physmem_line" | grep -o '[0-9.]*[KMGT] wired' | awk '{print $
 disk_line=$(df -h / | awk 'NR==2 {printf "%s / %s (%s)", $3, $2, $5}')
 
 # Network info
-net_info=$(ifconfig "${SKETCHYBAR_NET_INTERFACE:-en0}" 2>/dev/null | awk '/inet / && $2 != "127.0.0.1" {print $2; exit}')
+wifi_interface="${SKETCHYBAR_NET_INTERFACE:-en0}"
+net_info=$(ifconfig "$wifi_interface" 2>/dev/null | awk '/inet / && $2 != "127.0.0.1" {print $2; exit}')
+wifi_ssid=$(networksetup -getairportnetwork "$wifi_interface" 2>/dev/null | sed 's/Current Wi-Fi Network: //')
 
 # Load average
 load_avg=$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')
@@ -91,10 +93,15 @@ sketchybar --set system_info.disk \
 # Network with better formatting and color
 if [ "$net_info" = "offline" ]; then
   sketchybar --set system_info.net \
-    label="Network Offline" \
+    label="Wi-Fi Offline" \
     icon.color="0xFFf38ba8"
 else
+  if [ -n "$wifi_ssid" ]; then
+    wifi_label="Wi-Fi ${wifi_ssid} (${net_info})"
+  else
+    wifi_label="Wi-Fi ${net_info}"
+  fi
   sketchybar --set system_info.net \
-    label="Network ${net_info}" \
+    label="$wifi_label" \
     icon.color="0xFFa6e3a1"
 fi

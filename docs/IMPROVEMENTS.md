@@ -42,6 +42,17 @@ This document covers the major improvements made to the SketchyBar configuration
 
 See [CONTROL_PANEL_V2.md](CONTROL_PANEL_V2.md) for complete documentation.
 
+#### Barista Control Center Expansion (2025 Roadmap)
+
+- **Launch Agents Tab**: List every plist under `~/Library/LaunchAgents`, show `launchctl list` state, and wire Start/Stop/Restart buttons to the upcoming `helpers/launch_agent_manager.sh` (kickstart + bootstrap fallback).
+- **Debug Tab**: Toggle verbose logging, hotload, widget redraw intervals, and future AI tracing flags. Settings persist to `state.json`/profiles so changes survive reloads.
+- **Global Shortcuts & CLI Hooks**:
+  - `bin/rebuild_sketchybar.sh`: Rebuild helpers/GUI, then reload SketchyBar with consistent flags (no lock-file errors).
+  - `bin/open_control_panel.sh`: Launches the enhanced panel directly—safe for skhd/btt bindings and menu automation.
+  - Additional wrappers planned for “toggle popups”, “flush caches”, and “run diagnostics”.
+- **AI & Developer UX**: Panels surface doc links, sample prompts, and (soon) AI-triggered automation so ROM hacking/dev workflows are one click away.
+- **Documentation**: The new [BARISTA_CONTROL_PANEL.md](BARISTA_CONTROL_PANEL.md) tracks goals, UX pillars, and integration points for contributors.
+
 ### Why Native Cocoa?
 
 1. **Performance**: Native rendering, no WebView overhead
@@ -256,7 +267,7 @@ end
 
 **3. Render**:
 ```lua
-menu_module.render_apple(menu_context)
+menu_module.render_control_center(menu_context)
 ```
 
 ### Menu Item Types
@@ -547,9 +558,8 @@ local scale = state.get_appearance(config, "widget_scale", 1.0)
 
 **Key Functions**:
 ```lua
-menu.render_apple(ctx)      -- Render apple menu
-menu.render_front_app(ctx)  -- Render front app menu
-menu.render_yabai(ctx)      -- Render yabai menu
+menu.render_control_center(ctx)  -- Unified control center dropdown
+menu.render_yabai(ctx)           -- Render yabai menu
 ```
 
 **Renderer Functions**:

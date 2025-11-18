@@ -82,11 +82,25 @@ shortcuts.global = {
     symbol = "⌃⌥R"
   },
   {
+    mods = {"ctrl", "alt", "shift"},
+    key = "r",
+    action = "rebuild_and_reload",
+    desc = "Rebuild + Reload SketchyBar",
+    symbol = "⌃⌥⇧R"
+  },
+  {
     mods = {"ctrl", "alt"},
     key = "p",
     action = "open_control_panel",
     desc = "Open Control Panel",
     symbol = "⌃⌥P"
+  },
+  {
+    mods = {"ctrl", "alt"},
+    key = "/",
+    action = "toggle_control_center",
+    desc = "Toggle Control Center",
+    symbol = "⌃⌥/"
   },
 
   -- Yabai Controls
@@ -231,8 +245,10 @@ shortcuts.global = {
 -- Action handlers (maps action names to actual commands)
 shortcuts.actions = {
   -- SketchyBar
-  reload_sketchybar = "sketchybar --reload",
-  open_control_panel = "open -a 'Control Panel' || osascript -e 'display notification \"Control Panel not found. Build with: cd gui && make panel\"'",
+  reload_sketchybar = "~/.config/sketchybar/bin/rebuild_sketchybar.sh --reload-only",
+  rebuild_and_reload = "~/.config/sketchybar/bin/rebuild_sketchybar.sh",
+  open_control_panel = "~/.config/sketchybar/bin/open_control_panel.sh",
+  toggle_control_center = "/opt/homebrew/opt/sketchybar/bin/sketchybar --set control_center popup.drawing=toggle",
 
   -- Yabai
   toggle_yabai_shortcuts = "~/.config/scripts/toggle_shortcuts.sh toggle",

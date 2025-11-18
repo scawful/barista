@@ -53,6 +53,7 @@ local function compiled_script(binary_name, fallback)
     file:close()
     return path
   end
+  print("WARNING: Binary not found: " .. path)
   return fallback
 end
 
@@ -329,10 +330,10 @@ sbar.default({
   },
 })
 
--- Apple Menu (with popup_guard to prevent premature closing when submenus are open)
-sbar.add("item", "apple_menu", {
+-- Unified Control Center dropdown
+sbar.add("item", "control_center", {
   position = "left",
-  icon = "󰀵",  -- Simple menu icon that actually works
+  icon = "󱓞",
   label = { drawing = false },
   click_script = PLUGIN_DIR .. "/apple_menu.sh",
   script = POPUP_GUARD_SCRIPT,
@@ -353,9 +354,9 @@ sbar.add("item", "apple_menu", {
   }
 })
 
--- Subscribe apple_menu with popup_guard (prevents closing when submenus are open)
-shell_exec("sketchybar --subscribe apple_menu mouse.entered mouse.exited mouse.exited.global")
--- Note: Don't call attach_hover() for apple_menu - it would override popup_guard with popup_hover
+-- Subscribe control_center with popup_guard (prevents closing when submenus are open)
+shell_exec("sketchybar --subscribe control_center mouse.entered mouse.exited mouse.exited.global")
+-- Note: Don't call attach_hover() for control_center - it would override popup_guard with popup_hover
 
 -- Menu context for rendering
 local menu_context = {
@@ -377,13 +378,16 @@ local menu_context = {
     front_app_action = FRONT_APP_ACTION_SCRIPT,
     toggle_shortcuts = SCRIPTS_DIR .. "/toggle_yabai_shortcuts.sh",
     accessibility = SCRIPTS_DIR .. "/yabai_accessibility_fix.sh",
-    logs = SCRIPTS_DIR .. "/bar_logs.sh",
+    logs = PLUGIN_DIR .. "/bar_logs.sh",
     space_mode = CONFIG_DIR .. "/plugins/set_space_mode.sh",
     menu_action = compiled_script("menu_action", PLUGIN_DIR .. "/menu_action.sh"),
     ollama_prompt = PLUGIN_DIR .. "/ollama_prompt.sh",
     z3_launcher = PLUGIN_DIR .. "/z3ed_launcher.sh",
     apply_profile = CONFIG_DIR .. "/bin/apply_profile.sh",
     halext_menu = PLUGIN_DIR .. "/halext_menu.sh",
+    rebuild_sketchybar = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh",
+    open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh",
+    launch_agent_helper = CONFIG_DIR .. "/helpers/launch_agent_manager.sh",
   },
   paths = {
     readme = CONFIG_DIR .. "/README.md",
@@ -423,8 +427,8 @@ if user_profile and user_profile.paths then
   end
 end
 
--- Render Apple menu
-menu_module.render_apple(menu_context)
+-- Render Control Center menu
+menu_module.render_control_center(menu_context)
 whichkey_module.setup(menu_context)
 
 -- Spaces
@@ -435,34 +439,19 @@ end
 shell_exec("sketchybar --trigger space_change")
 shell_exec("sketchybar --trigger space_mode_refresh")
 
--- Front App
+-- Front App indicator (actions handled in control_center)
 sbar.add("item", "front_app", {
   position = "left",
   icon = { drawing = true },
   label = { drawing = true },
   script = PLUGIN_DIR .. "/front_app.sh",
-  click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
   background = {
     color = "0x00000000",
     corner_radius = widget_corner_radius,
     height = widget_height,
   },
-  popup = {
-    background = {
-      border_width = 2,
-      corner_radius = 4,
-      border_color = theme.WHITE,
-      color = theme.bar.bg
-    }
-  }
 })
 sbar.exec("sketchybar --subscribe front_app front_app_switched")
-subscribe_popup_autoclose("front_app")
-attach_hover("front_app")
-
--- Render front app menu
-menu_module.render_front_app(menu_context)
-
 -- Yabai status widget
 if yabai_available() then
   local widget_factory = widgets_module.create_factory(sbar, theme, settings, state)
@@ -700,12 +689,6 @@ for _, item in ipairs(calendar_items) do
   sbar.add("item", item.name, opts)
 end
 
--- Network widget
-widget_factory.create_network({
-  script = PLUGIN_DIR .. "/network.sh",
-})
-attach_hover("network")
-
 -- System Info widget
 widget_factory.create_system_info({
   script = PLUGIN_DIR .. "/system_info.sh",
@@ -734,7 +717,7 @@ if info_enabled("disk") then
   table.insert(system_info_items, { name = "system_info.disk", icon = "", label = "Disk …" })
 end
 if info_enabled("net") then
-  table.insert(system_info_items, { name = "system_info.net", icon = "󰖩", label = "Net …" })
+  table.insert(system_info_items, { name = "system_info.net", icon = "󰖩", label = "Wi-Fi …" })
 end
 
 -- System Info menu is now informational only
@@ -765,8 +748,7 @@ for _, item in ipairs(system_info_items) do
   attach_hover(item.name)
 end
 
--- Bracket for right widgets
-sbar.add("bracket", { "clock", "network", "system_info" }, {
+sbar.add("bracket", { "clock", "system_info" }, {
   background = {
     color = "0x40111111",
     corner_radius = math.max(widget_corner_radius, 2),

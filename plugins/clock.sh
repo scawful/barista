@@ -29,6 +29,4 @@ esac
 # Icon: "󰥔" (Clock icon)
 TIME_LABEL=$(date '+%a %m/%d %I:%M %p')
 
-sketchybar --set "$NAME" \
-  icon="󰥔" \
-  label="$TIME_LABEL"
+sketchybar --set "$NAME" label="$TIME_LABEL"

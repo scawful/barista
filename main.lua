@@ -590,6 +590,7 @@ local widget_factory = widgets_module.create_factory(sbar, theme, settings, stat
 
 -- Clock widget (uses C component if available, falls back to shell script)
 widget_factory.create_clock({
+  icon = "󰥔",
   script = compiled_script("clock_widget", PLUGIN_DIR .. "/clock.sh"),
   update_freq = 1,  -- Update every second for accurate time
   click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],

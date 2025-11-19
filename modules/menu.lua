@@ -1,23 +1,8 @@
 local menu = {}
 local json = require("json")
+local menu_renderer = require("menu_renderer")
 
 local unpack = table.unpack or _G.unpack
-
-local function menu_label(label, shortcut)
-  if shortcut and shortcut ~= "" then
-    return string.format("%-16s %s", label, shortcut)
-  end
-  return label
-end
-
-local function menu_entry_padding()
-  return {
-    icon_left = 4,
-    icon_right = 6,
-    label_left = 6,
-    label_right = 6,
-  }
-end
 
 local function load_menu_section(ctx, name)
   if not ctx.paths or not ctx.paths.menu_data then
@@ -35,151 +20,6 @@ local function load_menu_section(ctx, name)
     return data
   end
   return nil
-end
-
-local function create_renderer(ctx)
-  local sbar = ctx.sbar
-  local settings = ctx.settings
-  local theme = ctx.theme
-  local widget_height = ctx.widget_height
-  local attach_hover = ctx.attach_hover
-  local shell_exec = ctx.shell_exec
-
-  local function appearance_action(color, blur)
-    local args = {}
-    if color then
-      table.insert(args, "--color")
-      table.insert(args, color)
-    end
-    if blur then
-      table.insert(args, "--blur")
-      table.insert(args, tostring(blur))
-    end
-    return ctx.call_script(ctx.scripts.set_appearance, unpack(args))
-  end
-
-  local function add_menu_header(popup, entry)
-    local padding = menu_entry_padding()
-    sbar.add("item", entry.name, {
-      position = "popup." .. popup,
-      icon = "",
-      label = entry.label,
-      ["label.font"] = string.format("%s:%s:%0.1f", settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
-      ["label.color"] = theme.DARK_WHITE,
-      ["icon.drawing"] = false,
-      background = { drawing = false },
-      ["label.padding_left"] = padding.label_left,
-      ["label.padding_right"] = padding.label_right,
-    })
-  end
-
-  local function add_menu_separator(popup, entry)
-    local padding = menu_entry_padding()
-    sbar.add("item", entry.name, {
-      position = "popup." .. popup,
-      icon = "",
-      label = entry.label or "───────────────",
-      ["label.font"] = string.format("%s:%s:%0.1f", settings.font.text, settings.font.style_map["Regular"], settings.font.sizes.small),
-      ["label.color"] = theme.DARK_WHITE,
-      ["icon.drawing"] = false,
-      background = { drawing = false },
-      ["label.padding_left"] = padding.label_left,
-      ["label.padding_right"] = padding.label_right,
-    })
-  end
-
-  local function wrap_action(entry, popup_name)
-    if not entry.action or entry.action == "" then
-      return ""
-    end
-    if ctx.scripts and ctx.scripts.menu_action then
-      local target_popup = popup_name
-      return string.format(
-        "MENU_ACTION_CMD=%q %s %q %q",
-        entry.action,
-        ctx.scripts.menu_action,
-        entry.name or "",
-        target_popup or ""
-      )
-    else
-      return string.format("%s; sketchybar -m --set %s popup.drawing=off", entry.action, popup_name or popup)
-    end
-  end
-
-  local function add_menu_entry(popup, entry)
-    local padding = menu_entry_padding()
-    local label = menu_label(entry.label, entry.shortcut)
-    local click = wrap_action(entry, popup)
-    sbar.add("item", entry.name, {
-      position = "popup." .. popup,
-      icon = entry.icon or "",
-      label = label,
-      click_script = click,
-      script = ctx.HOVER_SCRIPT,
-      ["icon.padding_left"] = padding.icon_left,
-      ["icon.padding_right"] = padding.icon_right,
-      ["label.padding_left"] = padding.label_left,
-      ["label.padding_right"] = padding.label_right,
-      background = {
-        drawing = false,
-        corner_radius = 4,
-        height = math.max(widget_height - 10, 16)
-      },
-      env = { SUBMENU_PARENT = popup }
-    })
-    attach_hover(entry.name)
-  end
-
-  local function add_submenu(popup, entry, renderer)
-    local padding = menu_entry_padding()
-    local parent = entry.name
-    local arrow = entry.arrow_icon or "󰅂"
-    sbar.add("item", parent, {
-      position = "popup." .. popup,
-      icon = entry.icon or "",
-      label = string.format("%s  %s", entry.label, arrow),
-      script = ctx.SUBMENU_HOVER_SCRIPT,
-      ["icon.padding_left"] = padding.icon_left,
-      ["icon.padding_right"] = padding.icon_right,
-      ["label.padding_left"] = padding.label_left,
-      ["label.padding_right"] = padding.label_right,
-      background = {
-        drawing = false,
-        corner_radius = 4,
-        height = math.max(widget_height - 8, 16)
-      },
-      popup = {
-        align = "right",
-        background = {
-          border_width = 2,
-          corner_radius = 4,
-          border_color = theme.WHITE,
-          color = theme.bar.bg
-        }
-      }
-    })
-    shell_exec(string.format("sketchybar --subscribe %s mouse.entered mouse.exited mouse.exited.global", parent))
-    renderer(parent, entry.items or {})
-  end
-
-  local function render_menu_items(popup, entries)
-    for _, entry in ipairs(entries or {}) do
-      if entry.type == "header" then
-        add_menu_header(popup, entry)
-      elseif entry.type == "separator" then
-        add_menu_separator(popup, entry)
-      elseif entry.type == "submenu" then
-        add_submenu(popup, entry, render_menu_items)
-      else
-        add_menu_entry(popup, entry)
-      end
-    end
-  end
-
-  return {
-    render = render_menu_items,
-    appearance_action = appearance_action,
-  }
 end
 
 local function rom_hacking_items(ctx)
@@ -247,10 +87,6 @@ local function halext_items(ctx)
     { type = "separator", name = "menu.halext.sep1" },
     { type = "item", name = "menu.halext.refresh", icon = "󰑐", label = "Refresh Data", action = ctx.call_script(halext_script, "refresh") },
     { type = "item", name = "menu.halext.configure", icon = "", label = "Configure Integration", action = ctx.call_script(halext_script, "configure") },
-    -- Future expansion placeholders:
-    -- { type = "item", name = "menu.halext.notes", icon = "󰠮", label = "Quick Notes", action = "..." },
-    -- { type = "item", name = "menu.halext.search", icon = "", label = "Search", action = "..." },
-    -- { type = "submenu", name = "menu.halext.projects", icon = "󰉋", label = "Projects", items = {...} },
   }
 end
 
@@ -316,7 +152,7 @@ local function help_items(ctx)
 end
 
 function menu.render_control_center(ctx)
-  local renderer = create_renderer(ctx)
+  local renderer = menu_renderer.create(ctx)
   local render_menu_items = renderer.render
   local appearance_action = renderer.appearance_action
 
@@ -333,63 +169,6 @@ function menu.render_control_center(ctx)
     { type = "item", name = "menu.sketchybar.logs", icon = "󰍛", label = "Follow Logs (Terminal)", action = string.format("open -a Terminal %q", ctx.scripts.logs .. " sketchybar --follow") },
     { type = "item", name = "menu.sketchybar.accessibility", icon = "󰈈", label = "Repair Accessibility", action = ctx.call_script(ctx.scripts.accessibility) },
     { type = "item", name = "menu.sketchybar.shortcuts", icon = "󰌌", label = "Toggle Yabai Shortcuts", action = ctx.call_script(ctx.scripts.toggle_shortcuts, "toggle"), shortcut = "⌃⌥Y" },
-  }
-
-  local yabai_control_items = {
-    { type = "item", name = "menu.yabai.toggle", icon = "󱂬", label = "Toggle Layout", action = ctx.call_script(ctx.scripts.yabai_control, "toggle-layout"), shortcut = "⌃⌥L" },
-    { type = "item", name = "menu.yabai.balance", icon = "󰓅", label = "Balance Windows", action = ctx.call_script(ctx.scripts.yabai_control, "balance") },
-    { type = "item", name = "menu.yabai.mode.float", icon = "󰒄", label = "Force Float (Default)", action = ctx.call_script(ctx.scripts.space_mode, "current", "float") },
-    { type = "item", name = "menu.yabai.mode.bsp", icon = "󰆾", label = "Enable BSP Tiling", action = ctx.call_script(ctx.scripts.space_mode, "current", "bsp") },
-    { type = "item", name = "menu.yabai.mode.stack", icon = "󰓩", label = "Enable Stack Tiling", action = ctx.call_script(ctx.scripts.space_mode, "current", "stack") },
-    { type = "item", name = "menu.yabai.focus.emacs", icon = "󰘔", label = "Focus Emacs Space", action = ctx.call_script(ctx.scripts.yabai_control, "space-focus-app", "Emacs") },
-    { type = "item", name = "menu.yabai.focus.next", icon = "󰛳", label = "Focus Next Space", action = ctx.call_script(ctx.scripts.yabai_control, "space-focus-next") },
-    { type = "item", name = "menu.yabai.focus.prev", icon = "󰛶", label = "Focus Prev Space", action = ctx.call_script(ctx.scripts.yabai_control, "space-focus-prev") },
-    { type = "item", name = "menu.yabai.window.space.next", icon = "󰆼", label = "Send Window → Next Space", action = ctx.call_script(ctx.scripts.yabai_control, "window-space-next") },
-    { type = "item", name = "menu.yabai.window.space.prev", icon = "󰆽", label = "Send Window → Prev Space", action = ctx.call_script(ctx.scripts.yabai_control, "window-space-prev") },
-    { type = "item", name = "menu.yabai.space.new", icon = "󰘔", label = "Create Space", action = ctx.call_script(ctx.scripts.yabai_control, "space-create") },
-    { type = "item", name = "menu.yabai.space.destroy", icon = "󰘚", label = "Destroy Recent Space", action = ctx.call_script(ctx.scripts.yabai_control, "space-destroy") },
-    { type = "item", name = "menu.yabai.restart", icon = "󰐥", label = "Restart Yabai", action = ctx.call_script(ctx.scripts.yabai_control, "restart") },
-    { type = "item", name = "menu.yabai.doctor", icon = "󰒓", label = "Run Diagnostics", action = ctx.call_script(ctx.scripts.yabai_control, "doctor") },
-  }
-
-  local window_action_items = {
-    { type = "item", name = "menu.skhd.float", icon = "󰒄", label = "Toggle Float", action = ctx.call_script(ctx.scripts.yabai_control, "window-toggle-float"), shortcut = "⌃⌥F" },
-    { type = "item", name = "menu.skhd.sticky", icon = "󰐊", label = "Toggle Sticky", action = ctx.call_script(ctx.scripts.yabai_control, "window-toggle-sticky") },
-    { type = "item", name = "menu.skhd.fullscreen", icon = "󰊓", label = "Toggle Fullscreen", action = ctx.call_script(ctx.scripts.yabai_control, "window-toggle-fullscreen"), shortcut = "⌃⌥↩" },
-    { type = "item", name = "menu.skhd.center", icon = "󰆾", label = "Center Window", action = ctx.call_script(ctx.scripts.yabai_control, "window-center") },
-    { type = "item", name = "menu.skhd.display.next", icon = "󰍹", label = "Send to Next Display", action = ctx.call_script(ctx.scripts.yabai_control, "window-display-next"), shortcut = "⌃⌥→" },
-    { type = "item", name = "menu.skhd.display.prev", icon = "󰍷", label = "Send to Prev Display", action = ctx.call_script(ctx.scripts.yabai_control, "window-display-prev"), shortcut = "⌃⌥←" },
-    { type = "item", name = "menu.skhd.restart", icon = "󰚌", label = "Restart skhd", action = ctx.call_script(ctx.scripts.skhd_control, "restart") },
-    { type = "item", name = "menu.skhd.status", icon = "󰣇", label = "skhd Status", action = ctx.call_script(ctx.scripts.skhd_control, "status") },
-  }
-
-  local application_control_items = {
-    { type = "item", name = "menu.app.show", icon = "", label = "Bring to Front", action = ctx.call_script(ctx.scripts.front_app_action, "show"), shortcut = "⌘⇥" },
-    { type = "item", name = "menu.app.hide", icon = "", label = "Hide App", action = ctx.call_script(ctx.scripts.front_app_action, "hide"), shortcut = "⌘H" },
-    { type = "item", name = "menu.app.quit", icon = "", label = "Quit App", action = ctx.call_script(ctx.scripts.front_app_action, "quit"), shortcut = "⌘Q" },
-    { type = "item", name = "menu.app.forcequit", icon = "", label = "Force Quit", action = ctx.call_script(ctx.scripts.front_app_action, "force-quit") },
-  }
-
-  local space_management_items = {
-    { type = "header", name = "menu.spaces.header.displays", label = "Displays" },
-    { type = "item", name = "menu.spaces.display.next", icon = "", label = "Send to Next Display", action = ctx.call_script(ctx.scripts.yabai_control, "window-display-next"), shortcut = "⌃⌥→" },
-    { type = "item", name = "menu.spaces.display.prev", icon = "", label = "Send to Prev Display", action = ctx.call_script(ctx.scripts.yabai_control, "window-display-prev"), shortcut = "⌃⌥←" },
-    { type = "separator", name = "menu.spaces.sep1" },
-    { type = "header", name = "menu.spaces.header.assign", label = "Spaces" },
-    { type = "item", name = "menu.spaces.space.next", icon = "", label = "Send to Next Space", action = ctx.call_script(ctx.scripts.yabai_control, "window-space-next"), shortcut = "⌃⌥⌘→" },
-    { type = "item", name = "menu.spaces.space.prev", icon = "", label = "Send to Prev Space", action = ctx.call_script(ctx.scripts.yabai_control, "window-space-prev"), shortcut = "⌃⌥⌘←" },
-    { type = "item", name = "menu.spaces.space.1", icon = "1", label = "Send to Space 1", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "1"), shortcut = "⌃⌥⌘1" },
-    { type = "item", name = "menu.spaces.space.2", icon = "2", label = "Send to Space 2", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "2"), shortcut = "⌃⌥⌘2" },
-    { type = "item", name = "menu.spaces.space.3", icon = "3", label = "Send to Space 3", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "3"), shortcut = "⌃⌥⌘3" },
-    { type = "item", name = "menu.spaces.space.4", icon = "4", label = "Send to Space 4", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "4"), shortcut = "⌃⌥⌘4" },
-    { type = "item", name = "menu.spaces.space.5", icon = "5", label = "Send to Space 5", action = ctx.call_script(ctx.scripts.yabai_control, "window-space", "5"), shortcut = "⌃⌥⌘5" },
-  }
-
-  local space_layout_items = {
-    { type = "header", name = "menu.yabai.layout.header", label = "Current Space Layout" },
-    { type = "item", name = "menu.yabai.layout.bsp", icon = "", label = "Enable BSP Tiling", action = ctx.call_script(ctx.scripts.space_mode, "current", "bsp") },
-    { type = "item", name = "menu.yabai.layout.stack", icon = "", label = "Enable Stack Tiling", action = ctx.call_script(ctx.scripts.space_mode, "current", "stack") },
-    { type = "item", name = "menu.yabai.layout.float", icon = "", label = "Disable Tiling", action = ctx.call_script(ctx.scripts.space_mode, "current", "float") },
   }
 
   local app_tool_items = {
@@ -444,11 +223,6 @@ function menu.render_control_center(ctx)
     { type = "item", name = "menu.system.sleep", icon = "󰒲", label = "Sleep Display", action = "pmset displaysleepnow" },
     { type = "item", name = "menu.system.lock", icon = "󰷛", label = "Lock Screen", action = [[osascript -e 'tell application "System Events" to keystroke "q" using {control down, command down}']], shortcut = "⌃⌘Q" },
     { type = "separator", name = "menu.system.sep2" },
-    { type = "submenu", name = "menu.control_center.app", icon = "󰣇", label = "Application Controls", items = application_control_items },
-    { type = "submenu", name = "menu.windows.section", icon = "󰍿", label = "Window Actions", items = window_action_items },
-    { type = "submenu", name = "menu.control_center.spaces", icon = "󰊠", label = "Spaces Management", items = space_management_items },
-    { type = "submenu", name = "menu.control_center.layouts", icon = "󰆾", label = "Space Layout", items = space_layout_items },
-    { type = "submenu", name = "menu.yabai.section", icon = "󱂬", label = "Yabai Controls", items = yabai_control_items },
     { type = "submenu", name = "menu.sketchybar.styles", icon = "󰔇", label = "SketchyBar Styles", items = style_items },
     { type = "submenu", name = "menu.sketchybar.tools", icon = "󰒓", label = "SketchyBar Tools", items = sketchybar_tool_items },
     { type = "submenu", name = "menu.rom.section", icon = "󰊕", label = "ROM Hacking", items = rom_hacking_items(ctx) },

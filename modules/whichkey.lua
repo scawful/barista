@@ -2,6 +2,7 @@ local whichkey = {}
 
 local sbar = require("sketchybar")
 local json = require("json")
+local menu_renderer = require("menu_renderer")
 
 local HOME = os.getenv("HOME") or ""
 
@@ -84,53 +85,34 @@ function whichkey.setup(ctx)
   ctx.subscribe_popup_autoclose(base_item)
   sbar.exec("sketchybar --subscribe whichkey_hud whichkey_toggle")
 
-  local row = 0
-  local function next_name(prefix)
-    row = row + 1
-    return string.format("whichkey.%s.%d", prefix, row)
-  end
-
-  local function add_header(label)
-    sbar.add("item", next_name("header"), {
-      position = "popup." .. base_item,
-      icon = "",
-      label = label,
-      ["label.font"] = string.format("%s:%s:%0.1f", ctx.settings.font.text, ctx.settings.font.style_map["Bold"], ctx.settings.font.sizes.small),
-      ["label.color"] = ctx.theme.DARK_WHITE,
-      background = { drawing = false },
-    })
-  end
-
-  local function add_entry(opts)
-    sbar.add("item", next_name("entry"), {
-      position = "popup." .. base_item,
-      icon = opts.icon or "",
-      label = opts.label,
-      click_script = opts.action,
-      ["icon.padding_left"] = 4,
-      ["icon.padding_right"] = 6,
-      ["label.padding_left"] = 6,
-      ["label.padding_right"] = 6,
-      ["label.font"] = string.format("%s:%s:%0.1f", ctx.settings.font.text, ctx.settings.font.style_map["Semibold"], ctx.settings.font.sizes.small),
-      ["label.color"] = opts.color or ctx.theme.WHITE,
-      background = { drawing = false },
-    })
-  end
+  local renderer = menu_renderer.create(ctx)
+  local render_menu_items = renderer.render
+  local items = {}
 
   local keymap = data.keymap or {}
   if #keymap > 0 then
-    add_header("Shortcuts")
+    table.insert(items, { type = "header", label = "Shortcuts" })
     for _, section in ipairs(keymap) do
       if section.section then
-        add_entry({ icon = "", label = section.section, action = "", color = ctx.theme.SAPPHIRE })
+        table.insert(items, { 
+          type = "item", 
+          name = "whichkey.section." .. section.section:gsub("%s+", "_"),
+          icon = "", 
+          label = section.section, 
+          action = "", 
+          color = ctx.theme.SAPPHIRE 
+        })
       end
       if type(section.items) == "table" then
-        for _, item in ipairs(section.items) do
+        for i, item in ipairs(section.items) do
           local keys = item.keys or ""
           local description = item.description or ""
-          add_entry({
+          table.insert(items, {
+            type = "item",
+            name = "whichkey.key." .. i .. "." .. keys:gsub("%s+", "_"),
             icon = "󰘥",
-            label = string.format("%-12s  %s", keys, description),
+            label = keys,
+            shortcut = description,
             action = "",
           })
         end
@@ -140,7 +122,8 @@ function whichkey.setup(ctx)
 
   local actions = data.actions or {}
   if #actions > 0 then
-    add_header("Quick Actions")
+    table.insert(items, { type = "separator" })
+    table.insert(items, { type = "header", label = "Quick Actions" })
     local action_map = {
       reload_bar = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload",
       open_logs = ctx.open_path("/opt/homebrew/var/log/sketchybar"),
@@ -151,30 +134,46 @@ function whichkey.setup(ctx)
     for _, action in ipairs(actions) do
       local cmd = action_map[action.id]
       if cmd then
-        add_entry({ icon = "󰐕", label = action.title or action.id, action = cmd })
+        table.insert(items, { 
+          type = "item", 
+          name = "whichkey.action." .. action.id,
+          icon = "󰐕", 
+          label = action.title or action.id, 
+          action = cmd 
+        })
       end
     end
   end
 
   local docs = data.docs or {}
   if #docs > 0 then
-    add_header("Docs")
+    table.insert(items, { type = "separator" })
+    table.insert(items, { type = "header", label = "Docs" })
     for _, doc in ipairs(docs) do
       local path = expand_path(doc.path)
       if path then
-        add_entry({ icon = "󰈙", label = doc.title or path, action = ctx.open_path(path) })
+        table.insert(items, { 
+          type = "item", 
+          name = "whichkey.doc." .. (doc.id or "doc"),
+          icon = "󰈙", 
+          label = doc.title or path, 
+          action = ctx.open_path(path) 
+        })
       end
     end
   end
 
   local repos = data.repos or {}
   if #repos > 0 then
-    add_header("Repos")
+    table.insert(items, { type = "separator" })
+    table.insert(items, { type = "header", label = "Repos" })
     for _, repo in ipairs(repos) do
       local status = repo_status(repo)
       if status then
         local suffix = status.dirty and " *" or ""
-        add_entry({
+        table.insert(items, {
+          type = "item",
+          name = "whichkey.repo." .. (repo.id or "repo"),
           icon = "󰊢",
           label = string.format("%s [%s%s]", repo.name or repo.id or "repo", status.branch, suffix),
           action = ctx.open_path(status.path),
@@ -184,15 +183,18 @@ function whichkey.setup(ctx)
     end
   end
 
-  add_header("Help")
+  table.insert(items, { type = "separator" })
+  table.insert(items, { type = "header", label = "Help" })
   local help_action
   if ctx.helpers.help_center then
     help_action = ctx.open_path(ctx.helpers.help_center)
   else
     help_action = [[osascript -e 'display alert "Help Center binary missing" message "Run `cd ~/.config/sketchybar/gui && make help`"']]
   end
-  add_entry({ icon = "󰘥", label = "Help Center", action = help_action })
-  add_entry({ icon = "󰌌", label = "Toggle WhichKey", action = "sketchybar --trigger whichkey_toggle" })
+  table.insert(items, { type = "item", name = "whichkey.help.center", icon = "󰘥", label = "Help Center", action = help_action })
+  table.insert(items, { type = "item", name = "whichkey.help.toggle", icon = "󰌌", label = "Toggle WhichKey", action = "sketchybar --trigger whichkey_toggle" })
+
+  render_menu_items(base_item, items)
 end
 
 return whichkey

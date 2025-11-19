@@ -106,30 +106,42 @@ install_config() {
   echo_success "Configuration files installed"
 }
 
-# Build C helpers
-build_helpers() {
-  echo_info "Building C helper programs..."
+# Build all components with CMake
+build_components() {
+  echo_info "Building components with CMake..."
 
-  cd "$INSTALL_DIR/helpers"
-  if ! make clean && make; then
-    echo_error "Failed to build C helpers"
+  cd "$INSTALL_DIR"
+  
+  # Check for CMake
+  if ! command -v cmake &> /dev/null; then
+    echo_error "CMake is not installed. Installing via Homebrew..."
+    if ! command -v brew &> /dev/null; then
+      echo_error "Homebrew is not installed. Please install from https://brew.sh"
+      exit 1
+    fi
+    brew install cmake
+  fi
+
+  # Create build directory
+  mkdir -p build
+  cd build
+
+  # Configure and build
+  if ! cmake .. -DCMAKE_BUILD_TYPE=Release; then
+    echo_error "CMake configuration failed"
     exit 1
   fi
 
-  echo_success "C helpers built successfully"
-}
-
-# Build GUI tools
-build_gui() {
-  echo_info "Building GUI control panel..."
-
-  cd "$INSTALL_DIR/gui"
-  if ! make clean && make all; then
-    echo_error "Failed to build GUI tools"
+  if ! cmake --build . -j$(sysctl -n hw.ncpu 2>/dev/null || echo 4); then
+    echo_error "Build failed"
     exit 1
   fi
 
-  echo_success "GUI tools built successfully"
+  # Copy binaries to bin directory
+  mkdir -p "$INSTALL_DIR/bin"
+  cp -f bin/* "$INSTALL_DIR/bin/" 2>/dev/null || true
+
+  echo_success "All components built successfully"
 }
 
 # Setup profile
@@ -287,8 +299,7 @@ main() {
   check_dependencies
   backup_existing
   install_config
-  build_helpers
-  build_gui
+  build_components
   setup_profile
   configure_sketchybar
   start_sketchybar

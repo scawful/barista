@@ -1,0 +1,14 @@
+CompileFlags:
+  Add:
+    - -Ihelpers
+    - -Ihelpers/event_providers
+    - -Ihelpers/event_providers/cpu_load
+    - -Ihelpers/event_providers/network_load
+    - -Igui
+    - -std=c99
+    - -std=c++17
+    - -Wall
+    - -Wextra
+  Remove:
+    - -W*
+

@@ -1,0 +1,32 @@
+{
+  "name": "barista",
+  "description": "SketchyBar configuration with Yaze integration",
+  "yaze_path": "${HOME}/Code/yaze",
+  "build_path": "${HOME}/Code/yaze/build/bin",
+  "binary_name": "yaze",
+  "menu_items": [
+    {
+      "name": "Launch Yaze",
+      "action": "open",
+      "path": "${HOME}/Code/yaze/build/bin/yaze.app"
+    },
+    {
+      "name": "Open Yaze Repo",
+      "action": "open_path",
+      "path": "${HOME}/Code/yaze"
+    },
+    {
+      "name": "Focus Emacs Space",
+      "action": "yabai_space_focus",
+      "app": "Emacs"
+    }
+  ],
+  "workflows": {
+    "rom_hacking": {
+      "enabled": true,
+      "docs_path": "${HOME}/Code/docs/workflow/rom-hacking.org",
+      "roms_path": "${HOME}/Code/yaze/roms"
+    }
+  }
+}
+

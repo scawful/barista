@@ -1,0 +1,58 @@
+{
+  "name": "barista",
+  "description": "SketchyBar configuration with halext-org integration",
+  "integration_type": "external_service",
+  "config_path": "${HOME}/.config/sketchybar/state.json",
+  "config_key": "integrations.halext",
+  "features": {
+    "tasks": {
+      "enabled": true,
+      "cache_file": "${HOME}/.config/sketchybar/cache/halext_tasks.json",
+      "refresh_interval": 300
+    },
+    "calendar": {
+      "enabled": true,
+      "cache_file": "${HOME}/.config/sketchybar/cache/halext_calendar.json",
+      "refresh_interval": 300
+    },
+    "suggestions": {
+      "enabled": true,
+      "cache_file": "${HOME}/.config/sketchybar/cache/halext_suggestions.json",
+      "refresh_interval": 600
+    }
+  },
+  "menu_items": [
+    {
+      "name": "View Tasks",
+      "action": "open_tasks",
+      "icon": "󰩹"
+    },
+    {
+      "name": "View Calendar",
+      "action": "open_calendar",
+      "icon": "󰃭"
+    },
+    {
+      "name": "LLM Suggestions",
+      "action": "open_suggestions",
+      "icon": "󰚩"
+    },
+    {
+      "name": "Refresh Data",
+      "action": "refresh",
+      "icon": "󰑐"
+    },
+    {
+      "name": "Configure Integration",
+      "action": "configure",
+      "icon": "⚙"
+    }
+  ],
+  "api": {
+    "health_endpoint": "/api/health",
+    "tasks_endpoint": "/api/tasks",
+    "calendar_endpoint": "/api/calendar",
+    "suggestions_endpoint": "/api/suggestions"
+  }
+}
+

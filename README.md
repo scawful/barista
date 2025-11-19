@@ -103,11 +103,25 @@ cd ~/.config/sketchybar
 ```
 
 The installer will:
-1. Check and install dependencies
+1. Check and install dependencies (including CMake)
 2. Backup existing configuration
-3. Build C helpers and GUI tools
+3. Build all components using CMake
 4. Let you choose a profile (minimal, personal, work, custom)
 5. Start SketchyBar
+
+### Building from Source
+
+Barista uses CMake for building. See [BUILD.md](BUILD.md) for detailed build instructions.
+
+```bash
+# Quick build
+cmake -B build -S .
+cmake --build build
+
+# Or use presets
+cmake --preset release
+cmake --build --preset release
+```
 
 ### First Steps
 

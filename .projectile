@@ -1,0 +1,38 @@
+# Projectile project configuration for Barista
+
+# Source files
+helpers/*.c
+helpers/*.cpp
+helpers/*.h
+helpers/event_providers/**/*.c
+helpers/event_providers/**/*.h
+helpers/menus/*.c
+gui/*.m
+gui/*.h
+
+# Lua files
+*.lua
+modules/**/*.lua
+profiles/*.lua
+themes/*.lua
+helpers/**/*.lua
+
+# Scripts
+*.sh
+plugins/*.sh
+bin/*.sh
+
+# Configuration
+*.json
+*.plist
+*.md
+CMakeLists.txt
+
+# Exclude build artifacts
+-/build/
+-/bin/
+-/.git/
+-/*.o
+-/*.a
+-/*.dylib
+

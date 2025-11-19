@@ -87,10 +87,10 @@ function menu_renderer.create(ctx)
     end
   end
 
-  local function add_menu_entry(popup, entry)
+  local function add_menu_entry(popup, entry, parent_popup)
     local padding = menu_entry_padding()
     local label = menu_label(entry.label, entry.shortcut)
-    local click = wrap_action(entry, popup)
+    local click = wrap_action(entry, parent_popup or popup)
     
     local item_config = {
       position = "popup." .. popup,
@@ -144,7 +144,7 @@ function menu_renderer.create(ctx)
     
     -- Render items into the popup
     if items and #items > 0 then
-      renderer(popup_item_name, items)
+      renderer(popup_item_name, items, popup_item_name)
     end
     
     -- Create clickable menu item that opens the popup
@@ -172,7 +172,7 @@ function menu_renderer.create(ctx)
     attach_hover(entry.name)
   end
 
-  local function render_menu_items(popup, entries)
+  local function render_menu_items(popup, entries, parent_popup)
     for _, entry in ipairs(entries or {}) do
       if entry.type == "header" then
         add_menu_header(popup, entry)
@@ -185,7 +185,7 @@ function menu_renderer.create(ctx)
         -- Legacy submenu support (for backwards compatibility)
         add_submenu(popup, entry, render_menu_items)
       else
-        add_menu_entry(popup, entry)
+        add_menu_entry(popup, entry, parent_popup)
       end
     end
   end

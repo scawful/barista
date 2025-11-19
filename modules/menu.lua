@@ -22,6 +22,18 @@ local function load_menu_section(ctx, name)
   return nil
 end
 
+local function focus_emacs_action(ctx)
+  -- Check if Emacs is running
+  local check_cmd = "pgrep -x Emacs > /dev/null"
+  local emacs_running = os.execute(check_cmd) == 0
+  
+  if emacs_running then
+    return ctx.call_script(ctx.scripts.yabai_control, "space-focus-app", "Emacs")
+  else
+    return "osascript -e 'display notification \"Emacs is not running\" with title \"Focus Emacs\"'"
+  end
+end
+
 local function rom_hacking_items(ctx)
   if ctx.integration_flags and ctx.integration_flags.yaze == false then
     return {
@@ -40,7 +52,7 @@ local function rom_hacking_items(ctx)
     { type = "item", name = "menu.rom.launch", icon = "󰯙", label = "Launch Yaze", action = yaze_binary },
     { type = "item", name = "menu.rom.repo", icon = "󰋜", label = "Open Yaze Repo", action = ctx.open_path(yaze_repo) },
     { type = "item", name = "menu.rom.doc", icon = "󰊕", label = "ROM Workflow Doc", action = ctx.open_path(ctx.paths.rom_doc) },
-    { type = "item", name = "menu.rom.focus_emacs", icon = "󰘔", label = "Focus Emacs Space", action = ctx.call_script(ctx.scripts.yabai_control, "space-focus-app", "Emacs") },
+    { type = "item", name = "menu.rom.focus_emacs", icon = "󰘔", label = "Focus Emacs Space", action = focus_emacs_action(ctx) },
   }
 end
 
@@ -59,7 +71,7 @@ local function emacs_items(ctx)
   return {
     { type = "item", name = "menu.emacs.launch", icon = "", label = "Launch Emacs", action = "open -a Emacs" },
     { type = "item", name = "menu.emacs.tasks", icon = "󰩹", label = "Tasks.org", action = ctx.open_path(os.getenv("HOME") .. "/Code/docs/workflow/tasks.org") },
-    { type = "item", name = "menu.emacs.focus", icon = "󰘔", label = "Focus Emacs Space", action = ctx.call_script(ctx.scripts.yabai_control, "space-focus-app", "Emacs") },
+    { type = "item", name = "menu.emacs.focus", icon = "󰘔", label = "Focus Emacs Space", action = focus_emacs_action(ctx) },
   }
 end
 
@@ -195,9 +207,75 @@ function menu.render_control_center(ctx)
     return ctx.call_script(script, ...)
   end
 
+  local function get_agent_status_items(ctx)
+    local items = {}
+    local cmd = string.format("%s list", ctx.scripts.launch_agent_helper)
+    local handle = io.popen(cmd)
+    if not handle then return {} end
+    local result = handle:read("*a")
+    handle:close()
+
+    local agent_data = {}
+    local ok, decoded = pcall(json.decode, result)
+    if ok and type(decoded) == "table" then
+      for _, agent in ipairs(decoded) do
+        agent_data[agent.label] = agent
+      end
+    end
+
+    local tracked_agents = {
+      { label = "homebrew.mxcl.sketchybar", name = "SketchyBar", icon = "󰑓" },
+      { label = "org.nbirrell.yabai", name = "Yabai", icon = "󱂬" },
+      { label = "org.nbirrell.skhd", name = "skhd", icon = "󰚌" },
+    }
+
+    for _, agent in ipairs(tracked_agents) do
+      local info = agent_data[agent.label]
+      local status_icon = "🔴"
+      local status_text = "Stopped"
+      local pid_text = ""
+      
+      if info and info.running then
+        status_icon = "🟢"
+        status_text = "Running"
+        if info.pid then
+          pid_text = string.format(" (PID: %d)", info.pid)
+        end
+      elseif info and info.status and info.status ~= 0 then
+        status_icon = "⚠️"
+        status_text = string.format("Error: %s", info.status)
+      end
+
+      table.insert(items, {
+        type = "item",
+        name = "menu.agents.status." .. agent.name,
+        icon = agent.icon,
+        label = string.format("%s  %s%s", status_icon, status_text, pid_text),
+        action = "",
+        color = info and info.running and ctx.theme.GREEN or ctx.theme.RED
+      })
+    end
+    
+    if #items > 0 then
+        table.insert(items, { type = "separator", name = "menu.agents.status_sep" })
+    end
+    
+    return items
+  end
+
   local launch_agent_items = {
     { type = "item", name = "menu.agents.open_panel", icon = "󰘦", label = "Launch Agents Tab", action = ctx.call_script(ctx.scripts.open_control_panel) },
     { type = "separator", name = "menu.agents.sep0" },
+  }
+
+  -- Add dynamic status items
+  local status_items = get_agent_status_items(ctx)
+  for _, item in ipairs(status_items) do
+    table.insert(launch_agent_items, item)
+  end
+
+  -- Add control items
+  local control_items = {
     { type = "item", name = "menu.agents.sketchybar.restart", icon = "󰑓", label = "Restart SketchyBar", action = agent_action(ctx.scripts.launch_agent_helper, "restart", "homebrew.mxcl.sketchybar") or agent_action(ctx.scripts.rebuild_sketchybar, "--reload-only") },
     { type = "item", name = "menu.agents.sketchybar.stop", icon = "󰅘", label = "Stop SketchyBar", action = agent_action(ctx.scripts.launch_agent_helper, "stop", "homebrew.mxcl.sketchybar") },
     { type = "item", name = "menu.agents.sketchybar.start", icon = "󰅂", label = "Start SketchyBar", action = agent_action(ctx.scripts.launch_agent_helper, "start", "homebrew.mxcl.sketchybar") },
@@ -205,6 +283,10 @@ function menu.render_control_center(ctx)
     { type = "item", name = "menu.agents.yabai.restart", icon = "󱂬", label = "Restart Yabai", action = agent_action(ctx.scripts.launch_agent_helper, "restart", "org.nbirrell.yabai") },
     { type = "item", name = "menu.agents.skhd.restart", icon = "󰚌", label = "Restart skhd", action = agent_action(ctx.scripts.launch_agent_helper, "restart", "org.nbirrell.skhd") },
   }
+
+  for _, item in ipairs(control_items) do
+    table.insert(launch_agent_items, item)
+  end
 
   local debug_tool_items = {
     { type = "item", name = "menu.debug.rebuild", icon = "󰑓", label = "Rebuild + Reload (⌃⌥⇧R)", action = agent_action(ctx.scripts.rebuild_sketchybar) },

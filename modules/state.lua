@@ -146,10 +146,12 @@ function state.save(data)
   sanitize_state(data)
   local ok, encoded = pcall(json.encode, data)
   if ok then
-    local wf = io.open(STATE_FILE, "w")
+    local tmp_file = STATE_FILE .. ".tmp"
+    local wf = io.open(tmp_file, "w")
     if wf then
       wf:write(encoded)
       wf:close()
+      os.rename(tmp_file, STATE_FILE)
       return true
     end
   end

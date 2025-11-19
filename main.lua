@@ -446,13 +446,70 @@ sbar.add("item", "front_app", {
   icon = { drawing = true },
   label = { drawing = true },
   script = PLUGIN_DIR .. "/front_app.sh",
+  click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
   background = {
     color = "0x00000000",
     corner_radius = widget_corner_radius,
     height = widget_height,
   },
+  popup = {
+    align = "left",
+    background = {
+      border_width = 2,
+      corner_radius = 6,
+      border_color = theme.WHITE,
+      color = theme.bar.bg,
+      padding_left = 8,
+      padding_right = 8,
+      padding_top = 6,
+      padding_bottom = 8
+    }
+  }
 })
 sbar.exec("sketchybar --subscribe front_app front_app_switched")
+subscribe_popup_autoclose("front_app")
+attach_hover("front_app")
+
+local function add_front_app_popup_item(id, props)
+  local defaults = {
+    position = "popup.front_app",
+    script = HOVER_SCRIPT,
+    ["icon.padding_left"] = 6,
+    ["icon.padding_right"] = 6,
+    ["label.padding_left"] = 8,
+    ["label.padding_right"] = 8,
+    background = { drawing = false },
+  }
+  for k, v in pairs(props) do
+    defaults[k] = v
+  end
+  sbar.add("item", id, defaults)
+end
+
+local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
+
+add_front_app_popup_item("front_app.header", {
+  icon = "",
+  label = "Application Controls",
+  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+  background = { drawing = false },
+})
+
+local app_actions = {
+  { name = "front_app.show", icon = "󰓇", label = "Bring to Front", action = call_script(FRONT_APP_ACTION_SCRIPT, "show"), shortcut = "⌘⇥" },
+  { name = "front_app.hide", icon = "󰘔", label = "Hide App", action = call_script(FRONT_APP_ACTION_SCRIPT, "hide"), shortcut = "⌘H" },
+  { name = "front_app.quit", icon = "󰅘", label = "Quit App", action = call_script(FRONT_APP_ACTION_SCRIPT, "quit"), shortcut = "⌘Q" },
+  { name = "front_app.force_quit", icon = "󰜏", label = "Force Quit", action = call_script(FRONT_APP_ACTION_SCRIPT, "force-quit") },
+}
+
+for _, entry in ipairs(app_actions) do
+  add_front_app_popup_item(entry.name, {
+    icon = entry.icon,
+    label = entry.label,
+    click_script = entry.action,
+    ["label.font"] = font_small,
+  })
+end
 -- Yabai status widget
 if yabai_available() then
   local widget_factory = widgets_module.create_factory(sbar, theme, settings, state)
@@ -722,6 +779,10 @@ if info_enabled("net") then
   table.insert(system_info_items, { name = "system_info.net", icon = "󰖩", label = "Wi-Fi …" })
 end
 
+-- Add system tools
+table.insert(system_info_items, { name = "system_info.activity", icon = "󰨇", label = "Activity Monitor", action = "open -a 'Activity Monitor'" })
+table.insert(system_info_items, { name = "system_info.settings", icon = "", label = "System Settings", action = "open -a 'System Settings'" })
+
 -- System Info menu is now informational only
 -- Docs and actions moved to Apple menu or removed per user request
 -- if info_enabled("docs") then
@@ -758,16 +819,138 @@ sbar.add("bracket", { "clock", "system_info" }, {
   }
 })
 
+-- Input Widget
+widget_factory.create("input", {
+  position = "right",
+  icon = "󰘦",
+  label = { drawing = false },
+  click_script = PLUGIN_DIR .. "/input_click.sh",
+  background = {
+    color = state_module.get_widget_color(state, "input", theme.BG_SEC_COLR),
+    corner_radius = widget_corner_radius,
+    height = widget_height,
+  },
+  ["icon.padding_left"] = 10,
+  ["icon.padding_right"] = 10,
+  popup = {
+    align = "right",
+    background = {
+      border_width = 2,
+      corner_radius = 6,
+      border_color = theme.WHITE,
+      color = theme.bar.bg,
+      padding_left = 8,
+      padding_right = 8,
+      padding_top = 6,
+      padding_bottom = 8
+    }
+  }
+})
+subscribe_popup_autoclose("input")
+attach_hover("input")
+
+local function add_input_popup_item(id, props)
+  local defaults = {
+    position = "popup.input",
+    script = HOVER_SCRIPT,
+    ["icon.padding_left"] = 6,
+    ["icon.padding_right"] = 6,
+    ["label.padding_left"] = 8,
+    ["label.padding_right"] = 8,
+    background = { drawing = false },
+  }
+  for k, v in pairs(props) do
+    defaults[k] = v
+  end
+  sbar.add("item", id, defaults)
+end
+
+add_input_popup_item("input.header", {
+  icon = "",
+  label = "Quick Actions",
+  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+  background = { drawing = false },
+})
+
+local input_actions = {
+  { name = "input.cmd", icon = "", label = "Run Shell Command", action = PLUGIN_DIR .. "/input_action.sh command" },
+  { name = "input.ai", icon = "󰚩", label = "Ask AI", action = PLUGIN_DIR .. "/input_action.sh ai" },
+  { name = "input.term", icon = "󰆍", label = "Open Terminal", action = "open -a Terminal" },
+}
+
+for _, entry in ipairs(input_actions) do
+  add_input_popup_item(entry.name, {
+    icon = entry.icon,
+    label = entry.label,
+    click_script = entry.action,
+    ["label.font"] = font_small,
+  })
+end
+
 -- Volume widget (click to open Sound preferences)
 widget_factory.create_volume({
   script = PLUGIN_DIR .. "/volume.sh",
-  click_script = [[osascript -e 'tell application "System Settings"
-    activate
-    reveal pane id "com.apple.Sound-Settings.extension"
-  end tell']],
+  click_script = PLUGIN_DIR .. "/volume_click.sh",
+  popup = {
+    align = "right",
+    background = {
+      border_width = 2,
+      corner_radius = 6,
+      border_color = theme.WHITE,
+      color = theme.bar.bg,
+      padding_left = 8,
+      padding_right = 8,
+      padding_top = 6,
+      padding_bottom = 8
+    }
+  }
 })
 sbar.exec("sketchybar --subscribe volume volume_change")
+subscribe_popup_autoclose("volume")
 attach_hover("volume")
+
+local function add_volume_popup_item(id, props)
+  local defaults = {
+    position = "popup.volume",
+    script = HOVER_SCRIPT,
+    ["icon.padding_left"] = 6,
+    ["icon.padding_right"] = 6,
+    ["label.padding_left"] = 8,
+    ["label.padding_right"] = 8,
+    background = { drawing = false },
+  }
+  for k, v in pairs(props) do
+    defaults[k] = v
+  end
+  sbar.add("item", id, defaults)
+end
+
+add_volume_popup_item("volume.header", {
+  icon = "",
+  label = "Volume Controls",
+  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+  background = { drawing = false },
+})
+
+local volume_actions = {
+  { name = "volume.mute", icon = "󰖁", label = "Toggle Mute", action = "osascript -e 'set volume output muted not (output muted of (get volume settings))'" },
+  { name = "volume.0", icon = "󰕿", label = "0%", action = "osascript -e 'set volume output volume 0'" },
+  { name = "volume.10", icon = "󰕿", label = "10%", action = "osascript -e 'set volume output volume 10'" },
+  { name = "volume.30", icon = "󰖀", label = "30%", action = "osascript -e 'set volume output volume 30'" },
+  { name = "volume.50", icon = "󰖀", label = "50%", action = "osascript -e 'set volume output volume 50'" },
+  { name = "volume.80", icon = "󰕾", label = "80%", action = "osascript -e 'set volume output volume 80'" },
+  { name = "volume.100", icon = "󰕾", label = "100%", action = "osascript -e 'set volume output volume 100'" },
+  { name = "volume.settings", icon = "", label = "Sound Settings", action = "open -b com.apple.systempreferences /System/Library/PreferencePanes/Sound.prefPane" },
+}
+
+for _, entry in ipairs(volume_actions) do
+  add_volume_popup_item(entry.name, {
+    icon = entry.icon,
+    label = entry.label,
+    click_script = entry.action,
+    ["label.font"] = font_small,
+  })
+end
 
 -- Battery widget
 widget_factory.create_battery({

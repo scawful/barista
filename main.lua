@@ -963,6 +963,7 @@ attach_hover("battery")
 
 -- Trigger initial updates for reactive widgets
 sbar.exec("sketchybar --trigger volume_change")
+sbar.exec("sketchybar --update volume")
 sbar.exec("sketchybar --update battery")
 
 -- End configuration

@@ -124,7 +124,9 @@ cp -r ~/.config/sketchybar.backup.YYYYMMDD_HHMMSS/* ~/.config/sketchybar/
 
 ## Documentation
 
+- [Pre-Setup Checklist](docs/PRE_SETUP_CHECKLIST.md) ⭐ **Read this first!**
+- [Work MacBook Setup](docs/WORK_MACBOOK_SETUP.md) ⭐ **For corporate environments**
+- [Google C++ Workflows](docs/GOOGLE_CPP_WORKFLOWS.md)
 - [Release Strategy](docs/RELEASE_STRATEGY.md)
 - [Installation Guide](docs/INSTALLATION_GUIDE.md)
-- [Release Summary](docs/RELEASE_SUMMARY.md)
 

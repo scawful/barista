@@ -18,15 +18,63 @@ profile.integrations = {
 
 -- Custom paths
 profile.paths = {
-  -- Work-specific paths would go here
   work_docs = os.getenv("HOME") .. "/work/docs",
+  google_tools = os.getenv("HOME") .. "/google/tools",
+  -- Add custom Google program paths here
+  -- Example: custom_tool = os.getenv("HOME") .. "/google/tools/custom_tool",
 }
 
 -- Custom menu sections (add to Apple menu)
 profile.menu_sections = {
   { type = "submenu", name = "menu.emacs.section", icon = "", label = "Emacs Workspace", order = 60 },
   { type = "submenu", name = "menu.halext.section", icon = "󱓷", label = "halext-org", order = 70 },
-  -- Future: Google-specific menu items
+  { type = "submenu", name = "menu.google.section", icon = "󰡷", label = "Google", order = 80 },
+}
+
+-- Custom menu items for Google tools
+profile.custom_menu_items = {
+  {
+    type = "item",
+    name = "menu.google.gmail",
+    icon = "󰬦",
+    label = "Gmail",
+    action = "open -a 'Google Chrome' 'https://mail.google.com'",
+    section = "menu.google.section",
+  },
+  {
+    type = "item",
+    name = "menu.google.calendar",
+    icon = "󰃭",
+    label = "Calendar",
+    action = "open -a 'Google Chrome' 'https://calendar.google.com'",
+    section = "menu.google.section",
+  },
+  {
+    type = "item",
+    name = "menu.google.drive",
+    icon = "󰨞",
+    label = "Drive",
+    action = "open -a 'Google Chrome' 'https://drive.google.com'",
+    section = "menu.google.section",
+  },
+  {
+    type = "item",
+    name = "menu.google.docs",
+    icon = "󰈬",
+    label = "Docs",
+    action = "open -a 'Google Chrome' 'https://docs.google.com'",
+    section = "menu.google.section",
+  },
+  -- Add custom Google programs here
+  -- Example:
+  -- {
+  --   type = "item",
+  --   name = "menu.google.custom_tool",
+  --   icon = "󰨞",
+  --   label = "Custom Tool",
+  --   action = profile.paths.custom_tool,
+  --   section = "menu.google.section",
+  -- },
 }
 
 -- Appearance preferences

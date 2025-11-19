@@ -338,6 +338,7 @@ sbar.add("item", "control_center", {
   label = { drawing = false },
   click_script = PLUGIN_DIR .. "/apple_menu.sh",
   script = POPUP_GUARD_SCRIPT,
+  env = { POPUP_GUARD_STICKY = "1" },
   background = {
     color = "0x00000000",
     corner_radius = widget_corner_radius,

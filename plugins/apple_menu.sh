@@ -3,21 +3,27 @@ set -euo pipefail
 
 CONFIG_DIR="${HOME}/.config/sketchybar"
 GUI_DIR="${CONFIG_DIR}/gui"
-PANEL_BIN="${GUI_DIR}/bin/config_menu_v2"
+# Try new unified config_menu first, fallback to old versions
+PANEL_BIN="${GUI_DIR}/bin/config_menu"
+FALLBACK_BIN="${GUI_DIR}/bin/config_menu_v2"
 LOG_FILE="/tmp/sketchybar_config_menu.log"
 BUILD_LOG="/tmp/sketchybar_gui_build.log"
 
 launch_panel() {
-  if [ ! -x "$PANEL_BIN" ] && [ -d "$GUI_DIR" ]; then
-    if ! make -C "$GUI_DIR" >"$BUILD_LOG" 2>&1; then
-      osascript -e 'display alert "SketchyBar" message "Control panel build failed. See '"$BUILD_LOG"'"' >/dev/null 2>&1 || true
-      return
-    fi
+  # Check if we're in the source directory (for development)
+  SOURCE_DIR="${HOME}/Code/barista"
+  if [ -x "${SOURCE_DIR}/build/bin/config_menu" ]; then
+    "${SOURCE_DIR}/build/bin/config_menu" >"$LOG_FILE" 2>&1 &
+    return
   fi
+  
+  # Use installed binary if available
   if [ -x "$PANEL_BIN" ]; then
     "$PANEL_BIN" >"$LOG_FILE" 2>&1 &
+  elif [ -x "$FALLBACK_BIN" ]; then
+    "$FALLBACK_BIN" >"$LOG_FILE" 2>&1 &
   else
-    osascript -e 'display alert "SketchyBar" message "Control panel binary missing. Run: make -C ~/.config/sketchybar/gui"' >/dev/null 2>&1 || true
+    osascript -e 'display alert "SketchyBar" message "Control panel not found. Build it with: cd ~/Code/barista && ./rebuild_gui.sh"' >/dev/null 2>&1 || true
   fi
 }
 

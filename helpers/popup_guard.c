@@ -23,11 +23,17 @@ int main(void) {
 
   const char *name = getenv("NAME");
   const char *sender = getenv("SENDER");
+  const char *sticky_env = getenv("POPUP_GUARD_STICKY");
+  int is_sticky = sticky_env && strcmp(sticky_env, "1") == 0;
 
   if (!name || !sender) return 0;
 
   // On mouse.exited or mouse.exited.global
   if (strstr(sender, "exited")) {
+    if (is_sticky) {
+      // Sticky mode: ignore hover exits
+      return 0;
+    }
     // Only close if no submenu is open
     if (!is_submenu_open()) {
       char cmd[256];

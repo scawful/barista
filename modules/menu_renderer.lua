@@ -119,6 +119,78 @@ function menu_renderer.create(ctx)
     attach_hover(entry.name)
   end
 
+  local function add_popup_action(popup, entry, renderer)
+    local padding = menu_entry_padding()
+    local popup_name = entry.popup or entry.name
+    local items = entry.items or {}
+    
+    -- Create popup container item (separate item, not nested)
+    local popup_item_name = "popup." .. popup_name
+    sbar.add("item", popup_item_name, {
+      position = "left",
+      icon = "",
+      label = "",
+      drawing = false,
+      popup = {
+        align = "right",
+        background = {
+          border_width = 2,
+          corner_radius = 4,
+          border_color = theme.WHITE,
+          color = theme.bar.bg
+        }
+      }
+    })
+    
+    -- Render items into the popup
+    if items and #items > 0 then
+      renderer(popup_item_name, items)
+    end
+    
+    -- Create clickable menu item that opens the popup
+    local click_action = string.format(
+      "sketchybar -m --set %s popup.drawing=toggle",
+      popup_item_name
+    )
+    
+    sbar.add("item", entry.name, {
+      position = "popup." .. popup,
+      icon = entry.icon or "",
+      label = entry.label or "",
+      click_script = click_action,
+      script = ctx.HOVER_SCRIPT,
+      ["icon.padding_left"] = padding.icon_left,
+      ["icon.padding_right"] = padding.icon_right,
+      ["label.padding_left"] = padding.label_left,
+      ["label.padding_right"] = padding.label_right,
+      background = {
+        drawing = false,
+        corner_radius = 4,
+        height = math.max(widget_height - 8, 16)
+      }
+    })
+    attach_hover(entry.name)
+  end
+
+  local function render_menu_items(popup, entries)
+    for _, entry in ipairs(entries or {}) do
+      if entry.type == "header" then
+        add_menu_header(popup, entry)
+      elseif entry.type == "separator" then
+        add_menu_separator(popup, entry)
+      elseif entry.popup then
+        -- New popup-based action (replaces submenu)
+        add_popup_action(popup, entry, render_menu_items)
+      elseif entry.type == "submenu" then
+        -- Legacy submenu support (for backwards compatibility)
+        add_submenu(popup, entry, render_menu_items)
+      else
+        add_menu_entry(popup, entry)
+      end
+    end
+  end
+  
+  -- Keep old add_submenu for backwards compatibility
   local function add_submenu(popup, entry, renderer)
     local padding = menu_entry_padding()
     local parent = entry.name
@@ -149,20 +221,6 @@ function menu_renderer.create(ctx)
     })
     shell_exec(string.format("sketchybar --subscribe %s mouse.entered mouse.exited mouse.exited.global", parent))
     renderer(parent, entry.items or {})
-  end
-
-  local function render_menu_items(popup, entries)
-    for _, entry in ipairs(entries or {}) do
-      if entry.type == "header" then
-        add_menu_header(popup, entry)
-      elseif entry.type == "separator" then
-        add_menu_separator(popup, entry)
-      elseif entry.type == "submenu" then
-        add_submenu(popup, entry, render_menu_items)
-      else
-        add_menu_entry(popup, entry)
-      end
-    end
   end
 
   return {

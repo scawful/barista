@@ -7,16 +7,23 @@ HOVER_BG="0x80cba6f7"  # Mauve with 50% opacity
 IDLE_BG="0x00000000"   # Transparent
 
 # List of all submenu items
+# Updated to include all sections from menu.lua
 SUBMENUS=(
+  "menu.control_center.app"
+  "menu.windows.section"
+  "menu.control_center.spaces"
+  "menu.control_center.layouts"
+  "menu.yabai.section"
   "menu.sketchybar.styles"
   "menu.sketchybar.tools"
-  "menu.yabai.section"
-  "menu.windows.section"
   "menu.rom.section"
   "menu.emacs.section"
+  "menu.halext.section"
   "menu.apps.section"
   "menu.dev.section"
   "menu.help.section"
+  "menu.agents.section"
+  "menu.debug.section"
 )
 
 STATE_FILE="${TMPDIR:-/tmp}/sketchybar_submenu_active"
@@ -38,14 +45,17 @@ clear_active() {
 
 close_other_submenus() {
   local current="$1"
+  local args=()
+  
   for submenu in "${SUBMENUS[@]}"; do
     if [ "$submenu" != "$current" ]; then
-      sketchybar --set "$submenu" \
-        popup.drawing=off \
-        background.drawing=off \
-        background.color="$IDLE_BG"
+      args+=(--set "$submenu" popup.drawing=off background.drawing=off background.color="$IDLE_BG")
     fi
   done
+
+  if [ ${#args[@]} -gt 0 ]; then
+    sketchybar "${args[@]}"
+  fi
 }
 
 schedule_close() {

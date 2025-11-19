@@ -13,6 +13,10 @@ case "$SENDER" in
   "volume_change")
     VOLUME="$INFO"
 
+    if [ -z "$VOLUME" ]; then
+      VOLUME=$(osascript -e 'output volume of (get volume settings)')
+    fi
+
     case "$VOLUME" in
       [6-9][0-9]|100) ICON="󰕾"
       ;;

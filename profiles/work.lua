@@ -13,13 +13,18 @@ profile.integrations = {
   yaze = false,       -- No ROM hacking at work
   emacs = true,       -- Keep Emacs for org-mode
   halext = true,      -- Use halext-org for task management
-  google = true,      -- Future: Google-specific integrations
+  google = true,      -- Google Workspace integrations
+  cpp_dev = true,     -- C++ development tools
+  ssh_cloud = true,   -- SSH and cloud workflows
+  google_cpp = true,  -- Google C++ specific tools (Bazel, Gerrit, etc.)
 }
 
 -- Custom paths
 profile.paths = {
   work_docs = os.getenv("HOME") .. "/work/docs",
   google_tools = os.getenv("HOME") .. "/google/tools",
+  google3 = os.getenv("HOME") .. "/google3",  -- Google3 monorepo
+  code = os.getenv("HOME") .. "/Code",        -- General code directory
   -- Add custom Google program paths here
   -- Example: custom_tool = os.getenv("HOME") .. "/google/tools/custom_tool",
 }
@@ -29,6 +34,9 @@ profile.menu_sections = {
   { type = "submenu", name = "menu.emacs.section", icon = "", label = "Emacs Workspace", order = 60 },
   { type = "submenu", name = "menu.halext.section", icon = "󱓷", label = "halext-org", order = 70 },
   { type = "submenu", name = "menu.google.section", icon = "󰡷", label = "Google", order = 80 },
+  { type = "submenu", name = "menu.cpp.section", icon = "󰨞", label = "C++ Dev", order = 90 },
+  { type = "submenu", name = "menu.ssh.section", icon = "󰆍", label = "SSH & Cloud", order = 100 },
+  { type = "submenu", name = "menu.google_cpp.section", icon = "󰆍", label = "Google C++", order = 110 },
 }
 
 -- Custom menu items for Google tools
@@ -94,6 +102,9 @@ profile.widgets = {
   system_info = true,
   volume = true,
   yabai_status = true,
+  cpp_build_status = true,  -- C++ build status widget
+  ssh_connections = true,    -- SSH connection status widget
+  bazel_status = true,      -- Bazel build status (Google C++)
 }
 
 -- Space configuration

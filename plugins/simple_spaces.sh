@@ -31,11 +31,14 @@ if [ ${#SPACE_LINES[@]} -eq 0 ]; then
   current_signature="$(IFS=,; echo "${SPACE_LINES[*]}")"
 fi
 
-# Skip rebuild if spaces unchanged
+# Skip rebuild if spaces unchanged and items already exist
 if [ -n "$current_signature" ] && [ -f "$SPACES_CACHE_FILE" ]; then
   cached_signature="$(cat "$SPACES_CACHE_FILE" 2>/dev/null || true)"
   if [ "$current_signature" = "$cached_signature" ]; then
-    exit 0
+    first_space="${SPACE_LINES[0]##* }"
+    if [ -n "$first_space" ] && sketchybar --query "space.$first_space" >/dev/null 2>&1; then
+      exit 0
+    fi
   fi
 fi
 

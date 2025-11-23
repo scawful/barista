@@ -128,12 +128,20 @@ local function call_script(script_path, ...)
   return cmd
 end
 
+-- Cache yabai availability check (performance optimization)
+local yabai_available_cache = nil
 local function yabai_available()
-  local handle = io.popen("command -v yabai >/dev/null 2>&1 && echo 1 || echo 0")
-  if not handle then return false end
-  local result = handle:read("*a")
-  handle:close()
-  return result and result:match("1")
+  if yabai_available_cache == nil then
+    local handle = io.popen("command -v yabai >/dev/null 2>&1 && echo 1 || echo 0")
+    if not handle then 
+      yabai_available_cache = false
+      return false 
+    end
+    local result = handle:read("*a")
+    handle:close()
+    yabai_available_cache = result and result:match("1")
+  end
+  return yabai_available_cache
 end
 
 local function safe_icon(value)
@@ -147,29 +155,6 @@ local function safe_icon(value)
     return value
   end
   return nil
-end
-
-local function icon_for(name, fallback)
-  -- First try state icons
-  local state_icon = state_module.get_icon(state, name)
-  if state_icon then
-    local icon = safe_icon(state_icon)
-    if icon then return icon end
-  end
-
-  -- Then try icon_manager (with multi-font support)
-  local icon_char = icon_manager.get_char(name)
-  if icon_char and icon_char ~= "" then
-    return safe_icon(icon_char) or fallback
-  end
-
-  -- Fallback to old icon library for compatibility
-  local lib_icon = icons_module.find(name)
-  if lib_icon then
-    return safe_icon(lib_icon) or fallback
-  end
-
-  return safe_icon(fallback) or fallback
 end
 
 _G.icon_for = icon_for
@@ -194,27 +179,73 @@ local function parse_color(value)
   return value
 end
 
--- Spaces management
+-- Spaces management with display state caching
+local last_display_state = nil
+local display_refresh_pending = false
+local spaces_watch_initialized = false
+
+local function get_display_state()
+  if not yabai_available() then
+    return nil
+  end
+  local handle = io.popen("yabai -m query --displays 2>/dev/null | jq -r '[.[] | .index] | sort | join(\",\")'")
+  if not handle then return nil end
+  local result = handle:read("*a")
+  handle:close()
+  return result and result:gsub("%s+", "") or nil
+end
+
 local function refresh_spaces()
   local cmd = string.format("CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR)
   shell_exec(cmd)
 end
 
+-- Debounced display refresh (only refresh if display state actually changed)
+local function refresh_spaces_if_needed()
+  local current_state = get_display_state()
+  if current_state and current_state ~= last_display_state then
+    last_display_state = current_state
+    refresh_spaces()
+    display_refresh_pending = false
+  else
+    display_refresh_pending = false
+  end
+end
+
 local function watch_spaces()
+  if spaces_watch_initialized then
+    return
+  end
   local refresh_action = string.format("CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR)
   local change_action = "sketchybar --trigger space_change"
-  shell_exec("yabai -m signal --remove sketchybar_space_change >/dev/null 2>&1 || true")
-  shell_exec("yabai -m signal --remove sketchybar_space_created >/dev/null 2>&1 || true")
-  shell_exec("yabai -m signal --remove sketchybar_space_destroyed >/dev/null 2>&1 || true")
-  shell_exec("yabai -m signal --remove sketchybar_display_changed >/dev/null 2>&1 || true")
-  shell_exec("yabai -m signal --remove sketchybar_display_added >/dev/null 2>&1 || true")
-  shell_exec("yabai -m signal --remove sketchybar_display_removed >/dev/null 2>&1 || true")
+  
+  -- Batch signal removal commands
+  local remove_cmds = {
+    "yabai -m signal --remove sketchybar_space_change",
+    "yabai -m signal --remove sketchybar_space_created",
+    "yabai -m signal --remove sketchybar_space_destroyed",
+    "yabai -m signal --remove sketchybar_display_changed",
+    "yabai -m signal --remove sketchybar_display_added",
+    "yabai -m signal --remove sketchybar_display_removed"
+  }
+  for _, cmd in ipairs(remove_cmds) do
+    shell_exec(cmd .. " >/dev/null 2>&1 || true")
+  end
+  
+  -- Use debounced refresh for display events to prevent rapid reloads
+  local debounced_refresh = string.format("CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR)
+  
   shell_exec(string.format("yabai -m signal --add event=space_changed label=sketchybar_space_change action=%q", change_action))
   shell_exec(string.format("yabai -m signal --add event=space_created label=sketchybar_space_created action=%q", refresh_action))
   shell_exec(string.format("yabai -m signal --add event=space_destroyed label=sketchybar_space_destroyed action=%q", refresh_action))
+  -- Use immediate refresh for display events (they're already infrequent)
   shell_exec(string.format("yabai -m signal --add event=display_changed label=sketchybar_display_changed action=%q", refresh_action))
   shell_exec(string.format("yabai -m signal --add event=display_added label=sketchybar_display_added action=%q", refresh_action))
   shell_exec(string.format("yabai -m signal --add event=display_removed label=sketchybar_display_removed action=%q", refresh_action))
+  
+  -- Cache initial display state
+  last_display_state = get_display_state()
+  spaces_watch_initialized = true
 end
 
 -- Calculate appearance values
@@ -337,8 +368,7 @@ sbar.add("item", "control_center", {
   icon = "󱓞",
   label = { drawing = false },
   click_script = PLUGIN_DIR .. "/apple_menu.sh",
-  script = POPUP_GUARD_SCRIPT,
-  env = { POPUP_GUARD_STICKY = "1" },
+  script = string.format("env POPUP_GUARD_STICKY=1 %s", POPUP_GUARD_SCRIPT),
   background = {
     color = "0x00000000",
     corner_radius = widget_corner_radius,
@@ -431,16 +461,45 @@ end
 
 -- Render Control Center menu
 menu_module.render_control_center(menu_context)
-whichkey_module.setup(menu_context)
 
 -- Spaces
-refresh_spaces()
-if yabai_available() then
-  watch_spaces()
+local function init_spaces()
+  -- Wait for yabai to be responsive before setting up spaces
+  -- Using POSIX sh syntax for compatibility
+  local wait_cmd = [[ 
+    path_to_yabai=$(which yabai)
+    echo "Waiting for yabai..." >> /tmp/barista_debug.log
+    i=0
+    while [ $i -lt 20 ]; do
+      if "$path_to_yabai" -m query --spaces >/dev/null 2>&1; then
+        echo "Yabai responsive!" >> /tmp/barista_debug.log
+        break
+      fi
+      sleep 0.5
+      i=$((i+1))
+    done
+    echo "Triggering space updates..." >> /tmp/barista_debug.log
+    sketchybar --trigger space_change
+    sketchybar --trigger space_mode_refresh
+  ]]
+  
+  sbar.exec(wait_cmd)
+  
+  -- Setup signals (these don't need to wait, they just listen)
+  if yabai_available() then
+    print("Yabai available, watching spaces...")
+    watch_spaces()
+  else
+    print("Yabai NOT available in Lua check")
+  end
 end
-shell_exec("sketchybar --trigger space_change")
-shell_exec("sketchybar --trigger space_mode_refresh")
 
+init_spaces()
+
+print("Setting up WhichKey...")
+-- Setup WhichKey after spaces to ensure correct visual order on the left
+whichkey_module.setup(menu_context)
+print("WhichKey setup complete")
 -- Front App indicator (actions handled in control_center)
 sbar.add("item", "front_app", {
   position = "left",
@@ -461,9 +520,7 @@ sbar.add("item", "front_app", {
       border_color = theme.WHITE,
       color = theme.bar.bg,
       padding_left = 8,
-      padding_right = 8,
-      padding_top = 6,
-      padding_bottom = 8
+      padding_right = 8
     }
   }
 })
@@ -511,137 +568,88 @@ for _, entry in ipairs(app_actions) do
     ["label.font"] = font_small,
   })
 end
--- Yabai status widget
-if yabai_available() then
-  local widget_factory = widgets_module.create_factory(sbar, theme, settings, state)
-  widget_factory.create("yabai_status", {
-    position = "left",
-    icon = "󱂬",
-    label = "yabai…",
-    update_freq = 60,
-    script = PLUGIN_DIR .. "/yabai_status.sh",
-    click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
-    background_color = state_module.get_widget_color(state, "system_info", theme.BG_SEC_COLR),
-    popup = {
-      align = "left",
-      background = {
-        border_width = 2,
-        corner_radius = 6,
-        border_color = theme.WHITE,
-        color = theme.bar.bg,
-        padding_left = 8,
-        padding_right = 8,
-        padding_top = 6,
-        padding_bottom = 8
-      }
-    }
-  })
-  subscribe_popup_autoclose("yabai_status")
-  attach_hover("yabai_status")
-  sbar.exec("sketchybar --add event yabai_status_refresh")
-  sbar.exec("sketchybar --subscribe yabai_status yabai_status_refresh system_woke front_app_switched space_change")
-  sbar.exec("sketchybar --trigger yabai_status_refresh")
-  local function add_yabai_popup_item(id, props)
-    local defaults = {
-      position = "popup.yabai_status",
-      script = HOVER_SCRIPT,
-      ["icon.padding_left"] = 6,
-      ["icon.padding_right"] = 6,
-      ["label.padding_left"] = 8,
-      ["label.padding_right"] = 8,
-      background = { drawing = false },
-    }
-    for k, v in pairs(props) do
-      defaults[k] = v
-    end
-    sbar.add("item", id, defaults)
-  end
-  local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
-  add_yabai_popup_item("yabai.status.header", {
-    icon = "",
-    label = "Space Layout Modes",
-    ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
-    background = { drawing = false },
-  })
-  local mode_actions = {
-    { name = "yabai.status.float", icon = "󰒄", label = "Float (default)", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "float") },
-    { name = "yabai.status.bsp", icon = "󰆾", label = "BSP Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "bsp") },
-    { name = "yabai.status.stack", icon = "󰓩", label = "Stack Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "stack") },
-  }
-  for _, entry in ipairs(mode_actions) do
-    add_yabai_popup_item(entry.name, {
-      icon = entry.icon,
-      label = entry.label,
-      click_script = entry.action,
-      ["label.font"] = font_small,
-    })
-  end
 
-  -- Add separator
-  add_yabai_popup_item("yabai.status.sep1", {
-    icon = "",
-    label = "───────────────",
-    ["label.font"] = font_string(settings.font.text, settings.font.style_map["Regular"], settings.font.sizes.small),
-    ["label.color"] = theme.DARK_WHITE,
-    background = { drawing = false },
+-- Folded Yabai Menu Items into Front App
+add_front_app_popup_item("front_app.yabai.sep1", {
+  icon = "",
+  label = "───────────────",
+  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Regular"], settings.font.sizes.small),
+  ["label.color"] = theme.DARK_WHITE,
+  background = { drawing = false },
+})
+
+add_front_app_popup_item("front_app.yabai.status.header", {
+  icon = "",
+  label = "Space Layout Modes",
+  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+  background = { drawing = false },
+})
+local mode_actions = {
+  { name = "front_app.yabai.float", icon = "󰒄", label = "Float (default)", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "float") },
+  { name = "front_app.yabai.bsp", icon = "󰆾", label = "BSP Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "bsp") },
+  { name = "front_app.yabai.stack", icon = "󰓩", label = "Stack Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "stack") },
+}
+for _, entry in ipairs(mode_actions) do
+  add_front_app_popup_item(entry.name, {
+    icon = entry.icon,
+    label = entry.label,
+    click_script = entry.action,
+    ["label.font"] = font_small,
   })
-
-  -- Add window management section
-  add_yabai_popup_item("yabai.status.window.header", {
-    icon = "",
-    label = "Window Management",
-    ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
-    background = { drawing = false },
-  })
-
-  local window_actions = {
-    { name = "yabai.status.balance", icon = "󰓅", label = "Balance Windows", action = call_script(YABAI_CONTROL_SCRIPT, "balance"), shortcut = "⌃⌥B" },
-    { name = "yabai.status.rotate", icon = "󰑞", label = "Rotate Layout", action = call_script(YABAI_CONTROL_SCRIPT, "space-rotate"), shortcut = "⌃⌥R" },
-    { name = "yabai.status.toggle", icon = "󱂬", label = "Toggle BSP/Stack", action = call_script(YABAI_CONTROL_SCRIPT, "toggle-layout") },
-    { name = "yabai.status.flip_x", icon = "󰯌", label = "Flip Horizontal", action = call_script(YABAI_CONTROL_SCRIPT, "space-mirror-x") },
-    { name = "yabai.status.flip_y", icon = "󰯎", label = "Flip Vertical", action = call_script(YABAI_CONTROL_SCRIPT, "space-mirror-y") },
-  }
-  for _, entry in ipairs(window_actions) do
-    add_yabai_popup_item(entry.name, {
-      icon = entry.icon,
-      label = entry.label,
-      click_script = entry.action,
-      ["label.font"] = font_small,
-    })
-  end
-
-  -- Add space navigation section
-  add_yabai_popup_item("yabai.status.sep2", {
-    icon = "",
-    label = "───────────────",
-    ["label.font"] = font_string(settings.font.text, settings.font.style_map["Regular"], settings.font.sizes.small),
-    ["label.color"] = theme.DARK_WHITE,
-    background = { drawing = false },
-  })
-
-  add_yabai_popup_item("yabai.status.nav.header", {
-    icon = "",
-    label = "Space Navigation",
-    ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
-    background = { drawing = false },
-  })
-
-  local nav_actions = {
-    { name = "yabai.status.space.prev", icon = "󰆽", label = "Previous Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-prev"), shortcut = "⌃⌥←" },
-    { name = "yabai.status.space.next", icon = "󰆼", label = "Next Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-next"), shortcut = "⌃⌥→" },
-    { name = "yabai.status.space.recent", icon = "󰔰", label = "Recent Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-recent"), shortcut = "⌃⌥⌫" },
-    { name = "yabai.status.space.first", icon = "󰆿", label = "First Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-first") },
-    { name = "yabai.status.space.last", icon = "󰆾", label = "Last Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-last") },
-  }
-  for _, entry in ipairs(nav_actions) do
-    add_yabai_popup_item(entry.name, {
-      icon = entry.icon,
-      label = entry.label,
-      click_script = entry.action,
-      ["label.font"] = font_small,
-    })
-  end
 end
+
+add_front_app_popup_item("front_app.yabai.window.header", {
+  icon = "",
+  label = "Window Management",
+  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+  background = { drawing = false },
+})
+
+local window_actions = {
+  { name = "front_app.yabai.balance", icon = "󰓅", label = "Balance Windows", action = call_script(YABAI_CONTROL_SCRIPT, "balance"), shortcut = "⌃⌥B" },
+  { name = "front_app.yabai.rotate", icon = "󰑞", label = "Rotate Layout", action = call_script(YABAI_CONTROL_SCRIPT, "space-rotate"), shortcut = "⌃⌥R" },
+  { name = "front_app.yabai.toggle", icon = "󱂬", label = "Toggle BSP/Stack", action = call_script(YABAI_CONTROL_SCRIPT, "toggle-layout") },
+  { name = "front_app.yabai.flip_x", icon = "󰯌", label = "Flip Horizontal", action = call_script(YABAI_CONTROL_SCRIPT, "space-mirror-x") },
+  { name = "front_app.yabai.flip_y", icon = "󰯎", label = "Flip Vertical", action = call_script(YABAI_CONTROL_SCRIPT, "space-mirror-y") },
+}
+for _, entry in ipairs(window_actions) do
+  add_front_app_popup_item(entry.name, {
+    icon = entry.icon,
+    label = entry.label,
+    click_script = entry.action,
+    ["label.font"] = font_small,
+  })
+end
+
+add_front_app_popup_item("front_app.yabai.nav.header", {
+  icon = "",
+  label = "Space Navigation",
+  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+  background = { drawing = false },
+})
+
+local nav_actions = {
+  { name = "front_app.yabai.prev", icon = "󰆽", label = "Previous Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-prev"), shortcut = "⌃⌥←" },
+  { name = "front_app.yabai.next", icon = "󰆼", label = "Next Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-next"), shortcut = "⌃⌥→" },
+  { name = "front_app.yabai.recent", icon = "󰔰", label = "Recent Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-recent"), shortcut = "⌃⌥⌫" },
+  { name = "front_app.yabai.first", icon = "󰆿", label = "First Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-first") },
+  { name = "front_app.yabai.last", icon = "󰆾", label = "Last Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-last") },
+}
+for _, entry in ipairs(nav_actions) do
+  add_front_app_popup_item(entry.name, {
+    icon = entry.icon,
+    label = entry.label,
+    click_script = entry.action,
+    ["label.font"] = font_small,
+  })
+end
+
+-- Spaces: Refresh after all left items are added
+-- This allows spaces to be appended to the end of the left stack
+refresh_spaces()
+watch_spaces()
+shell_exec("sketchybar --trigger space_change")
+shell_exec("sketchybar --trigger space_mode_refresh")
 
 -- Create widget factory
 local widget_factory = widgets_module.create_factory(sbar, theme, settings, state)
@@ -660,9 +668,7 @@ widget_factory.create_clock({
       border_color = theme.WHITE,
       color = theme.bar.bg,
       padding_left = 12,
-      padding_right = 12,
-      padding_top = 8,
-      padding_bottom = 10
+      padding_right = 12
     }
   }
 })
@@ -752,6 +758,7 @@ end
 -- System Info widget
 widget_factory.create_system_info({
   script = PLUGIN_DIR .. "/system_info.sh",
+  update_freq = 30,  -- Increased from 20s to reduce update frequency
 })
 subscribe_popup_autoclose("system_info")
 attach_hover("system_info")
@@ -841,9 +848,7 @@ widget_factory.create("input", {
       border_color = theme.WHITE,
       color = theme.bar.bg,
       padding_left = 8,
-      padding_right = 8,
-      padding_top = 6,
-      padding_bottom = 8
+      padding_right = 8
     }
   }
 })
@@ -900,9 +905,7 @@ widget_factory.create_volume({
       border_color = theme.WHITE,
       color = theme.bar.bg,
       padding_left = 8,
-      padding_right = 8,
-      padding_top = 6,
-      padding_bottom = 8
+      padding_right = 8
     }
   }
 })
@@ -961,12 +964,11 @@ widget_factory.create_battery({
 sbar.exec("sketchybar --subscribe battery system_woke power_source_change")
 attach_hover("battery")
 
--- Trigger initial updates for reactive widgets
-sbar.exec("sketchybar --trigger volume_change")
-sbar.exec("sketchybar --update volume")
-sbar.exec("sketchybar --update battery")
+-- Trigger initial updates for reactive widgets (batched for performance)
+sbar.exec("sketchybar --trigger volume_change && sketchybar --update volume && sketchybar --update battery")
 
 -- End configuration
 sbar.end_config()
 
+print("main.lua finished loading!")
 sbar.event_loop()

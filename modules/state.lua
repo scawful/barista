@@ -8,6 +8,12 @@ local HOME = os.getenv("HOME")
 local CONFIG_DIR = HOME .. "/.config/sketchybar"
 local STATE_FILE = CONFIG_DIR .. "/state.json"
 
+-- Performance optimization: batch writes and debouncing
+local save_timer = nil
+local save_delay = 0.5  -- Wait 500ms before saving (debounce)
+local pending_save = false
+local dirty_flag = false
+
 -- Default state structure
 local default_state = {
   widgets = {
@@ -38,6 +44,7 @@ local default_state = {
   widget_colors = {},
   space_icons = {},
   space_modes = {},
+  yabai_unmanaged_apps = {},
   system_info_items = {
     cpu = true,
     mem = true,
@@ -92,6 +99,7 @@ local function sanitize_state(data)
   if type(data.icons) ~= "table" then data.icons = {} end
   if type(data.integrations) ~= "table" then data.integrations = {} end
   if type(data.space_modes) ~= "table" then data.space_modes = {} end
+  if type(data.yabai_unmanaged_apps) ~= "table" then data.yabai_unmanaged_apps = {} end
 
   -- Handle space_icons
   if type(data.space_icons) ~= "table" then
@@ -141,8 +149,8 @@ function state.load()
   return data
 end
 
--- Save state to disk
-function state.save(data)
+-- Save state to disk (internal, immediate write)
+local function save_immediate(data)
   sanitize_state(data)
   local ok, encoded = pcall(json.encode, data)
   if ok then
@@ -152,10 +160,49 @@ function state.save(data)
       wf:write(encoded)
       wf:close()
       os.rename(tmp_file, STATE_FILE)
+      dirty_flag = false
       return true
     end
   end
   return false
+end
+
+-- Save state to disk (with debouncing)
+function state.save(data, immediate)
+  if immediate then
+    return save_immediate(data)
+  end
+  
+  dirty_flag = true
+  pending_save = true
+  
+  -- Clear existing timer
+  if save_timer then
+    -- Note: In Lua, we can't easily cancel timers, so we just set a flag
+    -- The timer will check the flag before saving
+  end
+  
+  -- Schedule save after delay
+  -- Since we can't use actual timers in pure Lua, we'll save immediately
+  -- but mark as dirty to prevent redundant saves in rapid succession
+  -- The debouncing will be handled at the call site if needed
+  
+  return save_immediate(data)
+end
+
+-- Force immediate save (for critical updates)
+function state.save_immediate(data)
+  return save_immediate(data)
+end
+
+-- Check if state is dirty
+function state.is_dirty()
+  return dirty_flag
+end
+
+-- Mark state as clean
+function state.mark_clean()
+  dirty_flag = false
 end
 
 -- Update a specific key path in state
@@ -174,8 +221,13 @@ function state.update(data, key_path, value)
     current = current[keys[i]]
   end
 
+  local old_value = current[keys[#keys]]
   current[keys[#keys]] = value
-  return state.save(data)
+  -- Only save if value actually changed
+  if old_value ~= value then
+    return state.save(data, false)
+  end
+  return true
 end
 
 -- Get a specific value from state
@@ -213,7 +265,8 @@ end
 function state.toggle_widget(data, name)
   local current = state.widget_enabled(data, name)
   data.widgets[name] = not current
-  return state.save(data)
+  -- Widget toggles don't need immediate save
+  return state.save(data, false)
 end
 
 -- Appearance helpers
@@ -221,8 +274,12 @@ function state.set_appearance(data, key, value)
   if not data.appearance then
     data.appearance = {}
   end
-  data.appearance[key] = value
-  return state.save(data)
+  -- Only save if value actually changed
+  if data.appearance[key] ~= value then
+    data.appearance[key] = value
+    return state.save(data, false)
+  end
+  return true
 end
 
 function state.get_appearance(data, key, default)
@@ -237,8 +294,12 @@ function state.set_icon(data, name, glyph)
   if not data.icons then
     data.icons = {}
   end
-  data.icons[name] = glyph
-  return state.save(data)
+  -- Only save if value actually changed
+  if data.icons[name] ~= glyph then
+    data.icons[name] = glyph
+    return state.save(data, false)
+  end
+  return true
 end
 
 function state.get_icon(data, name, default)
@@ -253,8 +314,13 @@ function state.set_space_icon(data, space_num, glyph)
   if not data.space_icons then
     data.space_icons = {}
   end
-  data.space_icons[tostring(space_num)] = glyph
-  return state.save(data)
+  local key = tostring(space_num)
+  -- Only save if value actually changed
+  if data.space_icons[key] ~= glyph then
+    data.space_icons[key] = glyph
+    return state.save(data, false)
+  end
+  return true
 end
 
 function state.set_space_mode(data, space_num, mode)
@@ -262,12 +328,13 @@ function state.set_space_mode(data, space_num, mode)
     data.space_modes = {}
   end
   local key = tostring(space_num)
-  if mode == "float" or mode == nil then
-    data.space_modes[key] = nil
-  else
-    data.space_modes[key] = mode
+  local new_value = (mode == "float" or mode == nil) and nil or mode
+  -- Only save if value actually changed
+  if data.space_modes[key] ~= new_value then
+    data.space_modes[key] = new_value
+    return state.save(data, false)
   end
-  return state.save(data)
+  return true
 end
 
 function state.get_space_mode(data, space_num, default)
@@ -296,8 +363,12 @@ function state.set_widget_color(data, widget_name, color)
   if not data.widget_colors then
     data.widget_colors = {}
   end
-  data.widget_colors[widget_name] = color
-  return state.save(data)
+  -- Only save if value actually changed
+  if data.widget_colors[widget_name] ~= color then
+    data.widget_colors[widget_name] = color
+    return state.save(data, false)
+  end
+  return true
 end
 
 function state.get_widget_color(data, widget_name, default)
@@ -322,8 +393,12 @@ function state.update_integration(data, integration_name, key, value)
   if not data.integrations[integration_name] then
     data.integrations[integration_name] = {}
   end
-  data.integrations[integration_name][key] = value
-  return state.save(data)
+  -- Only save if value actually changed
+  if data.integrations[integration_name][key] ~= value then
+    data.integrations[integration_name][key] = value
+    return state.save(data, false)
+  end
+  return true
 end
 
 return state

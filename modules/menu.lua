@@ -102,6 +102,14 @@ local function halext_items(ctx)
   }
 end
 
+local function syshelp_items(ctx)
+  -- Use Syshelp integration if available
+  if ctx.integrations and ctx.integrations.syshelp then
+    return ctx.integrations.syshelp.create_menu_items(ctx)
+  end
+  return {}
+end
+
 local function help_items(ctx)
   local data = load_menu_section(ctx, "menu_help")
   local items = {}
@@ -266,13 +274,11 @@ function menu.render_control_center(ctx)
   local launch_agent_items = {
     { type = "item", name = "menu.agents.open_panel", icon = "󰘦", label = "Launch Agents Tab", action = ctx.call_script(ctx.scripts.open_control_panel) },
     { type = "separator", name = "menu.agents.sep0" },
+    { type = "item", name = "menu.agents.status.placeholder", icon = "󰑐", label = "Status: Load in Control Panel", action = ctx.call_script(ctx.scripts.open_control_panel), color = ctx.theme.DARK_WHITE },
   }
 
-  -- Add dynamic status items
-  local status_items = get_agent_status_items(ctx)
-  for _, item in ipairs(status_items) do
-    table.insert(launch_agent_items, item)
-  end
+  -- Performance optimization: Removed synchronous agent status check (get_agent_status_items) during startup
+  -- Use Control Panel to view real-time status
 
   -- Add control items
   local control_items = {
@@ -314,6 +320,7 @@ function menu.render_control_center(ctx)
     { type = "item", name = "menu.rom.popup", icon = "󰊕", label = "ROM Hacking…", popup = "rom_hacking", items = rom_hacking_items(ctx) },
     { type = "item", name = "menu.emacs.popup", icon = "󰘔", label = "Emacs Workspace…", popup = "emacs_workspace", items = emacs_items(ctx) },
     { type = "item", name = "menu.halext.popup", icon = "󱓷", label = "halext-org…", popup = "halext_org", items = halext_items(ctx) },
+    { type = "item", name = "menu.syshelp.popup", icon = "🚀", label = "System Intelligence…", popup = "syshelp", items = syshelp_items(ctx) },
     { type = "separator", name = "menu.workspaces.sep1" },
     { type = "header", name = "menu.apps.header", label = "Apps" },
     { type = "item", name = "menu.apps.popup", icon = "󰖟", label = "Apps & Tools…", popup = "apps_tools", items = app_tool_items },
@@ -324,6 +331,11 @@ function menu.render_control_center(ctx)
     { type = "item", name = "menu.agents.popup", icon = "󰳟", label = "Launch Agents…", popup = "launch_agents", items = launch_agent_items },
     { type = "item", name = "menu.debug.popup", icon = "󰃤", label = "Debug Tools…", popup = "debug_tools", items = debug_tool_items },
   }
+
+  menu.halext_items = halext_items
+  menu.syshelp_items = syshelp_items
+  menu.help_items = help_items
+  menu.app_tool_items = function(ctx) return app_tool_items end
 
   render_menu_items("control_center", control_center_items)
 end

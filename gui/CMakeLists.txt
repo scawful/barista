@@ -1,3 +1,6 @@
+cmake_minimum_required(VERSION 3.10)
+project(barista_gui)
+
 # GUI CMakeLists.txt
 # Builds Objective-C GUI applications
 
@@ -42,6 +45,8 @@ if(APPLE)
     src/tabs/ThemesTabViewController.h
     src/tabs/ShortcutsTabViewController.m
     src/tabs/ShortcutsTabViewController.h
+    src/tabs/WorkflowTabViewController.m
+    src/tabs/WorkflowTabViewController.h
     src/tabs/LaunchAgentsTabViewController.m
     src/tabs/LaunchAgentsTabViewController.h
     src/tabs/DebugTabViewController.m

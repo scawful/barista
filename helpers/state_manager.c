@@ -211,6 +211,47 @@ void load_json_state() {
         }
     }
 
+    // Parse space_icons
+    char* icons_start = strstr(buffer, "\"space_icons\"");
+    if (icons_start) {
+        char* ptr = icons_start;
+        // Find opening brace
+        ptr = strchr(ptr, '{');
+        if (ptr) {
+            ptr++;
+            while ((ptr = strchr(ptr, '\"'))) {
+                ptr++;
+                char* end = strchr(ptr, '\"');
+                if (!end) break;
+                
+                char key[16] = {0};
+                strncpy(key, ptr, end - ptr);
+                int idx = atoi(key);
+                
+                // Skip to value
+                char* val_start = strchr(end, ':');
+                if (!val_start) break;
+                val_start = strchr(val_start, '\"');
+                if (!val_start) break;
+                val_start++;
+                
+                char* val_end = strchr(val_start, '\"');
+                if (!val_end) break;
+                
+                if (idx >= 1 && idx <= MAX_SPACES) {
+                    char icon[MAX_ICON_LEN] = {0};
+                    strncpy(icon, val_start, val_end - val_start);
+                    strcpy(state->spaces[idx - 1].icon, icon);
+                }
+                
+                ptr = val_end + 1;
+                // Check for end of object or next item
+                char* next = strpbrk(ptr, ",}");
+                if (!next || *next == '}') break;
+            }
+        }
+    }
+
     free(buffer);
 }
 
@@ -370,6 +411,17 @@ void set_space_mode(int space_num, const char* mode) {
     pthread_mutex_unlock(&state->lock);
 }
 
+// Print all space icons
+void print_space_icons() {
+    pthread_mutex_lock(&state->lock);
+    for (int i = 0; i < MAX_SPACES; i++) {
+        if (strlen(state->spaces[i].icon) > 0) {
+            printf("%d\t%s\n", i + 1, state->spaces[i].icon);
+        }
+    }
+    pthread_mutex_unlock(&state->lock);
+}
+
 // Main function for CLI usage
 int main(int argc, char* argv[]) {
     if (argc < 2) {
@@ -380,6 +432,7 @@ int main(int argc, char* argv[]) {
         printf("  widget <name> [on|off|toggle] - Control widget\n");
         printf("  appearance <key> <value>    - Update appearance\n");
         printf("  space-icon <num> <icon>     - Set space icon\n");
+        printf("  get-space-icons             - Get all space icons\n");
         printf("  space-mode <num> <mode>     - Set space mode\n");
         printf("  stats                       - Show performance stats\n");
         return 1;
@@ -397,6 +450,10 @@ int main(int argc, char* argv[]) {
     else if (strcmp(argv[1], "save") == 0) {
         save_json_state();
         printf("State saved\n");
+    }
+    else if (strcmp(argv[1], "get-space-icons") == 0) {
+        load_json_state(); // Ensure we have the latest state
+        print_space_icons();
     }
     else if (strcmp(argv[1], "widget") == 0 && argc >= 3) {
         if (argc == 3) {

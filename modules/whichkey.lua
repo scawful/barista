@@ -63,22 +63,20 @@ function whichkey.setup(ctx)
 
   local base_item = "whichkey_hud"
   sbar.add("item", base_item, {
-    position = "center",
+    position = "left",
     icon = "󰘥",
     label = "?",
     click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
     script = [[if [ "$SENDER" = "whichkey_toggle" ]; then sketchybar -m --set $NAME popup.drawing=toggle; fi]],
     popup = {
-      align = "center",
+      align = "left",
       background = {
         border_width = 2,
         corner_radius = 6,
         border_color = ctx.theme.WHITE,
-        color = ctx.theme.bar.bg,
+        color = ctx.theme.BG_SEC_COLR,
         padding_left = 16,
         padding_right = 16,
-        padding_top = 12,
-        padding_bottom = 16,
       }
     }
   })
@@ -168,7 +166,10 @@ function whichkey.setup(ctx)
     table.insert(items, { type = "separator" })
     table.insert(items, { type = "header", label = "Repos" })
     for _, repo in ipairs(repos) do
-      local status = repo_status(repo)
+      -- Performance optimization: Disable synchronous git checks during startup
+      -- local status = repo_status(repo)
+      local status = { branch = "—", dirty = false, path = expand_path(repo.path) }
+      
       if status then
         local suffix = status.dirty and " *" or ""
         table.insert(items, {

@@ -6,9 +6,10 @@ set -euo pipefail
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
 HELPER="${BARISTA_AGENT_HELPER:-$CONFIG_DIR/helpers/launch_agent_manager.sh}"
 DOMAIN="gui/$(id -u)"
+# Default to Koekeishiya labels used by current installs; override via env if needed.
 SKETCHYBAR_LABEL="${BARISTA_SKETCHYBAR_LABEL:-homebrew.mxcl.sketchybar}"
-YABAI_LABEL="${BARISTA_YABAI_LABEL:-org.nbirrell.yabai}"
-SKHD_LABEL="${BARISTA_SKHD_LABEL:-org.nbirrell.skhd}"
+YABAI_LABEL="${BARISTA_YABAI_LABEL:-com.koekeishiya.yabai}"
+SKHD_LABEL="${BARISTA_SKHD_LABEL:-com.koekeishiya.skhd}"
 AGENTS=("$SKETCHYBAR_LABEL" "$YABAI_LABEL" "$SKHD_LABEL")
 
 log() {
@@ -85,4 +86,3 @@ case "$command" in
     exit 1
     ;;
 esac
-

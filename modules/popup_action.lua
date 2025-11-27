@@ -35,6 +35,14 @@ local popup_definitions = {
       return require("menu").halext_items(ctx)
     end
   },
+  syshelp = {
+    name = "popup.syshelp",
+    icon = "🚀",
+    label = "System Intelligence",
+    items = function(ctx)
+      return require("menu").syshelp_items(ctx)
+    end
+  },
   apps_tools = {
     name = "popup.apps_tools",
     icon = "󰖟",

@@ -97,7 +97,7 @@ function menu_renderer.create(ctx)
       icon = entry.icon or "",
       label = label,
       click_script = click,
-      script = ctx.HOVER_SCRIPT,
+      script = string.format("env SUBMENU_PARENT=%q %s", popup, ctx.HOVER_SCRIPT or ""),
       ["icon.padding_left"] = padding.icon_left,
       ["icon.padding_right"] = padding.icon_right,
       ["label.padding_left"] = padding.label_left,
@@ -106,8 +106,7 @@ function menu_renderer.create(ctx)
         drawing = false,
         corner_radius = 4,
         height = math.max(widget_height - 10, 16)
-      },
-      env = { SUBMENU_PARENT = popup }
+      }
     }
 
     -- Allow overriding colors
@@ -230,4 +229,3 @@ function menu_renderer.create(ctx)
 end
 
 return menu_renderer
-

@@ -41,6 +41,7 @@
 @property (copy) NSString *statePath;
 @property (strong) NSDictionary *state;
 @property (strong) NSArray<NSDictionary *> *iconLibrary;
+@property (strong) NSTextView *unmanagedAppsTextView;
 @end
 
 @implementation MenuController
@@ -794,6 +795,43 @@
   self.shortcutToggle.action = @selector(shortcutModeChanged:);
   [shortcutsContent addSubview:self.shortcutToggle];
 
+  CGFloat unmanagedHeight = 200.0;
+  NSBox *unmanagedBox = [[NSBox alloc] initWithFrame:NSMakeRect(columnX[1], nextBoxOriginY(1, unmanagedHeight), columnWidth, unmanagedHeight)];
+  [unmanagedBox setTitle:@"Unmanaged Apps (Yabai)"];
+  [content addSubview:unmanagedBox];
+  NSView *unmanagedContent = [unmanagedBox contentView];
+
+  NSTextField *unmanagedHelp = [[NSTextField alloc] initWithFrame:NSMakeRect(10, unmanagedContent.bounds.size.height - 36, unmanagedContent.bounds.size.width - 20, 32)];
+  [unmanagedHelp setBezeled:NO];
+  [unmanagedHelp setEditable:NO];
+  [unmanagedHelp setDrawsBackground:NO];
+  [unmanagedHelp setLineBreakMode:NSLineBreakByWordWrapping];
+  [unmanagedHelp setStringValue:@"One app name per line. These exclusions layer on top of the built-in rules already in your yabairc."];
+  [unmanagedContent addSubview:unmanagedHelp];
+
+  NSScrollView *unmanagedScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(10, 44, unmanagedContent.bounds.size.width - 20, unmanagedContent.bounds.size.height - 74)];
+  unmanagedScroll.hasVerticalScroller = YES;
+  unmanagedScroll.autohidesScrollers = YES;
+  unmanagedScroll.borderType = NSBezelBorder;
+
+  self.unmanagedAppsTextView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, unmanagedScroll.contentSize.width, unmanagedScroll.contentSize.height)];
+  [self.unmanagedAppsTextView setFont:[NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular]];
+  [self.unmanagedAppsTextView setAutomaticQuoteSubstitutionEnabled:NO];
+  [self.unmanagedAppsTextView setAutomaticDashSubstitutionEnabled:NO];
+  NSArray<NSString *> *unmanagedApps = [self currentUnmanagedApps];
+  NSString *unmanagedText = [unmanagedApps componentsJoinedByString:@"\n"];
+  [self.unmanagedAppsTextView setString:unmanagedText];
+  unmanagedScroll.documentView = self.unmanagedAppsTextView;
+  [unmanagedContent addSubview:unmanagedScroll];
+
+  NSButton *saveUnmanaged = [[NSButton alloc] initWithFrame:NSMakeRect(unmanagedContent.bounds.size.width - 120, 10, 110, 26)];
+  [saveUnmanaged setTitle:@"Save Apps"];
+  [saveUnmanaged setButtonType:NSButtonTypeMomentaryPushIn];
+  [saveUnmanaged setBezelStyle:NSBezelStyleRounded];
+  saveUnmanaged.target = self;
+  saveUnmanaged.action = @selector(saveUnmanagedApps:);
+  [unmanagedContent addSubview:saveUnmanaged];
+
   CGFloat integrationsHeight = 190.0;
   NSBox *integrationsBox = [[NSBox alloc] initWithFrame:NSMakeRect(columnX[1], nextBoxOriginY(1, integrationsHeight), columnWidth, integrationsHeight)];
   [integrationsBox setTitle:@"Integration Status"];
@@ -1340,6 +1378,81 @@
     return relativePath;
   }
   return [NSHomeDirectory() stringByAppendingPathComponent:relativePath];
+}
+
+- (NSString *)unmanagedAppsFilePath {
+  return [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar/unmanaged_apps.conf"];
+}
+
+- (NSArray<NSString *> *)parseUnmanagedAppsFromString:(NSString *)string {
+  if (![string isKindOfClass:[NSString class]]) return @[];
+  NSMutableOrderedSet<NSString *> *set = [NSMutableOrderedSet orderedSet];
+  NSCharacterSet *ws = [NSCharacterSet whitespaceAndNewlineCharacterSet];
+  NSArray<NSString *> *lines = [string componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
+  for (NSString *line in lines) {
+    NSString *trimmed = [line stringByTrimmingCharactersInSet:ws];
+    if (trimmed.length == 0) continue;
+    if ([trimmed hasPrefix:@"#"]) continue;
+    [set addObject:trimmed];
+  }
+  return set.array;
+}
+
+- (NSArray<NSString *> *)currentUnmanagedApps {
+  NSMutableOrderedSet<NSString *> *apps = [NSMutableOrderedSet orderedSet];
+  id stored = self.state[@"yabai_unmanaged_apps"];
+  NSCharacterSet *ws = [NSCharacterSet whitespaceAndNewlineCharacterSet];
+  if ([stored isKindOfClass:[NSArray class]]) {
+    for (id entry in (NSArray *)stored) {
+      if (![entry isKindOfClass:[NSString class]]) continue;
+      NSString *trimmed = [((NSString *)entry) stringByTrimmingCharactersInSet:ws];
+      if (trimmed.length > 0) {
+        [apps addObject:trimmed];
+      }
+    }
+  }
+
+  if (apps.count == 0) {
+    NSString *path = [self unmanagedAppsFilePath];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
+      NSString *contents = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+      for (NSString *entry in [self parseUnmanagedAppsFromString:contents]) {
+        [apps addObject:entry];
+      }
+    }
+  }
+
+  return apps.array;
+}
+
+- (void)saveUnmanagedApps:(id)sender {
+  NSString *text = self.unmanagedAppsTextView.string ?: @"";
+  NSArray<NSString *> *apps = [self parseUnmanagedAppsFromString:text];
+
+  NSMutableDictionary *mutableState = [self.state mutableCopy];
+  if (!mutableState) mutableState = [NSMutableDictionary dictionary];
+  mutableState[@"yabai_unmanaged_apps"] = apps;
+
+  NSError *error = nil;
+  NSData *json = [NSJSONSerialization dataWithJSONObject:mutableState options:NSJSONWritingPrettyPrinted error:&error];
+  if (json && !error) {
+    if ([json writeToFile:self.statePath atomically:YES]) {
+      self.state = mutableState;
+    }
+  }
+
+  NSString *path = [self unmanagedAppsFilePath];
+  if (path) {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    [fm createDirectoryAtPath:[path stringByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:nil];
+    NSString *body = apps.count ? [[apps componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"] : @"";
+    [body writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  }
+
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"update_unmanaged_apps.sh"];
+  if ([[NSFileManager defaultManager] isExecutableFileAtPath:script]) {
+    [self runScript:script arguments:@[]];
+  }
 }
 
 - (void)menuIconChanged:(NSPopUpButton *)sender {

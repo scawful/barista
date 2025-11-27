@@ -4,8 +4,12 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/file.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdarg.h>
+#include <signal.h>
+#include <errno.h>
 
 static const char *HOVER_BG = "0x80cba6f7";
 static const char *IDLE_BG = "0x00000000";
@@ -26,6 +30,7 @@ static const size_t SUBMENU_COUNT = sizeof(SUBMENUS) / sizeof(SUBMENUS[0]);
 static double CLOSE_DELAY = 0.25;  // Increased default for better reliability
 static char state_file[PATH_MAX];
 static char parent_state_file[PATH_MAX];
+static char pid_file[PATH_MAX];  // Track pending close PIDs
 static const char *PARENT_POPUP = "apple_menu";  // Main menu that contains submenus
 
 static void run_cmd(const char *fmt, ...) {
@@ -37,22 +42,39 @@ static void run_cmd(const char *fmt, ...) {
   system(buffer);
 }
 
+// Atomic file operations with flock
 static void record_active(const char *name) {
-  FILE *fp = fopen(state_file, "w");
-  if (!fp) return;
-  fputs(name, fp);
-  fclose(fp);
+  int fd = open(state_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd < 0) return;
+
+  // Get exclusive lock
+  if (flock(fd, LOCK_EX) < 0) {
+    close(fd);
+    return;
+  }
+
+  write(fd, name, strlen(name));
+  flock(fd, LOCK_UN);
+  close(fd);
 }
 
 static int read_active(char *buffer, size_t size) {
-  FILE *fp = fopen(state_file, "r");
-  if (!fp) return 0;
-  if (!fgets(buffer, (int)size, fp)) {
-    fclose(fp);
+  int fd = open(state_file, O_RDONLY);
+  if (fd < 0) return 0;
+
+  // Get shared lock for reading
+  if (flock(fd, LOCK_SH) < 0) {
+    close(fd);
     return 0;
   }
+
+  ssize_t n = read(fd, buffer, size - 1);
+  flock(fd, LOCK_UN);
+  close(fd);
+
+  if (n <= 0) return 0;
+  buffer[n] = '\0';
   buffer[strcspn(buffer, "\n")] = '\0';
-  fclose(fp);
   return 1;
 }
 
@@ -62,17 +84,60 @@ static void clear_active() {
 }
 
 static void record_parent_open() {
-  FILE *fp = fopen(parent_state_file, "w");
-  if (!fp) return;
-  fputs("open", fp);
-  fclose(fp);
+  int fd = open(parent_state_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd < 0) return;
+
+  if (flock(fd, LOCK_EX) < 0) {
+    close(fd);
+    return;
+  }
+
+  write(fd, "open", 4);
+  flock(fd, LOCK_UN);
+  close(fd);
 }
 
 static int is_parent_open() {
-  FILE *fp = fopen(parent_state_file, "r");
-  if (!fp) return 0;
-  fclose(fp);
+  int fd = open(parent_state_file, O_RDONLY);
+  if (fd < 0) return 0;
+  close(fd);
   return 1;
+}
+
+// Kill any pending close process for this submenu
+static void cancel_pending_close(const char *name) {
+  char submenu_pid_file[PATH_MAX];
+  snprintf(submenu_pid_file, sizeof(submenu_pid_file), "%s.%s", pid_file, name);
+
+  int fd = open(submenu_pid_file, O_RDONLY);
+  if (fd < 0) return;
+
+  char pid_str[32];
+  ssize_t n = read(fd, pid_str, sizeof(pid_str) - 1);
+  close(fd);
+
+  if (n > 0) {
+    pid_str[n] = '\0';
+    pid_t old_pid = (pid_t)atoi(pid_str);
+    if (old_pid > 0) {
+      kill(old_pid, SIGTERM);  // Cancel the pending close
+    }
+  }
+  unlink(submenu_pid_file);
+}
+
+// Record the PID of a pending close
+static void record_pending_close(const char *name, pid_t pid) {
+  char submenu_pid_file[PATH_MAX];
+  snprintf(submenu_pid_file, sizeof(submenu_pid_file), "%s.%s", pid_file, name);
+
+  int fd = open(submenu_pid_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd < 0) return;
+
+  char pid_str[32];
+  snprintf(pid_str, sizeof(pid_str), "%d", pid);
+  write(fd, pid_str, strlen(pid_str));
+  close(fd);
 }
 
 static void close_other_submenus(const char *current) {
@@ -94,21 +159,35 @@ static void close_other_submenus(const char *current) {
 }
 
 static void schedule_close(const char *name) {
+  // Cancel any existing pending close for this submenu
+  cancel_pending_close(name);
+
   pid_t pid = fork();
-  if (pid != 0) {
+  if (pid > 0) {
+    // Parent: record the child PID for potential cancellation
+    record_pending_close(name, pid);
+    return;
+  }
+  if (pid < 0) {
+    // Fork failed
     return;
   }
 
-  // Wait for delay
+  // Child process: wait then close
   usleep((useconds_t)(CLOSE_DELAY * 1000000.0));
 
-  // Check if still active
+  // Check if still active (with proper locking)
   char current[256];
   if (!read_active(current, sizeof(current)) || strcmp(current, name) != 0) {
     // Close submenu and reset background
     run_cmd("sketchybar --set %s popup.drawing=off background.drawing=off background.color=%s",
             name, IDLE_BG);
   }
+
+  // Clean up our PID file
+  char submenu_pid_file[PATH_MAX];
+  snprintf(submenu_pid_file, sizeof(submenu_pid_file), "%s.%s", pid_file, name);
+  unlink(submenu_pid_file);
 
   _exit(0);
 }
@@ -118,6 +197,7 @@ int main(void) {
   if (!tmpdir) tmpdir = "/tmp";
   snprintf(state_file, sizeof(state_file), "%s/sketchybar_submenu_active", tmpdir);
   snprintf(parent_state_file, sizeof(parent_state_file), "%s/sketchybar_parent_popup_lock", tmpdir);
+  snprintf(pid_file, sizeof(pid_file), "%s/sketchybar_submenu_pid", tmpdir);
 
   const char *delay_env = getenv("SUBMENU_CLOSE_DELAY");
   if (delay_env && delay_env[0] != '\0') {
@@ -132,6 +212,8 @@ int main(void) {
   const char *sender = getenv("SENDER");
 
   if (!sender || strcmp(sender, "mouse.entered") == 0) {
+    // Cancel any pending close for this submenu (user re-entered)
+    cancel_pending_close(name);
     close_other_submenus(name);
     record_active(name);
     record_parent_open();  // Lock parent popup from closing

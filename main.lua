@@ -22,6 +22,7 @@ local widgets_module = require("widgets")
 local menu_module = require("menu")
 local yaze_module = require("yaze")
 local emacs_module = require("emacs")
+local syshelp_module = require("syshelp")
 local whichkey_module = require("whichkey")
 
 -- Initialize component switcher for C/Lua hybrid architecture
@@ -34,7 +35,7 @@ component_switcher.set_mode("auto")  -- Auto-select C when available, fallback t
 c_bridge.init()  -- Pre-cache common operations
 
 -- Import existing icons into icon_manager for backwards compatibility
-icon_manager.import_from_module(icons_module)
+-- icon_manager.import_from_module(icons_module) -- Disabled for performance optimization; legacy lookup is handled in icon_for()
 
 -- Paths
 local PLUGIN_DIR = CONFIG_DIR .. "/plugins"
@@ -91,6 +92,7 @@ end
 local yaze_enabled = integration_enabled("yaze")
 local emacs_enabled = integration_enabled("emacs")
 local halext_enabled = integration_enabled("halext")
+local syshelp_enabled = integration_enabled("syshelp")
 local halext_module = halext_enabled and require("halext") or nil
 
 -- Utility functions
@@ -442,11 +444,13 @@ local menu_context = {
     yaze = yaze_enabled and yaze_module or nil,
     emacs = emacs_enabled and emacs_module or nil,
     halext = halext_enabled and halext_module or nil,
+    syshelp = syshelp_enabled and syshelp_module or nil,
   },
   integration_flags = {
     yaze = yaze_enabled,
     emacs = emacs_enabled,
     halext = halext_enabled,
+    syshelp = syshelp_enabled,
   },
   profile = user_profile,
   profile_name = profile_name,

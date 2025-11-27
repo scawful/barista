@@ -7,6 +7,7 @@
 #import "IntegrationsTabViewController.h"
 #import "ThemesTabViewController.h"
 #import "ShortcutsTabViewController.h"
+#import "WorkflowTabViewController.h"
 #import "LaunchAgentsTabViewController.h"
 #import "DebugTabViewController.h"
 #import "PerformanceTabViewController.h"
@@ -89,6 +90,13 @@
   shortcutsItem.viewController = self.shortcutsTab;
   [self.tabView addTabViewItem:shortcutsItem];
 
+  // Workflow Tab
+  self.workflowTab = [[WorkflowTabViewController alloc] init];
+  NSTabViewItem *workflowItem = [[NSTabViewItem alloc] initWithIdentifier:@"workflow"];
+  workflowItem.label = @"Workflow";
+  workflowItem.viewController = self.workflowTab;
+  [self.tabView addTabViewItem:workflowItem];
+
   // Integrations Tab
   self.integrationsTab = [[IntegrationsTabViewController alloc] init];
   NSTabViewItem *integrationsItem = [[NSTabViewItem alloc] initWithIdentifier:@"integrations"];
@@ -140,4 +148,3 @@
 }
 
 @end
-

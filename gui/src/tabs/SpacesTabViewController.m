@@ -7,6 +7,8 @@
 @property (strong) NSTextField *iconPreview;
 @property (strong) NSSegmentedControl *modeSelector;
 @property (strong) NSButton *applyButton;
+@property (strong) NSTextView *unmanagedAppsTextView;
+@property (strong) NSSegmentedControl *shortcutToggle;
 @property (assign) NSInteger currentSpace;
 @end
 
@@ -134,7 +136,7 @@
   descLabel.backgroundColor = [NSColor clearColor];
   descLabel.textColor = [NSColor secondaryLabelColor];
   [self.view addSubview:descLabel];
-  y -= 80;
+  y -= 60;
 
   // Apply Button
   self.applyButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin, y, 200, 32)];
@@ -144,6 +146,77 @@
   self.applyButton.target = self;
   self.applyButton.action = @selector(applySettings:);
   [self.view addSubview:self.applyButton];
+  y -= 60;
+
+  // Space Switching Section
+  NSTextField *switchingSectionLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 200, 24)];
+  switchingSectionLabel.stringValue = @"Space Switching";
+  switchingSectionLabel.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
+  switchingSectionLabel.bordered = NO;
+  switchingSectionLabel.editable = NO;
+  switchingSectionLabel.backgroundColor = [NSColor clearColor];
+  [self.view addSubview:switchingSectionLabel];
+  y -= 40;
+
+  self.shortcutToggle = [[NSSegmentedControl alloc] initWithFrame:NSMakeRect(leftMargin, y, 300, 30)];
+  [self.shortcutToggle setSegmentCount:2];
+  [self.shortcutToggle setLabel:@"Yabai (Fast)" forSegment:0];
+  [self.shortcutToggle setLabel:@"Native (Animation)" forSegment:1];
+  [self.shortcutToggle setWidth:148 forSegment:0];
+  [self.shortcutToggle setWidth:148 forSegment:1];
+  
+  BOOL shortcutsOn = [[config valueForKeyPath:@"toggles.yabai_shortcuts" defaultValue:@YES] boolValue];
+  [self.shortcutToggle setSelected:shortcutsOn forSegment:0];
+  [self.shortcutToggle setSelected:!shortcutsOn forSegment:1];
+  self.shortcutToggle.target = self;
+  self.shortcutToggle.action = @selector(shortcutModeChanged:);
+  [self.view addSubview:self.shortcutToggle];
+  y -= 60;
+
+  // Unmanaged Apps Section
+  NSTextField *unmanagedSectionLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 300, 24)];
+  unmanagedSectionLabel.stringValue = @"Unmanaged Apps (Yabai)";
+  unmanagedSectionLabel.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
+  unmanagedSectionLabel.bordered = NO;
+  unmanagedSectionLabel.editable = NO;
+  unmanagedSectionLabel.backgroundColor = [NSColor clearColor];
+  [self.view addSubview:unmanagedSectionLabel];
+  y -= 30;
+
+  NSTextField *unmanagedHelp = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 600, 20)];
+  [unmanagedHelp setBezeled:NO];
+  [unmanagedHelp setEditable:NO];
+  [unmanagedHelp setDrawsBackground:NO];
+  [unmanagedHelp setLineBreakMode:NSLineBreakByWordWrapping];
+  [unmanagedHelp setStringValue:@"One app name per line. These apps will not be tiled by yabai."];
+  [self.view addSubview:unmanagedHelp];
+  y -= 130;
+
+  NSScrollView *unmanagedScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(leftMargin, y, 600, 120)];
+  unmanagedScroll.hasVerticalScroller = YES;
+  unmanagedScroll.autohidesScrollers = YES;
+  unmanagedScroll.borderType = NSBezelBorder;
+
+  self.unmanagedAppsTextView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, unmanagedScroll.contentSize.width, unmanagedScroll.contentSize.height)];
+  [self.unmanagedAppsTextView setFont:[NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular]];
+  [self.unmanagedAppsTextView setAutomaticQuoteSubstitutionEnabled:NO];
+  [self.unmanagedAppsTextView setAutomaticDashSubstitutionEnabled:NO];
+  
+  NSArray<NSString *> *unmanagedApps = [self currentUnmanagedApps];
+  NSString *unmanagedText = [unmanagedApps componentsJoinedByString:@"\n"];
+  [self.unmanagedAppsTextView setString:unmanagedText ?: @""];
+  unmanagedScroll.documentView = self.unmanagedAppsTextView;
+  [self.view addSubview:unmanagedScroll];
+  
+  y -= 40;
+
+  NSButton *saveUnmanaged = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin, y, 120, 28)];
+  [saveUnmanaged setTitle:@"Save Apps"];
+  [saveUnmanaged setButtonType:NSButtonTypeMomentaryPushIn];
+  [saveUnmanaged setBezelStyle:NSBezelStyleRounded];
+  saveUnmanaged.target = self;
+  saveUnmanaged.action = @selector(saveUnmanagedApps:);
+  [self.view addSubview:saveUnmanaged];
 
   [self loadSpaceSettings];
 }
@@ -245,5 +318,87 @@
   });
 }
 
-@end
+- (void)shortcutModeChanged:(id)sender {
+  BOOL shortcutsOn = self.shortcutToggle.selectedSegment == 0;
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  [config setValue:@(shortcutsOn) forKeyPath:@"toggles.yabai_shortcuts"];
+  
+  NSString *mode = shortcutsOn ? @"on" : @"off";
+  [config runScript:@"toggle_yabai_shortcuts.sh" arguments:@[mode]];
+}
 
+// MARK: - Unmanaged Apps
+
+- (NSString *)unmanagedAppsFilePath {
+  return [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar/unmanaged_apps.conf"];
+}
+
+- (NSArray<NSString *> *)parseUnmanagedAppsFromString:(NSString *)string {
+  if (![string isKindOfClass:[NSString class]]) return @[];
+  NSMutableOrderedSet<NSString *> *set = [NSMutableOrderedSet orderedSet];
+  NSCharacterSet *ws = [NSCharacterSet whitespaceAndNewlineCharacterSet];
+  NSArray<NSString *> *lines = [string componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]];
+  for (NSString *line in lines) {
+    NSString *trimmed = [line stringByTrimmingCharactersInSet:ws];
+    if (trimmed.length == 0) continue;
+    if ([trimmed hasPrefix:@"#"]) continue;
+    [set addObject:trimmed];
+  }
+  return set.array;
+}
+
+- (NSArray<NSString *> *)currentUnmanagedApps {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSMutableOrderedSet<NSString *> *apps = [NSMutableOrderedSet orderedSet];
+  id stored = [config valueForKeyPath:@"yabai_unmanaged_apps" defaultValue:@[]];
+  NSCharacterSet *ws = [NSCharacterSet whitespaceAndNewlineCharacterSet];
+  if ([stored isKindOfClass:[NSArray class]]) {
+    for (id entry in (NSArray *)stored) {
+      if (![entry isKindOfClass:[NSString class]]) continue;
+      NSString *trimmed = [((NSString *)entry) stringByTrimmingCharactersInSet:ws];
+      if (trimmed.length > 0) {
+        [apps addObject:trimmed];
+      }
+    }
+  }
+
+  if (apps.count == 0) {
+    NSString *path = [self unmanagedAppsFilePath];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
+      NSString *contents = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+      for (NSString *entry in [self parseUnmanagedAppsFromString:contents]) {
+        [apps addObject:entry];
+      }
+    }
+  }
+
+  return apps.array;
+}
+
+- (void)saveUnmanagedApps:(id)sender {
+  NSString *text = self.unmanagedAppsTextView.string ?: @"";
+  NSArray<NSString *> *apps = [self parseUnmanagedAppsFromString:text];
+
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  [config setValue:apps forKeyPath:@"yabai_unmanaged_apps"];
+
+  NSString *path = [self unmanagedAppsFilePath];
+  if (path) {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    [fm createDirectoryAtPath:[path stringByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:nil];
+    NSString *body = apps.count ? [[apps componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"] : @"";
+    [body writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  }
+
+  NSString *scriptName = @"update_unmanaged_apps.sh";
+  [config runScript:scriptName arguments:@[]];
+  
+  NSButton *button = (NSButton *)sender;
+  NSString *originalTitle = button.title;
+  button.title = @"✓ Saved!";
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    button.title = originalTitle;
+  });
+}
+
+@end

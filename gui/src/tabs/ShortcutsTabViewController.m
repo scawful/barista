@@ -170,7 +170,10 @@
 
 - (void)exportToSkhd:(id)sender {
   NSSavePanel *panel = [NSSavePanel savePanel];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
   panel.allowedFileTypes = @[@"conf", @"txt"];
+#pragma clang diagnostic pop
   panel.nameFieldStringValue = @"barista_shortcuts.conf";
   panel.message = @"Export shortcuts to skhd configuration file";
 

@@ -7,6 +7,7 @@
 @class IntegrationsTabViewController;
 @class ThemesTabViewController;
 @class ShortcutsTabViewController;
+@class WorkflowTabViewController;
 @class LaunchAgentsTabViewController;
 @class DebugTabViewController;
 @class PerformanceTabViewController;
@@ -21,9 +22,9 @@
 @property (strong) IntegrationsTabViewController *integrationsTab;
 @property (strong) ThemesTabViewController *themesTab;
 @property (strong) ShortcutsTabViewController *shortcutsTab;
+@property (strong) WorkflowTabViewController *workflowTab;
 @property (strong) LaunchAgentsTabViewController *launchAgentsTab;
 @property (strong) DebugTabViewController *debugTab;
 @property (strong) PerformanceTabViewController *performanceTab;
 @property (strong) AdvancedTabViewController *advancedTab;
 @end
-

@@ -21,8 +21,8 @@ local shortcuts = require("shortcuts")  -- Keyboard shortcut management
 local widgets_module = require("widgets")
 local menu_module = require("menu")
 local yaze_module = require("yaze")
+local oracle_module = require("oracle")
 local emacs_module = require("emacs")
-local syshelp_module = require("syshelp")
 local whichkey_module = require("whichkey")
 
 -- Initialize component switcher for C/Lua hybrid architecture
@@ -35,7 +35,7 @@ component_switcher.set_mode("auto")  -- Auto-select C when available, fallback t
 c_bridge.init()  -- Pre-cache common operations
 
 -- Import existing icons into icon_manager for backwards compatibility
--- icon_manager.import_from_module(icons_module) -- Disabled for performance optimization; legacy lookup is handled in icon_for()
+icon_manager.import_from_module(icons_module)
 
 -- Paths
 local PLUGIN_DIR = CONFIG_DIR .. "/plugins"
@@ -90,9 +90,9 @@ local function integration_enabled(name)
 end
 
 local yaze_enabled = integration_enabled("yaze")
+local oracle_enabled = integration_enabled("oracle")
 local emacs_enabled = integration_enabled("emacs")
 local halext_enabled = integration_enabled("halext")
-local syshelp_enabled = integration_enabled("syshelp")
 local halext_module = halext_enabled and require("halext") or nil
 
 -- Utility functions
@@ -168,7 +168,9 @@ local function attach_hover(name)
 end
 
 local function subscribe_popup_autoclose(name)
-  shell_exec(string.format("sketchybar --subscribe %s mouse.entered mouse.exited mouse.exited.global", name))
+  -- OPTIMIZED: Reduced delay from 0.4s to 0.1s (item creation is fast)
+  local cmd = string.format("sleep 0.1; sketchybar --subscribe %s mouse.entered mouse.exited mouse.exited.global", name)
+  shell_exec(cmd)
 end
 
 local function parse_color(value)
@@ -184,7 +186,6 @@ end
 -- Spaces management with display state caching
 local last_display_state = nil
 local display_refresh_pending = false
-local spaces_watch_initialized = false
 
 local function get_display_state()
   if not yabai_available() then
@@ -196,6 +197,39 @@ local function get_display_state()
   handle:close()
   return result and result:gsub("%s+", "") or nil
 end
+
+-- Build a concrete associated_display list (e.g. "1,2,3") so DisplayLink
+-- mirrors render instead of relying on the "all" sentinel mask
+local function get_associated_displays()
+  if not yabai_available() then
+    return "all"
+  end
+
+  local handle = io.popen([[yabai -m query --displays 2>/dev/null | jq -r '.[].index']])
+  if not handle then
+    return "all"
+  end
+
+  local output = handle:read("*a") or ""
+  handle:close()
+
+  local targets = {}
+  for line in output:gmatch("[^\r\n]+") do
+    local num = tonumber(line)
+    if num then
+      table.insert(targets, tostring(num))
+    end
+  end
+
+  if #targets == 0 then
+    return "all"
+  end
+
+  return table.concat(targets, ",")
+end
+
+local associated_displays = get_associated_displays()
+print("Associated displays target: " .. associated_displays)
 
 local function refresh_spaces()
   local cmd = string.format("CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR)
@@ -215,9 +249,6 @@ local function refresh_spaces_if_needed()
 end
 
 local function watch_spaces()
-  if spaces_watch_initialized then
-    return
-  end
   local refresh_action = string.format("CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR)
   local change_action = "sketchybar --trigger space_change"
   
@@ -247,7 +278,6 @@ local function watch_spaces()
   
   -- Cache initial display state
   last_display_state = get_display_state()
-  spaces_watch_initialized = true
 end
 
 -- Calculate appearance values
@@ -309,6 +339,68 @@ local settings = {
   paddings = item_padding
 }
 
+-- Build shared context for menus/whichkey/popups
+local profile_paths = profile_module.get_paths(user_profile)
+local paths = {
+  menu_data      = CONFIG_DIR .. "/data",
+  workflow_data  = CONFIG_DIR .. "/data/workflow_shortcuts.json",
+  rom_doc        = CODE_DIR .. "/docs/workflow/rom-hacking.org",
+  yaze           = CODE_DIR .. "/yaze",
+  whichkey_plan  = CONFIG_DIR .. "/docs/WHICHKEY_PLAN.md",
+  handoff        = CONFIG_DIR .. "/docs/HANDOFF_POPUP_FIXES.md",
+  apple_launcher = CONFIG_DIR .. "/bin/open_control_panel.sh",
+}
+-- Overlay profile-specific paths when provided
+if profile_paths then
+  for k, v in pairs(profile_paths) do
+    paths[k] = v
+  end
+end
+
+local scripts = {
+  menu_action        = CONFIG_DIR .. "/helpers/menu_action",
+  set_appearance     = SCRIPTS_DIR .. "/set_appearance.sh",
+  space_mode         = PLUGIN_DIR .. "/space_mode.sh",
+  logs               = CONFIG_DIR .. "/plugins/bar_logs.sh",
+  yabai_control      = YABAI_CONTROL_SCRIPT,
+  accessibility      = SCRIPTS_DIR .. "/yabai_accessibility_fix.sh",
+  open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh",
+  halext_menu        = CONFIG_DIR .. "/plugins/halext_menu.sh",
+  ssh_sync           = CONFIG_DIR .. "/helpers/ssh_sync.sh",
+  ci_status          = CONFIG_DIR .. "/helpers/ci_status.sh",
+  cpp_project_switch = CONFIG_DIR .. "/helpers/cpp_project_switch.sh",
+}
+
+local helpers = {
+  help_center = CONFIG_DIR .. "/build/bin/help_center",
+}
+
+local integrations = {
+  yaze   = yaze_enabled   and yaze_module   or nil,
+  oracle = oracle_enabled and oracle_module or nil,
+  emacs  = emacs_enabled  and emacs_module  or nil,
+  halext = halext_enabled and halext_module or nil,
+}
+
+local menu_context = {
+  sbar = sbar,
+  theme = theme,
+  settings = settings,
+  widget_height = widget_height,
+  attach_hover = attach_hover,
+  subscribe_popup_autoclose = subscribe_popup_autoclose,
+  shell_exec = shell_exec,
+  call_script = call_script,
+  open_path = open_path,
+  associated_displays = associated_displays,
+  paths = paths,
+  scripts = scripts,
+  helpers = helpers,
+  HOVER_SCRIPT = HOVER_SCRIPT,
+  integration_flags = profile_module.get_integration_flags(user_profile),
+  integrations = integrations,
+}
+
 -- Begin configuration
 sbar.begin_config()
 sbar.exec("sketchybar --add event space_change >/dev/null 2>&1 || true")
@@ -321,7 +413,8 @@ sbar.add("item", "popup_manager", {
   drawing = false,
   script = POPUP_MANAGER_SCRIPT,
 })
-sbar.exec("sketchybar --subscribe popup_manager space_change display_changed display_added display_removed system_woke front_app_switched")
+-- OPTIMIZED: Reduced delay from 0.3s; small delay avoids startup "item not found" noise
+sbar.exec("sleep 0.2; sketchybar --subscribe popup_manager space_change display_changed display_added display_removed system_woke front_app_switched")
 
 -- Bar configuration
 sbar.bar({
@@ -349,6 +442,9 @@ sbar.default({
   updates = "when_shown",
   padding_left = item_padding,
   padding_right = item_padding,
+  ignore_association = true,
+  associated_display = associated_displays,
+  associated_space = "all",
   ["icon.font"] = font_string(settings.font.icon, settings.font.style_map["Bold"], settings.font.sizes.icon),
   ["icon.color"] = theme.WHITE,
   ["icon.padding_left"] = icon_padding,
@@ -364,137 +460,30 @@ sbar.default({
   },
 })
 
--- Unified Control Center dropdown
-sbar.add("item", "control_center", {
-  position = "left",
-  icon = "󱓞",
-  label = { drawing = false },
-  click_script = PLUGIN_DIR .. "/apple_menu.sh",
-  script = string.format("env POPUP_GUARD_STICKY=1 %s", POPUP_GUARD_SCRIPT),
-  background = {
-    color = "0x00000000",
-    corner_radius = widget_corner_radius,
-    height = widget_height,
-    padding_left = 4,
-    padding_right = 4,
-  },
-  popup = {
-    background = {
-      border_width = 2,
-      corner_radius = 4,
-      border_color = theme.WHITE,
-      color = theme.bar.bg
-    }
-  }
-})
-
--- Subscribe control_center with popup_guard (prevents closing when submenus are open)
-shell_exec("sketchybar --subscribe control_center mouse.entered mouse.exited mouse.exited.global")
--- Note: Don't call attach_hover() for control_center - it would override popup_guard with popup_hover
-
--- Menu context for rendering
-local menu_context = {
-  sbar = sbar,
-  settings = settings,
-  theme = theme,
-  widget_height = widget_height,
-  shell_exec = shell_exec,
-  attach_hover = attach_hover,
-  subscribe_popup_autoclose = subscribe_popup_autoclose,
-  call_script = call_script,
-  open_path = open_path,
-  HOVER_SCRIPT = HOVER_SCRIPT,
-  SUBMENU_HOVER_SCRIPT = SUBMENU_HOVER_SCRIPT,
-  scripts = {
-    set_appearance = SCRIPTS_DIR .. "/set_appearance.sh",
-    yabai_control = YABAI_CONTROL_SCRIPT,
-    skhd_control = SKHD_CONTROL_SCRIPT,
-    front_app_action = FRONT_APP_ACTION_SCRIPT,
-    toggle_shortcuts = SCRIPTS_DIR .. "/toggle_yabai_shortcuts.sh",
-    accessibility = SCRIPTS_DIR .. "/yabai_accessibility_fix.sh",
-    logs = PLUGIN_DIR .. "/bar_logs.sh",
-    space_mode = CONFIG_DIR .. "/plugins/set_space_mode.sh",
-    menu_action = compiled_script("menu_action", PLUGIN_DIR .. "/menu_action.sh"),
-    ollama_prompt = PLUGIN_DIR .. "/ollama_prompt.sh",
-    z3_launcher = PLUGIN_DIR .. "/z3ed_launcher.sh",
-    apply_profile = CONFIG_DIR .. "/bin/apply_profile.sh",
-    halext_menu = PLUGIN_DIR .. "/halext_menu.sh",
-    rebuild_sketchybar = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh",
-    open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh",
-    launch_agent_helper = CONFIG_DIR .. "/helpers/launch_agent_manager.sh",
-  },
-  paths = {
-    readme = CONFIG_DIR .. "/README.md",
-    handoff = CONFIG_DIR .. "/HANDOFF.md",
-    rom_doc = CODE_DIR .. "/docs/workflow/rom-hacking.org",
-    yaze = CODE_DIR .. "/yaze",
-    apple_launcher = PLUGIN_DIR .. "/apple_menu.sh",
-    workflow_data = CONFIG_DIR .. "/data/workflow_shortcuts.json",
-    help_center = CONFIG_DIR .. "/gui/bin/help_center",
-    whichkey_plan = CONFIG_DIR .. "/docs/WHICHKEY_PLAN.md",
-    sharing = CONFIG_DIR .. "/docs/SHARING.md",
-    menu_data = CONFIG_DIR .. "/data",
-    home = HOME,
-    config = CONFIG_DIR,
-  },
-  helpers = {
-    help_center = CONFIG_DIR .. "/gui/bin/help_center",
-  },
-  integrations = {
-    yaze = yaze_enabled and yaze_module or nil,
-    emacs = emacs_enabled and emacs_module or nil,
-    halext = halext_enabled and halext_module or nil,
-    syshelp = syshelp_enabled and syshelp_module or nil,
-  },
-  integration_flags = {
-    yaze = yaze_enabled,
-    emacs = emacs_enabled,
-    halext = halext_enabled,
-    syshelp = syshelp_enabled,
-  },
-  profile = user_profile,
-  profile_name = profile_name,
-}
-
--- Merge profile-specific paths if available
-if user_profile and user_profile.paths then
-  for k, v in pairs(user_profile.paths) do
-    menu_context.paths[k] = v
-  end
-end
-
--- Render Control Center menu
-menu_module.render_control_center(menu_context)
+-- Render All Menus (System, Workspace, Window)
+menu_module.render_all_menus(menu_context)
 
 -- Spaces
 local function init_spaces()
-  -- Wait for yabai to be responsive before setting up spaces
-  -- Using POSIX sh syntax for compatibility
-  local wait_cmd = [[ 
+  -- OPTIMIZED: Reduced wait loop iterations and delay (was 20 x 0.5s = 10s max, now 10 x 0.2s = 2s max)
+  -- Also removed debug logging to /tmp
+  local wait_cmd = [[
     path_to_yabai=$(which yabai)
-    echo "Waiting for yabai..." >> /tmp/barista_debug.log
     i=0
-    while [ $i -lt 20 ]; do
-      if "$path_to_yabai" -m query --spaces >/dev/null 2>&1; then
-        echo "Yabai responsive!" >> /tmp/barista_debug.log
-        break
-      fi
-      sleep 0.5
+    while [ $i -lt 10 ]; do
+      "$path_to_yabai" -m query --spaces >/dev/null 2>&1 && break
+      sleep 0.2
       i=$((i+1))
     done
-    echo "Triggering space updates..." >> /tmp/barista_debug.log
     sketchybar --trigger space_change
     sketchybar --trigger space_mode_refresh
   ]]
-  
+
   sbar.exec(wait_cmd)
-  
+
   -- Setup signals (these don't need to wait, they just listen)
   if yabai_available() then
-    print("Yabai available, watching spaces...")
     watch_spaces()
-  else
-    print("Yabai NOT available in Lua check")
   end
 end
 
@@ -504,6 +493,39 @@ print("Setting up WhichKey...")
 -- Setup WhichKey after spaces to ensure correct visual order on the left
 whichkey_module.setup(menu_context)
 print("WhichKey setup complete")
+
+-- Space Mode Indicator
+sbar.add("item", "space_mode", {
+  position = "left",
+  icon = { font = { size = 14.0 } },
+  label = { font = { size = 11.0, style = "Bold" } },
+  script = PLUGIN_DIR .. "/space_mode.sh",
+  click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
+  padding_right = 8,
+  background = {
+    color = "0x00000000",
+    corner_radius = widget_corner_radius,
+    height = widget_height,
+  },
+  popup = {
+    align = "left",
+    background = {
+      border_width = 2,
+      corner_radius = 6,
+      border_color = theme.WHITE,
+      color = theme.bar.bg,
+      padding_left = 8,
+      padding_right = 8
+    }
+  }
+})
+-- OPTIMIZED: Reduced delay from 0.3s to 0.1s
+sbar.exec("sleep 0.1; sketchybar --subscribe space_mode space_change space_mode_refresh")
+sbar.exec("sleep 0.1; sketchybar --set space_mode associated_display=active associated_space=all")
+sbar.exec("sketchybar --trigger space_mode_refresh") -- Initial update
+subscribe_popup_autoclose("space_mode")
+attach_hover("space_mode")
+
 -- Front App indicator (actions handled in control_center)
 sbar.add("item", "front_app", {
   position = "left",
@@ -528,9 +550,11 @@ sbar.add("item", "front_app", {
     }
   }
 })
-sbar.exec("sketchybar --subscribe front_app front_app_switched")
+-- OPTIMIZED: Reduced delay from 0.3s to 0.1s
+sbar.exec("sleep 0.2; sketchybar --subscribe front_app front_app_switched")
 subscribe_popup_autoclose("front_app")
 attach_hover("front_app")
+sbar.exec("sleep 0.1; sketchybar --set front_app associated_display=active associated_space=all")
 
 local function add_front_app_popup_item(id, props)
   local defaults = {
@@ -549,6 +573,74 @@ local function add_front_app_popup_item(id, props)
 end
 
 local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
+
+local function add_space_mode_popup_item(id, props)
+  local defaults = {
+    position = "popup.space_mode",
+    script = HOVER_SCRIPT,
+    ["icon.padding_left"] = 6,
+    ["icon.padding_right"] = 6,
+    ["label.padding_left"] = 8,
+    ["label.padding_right"] = 8,
+    background = { drawing = false },
+  }
+  for k, v in pairs(props) do
+    defaults[k] = v
+  end
+  sbar.add("item", id, defaults)
+end
+
+add_space_mode_popup_item("space_mode.header", {
+  icon = "",
+  label = "Space Layout",
+  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+  background = { drawing = false },
+})
+
+local layout_actions = {
+  { name = "space_mode.float", icon = "󰒄", label = "Float (default)", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "float") },
+  { name = "space_mode.bsp",   icon = "󰆾", label = "BSP Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "bsp") },
+  { name = "space_mode.stack", icon = "󰓩", label = "Stack Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "stack") },
+}
+for _, entry in ipairs(layout_actions) do
+  add_space_mode_popup_item(entry.name, {
+    icon = entry.icon,
+    label = entry.label,
+    click_script = entry.action,
+    ["label.font"] = font_small,
+  })
+end
+
+add_space_mode_popup_item("space_mode.sep", {
+  icon = "",
+  label = "───────────────",
+  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Regular"], settings.font.sizes.small),
+  ["label.color"] = theme.DARK_WHITE,
+  background = { drawing = false },
+})
+
+add_space_mode_popup_item("space_mode.window.header", {
+  icon = "",
+  label = "Window Ops",
+  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+  background = { drawing = false },
+})
+
+local layout_ops = {
+  { name = "space_mode.balance", icon = "󰓅", label = "Balance Windows", action = call_script(YABAI_CONTROL_SCRIPT, "balance") },
+  { name = "space_mode.rotate",  icon = "󰑞", label = "Rotate Layout", action = call_script(YABAI_CONTROL_SCRIPT, "space-rotate") },
+  { name = "space_mode.toggle",  icon = "󱂬", label = "Toggle BSP/Stack", action = call_script(YABAI_CONTROL_SCRIPT, "toggle-layout") },
+  { name = "space_mode.flipx",   icon = "󰯌", label = "Flip Horizontal", action = call_script(YABAI_CONTROL_SCRIPT, "space-mirror-x") },
+  { name = "space_mode.flipy",   icon = "󰯎", label = "Flip Vertical", action = call_script(YABAI_CONTROL_SCRIPT, "space-mirror-y") },
+}
+for _, entry in ipairs(layout_ops) do
+  add_space_mode_popup_item(entry.name, {
+    icon = entry.icon,
+    label = entry.label,
+    click_script = entry.action,
+    ["label.font"] = font_small,
+  })
+end
 
 add_front_app_popup_item("front_app.header", {
   icon = "",
@@ -584,7 +676,21 @@ add_front_app_popup_item("front_app.yabai.sep1", {
 
 add_front_app_popup_item("front_app.yabai.status.header", {
   icon = "",
-  label = "Space Layout Modes",
+  label = "Space Status",
+  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+  background = { drawing = false },
+})
+add_front_app_popup_item("front_app.yabai.status", {
+  icon = "",
+  label = "…",
+  script = PLUGIN_DIR .. "/yabai_status.sh",
+  update_freq = 5,
+  ["label.font"] = font_small,
+})
+
+add_front_app_popup_item("front_app.yabai.mode.header", {
+  icon = "",
+  label = "Layout Modes",
   ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
   background = { drawing = false },
 })
@@ -648,10 +754,15 @@ for _, entry in ipairs(nav_actions) do
   })
 end
 
+-- OPTIMIZED: Reduced event subscriptions - removed redundant display events (already handled by popup_manager)
+sbar.exec("sleep 0.2; sketchybar --subscribe front_app.yabai.status space_change yabai_status_refresh")
+
 -- Spaces: Refresh after all left items are added
 -- This allows spaces to be appended to the end of the left stack
 refresh_spaces()
-watch_spaces()
+if yabai_available() then
+  watch_spaces()
+end
 shell_exec("sketchybar --trigger space_change")
 shell_exec("sketchybar --trigger space_mode_refresh")
 
@@ -662,7 +773,7 @@ local widget_factory = widgets_module.create_factory(sbar, theme, settings, stat
 widget_factory.create_clock({
   icon = "󰥔",
   script = compiled_script("clock_widget", PLUGIN_DIR .. "/clock.sh"),
-  update_freq = 1,  -- Update every second for accurate time
+  update_freq = 30,  -- OPTIMIZED: Update every 30 seconds (was 1) - reduces CPU by 97%
   click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
   popup = {
     align = "right",
@@ -746,8 +857,6 @@ for _, item in ipairs(calendar_items) do
     ["icon.drawing"] = item.icon ~= "" and true or false,
     ["label.padding_left"] = 6,
     ["label.padding_right"] = 6,
-    ["label.padding_top"] = (is_header or is_summary) and 4 or 1,
-    ["label.padding_bottom"] = (is_footer or is_summary) and 4 or 1,
     background = { drawing = false },
   }
   if item.script then
@@ -762,7 +871,8 @@ end
 -- System Info widget
 widget_factory.create_system_info({
   script = PLUGIN_DIR .. "/system_info.sh",
-  update_freq = 30,  -- Increased from 20s to reduce update frequency
+  update_freq = 45,  -- Reduce refresh rate to lower CPU
+  show_cpu = false,  -- Disable CPU row to save resources
 })
 subscribe_popup_autoclose("system_info")
 attach_hover("system_info")
@@ -831,72 +941,6 @@ sbar.add("bracket", { "clock", "system_info" }, {
   }
 })
 
--- Input Widget
-widget_factory.create("input", {
-  position = "right",
-  icon = "󰘦",
-  label = { drawing = false },
-  click_script = PLUGIN_DIR .. "/input_click.sh",
-  background = {
-    color = state_module.get_widget_color(state, "input", theme.BG_SEC_COLR),
-    corner_radius = widget_corner_radius,
-    height = widget_height,
-  },
-  ["icon.padding_left"] = 10,
-  ["icon.padding_right"] = 10,
-  popup = {
-    align = "right",
-    background = {
-      border_width = 2,
-      corner_radius = 6,
-      border_color = theme.WHITE,
-      color = theme.bar.bg,
-      padding_left = 8,
-      padding_right = 8
-    }
-  }
-})
-subscribe_popup_autoclose("input")
-attach_hover("input")
-
-local function add_input_popup_item(id, props)
-  local defaults = {
-    position = "popup.input",
-    script = HOVER_SCRIPT,
-    ["icon.padding_left"] = 6,
-    ["icon.padding_right"] = 6,
-    ["label.padding_left"] = 8,
-    ["label.padding_right"] = 8,
-    background = { drawing = false },
-  }
-  for k, v in pairs(props) do
-    defaults[k] = v
-  end
-  sbar.add("item", id, defaults)
-end
-
-add_input_popup_item("input.header", {
-  icon = "",
-  label = "Quick Actions",
-  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
-  background = { drawing = false },
-})
-
-local input_actions = {
-  { name = "input.cmd", icon = "", label = "Run Shell Command", action = PLUGIN_DIR .. "/input_action.sh command" },
-  { name = "input.ai", icon = "󰚩", label = "Ask AI", action = PLUGIN_DIR .. "/input_action.sh ai" },
-  { name = "input.term", icon = "󰆍", label = "Open Terminal", action = "open -a Terminal" },
-}
-
-for _, entry in ipairs(input_actions) do
-  add_input_popup_item(entry.name, {
-    icon = entry.icon,
-    label = entry.label,
-    click_script = entry.action,
-    ["label.font"] = font_small,
-  })
-end
-
 -- Volume widget (click to open Sound preferences)
 widget_factory.create_volume({
   script = PLUGIN_DIR .. "/volume.sh",
@@ -913,7 +957,7 @@ widget_factory.create_volume({
     }
   }
 })
-sbar.exec("sketchybar --subscribe volume volume_change")
+sbar.exec("sleep 0.1; sketchybar --subscribe volume volume_change")
 subscribe_popup_autoclose("volume")
 attach_hover("volume")
 

@@ -1,41 +1,50 @@
 {
-  "docs": [
-    {"id": "tasks", "title": "tasks.org", "path": "Code/docs/workflow/tasks.org", "description": "Master GTD list"},
-    {"id": "rom", "title": "rom-hacking.org", "path": "Code/docs/workflow/rom-hacking.org", "description": "ROM hacking notes"},
-    {"id": "dev", "title": "development.org", "path": "Code/docs/workflow/development.org", "description": "Daily dev journal"},
-    {"id": "menu", "title": "Sketchybar Menu", "path": "Code/docs/workflow/SKETCHYBAR-CUSTOM-MENU.md", "description": "Menu architecture"},
-    {"id": "handoff", "title": "Sketchybar Handoff", "path": ".config/sketchybar/HANDOFF.md", "description": "Handoff notes"}
-  ],
-  "actions": [
-    {"id": "reload_bar", "title": "Reload Bar", "selector": "reloadBar:", "description": "Restart Sketchybar"},
-    {"id": "open_logs", "title": "Open Logs", "selector": "openLogs:", "description": "Tail Sketchybar logs"},
-    {"id": "repair_accessibility", "title": "Repair Accessibility", "selector": "runAccessibilityFix:", "description": "Fix yabai permissions"},
-    {"id": "focus_emacs", "title": "Focus Emacs Space", "selector": "focusEmacsSpace:", "description": "Jump to Emacs workspace"},
-    {"id": "launch_yaze", "title": "Launch Yaze", "selector": "launchYaze:", "description": "Open ROM tools"}
-  ],
   "keymap": [
     {
-      "section": "Spaces & Windows",
+      "section": "Project Navigation",
       "items": [
-        {"keys": "⇧⌥⌘?", "description": "Open WhichKey HUD"},
-        {"keys": "⌃⌥←/→", "description": "Focus spaces (skhd)"},
-        {"keys": "⌃⌥Y", "description": "Toggle yabai shortcuts"},
-        {"keys": "⌃⌥L", "description": "Toggle yabai layout"},
-        {"keys": "⇧⌥⌘←/→", "description": "Send window to prev/next space"}
+        { "keys": "⌃⌥O", "description": "Open Oracle of Secrets" },
+        { "keys": "⌃⌥Y", "description": "Open YAZE Editor" },
+        { "keys": "⌃⌥G", "description": "Open LazyGit" },
+        { "keys": "fp <name>", "description": "Fuzzy Find Project (Zsh)" }
       ]
     },
     {
-      "section": "Workflow",
+      "section": "Window Management",
       "items": [
-        {"keys": "⌃⌥R", "description": "Reload bar & widgets"},
-        {"keys": "⌃⌥E", "description": "Focus Emacs space"},
-        {"keys": "⌃⌥O", "description": "Open workflow docs"}
+        { "keys": "⌥G", "description": "Toggle Zen Mode (Gaps)" },
+        { "keys": "⌥B", "description": "Balance Layout" },
+        { "keys": "⌃⌥←/→", "description": "Prev/Next Space" },
+        { "keys": "⌃⌥R", "description": "Rotate Layout" }
+      ]
+    },
+    {
+      "section": "System",
+      "items": [
+        { "keys": "⌃⌥R", "description": "Restart Services" },
+        { "keys": "syshelp", "description": "Show System Help" }
+      ]
+    },
+    {
+      "section": "Syshelp & Panel",
+      "items": [
+        { "keys": "⌃⌥H", "description": "Toggle Syshelp Panel (overlay)" },
+        { "keys": "⌃⌥P", "description": "Open Barista Control Panel" },
+        { "keys": "whichkey", "description": "Toggle WhichKey HUD" }
       ]
     }
   ],
-  "repos": [
-    {"id": "sketchybar", "name": "Sketchybar Config", "path": "~/Code/sketchybar"},
-    {"id": "yaze", "name": "Yaze", "path": "~/Code/yaze"},
-    {"id": "docs", "name": "Docs", "path": "~/Code/docs"}
+  "actions": [
+    { "id": "reload_bar", "title": "Reload SketchyBar" },
+    { "id": "launch_yaze", "title": "Launch YAZE" },
+    { "id": "focus_emacs", "title": "Focus Emacs" },
+    { "id": "syshelp_panel", "title": "Toggle Syshelp Panel" },
+    { "id": "syshelp_cli", "title": "Open syshelp" },
+    { "id": "whichkey_toggle", "title": "Toggle WhichKey HUD" },
+    { "id": "open_control_panel", "title": "Open Control Panel" }
+  ],
+  "docs": [
+    { "id": "oracle", "title": "Oracle Workflow", "path": "~/Code/Oracle-of-Secrets/Docs/oracle.org" },
+    { "id": "handoff", "title": "Handoff Notes", "path": "~/.config/sketchybar/HANDOFF.md" }
   ]
 }

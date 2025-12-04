@@ -2,6 +2,7 @@
 
 # System Info Widget - CPU, Mem, Disk, Net
 # Designed for Barista - Clean, efficient system monitoring
+# OPTIMIZED: Replaced slow top command with sysctl/vm_stat
 
 set -euo pipefail
 
@@ -37,15 +38,29 @@ YELLOW="0xfff9e2af"
 GREEN="0xffa6e3a1"
 BLUE="0xff89b4fa"
 
-# --- Statistics Gathering ---
+# --- Statistics Gathering (OPTIMIZED) ---
 
-# CPU: Top 1 sample, parse user+sys usage
-cpu_usage=$(top -l 1 -n 0 | awk '/CPU usage/ {printf "%.0f", $3 + $5}')
+# CPU: Use load average instead of expensive top command
+# Load average is already computed by the kernel - instant access
 cpu_load=$(sysctl -n vm.loadavg | awk '{print $2}')
+# Convert load to rough percentage (assuming typical 8-core machine)
+core_count=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
+cpu_usage=$(awk -v load="$cpu_load" -v cores="$core_count" 'BEGIN {printf "%.0f", (load / cores) * 100}')
 
-# Memory: Wired + Active pages (approximate used) or use top's PhysMem
-# Using vm_stat for speed if possible, otherwise top fallback
-mem_usage=$(ps -A -o %mem | awk '{s+=$1} END {printf "%.0f", s}')
+# Memory: Use vm_stat (instant kernel stats) instead of slow ps -A
+# Calculate used memory percentage from vm_stat pages
+page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 16384)
+total_mem=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+vm_stats=$(vm_stat 2>/dev/null)
+pages_active=$(echo "$vm_stats" | awk '/Pages active/ {gsub(/\./,"",$3); print $3}')
+pages_wired=$(echo "$vm_stats" | awk '/Pages wired/ {gsub(/\./,"",$4); print $4}')
+pages_compressed=$(echo "$vm_stats" | awk '/Pages occupied by compressor/ {gsub(/\./,"",$5); print $5}')
+used_mem=$(( (${pages_active:-0} + ${pages_wired:-0} + ${pages_compressed:-0}) * page_size ))
+if [ "$total_mem" -gt 0 ]; then
+  mem_usage=$(awk -v used="$used_mem" -v total="$total_mem" 'BEGIN {printf "%.0f", (used / total) * 100}')
+else
+  mem_usage=0
+fi
 
 # Disk: Root usage
 disk_usage=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
@@ -71,7 +86,7 @@ sketchybar --set system_info \
   icon="󰻠" \
   label="${cpu_usage}%" \
   icon.color="$cpu_status_color" \
-  label.color="$LABEL_COLOR"
+  label.color="$cpu_status_color"
 
 # Popup Items Update
 sketchybar --set system_info.cpu \

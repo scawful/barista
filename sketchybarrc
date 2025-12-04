@@ -1,7 +1,15 @@
 #!/usr/bin/env lua
 
+-- Ensure we can resolve modules when launched by launchd (cwd may not be CONFIG_DIR)
+local HOME = os.getenv("HOME")
+local CONFIG_DIR = HOME .. "/.config/sketchybar"
+
 package.cpath = package.cpath .. ";/Users/scawful/.local/share/sketchybar_lua/?.so"
-package.path = package.path .. ";" .. os.getenv("HOME") .. "/.config/sketchybar/helpers/lib/?.lua"
+package.path = table.concat({
+  package.path,
+  CONFIG_DIR .. "/?.lua",
+  CONFIG_DIR .. "/helpers/lib/?.lua",
+}, ";")
 
 package.loaded["main"] = nil
 require("main")

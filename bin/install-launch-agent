@@ -1,0 +1,85 @@
+#!/bin/bash
+# Install Barista launch agent
+# Sets up unified launch agent for SketchyBar, Yabai, and skhd
+
+set -euo pipefail
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+CONFIG_DIR="${HOME}/.config/sketchybar"
+PLIST_SOURCE="$CONFIG_DIR/launch_agents/dev.barista.control.plist"
+PLIST_DEST="${HOME}/Library/LaunchAgents/dev.barista.control.plist"
+DOMAIN="gui/$(id -u)"
+
+echo_info() {
+  echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+echo_success() {
+  echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+echo_warning() {
+  echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+echo_error() {
+  echo -e "${RED}[ERROR]${NC} $1"
+}
+
+echo ""
+echo "╔═══════════════════════════════════════╗"
+echo "║  Barista Launch Agent Installer       ║"
+echo "╚═══════════════════════════════════════╝"
+echo ""
+
+# Check if source plist exists
+if [[ ! -f "$PLIST_SOURCE" ]]; then
+  echo_error "Launch agent template not found: $PLIST_SOURCE"
+  exit 1
+fi
+
+# Check if barista-launch.sh exists
+if [[ ! -f "$CONFIG_DIR/launch_agents/barista-launch.sh" ]]; then
+  echo_error "Launch script not found: $CONFIG_DIR/launch_agents/barista-launch.sh"
+  exit 1
+fi
+
+# Make launch script executable
+chmod +x "$CONFIG_DIR/launch_agents/barista-launch.sh"
+
+# Update plist with correct paths
+echo_info "Installing launch agent..."
+
+# Create plist with expanded paths
+sed "s|\$HOME|$HOME|g" "$PLIST_SOURCE" > "$PLIST_DEST"
+
+# Load launch agent
+if launchctl bootstrap "$DOMAIN" "$PLIST_DEST" 2>/dev/null; then
+  echo_success "Launch agent installed and started"
+elif launchctl kickstart -kp "${DOMAIN}/dev.barista.control" 2>/dev/null; then
+  echo_success "Launch agent restarted"
+else
+  echo_warning "Launch agent installed but may need manual start"
+fi
+
+echo ""
+echo_success "Launch agent installation complete!"
+echo ""
+echo "The launch agent will:"
+echo "  - Start SketchyBar, Yabai, and skhd on login"
+echo "  - Manage all services together"
+echo ""
+echo "To manage manually:"
+echo "  ~/.config/sketchybar/launch_agents/barista-launch.sh {start|stop|restart|status}"
+echo ""
+echo "To uninstall:"
+echo "  launchctl bootout ${DOMAIN}/dev.barista.control"
+echo "  rm $PLIST_DEST"
+echo ""
+

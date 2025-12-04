@@ -1,0 +1,233 @@
+#!/bin/bash
+# Safe update script for Barista installations
+# - Git clone: merges upstream while preserving local state/profile/theme changes
+# - Homebrew: upgrades formula and runs post-update hook
+
+set -euo pipefail
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+CONFIG_DIR="${HOME}/.config/sketchybar"
+MAIN_REMOTE="${BARISTA_REMOTE:-origin}"
+MAIN_BRANCH="${BARISTA_BRANCH:-main}"
+SKIP_RESTART="${BARISTA_SKIP_RESTART:-0}"
+
+echo_info() {
+  echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+echo_success() {
+  echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+echo_warning() {
+  echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+echo_error() {
+  echo -e "${RED}[ERROR]${NC} $1"
+}
+
+restart_services() {
+  if [[ "$SKIP_RESTART" == "1" ]]; then
+    echo_info "Skipping service restart (BARISTA_SKIP_RESTART=1)"
+    return
+  fi
+
+  if [[ -x "$CONFIG_DIR/launch_agents/barista-launch.sh" ]]; then
+    echo_info "Restarting via launch_agents/barista-launch.sh..."
+    if "$CONFIG_DIR/launch_agents/barista-launch.sh" restart; then
+      echo_success "Services restarted"
+      return
+    else
+      echo_warning "Launch agent restart failed, trying brew services fallback"
+    fi
+  fi
+
+  if command -v brew >/dev/null 2>&1; then
+    for svc in sketchybar yabai skhd; do
+      if brew services list 2>/dev/null | grep -q "$svc"; then
+        echo_info "Restarting $svc (brew services)..."
+        brew services restart "$svc" >/dev/null 2>&1 || echo_warning "Unable to restart $svc"
+      fi
+    done
+    return
+  fi
+
+  if command -v sketchybar >/dev/null 2>&1; then
+    echo_info "Reloading SketchyBar configuration..."
+    sketchybar --reload || true
+  fi
+}
+
+run_post_update() {
+  local hook="$CONFIG_DIR/helpers/post_update.sh"
+  if [[ -x "$hook" ]]; then
+    echo_info "Running post-update hook..."
+    if "$hook"; then
+      echo_success "Post-update hook completed"
+    else
+      echo_warning "Post-update hook reported issues"
+    fi
+  fi
+}
+
+handle_non_git_install() {
+  if command -v brew >/dev/null 2>&1 && brew list --formula 2>/dev/null | grep -q "^barista$"; then
+    echo_info "Detected Homebrew install (no git metadata). Upgrading via brew..."
+    brew upgrade barista || echo_warning "brew upgrade barista failed (continuing)"
+    run_post_update
+    restart_services
+    exit 0
+  fi
+
+  echo_error "Not a git repository. Cannot update automatically."
+  echo_info "If installed via Homebrew, run: brew upgrade barista"
+  exit 1
+}
+
+# --- Detect install type ---
+if [[ ! -d "$CONFIG_DIR/.git" ]]; then
+  handle_non_git_install
+fi
+
+cd "$CONFIG_DIR"
+
+# Current state
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+CURRENT_COMMIT=$(git rev-parse HEAD)
+REMOTE_URL=$(git remote get-url "$MAIN_REMOTE" 2>/dev/null || echo "unknown")
+
+echo ""
+echo "╔═══════════════════════════════════════╗"
+echo "║  Barista Update                       ║"
+echo "╚═══════════════════════════════════════╝"
+echo ""
+echo_info "Repository: $REMOTE_URL"
+echo_info "Branch: $CURRENT_BRANCH (tracking ${MAIN_REMOTE}/${MAIN_BRANCH})"
+echo_info "Current commit: ${CURRENT_COMMIT:0:8}"
+echo ""
+
+# Backup user data
+BACKUP_DIR="${CONFIG_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
+echo_info "Creating backup..."
+mkdir -p "$BACKUP_DIR"
+cp state.json "$BACKUP_DIR/" 2>/dev/null || true
+cp -r profiles "$BACKUP_DIR/" 2>/dev/null || true
+cp -r themes "$BACKUP_DIR/" 2>/dev/null || true
+echo_success "Backup created: $BACKUP_DIR"
+
+# Fetch updates
+echo_info "Fetching updates from $MAIN_REMOTE..."
+if ! git fetch "$MAIN_REMOTE"; then
+  echo_error "Failed to fetch updates. Check your network connection."
+  exit 1
+fi
+
+# Check what changed
+CHANGES=$(git log HEAD.."${MAIN_REMOTE}/${MAIN_BRANCH}" --oneline 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+
+if [[ "$CHANGES" -eq 0 ]]; then
+  echo_success "Already up to date!"
+  exit 0
+fi
+
+echo_info "Found $CHANGES new commit(s)"
+echo ""
+
+# Show changelog
+echo "Recent changes:"
+git log HEAD.."${MAIN_REMOTE}/${MAIN_BRANCH}" --oneline -10 2>/dev/null || true
+echo ""
+
+# Ask for confirmation
+read -p "Update now? [y/N] " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  echo_warning "Update cancelled"
+  exit 0
+fi
+
+# Stash local changes (preserve user files)
+echo_info "Stashing local changes..."
+git stash push -m "barista-update-$(date +%s)" -- \
+  ':!state.json' ':!profiles/**' ':!themes/**' ':!*.local.lua' ':!plugins/*.local.sh' 2>/dev/null || true
+
+# Merge/fast-forward
+if git merge-base --is-ancestor HEAD "${MAIN_REMOTE}/${MAIN_BRANCH}" 2>/dev/null; then
+  echo_info "Fast-forwarding to latest..."
+  git merge --ff-only "${MAIN_REMOTE}/${MAIN_BRANCH}"
+else
+  echo_info "Merging updates..."
+  if ! git merge "${MAIN_REMOTE}/${MAIN_BRANCH}" --no-edit; then
+    echo_warning "Merge conflicts detected. Resolving automatically..."
+    git checkout --theirs -- '*.lua' 'modules/**' 'plugins/**' 'helpers/**' '*.md' 'CMakeLists.txt' 2>/dev/null || true
+    git checkout --ours -- 'state.json' 'profiles/**' 'themes/**' '*.local.lua' 'plugins/*.local.sh' 2>/dev/null || true
+    git add . 2>/dev/null || true
+
+    if git diff --cached --quiet; then
+      git merge --abort 2>/dev/null || true
+      echo_error "Merge failed. Please resolve conflicts manually."
+      echo_info "Restore from backup: cp -r $BACKUP_DIR/* $CONFIG_DIR/"
+      exit 1
+    else
+      git commit -m "Merge barista updates (preserved local customizations)" --no-edit || true
+    fi
+  fi
+fi
+
+# Restore stashed changes (if any)
+if git stash list | grep -q "barista-update"; then
+  echo_info "Restoring local changes..."
+  git stash pop || true
+fi
+
+# Rebuild if needed
+if [[ -f CMakeLists.txt ]]; then
+  echo_info "Rebuilding components..."
+
+  if ! command -v cmake &> /dev/null; then
+    echo_warning "CMake not found. Skipping rebuild."
+  else
+    mkdir -p build
+    if cmake -B build -S . -DCMAKE_BUILD_TYPE=Release && \
+       cmake --build build -j$(sysctl -n hw.ncpu 2>/dev/null || echo 4); then
+      mkdir -p bin
+      cp -f build/bin/* bin/ 2>/dev/null || true
+      echo_success "Rebuild complete"
+    else
+      echo_warning "Build failed. Binaries may be outdated."
+    fi
+  fi
+fi
+
+# Run migrations / post-update sync
+if [[ -f helpers/migrate.sh ]]; then
+  echo_info "Running migrations..."
+  bash helpers/migrate.sh || echo_warning "Migration script had issues"
+fi
+run_post_update
+restart_services
+
+# Show summary
+NEW_COMMIT=$(git rev-parse HEAD)
+echo ""
+echo_success "Update complete!"
+echo ""
+echo "Summary:"
+echo "  Previous: ${CURRENT_COMMIT:0:8}"
+echo "  Current:  ${NEW_COMMIT:0:8}"
+echo "  Backup:   $BACKUP_DIR"
+echo ""
+echo "Next steps:"
+echo "  1. Review changes: git log $CURRENT_COMMIT..HEAD"
+echo "  2. Check CHANGELOG.md for breaking changes"
+echo "  3. Test configuration: sketchybar --reload"
+echo "  4. If issues, restore from backup:"
+echo "     cp -r $BACKUP_DIR/* $CONFIG_DIR/"
+echo ""

@@ -1,6 +1,7 @@
 #!/bin/sh
 
 # Modern Yabai Space Indicator - Icon-only with app persistence
+# OPTIMIZED: Replaced Python calls with jq for better performance
 
 STATE_FILE="$HOME/.config/sketchybar/state.json"
 ICON_SCRIPT="$HOME/.config/scripts/app_icon.sh"
@@ -30,53 +31,16 @@ is_selected() {
   esac
 }
 
+# OPTIMIZED: Use jq instead of Python for JSON parsing
 get_default_icon() {
-  if command -v python3 >/dev/null 2>&1 && [ -f "$STATE_FILE" ]; then
-    python3 - "$STATE_FILE" "$SPACE_INDEX" <<'PY'
-import json, os, sys
-path, idx = sys.argv[1:3]
-if not os.path.exists(path):
-    sys.exit(0)
-try:
-    with open(path, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
-except Exception:
-    data = {}
-if not isinstance(data, dict):
-    data = {}
-space_icons = data.get("space_icons", {})
-if not isinstance(space_icons, dict):
-    space_icons = {}
-value = space_icons.get(idx, "")
-if value:
-    print(value)
-PY
-    return
-  fi
+  [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ] || return
+  "$JQ_BIN" -r --arg idx "$SPACE_INDEX" '.space_icons[$idx] // empty' "$STATE_FILE" 2>/dev/null
 }
 
+# OPTIMIZED: Use jq instead of Python for JSON parsing
 get_space_mode() {
-  if ! command -v python3 >/dev/null 2>&1 || [ ! -f "$STATE_FILE" ]; then
-    return
-  fi
-  python3 - "$STATE_FILE" "$SPACE_INDEX" <<'PY'
-import json, os, sys
-path, idx = sys.argv[1:3]
-if not os.path.exists(path):
-    sys.exit(0)
-try:
-    with open(path, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
-except Exception:
-    data = {}
-if not isinstance(data, dict):
-    data = {}
-space_modes = data.get("space_modes", {})
-if isinstance(space_modes, dict):
-    value = space_modes.get(idx, "")
-    if value:
-        print(value)
-PY
+  [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ] || return
+  "$JQ_BIN" -r --arg idx "$SPACE_INDEX" '.space_modes[$idx] // empty' "$STATE_FILE" 2>/dev/null
 }
 
 get_active_app() {
@@ -162,6 +126,11 @@ if [ "$SENDER" != "mouse.entered" ] && [ "$SENDER" != "mouse.exited" ]; then
         ICON_VALUE="$EMPTY_ICON"
       fi
     fi
+  fi
+
+  # Absolute fallback: never leave the icon empty
+  if [ -z "$ICON_VALUE" ]; then
+    ICON_VALUE="$SPACE_INDEX"
   fi
 
   # Always hide label - icon-only design

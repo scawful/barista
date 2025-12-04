@@ -15,22 +15,25 @@ cleanup_lock() {
 }
 trap cleanup_lock EXIT
 
-# Skip work if display topology hasn't changed (debounce display events)
+# Skip work if neither display topology nor space mapping changed
 current_display_state=""
+current_space_state=""
 if command -v yabai >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-  current_display_state="$(yabai -m query --displays 2>/dev/null | jq -r '[.[] | .index] | sort | join(",")' 2>/dev/null || true)"
+  current_display_state="$(yabai -m query --displays 2>/dev/null | jq -r '[.[] | .index] | sort | join(\",\")' 2>/dev/null || true)"
+  # Track spaces by display/index to catch moves between monitors
+  current_space_state="$(yabai -m query --spaces 2>/dev/null | jq -r '[.[] | "\(.display)-\(.index)"] | sort | join(\",\")' 2>/dev/null || true)"
 fi
 
-if [ -n "$current_display_state" ]; then
+if [ -n "$current_display_state$current_space_state" ]; then
+  combined_state="${current_display_state}|${current_space_state}"
   cached_state="$(cat "$CACHE_FILE" 2>/dev/null || true)"
-  if [ "$current_display_state" = "$cached_state" ]; then
+  if [ "$combined_state" = "$cached_state" ]; then
     exit 0
   fi
-  printf '%s' "$current_display_state" >"$CACHE_FILE" || true
+  printf '%s' "$combined_state" >"$CACHE_FILE" || true
 fi
 
-# Race condition mitigation: Wait briefly for main bar items (anchors) to be registered
-sleep 0.1
+# OPTIMIZED: Removed sleep - the cache check above provides sufficient debouncing
 
 "$CONFIG_DIR/plugins/simple_spaces.sh"
 

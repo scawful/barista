@@ -4,7 +4,6 @@
 @interface WidgetsTabViewController : NSViewController <NSTableViewDataSource, NSTableViewDelegate>
 @property (strong) NSTableView *tableView;
 @property (strong) NSArray *widgets;
-@property (strong) NSDictionary *systemInfoMap;
 @end
 
 @implementation WidgetsTabViewController
@@ -24,8 +23,6 @@
     @{@"key": @"system_info", @"name": @"System Info", @"icon": @"󰍛"},
   ];
 
-  self.systemInfoMap = @{@0:@"cpu", @1:@"mem", @2:@"disk", @3:@"net", @4:@"docs", @5:@"actions"};
-
   CGFloat y = self.view.bounds.size.height - 40;
   CGFloat leftMargin = 40;
 
@@ -40,7 +37,7 @@
   y -= 60;
 
   // Table view
-  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(leftMargin, y - 300, 700, 300)];
+  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(leftMargin, 60, 700, y - 60)];
   scrollView.hasVerticalScroller = YES;
   scrollView.autohidesScrollers = YES;
   scrollView.borderType = NSBezelBorder;
@@ -71,54 +68,6 @@
 
   scrollView.documentView = self.tableView;
   [self.view addSubview:scrollView];
-  y -= 340;
-
-  // System Info Sections
-  NSTextField *systemInfoLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 400, 24)];
-  systemInfoLabel.stringValue = @"System Info Sections";
-  systemInfoLabel.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
-  systemInfoLabel.bordered = NO;
-  systemInfoLabel.editable = NO;
-  systemInfoLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:systemInfoLabel];
-  y -= 40;
-
-  NSBox *systemInfoBox = [[NSBox alloc] initWithFrame:NSMakeRect(leftMargin, y - 100, 700, 120)];
-  systemInfoBox.title = @"Enabled Sections";
-  [self.view addSubview:systemInfoBox];
-  
-  NSView *content = [systemInfoBox contentView];
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  
-  for (NSInteger idx = 0; idx < 6; idx++) {
-    NSInteger row = idx / 3;
-    NSInteger col = idx % 3;
-    CGFloat cellWidth = content.bounds.size.width / 3.0 - 15;
-    CGFloat infoX = 10 + (col * (cellWidth + 10));
-    CGFloat infoY = content.bounds.size.height - 35 - (row * 32);
-    
-    NSButton *checkbox = [[NSButton alloc] initWithFrame:NSMakeRect(infoX, infoY, cellWidth, 24)];
-    [checkbox setButtonType:NSButtonTypeSwitch];
-    checkbox.tag = idx;
-    checkbox.target = self;
-    checkbox.action = @selector(toggleSystemInfo:);
-    
-    switch (idx) {
-      case 0: checkbox.title = @"CPU"; break;
-      case 1: checkbox.title = @"Memory"; break;
-      case 2: checkbox.title = @"Disk"; break;
-      case 3: checkbox.title = @"Network"; break;
-      case 4: checkbox.title = @"Docs"; break;
-      case 5: checkbox.title = @"Actions"; break;
-    }
-    
-    NSString *key = self.systemInfoMap[@(idx)];
-    NSString *keyPath = [NSString stringWithFormat:@"system_info_items.%@", key];
-    BOOL enabled = [[config valueForKeyPath:keyPath defaultValue:@YES] boolValue];
-    checkbox.state = enabled ? NSControlStateValueOn : NSControlStateValueOff;
-    
-    [content addSubview:checkbox];
-  }
 }
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
@@ -213,20 +162,6 @@
   [config reloadSketchyBar];
 }
 
-- (void)toggleSystemInfo:(NSButton *)sender {
-  NSString *key = self.systemInfoMap[@(sender.tag)];
-  if (!key) return;
-  
-  BOOL enabled = sender.state == NSControlStateValueOn;
-  
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  NSString *keyPath = [NSString stringWithFormat:@"system_info_items.%@", key];
-  [config setValue:@(enabled) forKeyPath:keyPath];
-  
-  NSString *stateStr = enabled ? @"on" : @"off";
-  [config runScript:@"toggle_system_info_item.sh" arguments:@[key, stateStr]];
-}
-
 - (NSColor *)colorFromHexString:(NSString *)hexString {
   if (!hexString || hexString.length < 8) return nil;
   NSString *hex = [hexString hasPrefix:@"0x"] ? [hexString substringFromIndex:2] : hexString;
@@ -244,3 +179,4 @@
 }
 
 @end
+

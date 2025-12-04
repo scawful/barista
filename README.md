@@ -133,11 +133,19 @@ After installation:
 4. **Set Space Icons**: Customize space icons in Spaces tab
 5. **Configure Integrations**: Setup external services in Integrations tab
 
+## 🔄 Updating
+
+- Homebrew: `brew upgrade barista && ~/.config/sketchybar/helpers/post_update.sh`
+- Git clone: `~/.config/sketchybar/bin/barista-update` (backs up state, rebuilds, restarts services)
+- Skip restarts on managed laptops: `BARISTA_SKIP_RESTART=1 ~/.config/sketchybar/bin/barista-update`
+- See `docs/UPDATE_GUIDE.md` and `QUICK_REFERENCE.md` for more details
+
 ## 📚 Documentation
 
 - **[Control Panel Guide](docs/CONTROL_PANEL_V2.md)**: Complete GUI documentation
 - **[Icons & Shortcuts](docs/ICONS_AND_SHORTCUTS.md)**: Icon management and keyboard shortcuts
 - **[Themes Guide](docs/THEMES.md)**: Available themes and customization
+- **[Update Guide](docs/UPDATE_GUIDE.md)**: Safe upgrade steps for Homebrew and git installs
 - **[License Analysis](docs/LICENSE_ANALYSIS.md)**: Commercial use and licensing details
 - **[Improvements Overview](docs/IMPROVEMENTS.md)**: Architecture and performance details
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)**: Common issues and solutions

@@ -55,147 +55,15 @@ local function repo_status(repo)
   return { branch = branch, dirty = dirty, path = path }
 end
 
-function whichkey.setup(ctx)
-  local data = load_json(ctx.paths.workflow_data)
-  if not data then
-    return
-  end
-
-  local base_item = "whichkey_hud"
+function whichkey.setup(_ctx)
+  -- WhichKey HUD removed: delegate to syshelp-panel toggle on whichkey_toggle event.
+  local base_item = "whichkey_stub"
   sbar.add("item", base_item, {
     position = "left",
-    icon = "󰘥",
-    label = "?",
-    click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
-    script = [[if [ "$SENDER" = "whichkey_toggle" ]; then sketchybar -m --set $NAME popup.drawing=toggle; fi]],
-    popup = {
-      align = "left",
-      background = {
-        border_width = 2,
-        corner_radius = 6,
-        border_color = ctx.theme.WHITE,
-        color = ctx.theme.BG_SEC_COLR,
-        padding_left = 16,
-        padding_right = 16,
-      }
-    }
+    drawing = false,
+    script = [[if [ "$SENDER" = "whichkey_toggle" ]; then ~/.local/bin/syshelp-panel toggle; fi]]
   })
-  ctx.subscribe_popup_autoclose(base_item)
-  sbar.exec("sketchybar --subscribe whichkey_hud whichkey_toggle")
-
-  local renderer = menu_renderer.create(ctx)
-  local render_menu_items = renderer.render
-  local items = {}
-
-  local keymap = data.keymap or {}
-  if #keymap > 0 then
-    table.insert(items, { type = "header", label = "Shortcuts" })
-    for _, section in ipairs(keymap) do
-      if section.section then
-        table.insert(items, { 
-          type = "item", 
-          name = "whichkey.section." .. section.section:gsub("%s+", "_"),
-          icon = "", 
-          label = section.section, 
-          action = "", 
-          color = ctx.theme.SAPPHIRE 
-        })
-      end
-      if type(section.items) == "table" then
-        for i, item in ipairs(section.items) do
-          local keys = item.keys or ""
-          local description = item.description or ""
-          table.insert(items, {
-            type = "item",
-            name = "whichkey.key." .. i .. "." .. keys:gsub("%s+", "_"),
-            icon = "󰘥",
-            label = keys,
-            shortcut = description,
-            action = "",
-          })
-        end
-      end
-    end
-  end
-
-  local actions = data.actions or {}
-  if #actions > 0 then
-    table.insert(items, { type = "separator" })
-    table.insert(items, { type = "header", label = "Quick Actions" })
-    local action_map = {
-      reload_bar = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload",
-      open_logs = ctx.open_path("/opt/homebrew/var/log/sketchybar"),
-      repair_accessibility = ctx.call_script(ctx.scripts.accessibility),
-      focus_emacs = ctx.call_script(ctx.scripts.yabai_control, "space-focus-app", "Emacs"),
-      launch_yaze = ctx.open_path(ctx.paths.yaze .. "/build/bin/yaze"),
-    }
-    for _, action in ipairs(actions) do
-      local cmd = action_map[action.id]
-      if cmd then
-        table.insert(items, { 
-          type = "item", 
-          name = "whichkey.action." .. action.id,
-          icon = "󰐕", 
-          label = action.title or action.id, 
-          action = cmd 
-        })
-      end
-    end
-  end
-
-  local docs = data.docs or {}
-  if #docs > 0 then
-    table.insert(items, { type = "separator" })
-    table.insert(items, { type = "header", label = "Docs" })
-    for _, doc in ipairs(docs) do
-      local path = expand_path(doc.path)
-      if path then
-        table.insert(items, { 
-          type = "item", 
-          name = "whichkey.doc." .. (doc.id or "doc"),
-          icon = "󰈙", 
-          label = doc.title or path, 
-          action = ctx.open_path(path) 
-        })
-      end
-    end
-  end
-
-  local repos = data.repos or {}
-  if #repos > 0 then
-    table.insert(items, { type = "separator" })
-    table.insert(items, { type = "header", label = "Repos" })
-    for _, repo in ipairs(repos) do
-      -- Performance optimization: Disable synchronous git checks during startup
-      -- local status = repo_status(repo)
-      local status = { branch = "—", dirty = false, path = expand_path(repo.path) }
-      
-      if status then
-        local suffix = status.dirty and " *" or ""
-        table.insert(items, {
-          type = "item",
-          name = "whichkey.repo." .. (repo.id or "repo"),
-          icon = "󰊢",
-          label = string.format("%s [%s%s]", repo.name or repo.id or "repo", status.branch, suffix),
-          action = ctx.open_path(status.path),
-          color = status.dirty and ctx.theme.PEACH or ctx.theme.WHITE,
-        })
-      end
-    end
-  end
-
-  table.insert(items, { type = "separator" })
-  table.insert(items, { type = "header", label = "Help" })
-  local help_action
-  if ctx.helpers.help_center then
-    help_action = ctx.open_path(ctx.helpers.help_center)
-  else
-    help_action = [[osascript -e 'display alert "Help Center binary missing" message "Run `cd ~/.config/sketchybar/gui && make help`"']]
-  end
-  table.insert(items, { type = "item", name = "whichkey.help.center", icon = "󰘥", label = "Help Center", action = help_action })
-  table.insert(items, { type = "item", name = "whichkey.help.toggle", icon = "󰌌", label = "Toggle WhichKey", action = "sketchybar --trigger whichkey_toggle" })
-
-  render_menu_items(base_item, items)
+  sbar.exec(string.format("sleep 0.1; sketchybar --subscribe %s whichkey_toggle", base_item))
 end
 
 return whichkey

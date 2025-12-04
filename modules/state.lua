@@ -1,5 +1,6 @@
 -- State Management Module
 -- Centralized state persistence and live updates
+-- v1.1.0 - Added state versioning for migrations
 
 local state = {}
 local json = require("json")
@@ -8,14 +9,21 @@ local HOME = os.getenv("HOME")
 local CONFIG_DIR = HOME .. "/.config/sketchybar"
 local STATE_FILE = CONFIG_DIR .. "/state.json"
 
+-- State version for migrations
+local STATE_VERSION = 1
+
 -- Performance optimization: batch writes and debouncing
 local save_timer = nil
 local save_delay = 0.5  -- Wait 500ms before saving (debounce)
 local pending_save = false
 local dirty_flag = false
 
+-- Forward declaration for save_immediate (defined after sanitize_state/merge_defaults)
+local save_immediate
+
 -- Default state structure
 local default_state = {
+  _version = STATE_VERSION,  -- Track state schema version
   widgets = {
     system_info = true,
     network = true,
@@ -44,7 +52,6 @@ local default_state = {
   widget_colors = {},
   space_icons = {},
   space_modes = {},
-  yabai_unmanaged_apps = {},
   system_info_items = {
     cpu = true,
     mem = true,
@@ -99,7 +106,6 @@ local function sanitize_state(data)
   if type(data.icons) ~= "table" then data.icons = {} end
   if type(data.integrations) ~= "table" then data.integrations = {} end
   if type(data.space_modes) ~= "table" then data.space_modes = {} end
-  if type(data.yabai_unmanaged_apps) ~= "table" then data.yabai_unmanaged_apps = {} end
 
   -- Handle space_icons
   if type(data.space_icons) ~= "table" then
@@ -125,6 +131,17 @@ local function sanitize_state(data)
   end
 end
 
+-- Migrate state from old version to new version
+local function migrate_state(data, from_version, to_version)
+  -- Migration 0 -> 1: Add _version field
+  if (from_version or 0) < 1 and to_version >= 1 then
+    data._version = 1
+    -- Future migrations can be added here:
+    -- if from_version < 2 then ... end
+  end
+  return data
+end
+
 -- Load state from disk
 function state.load()
   local data
@@ -142,15 +159,31 @@ function state.load()
     data = {}
   end
 
-  sanitize_state(data)
-  merge_defaults(data, default_state)
-  sanitize_state(data)
+  -- Check version and migrate if needed
+  local loaded_version = data._version or 0
+  if loaded_version < STATE_VERSION then
+    data = migrate_state(data, loaded_version, STATE_VERSION)
+    data._version = STATE_VERSION
+    -- Save migrated state immediately
+    sanitize_state(data)
+    merge_defaults(data, default_state)
+    save_immediate(data)
+  else
+    sanitize_state(data)
+    merge_defaults(data, default_state)
+    sanitize_state(data)
+  end
 
   return data
 end
 
+-- Get current state version
+function state.get_version()
+  return STATE_VERSION
+end
+
 -- Save state to disk (internal, immediate write)
-local function save_immediate(data)
+save_immediate = function(data)
   sanitize_state(data)
   local ok, encoded = pcall(json.encode, data)
   if ok then

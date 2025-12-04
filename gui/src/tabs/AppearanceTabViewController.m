@@ -15,14 +15,6 @@
 @property (strong) NSButton *applyButton;
 @property (strong) NSView *previewBox;
 @property (strong) NSTextField *previewBarView;
-// Font Settings
-@property (strong) NSPopUpButton *clockFontMenu;
-@property (strong) NSTextField *clockFontFamilyField;
-// Menu Icons
-@property (strong) NSPopUpButton *appleIconMenu;
-@property (strong) NSPopUpButton *questIconMenu;
-@property (strong) NSTextField *appleIconPreviewField;
-@property (strong) NSTextField *questIconPreviewField;
 @end
 
 @implementation AppearanceTabViewController
@@ -40,7 +32,7 @@
   CGFloat leftMargin = 50;
   CGFloat rightMargin = self.view.bounds.size.width - 50;
   CGFloat sliderWidth = 400;
-  CGFloat spacing = 60;
+  CGFloat spacing = 70;
 
   // Title
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 500, 28)];
@@ -171,94 +163,6 @@
   self.barColorHexField.delegate = (id<NSTextFieldDelegate>)self;
   [self updateBarColorHexField];
   [self.view addSubview:self.barColorHexField];
-  y -= spacing + 10;
-
-  // Font Settings
-  NSTextField *fontLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 150, 20)];
-  fontLabel.stringValue = @"Clock Font:";
-  fontLabel.bordered = NO;
-  fontLabel.editable = NO;
-  fontLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:fontLabel];
-
-  self.clockFontMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(leftMargin + 160, y - 3, 120, 26)];
-  NSArray *fontOptions = @[ @"Regular", @"Medium", @"Semibold", @"Bold", @"Heavy" ];
-  for (NSString *option in fontOptions) {
-    [self.clockFontMenu addItemWithTitle:option];
-  }
-  NSString *currentFont = [config valueForKeyPath:@"appearance.clock_font_style" defaultValue:@"Bold"];
-  [self.clockFontMenu selectItemWithTitle:currentFont];
-  self.clockFontMenu.target = self;
-  self.clockFontMenu.action = @selector(clockFontChanged:);
-  [self.view addSubview:self.clockFontMenu];
-
-  self.clockFontFamilyField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + 300, y, 200, 22)];
-  self.clockFontFamilyField.placeholderString = @"Font Family (e.g. SF Mono)";
-  NSString *currentFamily = [config valueForKeyPath:@"appearance.clock_font_family" defaultValue:@"SF Pro"];
-  self.clockFontFamilyField.stringValue = currentFamily;
-  [self.view addSubview:self.clockFontFamilyField];
-  y -= spacing + 10;
-
-  // Menu Icons
-  NSTextField *menuIconLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 150, 20)];
-  menuIconLabel.stringValue = @"Menu Icons:";
-  menuIconLabel.bordered = NO;
-  menuIconLabel.editable = NO;
-  menuIconLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:menuIconLabel];
-
-  NSArray *iconChoices = @[
-    @{ @"title": @"Apple", @"glyph": @"" },
-    @{ @"title": @"Alt Apple", @"glyph": @"" },
-    @{ @"title": @"Gear", @"glyph": @"" },
-    @{ @"title": @"Triforce", @"glyph": @"󰊠" },
-    @{ @"title": @"Quest", @"glyph": @"" },
-    @{ @"title": @"Gamepad", @"glyph": @"󰍳" }
-  ];
-
-  // Apple Icon
-  self.appleIconMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(leftMargin + 160, y - 3, 120, 26)];
-  for (NSDictionary *option in iconChoices) {
-    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:option[@"title"] action:NULL keyEquivalent:@""];
-    item.representedObject = option[@"glyph"];
-    [self.appleIconMenu.menu addItem:item];
-  }
-  NSString *appleCurrent = [config valueForKeyPath:@"icons.apple" defaultValue:@""];
-  [self selectMenu:self.appleIconMenu matchingValue:appleCurrent];
-  self.appleIconMenu.tag = 0;
-  self.appleIconMenu.target = self;
-  self.appleIconMenu.action = @selector(menuIconChanged:);
-  [self.view addSubview:self.appleIconMenu];
-
-  self.appleIconPreviewField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + 290, y, 30, 22)];
-  self.appleIconPreviewField.bordered = NO;
-  self.appleIconPreviewField.editable = NO;
-  self.appleIconPreviewField.backgroundColor = [NSColor clearColor];
-  self.appleIconPreviewField.font = [NSFont systemFontOfSize:16];
-  [self.view addSubview:self.appleIconPreviewField];
-
-  // Quest Icon
-  self.questIconMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(leftMargin + 340, y - 3, 120, 26)];
-  for (NSDictionary *option in iconChoices) {
-    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:option[@"title"] action:NULL keyEquivalent:@""];
-    item.representedObject = option[@"glyph"];
-    [self.questIconMenu.menu addItem:item];
-  }
-  NSString *questCurrent = [config valueForKeyPath:@"icons.quest" defaultValue:@""];
-  [self selectMenu:self.questIconMenu matchingValue:questCurrent];
-  self.questIconMenu.tag = 1;
-  self.questIconMenu.target = self;
-  self.questIconMenu.action = @selector(menuIconChanged:);
-  [self.view addSubview:self.questIconMenu];
-
-  self.questIconPreviewField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + 470, y, 30, 22)];
-  self.questIconPreviewField.bordered = NO;
-  self.questIconPreviewField.editable = NO;
-  self.questIconPreviewField.backgroundColor = [NSColor clearColor];
-  self.questIconPreviewField.font = [NSFont systemFontOfSize:16];
-  [self.view addSubview:self.questIconPreviewField];
-  
-  [self updateMenuIconPreview];
   y -= spacing;
 
   // Live Preview
@@ -287,7 +191,7 @@
   self.previewBarView.wantsLayer = YES;
   [self.previewBox addSubview:self.previewBarView];
   [self updatePreview];
-  y -= 80;
+  y -= 100;
 
   // Apply Button
   self.applyButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin, y, 200, 32)];
@@ -348,31 +252,6 @@
   self.barColorHexField.stringValue = hex;
 }
 
-- (void)clockFontChanged:(id)sender {
-  // Will be saved on Apply
-}
-
-- (void)menuIconChanged:(id)sender {
-  [self updateMenuIconPreview];
-}
-
-- (void)updateMenuIconPreview {
-  NSString *appleGlyph = self.appleIconMenu.selectedItem.representedObject;
-  NSString *questGlyph = self.questIconMenu.selectedItem.representedObject;
-  self.appleIconPreviewField.stringValue = appleGlyph ?: @"";
-  self.questIconPreviewField.stringValue = questGlyph ?: @"";
-}
-
-- (void)selectMenu:(NSPopUpButton *)menu matchingValue:(NSString *)value {
-  if (!menu || !value) return;
-  for (NSMenuItem *item in menu.itemArray) {
-    if ([item.representedObject isEqual:value]) {
-      [menu selectItem:item];
-      return;
-    }
-  }
-}
-
 - (void)updatePreview {
   CGFloat height = self.heightSlider.doubleValue;
   CGFloat corner = self.cornerSlider.doubleValue;
@@ -425,23 +304,6 @@
   NSString *hexColor = [self hexStringFromColor:self.barColorWell.color];
   [config setValue:hexColor forKeyPath:@"appearance.bar_color"];
 
-  // Save Fonts
-  [config setValue:self.clockFontMenu.selectedItem.title forKeyPath:@"appearance.clock_font_style"];
-  [config setValue:self.clockFontFamilyField.stringValue forKeyPath:@"appearance.clock_font_family"];
-
-  // Save Icons
-  [config setValue:self.appleIconMenu.selectedItem.representedObject forKeyPath:@"icons.apple"];
-  [config setValue:self.questIconMenu.selectedItem.representedObject forKeyPath:@"icons.quest"];
-
-  // Run scripts to apply individual settings if needed, or just reload
-  // Ideally we would have specific scripts, but reloading sketchybar often picks up state changes if the bar config reads from state.json
-  // The original config_menu.m ran specific scripts. Let's replicate that for font/icons if critical.
-  // For now, reloading sketchybar is the main mechanism.
-  
-  [config runScript:@"set_menu_icon.sh" arguments:@[@"apple", self.appleIconMenu.selectedItem.representedObject]];
-  [config runScript:@"set_menu_icon.sh" arguments:@[@"quest", self.questIconMenu.selectedItem.representedObject]];
-  [config runScript:@"set_clock_font.sh" arguments:@[self.clockFontMenu.selectedItem.title]];
-
   [config reloadSketchyBar];
 
   // Visual feedback
@@ -452,3 +314,4 @@
 }
 
 @end
+

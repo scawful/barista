@@ -14,16 +14,21 @@
 static const char *HOVER_BG = "0x80cba6f7";
 static const char *IDLE_BG = "0x00000000";
 static const char *SUBMENUS[] = {
+  "menu.control_center.app",
+  "menu.windows.section",
+  "menu.control_center.spaces",
+  "menu.control_center.layouts",
+  "menu.yabai.section",
   "menu.sketchybar.styles",
   "menu.sketchybar.tools",
-  "menu.yabai.section",
-  "menu.windows.section",
   "menu.rom.section",
   "menu.emacs.section",
   "menu.halext.section",
   "menu.apps.section",
   "menu.dev.section",
-  "menu.help.section"
+  "menu.help.section",
+  "menu.agents.section",
+  "menu.debug.section"
 };
 static const size_t SUBMENU_COUNT = sizeof(SUBMENUS) / sizeof(SUBMENUS[0]);
 
@@ -42,7 +47,6 @@ static void run_cmd(const char *fmt, ...) {
   system(buffer);
 }
 
-// Atomic file operations with flock
 static void record_active(const char *name) {
   int fd = open(state_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
   if (fd < 0) return;
@@ -173,10 +177,10 @@ static void schedule_close(const char *name) {
     return;
   }
 
-  // Child process: wait then close
+  // Wait for delay
   usleep((useconds_t)(CLOSE_DELAY * 1000000.0));
 
-  // Check if still active (with proper locking)
+  // Check if still active
   char current[256];
   if (!read_active(current, sizeof(current)) || strcmp(current, name) != 0) {
     // Close submenu and reset background
@@ -193,6 +197,9 @@ static void schedule_close(const char *name) {
 }
 
 int main(void) {
+  // Prevent zombie processes from fork() in schedule_close()
+  signal(SIGCHLD, SIG_IGN);
+
   const char *tmpdir = getenv("TMPDIR");
   if (!tmpdir) tmpdir = "/tmp";
   snprintf(state_file, sizeof(state_file), "%s/sketchybar_submenu_active", tmpdir);

@@ -4,7 +4,10 @@
 .claude/
 
 # Build artifacts
-bin/
+bin/*
+!bin/*.sh
+!bin/barista-update
+!bin/install-launch-agent
 gui/bin/
 build/
 *.o
@@ -43,6 +46,8 @@ state.json.*backup
 
 # Cache
 cache/
+.spaces_cache*
+*.spaces
 
 # Links (generated)
 links/

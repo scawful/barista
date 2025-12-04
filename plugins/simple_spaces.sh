@@ -4,7 +4,6 @@ set -euo pipefail
 
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
 FOCUS_SCRIPT="$CONFIG_DIR/plugins/focus_space.sh"
-SPACES_CACHE_FILE="${CONFIG_DIR}/.spaces_cache.spaces"
 
 RAW_SPACES_DATA=""
 if command -v yabai >/dev/null 2>&1; then
@@ -14,13 +13,19 @@ else
     exit 1
 fi
 
+# Wait for front_app anchor to exist (fast poll)
+for i in {1..20}; do
+  if sketchybar --query front_app >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.05
+done
+
 declare -a SPACE_LINES=()
-current_signature=""
 if [ -n "$RAW_SPACES_DATA" ] && command -v jq >/dev/null 2>&1; then
     while IFS= read -r line; do
       SPACE_LINES+=("$line")
     done < <(printf '%s\n' "$RAW_SPACES_DATA" | jq -r '.[] | "\(.display) \(.index)"' | sort -k1,1n -k2,2n)
-    current_signature="$(IFS=,; echo "${SPACE_LINES[*]}")"
 fi
 
 if [ ${#SPACE_LINES[@]} -eq 0 ]; then
@@ -28,27 +33,7 @@ if [ ${#SPACE_LINES[@]} -eq 0 ]; then
   for i in {1..10}; do
     SPACE_LINES+=("1 $i")
   done
-  current_signature="$(IFS=,; echo "${SPACE_LINES[*]}")"
 fi
-
-# Skip rebuild if spaces unchanged and items already exist
-if [ -n "$current_signature" ] && [ -f "$SPACES_CACHE_FILE" ]; then
-  cached_signature="$(cat "$SPACES_CACHE_FILE" 2>/dev/null || true)"
-  if [ "$current_signature" = "$cached_signature" ]; then
-    first_space="${SPACE_LINES[0]##* }"
-    if [ -n "$first_space" ] && sketchybar --query "space.$first_space" >/dev/null 2>&1; then
-      exit 0
-    fi
-  fi
-fi
-
-# Wait for front_app anchor to exist (fast poll, short timeout)
-for i in {1..10}; do
-  if sketchybar --query front_app >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.03
-done
 
 # Prepare batch command
 declare -a SB_ARGS=()
@@ -69,6 +54,9 @@ for entry in "${SPACE_LINES[@]}"; do
   SB_ARGS+=(--add space "$item" left)
   SB_ARGS+=(--set "$item" space="$space_index" \
                           display="$display" \
+                          associated_display="$display" \
+                          associated_space="$space_index" \
+                          ignore_association=off \
                           icon="$icon" \
                           icon.padding_left=6 \
                           icon.padding_right=6 \
@@ -84,7 +72,7 @@ for entry in "${SPACE_LINES[@]}"; do
                           background.height=20 \
                           script="$CONFIG_DIR/plugins/space.sh" \
                           click_script="$FOCUS_SCRIPT $space_index")
-  SB_ARGS+=(--subscribe "$item" mouse.entered mouse.exited space_change space_mode_refresh)
+  SB_ARGS+=(--subscribe "$item" mouse.entered mouse.exited space_change space_mode_refresh front_app_switched)
   SB_ARGS+=(--move "$item" after "$last_item")
   
   last_item="$item"
@@ -116,8 +104,3 @@ SB_ARGS+=(--move space_creator after "$last_item")
 
 # Execute all commands in one single call
 sketchybar "${SB_ARGS[@]}"
-
-# Cache current signature to skip redundant rebuilds
-if [ -n "$current_signature" ]; then
-  printf '%s' "$current_signature" >"$SPACES_CACHE_FILE" 2>/dev/null || true
-fi

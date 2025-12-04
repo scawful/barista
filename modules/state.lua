@@ -32,12 +32,17 @@ local default_state = {
     battery = true,
   },
   appearance = {
+    theme = "default",
     bar_height = 28,
     corner_radius = 0,
     bar_color = "0xC021162F",
     blur_radius = 30,
     clock_font_style = "Semibold",
     widget_scale = 1.0,
+    widget_corner_radius = 6,
+    font_icon = "Hack Nerd Font",
+    font_text = "Source Code Pro",
+    font_numbers = "SF Mono",
   },
   icons = {
     apple = "",        -- FontAwesome apple icon (F179)

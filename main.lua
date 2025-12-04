@@ -27,12 +27,37 @@ local whichkey_module = require("whichkey")
 
 -- Initialize component switcher for C/Lua hybrid architecture
 local component_switcher = require("component_switcher")
-local c_bridge = require("c_bridge")
 
--- Initialize C components with Lua fallback
+-- Lua-only mode: for environments without compiled helpers (no CMake) or when explicitly requested
+local LUA_ONLY = (os.getenv("BARISTA_LUA_ONLY") == "1") or (os.getenv("BARISTA_NO_CMAKE") == "1")
+local c_bridge = nil
+
+if not LUA_ONLY then
+  local ok, mod = pcall(require, "c_bridge")
+  if ok then
+    c_bridge = mod
+    if c_bridge.check_components then
+      local status = c_bridge.check_components()
+      if status and not status.all_present then
+        print(string.format("Barista: missing C helpers (%s); switching to Lua-only fallback", table.concat(status.missing, ", ")))
+        LUA_ONLY = true
+      end
+    end
+  else
+    print("Barista: c_bridge unavailable; switching to Lua-only fallback")
+    LUA_ONLY = true
+  end
+end
+
 component_switcher.init()
-component_switcher.set_mode("auto")  -- Auto-select C when available, fallback to Lua
-c_bridge.init()  -- Pre-cache common operations
+component_switcher.set_mode(LUA_ONLY and "lua" or "auto")  -- Auto-select C when available, force Lua in fallback
+
+if not LUA_ONLY and c_bridge then
+  c_bridge.init()  -- Pre-cache common operations
+else
+  c_bridge = c_bridge or { init = function() end }
+  print("Barista: running in Lua-only mode (no compiled helpers)")
+end
 
 -- Import existing icons into icon_manager for backwards compatibility
 icon_manager.import_from_module(icons_module)
@@ -48,6 +73,9 @@ local YABAI_CONTROL_SCRIPT = SCRIPTS_DIR .. "/yabai_control.sh"
 local SKHD_CONTROL_SCRIPT = SCRIPTS_DIR .. "/skhd_control.sh"
 local FRONT_APP_ACTION_SCRIPT = SCRIPTS_DIR .. "/front_app_action.sh"
 local function compiled_script(binary_name, fallback)
+  if LUA_ONLY then
+    return fallback
+  end
   local path = string.format("%s/bin/%s", CONFIG_DIR, binary_name)
   local file = io.open(path, "r")
   if file then
@@ -316,12 +344,17 @@ local widget_height = clamp(
   math.max(bar_height - 2, base_widget_height + 4)
 )
 
+-- Font families (customizable via state.appearance)
+local font_icon_family = state_module.get_appearance(state, "font_icon", "Hack Nerd Font")
+local font_text_family = state_module.get_appearance(state, "font_text", "Source Code Pro")
+local font_numbers_family = state_module.get_appearance(state, "font_numbers", "SF Mono")
+
 -- Settings object
 local settings = {
   font = {
-    icon = "Hack Nerd Font",
-    text = "Source Code Pro",
-    numbers = "SF Mono",
+    icon = font_icon_family,
+    text = font_text_family,
+    numbers = font_numbers_family,
     style_map = {
       Regular = "Regular",
       Medium = "Medium",

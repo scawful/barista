@@ -43,6 +43,7 @@ state.json
 component_settings.json
 *.icon_backup
 state.json.*backup
+themes/theme.local.lua
 
 # Cache
 cache/

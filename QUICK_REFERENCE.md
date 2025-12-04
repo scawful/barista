@@ -32,6 +32,13 @@ brew upgrade barista
 BARISTA_SKIP_RESTART=1 ~/.config/sketchybar/bin/barista-update
 ```
 
+### Themes & Fallbacks
+```bash
+BARISTA_THEME=espresso sketchybar --reload        # Quick theme switch (see themes/*.lua)
+BARISTA_LUA_ONLY=1 sketchybar --reload            # Lua-only mode (no compiled helpers)
+# Custom colors: create ~/.config/sketchybar/themes/theme.local.lua returning a table of overrides
+```
+
 ## Permissions
 
 ```bash

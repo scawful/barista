@@ -139,6 +139,7 @@ After installation:
 - Git clone: `~/.config/sketchybar/bin/barista-update` (backs up state, rebuilds, restarts services)
 - Skip restarts on managed laptops: `BARISTA_SKIP_RESTART=1 ~/.config/sketchybar/bin/barista-update`
 - See `docs/UPDATE_GUIDE.md` and `QUICK_REFERENCE.md` for more details
+- No CMake/locked-down Macs: `BARISTA_LUA_ONLY=1 sketchybar --reload` to run without compiled helpers
 
 ## 📚 Documentation
 
@@ -201,20 +202,16 @@ Barista includes 6 carefully crafted color themes inspired by coffee culture:
 - **White Coffee**: Creamy whites and light browns (flat white style)
 - **Chocolate**: Rich dark browns and warm chocolatey tones
 - **Mocha**: Medium browns with chocolate and coffee accents
+- **Espresso**: High-contrast dark roast with copper highlights
 
 ### Specialty
 - **Strawberry Matcha**: Fresh pinks and vibrant greens
 
-### Switching Themes
-
-Edit `theme.lua`:
-```lua
-local current_theme = "mocha"  -- or "caramel", "white_coffee", "chocolate", "strawberry_matcha"
-local theme = require("themes." .. current_theme)
-return theme
-```
-
-Then reload: `sketchybar --reload`
+### Switching & Customizing Themes
+- Quick switch: `BARISTA_THEME=espresso sketchybar --reload`
+- Persisted switch: set `"appearance": {"theme": "espresso"}` in `state.json`
+- Custom colors: create `~/.config/sketchybar/themes/theme.local.lua` returning a table of overrides (e.g., `{ bar = { bg = 0xF0121212 }, WHITE = "0xFFFFFFFF" }`)
+- Fonts/corners: set `appearance.font_icon/text/numbers` and `appearance.widget_corner_radius` in `state.json`
 
 **📖 Full Documentation**: See [docs/THEMES.md](docs/THEMES.md) for theme details, customization, and creating your own themes.
 

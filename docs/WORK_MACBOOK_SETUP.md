@@ -344,6 +344,7 @@ cmake -B build -S . && cmake --build build
 - Preferred: `BARISTA_SKIP_RESTART=1 ~/.config/sketchybar/bin/barista-update` (let corporate tooling restart services)
 - If Homebrew is allowed: `brew upgrade barista && ~/.config/sketchybar/helpers/post_update.sh`
 - If restarts are permitted locally: `~/.config/sketchybar/launch_agents/barista-launch.sh restart`
+- No local builds: `BARISTA_LUA_ONLY=1 sketchybar --reload` to run without compiled helpers
 
 ## Next Steps
 

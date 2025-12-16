@@ -1,73 +1,138 @@
-# Sketchybar Migration Notes
+# Barista Migration Guide
 
-This document outlines the current state of the `sketchybar` configuration and a potential migration scenario.
+This document explains how to migrate to Barista and the different deployment strategies available.
 
-## Current Setup:
+## Architecture
 
-1.  **`~/.config/sketchybar`**: This directory is currently a symbolic link pointing to `~/Code/sketchybar`. This means the active `sketchybar` configuration is loaded from `~/Code/sketchybar`.
+- **`~/Code/barista`** — Source of truth (git repository)
+- **`~/.config/sketchybar`** — Deployed configuration (what sketchybar actually loads)
 
-2.  **`~/Code/sketchybar` Repository**:
-    *   This repository contains a `sketchybar` configuration.
-    *   A recent `git status` showed a large number of deleted and modified files, along with a few untracked files. This indicates that a significant cleanup or migration of this configuration is either in progress or has recently occurred.
-    *   A script (`stage_changes.sh`) was run to stage these changes for review and commit.
+The `sketchybar` executable (installed via Homebrew) loads its configuration from `~/.config/sketchybar`.
 
-3.  **`~/Code/barista` Repository**:
-    *   This repository was recently cloned and appears to contain a complete and new `sketchybar` configuration. Its structure (e.g., `main.lua`, `plugins`, `themes`) suggests it is intended to be a functional `sketchybar` setup.
+## Migration Options
 
-4.  **`sketchybar` Launch Agent**:
-    *   The `launchd` agent responsible for starting `sketchybar` is `~/Library/LaunchAgents/homebrew.mxcl.sketchybar.plist`.
-    *   This agent is configured to run the `sketchybar` executable installed via Homebrew (specifically, `/opt/homebrew/opt/sketchybar/bin/sketchybar`).
-    *   This executable then loads its configuration from the path specified by `~/.config/sketchybar`.
+### Option 1: Deploy Script (Recommended)
 
-## Potential Migration Scenario:
+The deploy script copies files from the source repo to the config directory, keeping them independent. This is the preferred approach as it:
+- Keeps your git repo clean from runtime artifacts
+- Allows editing either location without affecting the other
+- Provides dry-run preview before changes
 
-It appears there might be an intention to switch the active `sketchybar` configuration from `~/Code/sketchybar` to `~/Code/barista`.
+```bash
+cd ~/Code/barista
 
-**If this is the desired outcome, the steps would be:**
+# Preview what would be synced
+./deploy.sh --dry-run
 
-1.  **Remove the existing symlink**:
-    ```bash
-    rm ~/.config/sketchybar
-    ```
-2.  **Create a new symlink pointing to `barista`**:
-    ```bash
-    ln -s ~/Code/barista ~/.config/sketchybar
-    ```
-3.  **Restart `sketchybar` to apply the new configuration**:
-    ```bash
-    launchctl unload ~/Library/LaunchAgents/homebrew.mxcl.sketchybar.plist
-    launchctl load ~/Library/LaunchAgents/homebrew.mxcl.sketchybar.plist
-    ```
+# Deploy and restart sketchybar
+./deploy.sh
 
-This document serves as a record of the current state and a proposed path forward, as the user was unsure about proceeding with the migration at this time.
+# Deploy without restarting
+./deploy.sh --no-restart
+```
 
-## Progress Log — 2025-11-18
+The deploy script excludes development files (`.git`, `build/`, `.context/`, `__pycache__/`, etc.) and uses rsync with `--delete` to keep destinations in sync.
 
-1. **Sync Audit**
-   - Captured repo status for both `~/Code/barista` and `~/Code/sketchybar` (`docs/SYNC_AUDIT.md`).
-   - Confirmed `~/.config/sketchybar -> ~/Code/sketchybar` symlink remains in place.
-2. **Control Panel + Helper Parity**
-   - `gui/` and `helpers/` directories mirrored into `~/Code/sketchybar` with `make all && make install`.
-   - Documented in `docs/CONTROL_PANEL_PARITY.md`.
-3. **Unified Control Center**
-   - `menu_module.render_control_center` replaces separate Apple/front-app popups.
-   - Single `control_center` item on the left opens consolidated menus for app controls, Yabai, spaces, dev tools, and help.
-4. **Widget + System Panel Alignment**
-   - Removed standalone `network` widget; Wi-Fi/IPv4 now surface inside the CPU/System panel (C helper + shell fallback updated).
-   - Yabai status widget, spaces management scripts, and right-aligned widgets (battery, volume, clock/calendar) share consistent sizing via `widgets.lua`.
-5. **Next Cutover Step**
-   - Once QA on `~/Code/sketchybar` passes, re-point the `~/.config/sketchybar` symlink to `~/Code/barista` and reload the launch agent per steps above.
+### Option 2: Symlink (Simple but Coupled)
 
-6. **Barista Control Center Expansion (In Progress)**
-   - Direction: graduate from a “SketchyBar control panel” to a Barista-branded macOS control surface with:
-     - Full launch-agent inventory + management (kickstart/bootstrap helpers, future automation).
-     - Debug/diagnostic toggles (verbose logging, hotload, rebuild/reload macros).
-     - Global shortcuts + CLI wrappers for rebuilding, reloading, or opening GUI popups.
-     - Hooks for AI-assisted workflows (doc links, future Ollama/OpenAI triggers).
-   - Documentation work:
-     - `docs/IMPROVEMENTS.md` now tracks Launch-Agent, Debug, and Shortcut enhancements.
-     - `docs/BARISTA_CONTROL_PANEL.md` (new) captures the expanded mission, UX pillars, and roadmap.
-   - Upcoming milestones:
-     - Ship `helpers/launch_agent_manager.sh` for list/start/stop/restart with JSON output.
-     - Add Launch Agent + Debug tabs inside `gui/config_menu_enhanced.m`.
-     - Introduce a first-class Barista launch agent that supervises sketchybar, yabai, and skhd.
+Symlink the config directory directly to the repo. Simpler but means any file changes affect both locations.
+
+```bash
+# Remove existing config (backup first if needed)
+rm -rf ~/.config/sketchybar
+
+# Create symlink
+ln -s ~/Code/barista ~/.config/sketchybar
+
+# Restart sketchybar
+brew services restart sketchybar
+```
+
+**Downside**: Build artifacts, `.git/`, and development files become visible to sketchybar.
+
+## Quick Start
+
+For a fresh machine:
+
+```bash
+# Clone the repo
+git clone https://github.com/scawful/barista.git ~/Code/barista
+
+# Deploy to config directory
+cd ~/Code/barista
+./deploy.sh
+
+# Verify sketchybar is running
+brew services list | grep sketchybar
+```
+
+## Work Machine Setup (No Binary Compilation)
+
+For machines where compiling binaries requires approval:
+
+```bash
+# Set Lua-only mode
+export BARISTA_LUA_ONLY=1
+
+# Install TUI dependencies
+pip install textual pydantic pyyaml
+
+# Use the TUI for configuration
+./bin/barista
+```
+
+See `docs/guides/TUI_CONFIGURATION.md` for detailed TUI usage.
+
+## Environment Variables
+
+Barista supports these environment overrides:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BARISTA_CONFIG_DIR` | `~/.config/sketchybar` | Config directory |
+| `BARISTA_CODE_DIR` | `~/Code` | Code projects root |
+| `BARISTA_SCRIPTS_DIR` | `~/.config/scripts` | Helper scripts location |
+| `BARISTA_LUA_ONLY` | unset | Skip C helpers when set |
+
+## Troubleshooting
+
+**Sketchybar not loading config:**
+```bash
+# Check if config exists
+ls -la ~/.config/sketchybar/
+
+# Check sketchybar status
+brew services list | grep sketchybar
+
+# Manual restart
+brew services restart sketchybar
+```
+
+**Permission issues:**
+```bash
+# Ensure scripts are executable
+chmod +x ~/.config/sketchybar/plugins/*.sh
+chmod +x ~/.config/sketchybar/bin/*
+```
+
+**Check logs:**
+```bash
+# View sketchybar output
+tail -f /tmp/sketchybar_*.log
+```
+
+---
+
+## Historical Progress Log
+
+### 2025-12-16
+- Created `deploy.sh` for rsync-based deployment
+- Added Python TUI configuration tool (`tui/`)
+- Added environment variable overrides to `main.lua` and `modules/state.lua`
+- Reorganized docs into subdirectories
+
+### 2025-11-18
+- Sync audit of `~/Code/barista` and `~/Code/sketchybar`
+- Control Panel + Helper parity established
+- Unified Control Center implementation
+- Widget + System Panel alignment

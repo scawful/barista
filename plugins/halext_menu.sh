@@ -9,6 +9,7 @@ STATE_FILE="${CONFIG_DIR}/state.json"
 CACHE_DIR="${CONFIG_DIR}/cache"
 TASKS_CACHE="${CACHE_DIR}/halext_tasks.json"
 CALENDAR_CACHE="${CACHE_DIR}/halext_calendar.json"
+FRONTEND_CTL="${HOME}/Code/halext-org/scripts/frontend-service.sh"
 
 # Read configuration from state.json
 read_config() {
@@ -106,6 +107,35 @@ case "${1:-toggle}" in
     ;;
   open_suggestions)
     open "${SERVER_URL}/llm/suggestions"
+    ;;
+  frontend_start)
+    if [ -x "$FRONTEND_CTL" ]; then
+      "$FRONTEND_CTL" start >/dev/null 2>&1 && osascript -e 'display notification "halext frontend started" with title "SketchyBar"' >/dev/null 2>&1 || true
+    else
+      osascript -e 'display notification "frontend-service.sh not found" with title "SketchyBar"' >/dev/null 2>&1 || true
+    fi
+    ;;
+  frontend_stop)
+    if [ -x "$FRONTEND_CTL" ]; then
+      "$FRONTEND_CTL" stop >/dev/null 2>&1 && osascript -e 'display notification "halext frontend stopped" with title "SketchyBar"' >/dev/null 2>&1 || true
+    else
+      osascript -e 'display notification "frontend-service.sh not found" with title "SketchyBar"' >/dev/null 2>&1 || true
+    fi
+    ;;
+  frontend_restart)
+    if [ -x "$FRONTEND_CTL" ]; then
+      "$FRONTEND_CTL" restart >/dev/null 2>&1 && osascript -e 'display notification "halext frontend restarted" with title "SketchyBar"' >/dev/null 2>&1 || true
+    else
+      osascript -e 'display notification "frontend-service.sh not found" with title "SketchyBar"' >/dev/null 2>&1 || true
+    fi
+    ;;
+  frontend_status)
+    if [ -x "$FRONTEND_CTL" ]; then
+      status=$("$FRONTEND_CTL" status 2>/dev/null | head -n 1)
+      osascript -e "display notification \"${status}\" with title \"halext frontend\"" >/dev/null 2>&1 || true
+    else
+      osascript -e 'display notification "frontend-service.sh not found" with title "SketchyBar"' >/dev/null 2>&1 || true
+    fi
     ;;
   *)
     # Default: toggle menu

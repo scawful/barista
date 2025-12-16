@@ -1,0 +1,262 @@
+/* Barista TUI Styles */
+
+Screen {
+    background: $surface;
+}
+
+/* Header styling */
+Header {
+    background: $primary;
+}
+
+/* Footer styling */
+Footer {
+    background: $panel;
+}
+
+/* Tab content */
+TabbedContent {
+    height: 1fr;
+}
+
+TabPane {
+    padding: 1 2;
+}
+
+/* Section headers */
+.section-header {
+    text-style: bold;
+    padding: 1 0 0 0;
+    color: $accent;
+    border-bottom: solid $primary-darken-2;
+    margin-bottom: 1;
+}
+
+/* Help text */
+.help-text {
+    color: $text-muted;
+    padding: 0 1 1 1;
+    text-style: italic;
+}
+
+/* Input fields */
+Input {
+    border: solid $primary-darken-2;
+    background: $surface-darken-1;
+}
+
+Input:focus {
+    border: solid $accent;
+}
+
+/* Switches */
+Switch {
+    background: $surface-darken-1;
+}
+
+Switch.-on {
+    background: $success;
+}
+
+/* Selects */
+Select {
+    border: solid $primary-darken-2;
+    background: $surface-darken-1;
+}
+
+Select:focus {
+    border: solid $accent;
+}
+
+/* Buttons */
+Button {
+    margin: 0 1;
+}
+
+Button.primary {
+    background: $primary;
+}
+
+Button.success {
+    background: $success;
+}
+
+/* Button bar at bottom */
+#button-bar {
+    height: 3;
+    align: center middle;
+    dock: bottom;
+    background: $panel;
+    border-top: solid $primary;
+    padding: 0 2;
+}
+
+/* Status bar */
+#status-bar {
+    height: 1;
+    dock: bottom;
+    background: $panel;
+    padding: 0 2;
+    color: $text-muted;
+}
+
+/* Color preview */
+ColorPreview {
+    width: 4;
+    height: 1;
+    border: solid $primary;
+    margin-left: 1;
+}
+
+/* Slider input rows */
+SliderInput {
+    height: 3;
+    align: left middle;
+}
+
+SliderInput Label {
+    width: 20;
+    padding: 0 1;
+}
+
+SliderInput Input {
+    width: 12;
+}
+
+SliderInput .range-info {
+    width: 16;
+    padding: 0 1;
+    color: $text-muted;
+}
+
+/* Widget toggles */
+WidgetToggle {
+    height: 3;
+    align: left middle;
+    padding: 0 1;
+}
+
+WidgetToggle Label {
+    width: 20;
+}
+
+WidgetToggle .widget-desc {
+    color: $text-muted;
+    padding-left: 2;
+}
+
+/* Space config */
+SpaceConfig {
+    height: 3;
+    align: left middle;
+    padding: 0 1;
+}
+
+SpaceConfig Label {
+    width: 10;
+}
+
+SpaceConfig .icon-input {
+    width: 8;
+}
+
+SpaceConfig Select {
+    width: 12;
+    margin-left: 2;
+}
+
+/* Icon inputs */
+IconInput {
+    height: 3;
+    align: left middle;
+    padding: 0 1;
+}
+
+IconInput Label {
+    width: 16;
+}
+
+IconInput .icon-preview {
+    width: 4;
+    text-align: center;
+    background: $surface-darken-1;
+    border: solid $primary-darken-2;
+}
+
+IconInput Input {
+    width: 8;
+    margin-left: 1;
+}
+
+IconInput .icon-desc {
+    color: $text-muted;
+    padding-left: 2;
+}
+
+/* Integration toggles */
+IntegrationToggle {
+    height: 3;
+    align: left middle;
+    padding: 0 1;
+}
+
+IntegrationToggle Label {
+    width: 16;
+}
+
+IntegrationToggle .int-desc {
+    color: $text-muted;
+    padding-left: 2;
+}
+
+/* Path inputs */
+PathInput {
+    height: 3;
+    align: left middle;
+    padding: 0 1;
+}
+
+PathInput Label {
+    width: 16;
+}
+
+PathInput Input {
+    width: 50;
+}
+
+/* Font inputs */
+FontInput {
+    height: 3;
+    align: left middle;
+    padding: 0 1;
+}
+
+FontInput Label {
+    width: 16;
+}
+
+FontInput Input {
+    width: 30;
+}
+
+/* Toggle rows */
+.toggle-row {
+    height: 3;
+    align: left middle;
+    padding: 0 1;
+}
+
+.toggle-row Label {
+    width: 20;
+}
+
+/* Text area for raw JSON */
+TextArea {
+    height: 15;
+    margin: 1 0;
+    border: solid $primary-darken-2;
+}
+
+TextArea:focus {
+    border: solid $accent;
+}

@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""
+Barista - SketchyBar Configuration TUI
+
+A terminal-based configuration tool for barista/sketchybar.
+No compilation required - works with pure Python.
+
+Usage:
+    barista              # Launch TUI
+    barista --version    # Show version
+    barista --help       # Show help
+"""
+
+import sys
+import os
+
+# Add the parent directory to path so we can import tui module
+script_dir = os.path.dirname(os.path.abspath(__file__))
+repo_dir = os.path.dirname(script_dir)
+sys.path.insert(0, repo_dir)
+
+from tui.app import main
+
+if __name__ == "__main__":
+    main()

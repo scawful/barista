@@ -214,6 +214,19 @@ fi
 run_post_update
 restart_services
 
+# Check TUI dependencies
+check_tui_deps() {
+  if command -v python3 &> /dev/null; then
+    if python3 -c "import textual, pydantic" 2>/dev/null; then
+      return 0
+    else
+      echo_info "TUI dependencies not installed. Install with:"
+      echo "  ./scripts/install-tui.sh"
+      echo "  # or: pip3 install textual pydantic"
+    fi
+  fi
+}
+
 # Show summary
 NEW_COMMIT=$(git rev-parse HEAD)
 echo ""
@@ -224,10 +237,16 @@ echo "  Previous: ${CURRENT_COMMIT:0:8}"
 echo "  Current:  ${NEW_COMMIT:0:8}"
 echo "  Backup:   $BACKUP_DIR"
 echo ""
+
+# Check TUI deps
+check_tui_deps
+
+echo ""
 echo "Next steps:"
 echo "  1. Review changes: git log $CURRENT_COMMIT..HEAD"
 echo "  2. Check CHANGELOG.md for breaking changes"
 echo "  3. Test configuration: sketchybar --reload"
-echo "  4. If issues, restore from backup:"
+echo "  4. Run TUI config: ./bin/barista"
+echo "  5. If issues, restore from backup:"
 echo "     cp -r $BACKUP_DIR/* $CONFIG_DIR/"
 echo ""

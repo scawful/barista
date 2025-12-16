@@ -8,7 +8,7 @@ local utf8 = require("utf8")
 
 -- Load modules
 local HOME = os.getenv("HOME")
-local CONFIG_DIR = HOME .. "/.config/sketchybar"
+local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
 package.path = package.path .. ";" .. CONFIG_DIR .. "/modules/?.lua"
 package.path = package.path .. ";" .. CONFIG_DIR .. "/modules/integrations/?.lua"
 package.path = package.path .. ";" .. CONFIG_DIR .. "/?.lua"
@@ -62,11 +62,11 @@ end
 -- Import existing icons into icon_manager for backwards compatibility
 icon_manager.import_from_module(icons_module)
 
--- Paths
+-- Paths (configurable via environment variables)
 local PLUGIN_DIR = CONFIG_DIR .. "/plugins"
 local EVENT_DIR = CONFIG_DIR .. "/helpers/event_providers"
-local SCRIPTS_DIR = HOME .. "/.config/scripts"
-local CODE_DIR = HOME .. "/Code"
+local SCRIPTS_DIR = os.getenv("BARISTA_SCRIPTS_DIR") or (HOME .. "/.config/scripts")
+local CODE_DIR = os.getenv("BARISTA_CODE_DIR") or (HOME .. "/Code")
 
 -- Scripts
 local YABAI_CONTROL_SCRIPT = SCRIPTS_DIR .. "/yabai_control.sh"

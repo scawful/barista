@@ -6,7 +6,7 @@ local state = {}
 local json = require("json")
 
 local HOME = os.getenv("HOME")
-local CONFIG_DIR = HOME .. "/.config/sketchybar"
+local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
 local STATE_FILE = CONFIG_DIR .. "/state.json"
 
 -- State version for migrations

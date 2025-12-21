@@ -9,6 +9,12 @@ RETRY_FILE="$CONFIG_DIR/.spaces_retry"
 MAX_SPACE_QUERY_ATTEMPTS=12
 SPACE_QUERY_DELAY=0.08
 
+item_exists() {
+  local item="${1:-}"
+  [ -n "$item" ] || return 1
+  sketchybar --query "$item" >/dev/null 2>&1
+}
+
 spaces_payload_valid() {
   local payload="${1:-}"
   [ -n "$payload" ] || return 1
@@ -82,7 +88,18 @@ declare -a SB_ARGS=()
 sketchybar --remove '/space\..*/' >/dev/null 2>&1 || true
 sketchybar --remove '/spaces\..*/' >/dev/null 2>&1 || true
 
-last_item="front_app" # Start anchoring after front_app
+anchor_item="front_app"
+needs_front_app_reorder=0
+if ! item_exists "$anchor_item"; then
+  needs_front_app_reorder=1
+  if item_exists "apple_menu"; then
+    anchor_item="apple_menu"
+  else
+    anchor_item=""
+  fi
+fi
+last_item="$anchor_item"
+declare -a SPACE_ITEMS=()
 
 for entry in "${SPACE_LINES[@]}"; do
   display="${entry%% *}"
@@ -119,9 +136,12 @@ for entry in "${SPACE_LINES[@]}"; do
                           script="$CONFIG_DIR/plugins/space.sh" \
                           click_script="$FOCUS_SCRIPT $space_index")
   SB_ARGS+=(--subscribe "$item" mouse.entered mouse.exited space_change space_mode_refresh front_app_switched)
-  SB_ARGS+=(--move "$item" after "$last_item")
+  if [ -n "$last_item" ]; then
+    SB_ARGS+=(--move "$item" after "$last_item")
+  fi
   
   last_item="$item"
+  SPACE_ITEMS+=("$item")
 done
 
 # Add space creator button (+ icon)
@@ -146,10 +166,30 @@ SB_ARGS+=(--set space_creator \
                 script="$CONFIG_DIR/plugins/space_creator.sh" \
                 click_script="$HOME/.config/sketchybar/bin/space_manager create")
 SB_ARGS+=(--subscribe space_creator mouse.entered mouse.exited)
-SB_ARGS+=(--move space_creator after "$last_item")
+if [ -n "$last_item" ]; then
+  SB_ARGS+=(--move space_creator after "$last_item")
+fi
 
 # Execute all commands in one single call
 sketchybar "${SB_ARGS[@]}"
+
+# If front_app wasn't ready yet, reorder spaces once it appears.
+if [ "$needs_front_app_reorder" -eq 1 ]; then
+  (
+    for i in {1..30}; do
+      if item_exists "front_app"; then
+        last="front_app"
+        for space_item in "${SPACE_ITEMS[@]}"; do
+          sketchybar --move "$space_item" after "$last" >/dev/null 2>&1 || true
+          last="$space_item"
+        done
+        sketchybar --move space_creator after "$last" >/dev/null 2>&1 || true
+        exit 0
+      fi
+      sleep 0.05
+    done
+  ) &
+fi
 
 # Prefetch icons for faster startup without blocking bar render
 if [ -x "$CONFIG_DIR/plugins/space_icons_prefetch.sh" ]; then

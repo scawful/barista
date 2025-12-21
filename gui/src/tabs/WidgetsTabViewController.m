@@ -1,9 +1,10 @@
 #import "ConfigurationManager.h"
 #import <Cocoa/Cocoa.h>
 
-@interface WidgetsTabViewController : NSViewController <NSTableViewDataSource, NSTableViewDelegate>
-@property (strong) NSTableView *tableView;
+@interface WidgetsTabViewController : NSViewController
 @property (strong) NSArray *widgets;
+@property (strong) NSMutableDictionary *toggleButtons;
+@property (strong) NSMutableDictionary *colorWells;
 @end
 
 @implementation WidgetsTabViewController
@@ -36,116 +37,124 @@
   [self.view addSubview:title];
   y -= 60;
 
-  // Table view
-  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(leftMargin, 60, 700, y - 60)];
-  scrollView.hasVerticalScroller = YES;
-  scrollView.autohidesScrollers = YES;
-  scrollView.borderType = NSBezelBorder;
+  self.toggleButtons = [NSMutableDictionary dictionary];
+  self.colorWells = [NSMutableDictionary dictionary];
 
-  self.tableView = [[NSTableView alloc] initWithFrame:scrollView.bounds];
-  self.tableView.dataSource = self;
-  self.tableView.delegate = self;
+  NSTextField *hint = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 700, 20)];
+  hint.stringValue = @"Toggle widgets and pick accent colors (icon overrides live in the Icons tab).";
+  hint.font = [NSFont systemFontOfSize:12];
+  hint.textColor = [NSColor secondaryLabelColor];
+  hint.bordered = NO;
+  hint.editable = NO;
+  hint.backgroundColor = [NSColor clearColor];
+  [self.view addSubview:hint];
+  y -= 40;
 
-  NSTableColumn *iconColumn = [[NSTableColumn alloc] initWithIdentifier:@"icon"];
-  iconColumn.title = @"";
-  iconColumn.width = 40;
-  [self.tableView addTableColumn:iconColumn];
+  CGFloat iconX = leftMargin;
+  CGFloat nameX = leftMargin + 36;
+  CGFloat toggleX = leftMargin + 260;
+  CGFloat colorX = leftMargin + 420;
+  CGFloat rowHeight = 36;
 
-  NSTableColumn *nameColumn = [[NSTableColumn alloc] initWithIdentifier:@"name"];
-  nameColumn.title = @"Widget";
-  nameColumn.width = 200;
-  [self.tableView addTableColumn:nameColumn];
+  NSTextField *nameHeader = [[NSTextField alloc] initWithFrame:NSMakeRect(nameX, y, 160, 18)];
+  nameHeader.stringValue = @"Widget";
+  nameHeader.font = [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold];
+  nameHeader.textColor = [NSColor secondaryLabelColor];
+  nameHeader.bordered = NO;
+  nameHeader.editable = NO;
+  nameHeader.backgroundColor = [NSColor clearColor];
+  [self.view addSubview:nameHeader];
 
-  NSTableColumn *enabledColumn = [[NSTableColumn alloc] initWithIdentifier:@"enabled"];
-  enabledColumn.title = @"Enabled";
-  enabledColumn.width = 80;
-  [self.tableView addTableColumn:enabledColumn];
+  NSTextField *toggleHeader = [[NSTextField alloc] initWithFrame:NSMakeRect(toggleX, y, 120, 18)];
+  toggleHeader.stringValue = @"Enabled";
+  toggleHeader.font = [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold];
+  toggleHeader.textColor = [NSColor secondaryLabelColor];
+  toggleHeader.bordered = NO;
+  toggleHeader.editable = NO;
+  toggleHeader.backgroundColor = [NSColor clearColor];
+  [self.view addSubview:toggleHeader];
 
-  NSTableColumn *colorColumn = [[NSTableColumn alloc] initWithIdentifier:@"color"];
-  colorColumn.title = @"Color";
-  colorColumn.width = 120;
-  [self.tableView addTableColumn:colorColumn];
+  NSTextField *colorHeader = [[NSTextField alloc] initWithFrame:NSMakeRect(colorX, y, 120, 18)];
+  colorHeader.stringValue = @"Color";
+  colorHeader.font = [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold];
+  colorHeader.textColor = [NSColor secondaryLabelColor];
+  colorHeader.bordered = NO;
+  colorHeader.editable = NO;
+  colorHeader.backgroundColor = [NSColor clearColor];
+  [self.view addSubview:colorHeader];
+  y -= 26;
 
-  scrollView.documentView = self.tableView;
-  [self.view addSubview:scrollView];
-}
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
 
-- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
-  return self.widgets.count;
-}
+  for (NSInteger index = 0; index < self.widgets.count; index++) {
+    NSDictionary *widget = self.widgets[index];
+    NSString *key = widget[@"key"];
 
-- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-  NSDictionary *widget = self.widgets[row];
-  NSString *identifier = tableColumn.identifier;
+    NSTextField *iconField = [[NSTextField alloc] initWithFrame:NSMakeRect(iconX, y - 2, 24, 24)];
+    iconField.stringValue = widget[@"icon"] ?: @"";
+    iconField.font = [self preferredIconFontWithSize:16];
+    iconField.bordered = NO;
+    iconField.editable = NO;
+    iconField.backgroundColor = [NSColor clearColor];
+    iconField.alignment = NSTextAlignmentCenter;
+    [self.view addSubview:iconField];
 
-  if ([identifier isEqualToString:@"icon"]) {
-    NSTextField *textField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 40, 20)];
-    textField.stringValue = widget[@"icon"];
-    textField.font = [NSFont systemFontOfSize:16];
-    textField.bordered = NO;
-    textField.editable = NO;
-    textField.backgroundColor = [NSColor clearColor];
-    return textField;
-  }
+    NSTextField *nameField = [[NSTextField alloc] initWithFrame:NSMakeRect(nameX, y, 200, 20)];
+    nameField.stringValue = widget[@"name"] ?: @"";
+    nameField.bordered = NO;
+    nameField.editable = NO;
+    nameField.backgroundColor = [NSColor clearColor];
+    [self.view addSubview:nameField];
 
-  if ([identifier isEqualToString:@"name"]) {
-    NSTextField *textField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 20)];
-    textField.stringValue = widget[@"name"];
-    textField.bordered = NO;
-    textField.editable = NO;
-    textField.backgroundColor = [NSColor clearColor];
-    return textField;
-  }
-
-  if ([identifier isEqualToString:@"enabled"]) {
-    NSButton *checkbox = [[NSButton alloc] initWithFrame:NSMakeRect(0, 0, 80, 20)];
-    [checkbox setButtonType:NSButtonTypeSwitch];
-    checkbox.title = @"";
-    checkbox.tag = row;
-    checkbox.target = self;
-    checkbox.action = @selector(toggleWidget:);
-
-    ConfigurationManager *config = [ConfigurationManager sharedManager];
-    NSString *keyPath = [NSString stringWithFormat:@"widgets.%@", widget[@"key"]];
+    NSButton *toggle = [[NSButton alloc] initWithFrame:NSMakeRect(toggleX, y - 2, 120, 20)];
+    [toggle setButtonType:NSButtonTypeSwitch];
+    toggle.title = @"";
+    toggle.target = self;
+    toggle.action = @selector(toggleWidget:);
+    toggle.tag = index;
+    NSString *keyPath = [NSString stringWithFormat:@"widgets.%@", key];
     BOOL enabled = [[config valueForKeyPath:keyPath defaultValue:@YES] boolValue];
-    checkbox.state = enabled ? NSControlStateValueOn : NSControlStateValueOff;
+    toggle.state = enabled ? NSControlStateValueOn : NSControlStateValueOff;
+    [self.view addSubview:toggle];
+    self.toggleButtons[key] = toggle;
 
-    return checkbox;
-  }
-
-  if ([identifier isEqualToString:@"color"]) {
-    NSColorWell *colorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(0, 0, 60, 20)];
-    colorWell.tag = row;
+    NSColorWell *colorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(colorX, y - 4, 60, 24)];
     colorWell.target = self;
     colorWell.action = @selector(widgetColorChanged:);
-    // Load widget color from state
-    ConfigurationManager *config = [ConfigurationManager sharedManager];
-    NSString *keyPath = [NSString stringWithFormat:@"widget_colors.%@", widget[@"key"]];
-    NSString *hexColor = [config valueForKeyPath:keyPath defaultValue:nil];
+    colorWell.tag = index;
+    NSString *colorKeyPath = [NSString stringWithFormat:@"widget_colors.%@", key];
+    NSString *hexColor = [config valueForKeyPath:colorKeyPath defaultValue:nil];
     if (hexColor) {
       NSColor *color = [self colorFromHexString:hexColor];
       if (color) {
         colorWell.color = color;
       }
     }
-    return colorWell;
-  }
+    [self.view addSubview:colorWell];
+    self.colorWells[key] = colorWell;
 
-  return nil;
+    y -= rowHeight;
+  }
 }
 
 - (void)toggleWidget:(NSButton *)sender {
-  NSDictionary *widget = self.widgets[sender.tag];
+  if (sender.tag < 0 || sender.tag >= self.widgets.count) {
+    return;
+  }
+  NSString *key = self.widgets[sender.tag][@"key"];
   BOOL enabled = sender.state == NSControlStateValueOn;
 
   ConfigurationManager *config = [ConfigurationManager sharedManager];
-  NSString *keyPath = [NSString stringWithFormat:@"widgets.%@", widget[@"key"]];
+  NSString *keyPath = [NSString stringWithFormat:@"widgets.%@", key];
   [config setValue:@(enabled) forKeyPath:keyPath];
   [config reloadSketchyBar];
 }
 
 - (void)widgetColorChanged:(NSColorWell *)sender {
-  NSDictionary *widget = self.widgets[sender.tag];
+  if (sender.tag < 0 || sender.tag >= self.widgets.count) {
+    return;
+  }
+  NSString *key = self.widgets[sender.tag][@"key"];
   NSColor *color = sender.color;
 
   // Convert to hex and save
@@ -157,9 +166,27 @@
   NSString *hexColor = [NSString stringWithFormat:@"0x%02X%02X%02X%02X", alpha, red, green, blue];
 
   ConfigurationManager *config = [ConfigurationManager sharedManager];
-  NSString *keyPath = [NSString stringWithFormat:@"widget_colors.%@", widget[@"key"]];
+  NSString *keyPath = [NSString stringWithFormat:@"widget_colors.%@", key];
   [config setValue:hexColor forKeyPath:keyPath];
   [config reloadSketchyBar];
+}
+
+- (NSFont *)preferredIconFontWithSize:(CGFloat)size {
+  NSArray<NSString *> *candidates = @[
+    @"Hack Nerd Font",
+    @"JetBrainsMono Nerd Font",
+    @"FiraCode Nerd Font",
+    @"SFMono Nerd Font",
+    @"Symbols Nerd Font",
+    @"MesloLGS NF"
+  ];
+  for (NSString *name in candidates) {
+    NSFont *font = [NSFont fontWithName:name size:size];
+    if (font) {
+      return font;
+    }
+  }
+  return [NSFont monospacedSystemFontOfSize:size weight:NSFontWeightRegular];
 }
 
 - (NSColor *)colorFromHexString:(NSString *)hexString {
@@ -179,4 +206,3 @@
 }
 
 @end
-

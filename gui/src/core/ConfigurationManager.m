@@ -7,6 +7,7 @@
 @property (copy, nonatomic) NSString *configPath;
 @property (copy, nonatomic) NSString *scriptsPath;
 @property (strong, nonatomic) NSMutableDictionary *state;
+@property (strong, nonatomic) dispatch_block_t reloadWorkItem;
 
 + (instancetype)sharedManager;
 - (BOOL)loadState;
@@ -111,9 +112,23 @@
 }
 
 - (void)reloadSketchyBar {
-  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+  if (self.reloadWorkItem) {
+    dispatch_block_cancel(self.reloadWorkItem);
+    self.reloadWorkItem = nil;
+  }
+
+  __weak typeof(self) weakSelf = self;
+  dispatch_block_t work = dispatch_block_create(0, ^{
     system("/opt/homebrew/opt/sketchybar/bin/sketchybar --reload");
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (strongSelf) {
+      strongSelf.reloadWorkItem = nil;
+    }
   });
+  self.reloadWorkItem = work;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                 dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0),
+                 work);
 }
 
 - (void)runScript:(NSString *)scriptName arguments:(NSArray *)args {
@@ -133,4 +148,3 @@
 }
 
 @end
-

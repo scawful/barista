@@ -25,6 +25,39 @@ spaces_payload_valid() {
   return 0
 }
 
+space_data_has_display() {
+  local payload="${1:-}"
+  local display="${2:-}"
+  [ -n "$payload" ] && [ -n "$display" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  printf '%s' "$payload" | jq -e --argjson display "$display" 'map(.display) | index($display) != null' >/dev/null 2>&1
+}
+
+get_active_display() {
+  command -v yabai >/dev/null 2>&1 || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  yabai -m query --displays --display 2>/dev/null | jq -r '.index // empty'
+}
+
+get_display_count() {
+  if command -v yabai >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    yabai -m query --displays 2>/dev/null | jq -r 'length' || true
+    return 0
+  fi
+  if command -v sketchybar >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    sketchybar --query displays 2>/dev/null | jq -r 'length' || true
+    return 0
+  fi
+  return 1
+}
+
+get_space_display_count() {
+  local payload="${1:-}"
+  [ -n "$payload" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  printf '%s' "$payload" | jq -r 'map(.display) | unique | length' || true
+}
+
 schedule_spaces_retry() {
   local now last
   now=$(date +%s)
@@ -58,6 +91,23 @@ if ! spaces_payload_valid "$RAW_SPACES_DATA"; then
   exit 0
 fi
 rm -f "$RETRY_FILE" 2>/dev/null || true
+
+fallback_active=0
+active_display="$(get_active_display || true)"
+if [ -n "$active_display" ] && ! space_data_has_display "$RAW_SPACES_DATA" "$active_display"; then
+  fallback_active=1
+else
+  display_count="$(get_display_count || true)"
+  space_display_count="$(get_space_display_count "$RAW_SPACES_DATA" || true)"
+  if [ -n "$display_count" ] && [ -n "$space_display_count" ]; then
+    if [ "$space_display_count" -lt "$display_count" ]; then
+      fallback_active=1
+    fi
+  fi
+fi
+if [ "$fallback_active" -eq 1 ]; then
+  schedule_spaces_retry
+fi
 
 # Wait for front_app anchor to exist (fast poll)
 for i in {1..20}; do
@@ -105,6 +155,10 @@ for entry in "${SPACE_LINES[@]}"; do
   display="${entry%% *}"
   space_index="${entry##* }"
   item="space.$space_index"
+  space_display="$display"
+  if [ "$fallback_active" -eq 1 ]; then
+    space_display="active"
+  fi
 
   icon="$space_index"
   if [ -f "$ICON_CACHE_DIR/$space_index" ]; then
@@ -116,8 +170,8 @@ for entry in "${SPACE_LINES[@]}"; do
 
   SB_ARGS+=(--add space "$item" left)
   SB_ARGS+=(--set "$item" space="$space_index" \
-                          display="$display" \
-                          associated_display="$display" \
+                          display="$space_display" \
+                          associated_display="$space_display" \
                           associated_space="$space_index" \
                           ignore_association=off \
                           icon="$icon" \
@@ -152,7 +206,7 @@ fi
 
 SB_ARGS+=(--add item space_creator left)
 SB_ARGS+=(--set space_creator \
-                display="$PRIMARY_DISPLAY" \
+                display="$([ "$fallback_active" -eq 1 ] && echo active || echo "$PRIMARY_DISPLAY")" \
                 icon="󰐕" \
                 icon.color="0x80a6adc8" \
                 icon.padding_left=8 \

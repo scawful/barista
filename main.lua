@@ -275,33 +275,41 @@ local function get_display_state()
 end
 
 -- Build a concrete associated_display list (e.g. "1,2,3") so DisplayLink
--- mirrors render instead of relying on the "all" sentinel mask
+-- mirrors render instead of relying on the "all" sentinel mask.
 local function get_associated_displays()
-  if not yabai_available() then
-    return "all"
+  local function read_display_list(cmd)
+    local handle = io.popen(cmd)
+    if not handle then
+      return nil
+    end
+    local output = handle:read("*a") or ""
+    handle:close()
+    local targets = {}
+    for line in output:gmatch("[^\r\n]+") do
+      local num = tonumber(line)
+      if num then
+        table.insert(targets, tostring(num))
+      end
+    end
+    if #targets == 0 then
+      return nil
+    end
+    return table.concat(targets, ",")
   end
 
-  local handle = io.popen([[yabai -m query --displays 2>/dev/null | jq -r '.[].index']])
-  if not handle then
-    return "all"
+  local list = read_display_list([[sketchybar --query displays 2>/dev/null | jq -r '.[]."arrangement-id"']])
+  if list then
+    return list
   end
 
-  local output = handle:read("*a") or ""
-  handle:close()
-
-  local targets = {}
-  for line in output:gmatch("[^\r\n]+") do
-    local num = tonumber(line)
-    if num then
-      table.insert(targets, tostring(num))
+  if yabai_available() then
+    list = read_display_list([[yabai -m query --displays 2>/dev/null | jq -r '.[].index']])
+    if list then
+      return list
     end
   end
 
-  if #targets == 0 then
-    return "all"
-  end
-
-  return table.concat(targets, ",")
+  return "active"
 end
 
 local associated_displays = get_associated_displays()

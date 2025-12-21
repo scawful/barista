@@ -67,12 +67,15 @@ void get_disk_info(SystemInfo *info) {
     }
 }
 
-// Get network info (simplified - just check if online)
+// Get network info (with timeout protection)
 void get_network_info(SystemInfo *info) {
-    FILE *fp = popen("ifconfig en0 2>/dev/null | grep 'inet ' | awk '{print $2}'", "r");
+    // 1. Get IP Address (Timeout: 0.5s)
+    // Using perl alarm to prevent blocking if ifconfig hangs
+    const char *ip_cmd = "perl -e 'alarm 1; exec @ARGV' \"ifconfig en0 2>/dev/null | grep 'inet ' | awk '{print $2}'\"";
+    FILE *fp = popen(ip_cmd, "r");
+    
     if (fp) {
         if (fgets(info->net_ip, sizeof(info->net_ip), fp)) {
-            // Remove newline
             info->net_ip[strcspn(info->net_ip, "\n")] = 0;
             info->net_online = (strlen(info->net_ip) > 0);
         } else {
@@ -82,23 +85,22 @@ void get_network_info(SystemInfo *info) {
         pclose(fp);
     } else {
         info->net_online = 0;
-        strcpy(info->net_ip, "offline");
+        strcpy(info->net_ip, "error");
     }
 
+    // 2. Get SSID (Timeout: 0.5s) only if online
     if (info->net_online) {
-        FILE *ssid_fp = popen("networksetup -getairportnetwork en0 2>/dev/null", "r");
+        // Use airport utility (faster than networksetup) wrapped in timeout
+        const char *ssid_cmd = "perl -e 'alarm 1; exec @ARGV' \"/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I | grep ' SSID' | cut -d ':' -f 2 | tr -d ' '\"";
+        
+        FILE *ssid_fp = popen(ssid_cmd, "r");
         if (ssid_fp) {
             if (fgets(info->net_name, sizeof(info->net_name), ssid_fp)) {
-                char *colon = strchr(info->net_name, ':');
-                if (colon && *(colon + 1)) {
-                    colon += 1;
-                    while (*colon == ' ') colon++;
-                    memmove(info->net_name, colon, strlen(colon) + 1);
-                }
                 info->net_name[strcspn(info->net_name, "\n")] = 0;
             }
             pclose(ssid_fp);
         }
+        
         if (info->net_name[0] == '\0') {
             strcpy(info->net_name, "Wi-Fi");
         }

@@ -62,7 +62,7 @@ schedule_spaces_retry() {
   local now last
   now=$(date +%s)
   last=$(cat "$RETRY_FILE" 2>/dev/null || echo 0)
-  if [ $((now - last)) -lt 2 ]; then
+  if [ $((now - last)) -lt 1 ]; then
     return 0
   fi
   printf '%s' "$now" > "$RETRY_FILE" 2>/dev/null || true

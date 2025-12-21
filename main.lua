@@ -334,7 +334,7 @@ end
 
 local function watch_spaces()
   local refresh_action = string.format("CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR)
-  local change_action = "sketchybar --trigger space_change"
+  local change_action = string.format("sketchybar --trigger space_change; %s", refresh_action)
   
   -- Batch signal removal commands
   local remove_cmds = {
@@ -766,6 +766,7 @@ if yabai_available() then
 end
 shell_exec("sketchybar --trigger space_change")
 shell_exec("sketchybar --trigger space_mode_refresh")
+shell_exec(string.format("sleep 1.2; CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR))
 
 -- Create widget factory
 local widget_factory = widgets_module.create_factory(sbar, theme, settings, state)

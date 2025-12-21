@@ -76,6 +76,7 @@ EXCLUDES=(
   ".git"
   "build"
   ".context"
+  "cache"
   "*.o"
   "*.dSYM"
   ".DS_Store"

@@ -97,7 +97,7 @@ function menu.render_all_menus(ctx)
   -- 1. System Menu (Apple Icon)
   sbar.add("item", "apple_menu", {
     position = "left",
-    icon = "",
+    icon = ctx.icon_for and ctx.icon_for("apple", "") or "",
     label = { drawing = false },
     background = { 
         color = "0x00000000", 
@@ -119,12 +119,18 @@ function menu.render_all_menus(ctx)
     { type = "separator", name = "sys.sep1" },
     { type = "item", name = "sys.lock", icon = "󰷛", label = "Lock Screen", action = "pmset displaysleepnow" },
     { type = "item", name = "sys.logout", icon = "󰍃", label = "Log Out...", action = "osascript -e 'tell application \"System Events\" to log out'" },
-    { type = "separator", name = "sys.sep2" },
     { type = "header", name = "sys.quick", label = "Quick Actions" },
     { type = "item", name = "sys.reload", icon = "󰑐", label = "Reload Bar", action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload" },
     { type = "item", name = "sys.panel", icon = "󰒓", label = "Control Panel", action = ctx.call_script(ctx.paths.apple_launcher, "--panel") },
-    { type = "item", name = "sys.syshelp_panel", icon = "󰒋", label = "Syshelp Panel", action = "~/.local/bin/syshelp-panel toggle" },
   }
+  if ctx.integrations and ctx.integrations.cortex and ctx.integrations.cortex.create_menu_items then
+    local cortex_items = ctx.integrations.cortex.create_menu_items(ctx)
+    if cortex_items and #cortex_items > 0 then
+      for _, item in ipairs(cortex_items) do
+        table.insert(system_items, item)
+      end
+    end
+  end
   render_menu_items("apple_menu", system_items)
 end
 

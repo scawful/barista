@@ -45,20 +45,24 @@ local default_state = {
     font_numbers = "SF Mono",
   },
   icons = {
-    apple = "",        -- FontAwesome apple icon (F179)
+    apple = "",       -- System menu icon (customizable)
     quest = "󰊠",       -- Material Design triforce (F02A0)
     settings = "",    -- FontAwesome gear (F013)
     clock = "",       -- FontAwesome clock (F017)
     calendar = "",    -- FontAwesome calendar (F073)
     battery = "",    -- FontAwesome battery (F240)
     wifi = "󰖩",        -- Material Design wifi (F05A9)
+    wifi_off = "",   -- Optional override for disconnected Wi-Fi
     volume = "",     -- FontAwesome volume (F028)
+    cpu = "",
+    memory = "",
+    disk = "",
   },
   widget_colors = {},
   space_icons = {},
   space_modes = {},
   system_info_items = {
-    cpu = true,
+    cpu = false,
     mem = true,
     disk = true,
     net = true,
@@ -87,6 +91,24 @@ local default_state = {
       show_tasks = true,
       show_calendar = true,
       show_suggestions = true,
+    },
+    cortex = {
+      enabled = true,
+      widget = {
+        enabled = true,
+        position = "right",
+        show_label = true,
+        label_mode = "training",
+        label_prefix = "HAFS",
+        label_template = "",
+        icon_active = "󰪴",
+        icon_inactive = "󰪵",
+        color_active = "0xffa6e3a1",
+        color_inactive = "0xff6c7086",
+        label_color = "0xffcdd6f4",
+        update_freq = 180,
+        cache_ttl = 180,
+      },
     },
   },
 }

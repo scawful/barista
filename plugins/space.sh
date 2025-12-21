@@ -3,9 +3,13 @@
 # Modern Yabai Space Indicator - Icon-only with app persistence
 # OPTIMIZED: Replaced Python calls with jq for better performance
 
+PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
+
 STATE_FILE="$HOME/.config/sketchybar/state.json"
 ICON_SCRIPT="$HOME/.config/scripts/app_icon.sh"
 SPACE_INDEX="${NAME#space.}"
+ICON_CACHE_DIR="$HOME/.config/sketchybar/cache/space_icons"
+ICON_CACHE_FILE="$ICON_CACHE_DIR/$SPACE_INDEX"
 JQ_BIN="$(command -v jq 2>/dev/null || true)"
 YABAI_BIN="$(command -v yabai 2>/dev/null || true)"
 
@@ -29,6 +33,25 @@ is_selected() {
     1|true|on) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+read_cached_icon() {
+  [ -f "$ICON_CACHE_FILE" ] || return 0
+  cat "$ICON_CACHE_FILE" 2>/dev/null || true
+}
+
+write_cached_icon() {
+  mkdir -p "$ICON_CACHE_DIR" 2>/dev/null || true
+  printf '%s' "$1" > "$ICON_CACHE_FILE" 2>/dev/null || true
+}
+
+should_refresh_app_icon() {
+  case "$SENDER" in
+    space_change|space_mode_refresh|front_app_switched)
+      is_selected "$SELECTED" && return 0
+      ;;
+  esac
+  return 1
 }
 
 # OPTIMIZED: Use jq instead of Python for JSON parsing
@@ -109,21 +132,37 @@ if [ "$SENDER" != "mouse.entered" ] && [ "$SENDER" != "mouse.exited" ]; then
 
   # Get custom icon from state
   DEFAULT_ICON=$(get_default_icon)
+  CACHED_ICON=$(read_cached_icon)
 
   # Priority: custom icon first
   if [ -n "$DEFAULT_ICON" ]; then
     ICON_VALUE="$DEFAULT_ICON"
   else
-    # Otherwise, show the app icon for this space
-    APP_ICON=$(resolve_app_icon)
-    if [ -n "$APP_ICON" ]; then
-      ICON_VALUE="$APP_ICON"
-    else
-      # If no app, show a subtle dot for active spaces, empty icon for inactive
-      if is_selected "$SELECTED"; then
-        ICON_VALUE="•"
+    if should_refresh_app_icon; then
+      # Refresh app icon only for the active space to avoid startup spikes.
+      APP_ICON=$(resolve_app_icon)
+      if [ -n "$APP_ICON" ]; then
+        ICON_VALUE="$APP_ICON"
+        write_cached_icon "$APP_ICON"
+      elif [ -n "$CACHED_ICON" ]; then
+        ICON_VALUE="$CACHED_ICON"
       else
-        ICON_VALUE="$EMPTY_ICON"
+        # If no app, show a subtle dot for active spaces, empty icon for inactive
+        if is_selected "$SELECTED"; then
+          ICON_VALUE="•"
+        else
+          ICON_VALUE="$EMPTY_ICON"
+        fi
+      fi
+    else
+      if [ -n "$CACHED_ICON" ]; then
+        ICON_VALUE="$CACHED_ICON"
+      else
+        if is_selected "$SELECTED"; then
+          ICON_VALUE="•"
+        else
+          ICON_VALUE="$EMPTY_ICON"
+        fi
       fi
     fi
   fi

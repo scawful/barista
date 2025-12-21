@@ -1,7 +1,7 @@
 #import "ConfigurationManager.h"
 #import <Cocoa/Cocoa.h>
 
-@interface AppearanceTabViewController : NSViewController
+@interface AppearanceTabViewController : NSViewController <NSTextFieldDelegate>
 @property (strong) NSSlider *heightSlider;
 @property (strong) NSTextField *heightValueLabel;
 @property (strong) NSSlider *cornerSlider;
@@ -12,6 +12,9 @@
 @property (strong) NSTextField *scaleValueLabel;
 @property (strong) NSColorWell *barColorWell;
 @property (strong) NSTextField *barColorHexField;
+@property (strong) NSTextField *menuIconField;
+@property (strong) NSTextField *menuIconPreview;
+@property (strong) NSButton *menuIconBrowseButton;
 @property (strong) NSButton *applyButton;
 @property (strong) NSView *previewBox;
 @property (strong) NSTextField *previewBarView;
@@ -160,9 +163,43 @@
 
   self.barColorHexField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + 230, y, 120, 22)];
   self.barColorHexField.placeholderString = @"0xAARRGGBB";
-  self.barColorHexField.delegate = (id<NSTextFieldDelegate>)self;
+  self.barColorHexField.delegate = self;
   [self updateBarColorHexField];
   [self.view addSubview:self.barColorHexField];
+  y -= spacing;
+
+  // System Menu Icon
+  NSTextField *menuIconLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 150, 20)];
+  menuIconLabel.stringValue = @"System Menu Icon:";
+  menuIconLabel.bordered = NO;
+  menuIconLabel.editable = NO;
+  menuIconLabel.backgroundColor = [NSColor clearColor];
+  [self.view addSubview:menuIconLabel];
+
+  self.menuIconField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + 160, y - 2, 60, 24)];
+  self.menuIconField.placeholderString = @"Glyph";
+  self.menuIconField.delegate = self;
+  NSString *currentMenuIcon = [config valueForKeyPath:@"icons.apple" defaultValue:@"󰒓"];
+  self.menuIconField.stringValue = [currentMenuIcon isKindOfClass:[NSString class]] ? currentMenuIcon : @"";
+  [self.view addSubview:self.menuIconField];
+
+  self.menuIconPreview = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + 230, y - 6, 40, 32)];
+  self.menuIconPreview.bordered = NO;
+  self.menuIconPreview.editable = NO;
+  self.menuIconPreview.backgroundColor = [NSColor clearColor];
+  self.menuIconPreview.alignment = NSTextAlignmentCenter;
+  self.menuIconPreview.font = [NSFont fontWithName:@"Symbols Nerd Font" size:20] ?: [NSFont systemFontOfSize:20];
+  [self.view addSubview:self.menuIconPreview];
+
+  self.menuIconBrowseButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 290, y - 2, 140, 24)];
+  [self.menuIconBrowseButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [self.menuIconBrowseButton setBezelStyle:NSBezelStyleRounded];
+  self.menuIconBrowseButton.title = @"Icon Browser";
+  self.menuIconBrowseButton.target = self;
+  self.menuIconBrowseButton.action = @selector(openIconBrowser:);
+  [self.view addSubview:self.menuIconBrowseButton];
+
+  [self updateMenuIconPreview];
   y -= spacing;
 
   // Live Preview
@@ -252,6 +289,38 @@
   self.barColorHexField.stringValue = hex;
 }
 
+- (void)updateMenuIconPreview {
+  NSString *icon = self.menuIconField.stringValue ?: @"";
+  self.menuIconPreview.stringValue = icon;
+}
+
+- (void)openIconBrowser:(id)sender {
+  NSString *iconBrowserPath = [[NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"] stringByAppendingPathComponent:@"gui/bin/icon_browser"];
+  if ([[NSFileManager defaultManager] isExecutableFileAtPath:iconBrowserPath]) {
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = iconBrowserPath;
+    [task launch];
+  } else {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Icon Browser Not Found";
+    alert.informativeText = @"Build icon_browser first: cd ~/.config/sketchybar/gui && make icon_browser";
+    [alert runModal];
+  }
+}
+
+- (void)controlTextDidChange:(NSNotification *)notification {
+  id field = notification.object;
+  if (field == self.barColorHexField) {
+    NSColor *color = [self colorFromHexString:self.barColorHexField.stringValue];
+    if (color) {
+      self.barColorWell.color = color;
+      [self updatePreview];
+    }
+  } else if (field == self.menuIconField) {
+    [self updateMenuIconPreview];
+  }
+}
+
 - (void)updatePreview {
   CGFloat height = self.heightSlider.doubleValue;
   CGFloat corner = self.cornerSlider.doubleValue;
@@ -304,6 +373,9 @@
   NSString *hexColor = [self hexStringFromColor:self.barColorWell.color];
   [config setValue:hexColor forKeyPath:@"appearance.bar_color"];
 
+  NSString *menuIcon = self.menuIconField.stringValue ?: @"";
+  [config setValue:menuIcon forKeyPath:@"icons.apple"];
+
   [config reloadSketchyBar];
 
   // Visual feedback
@@ -314,4 +386,3 @@
 }
 
 @end
-

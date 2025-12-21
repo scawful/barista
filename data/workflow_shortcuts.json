@@ -21,14 +21,12 @@
     {
       "section": "System",
       "items": [
-        { "keys": "⌃⌥R", "description": "Restart Services" },
-        { "keys": "syshelp", "description": "Show System Help" }
+        { "keys": "⌃⌥R", "description": "Restart Services" }
       ]
     },
     {
       "section": "Syshelp & Panel",
       "items": [
-        { "keys": "⌃⌥H", "description": "Toggle Syshelp Panel (overlay)" },
         { "keys": "⌃⌥P", "description": "Open Barista Control Panel" },
         { "keys": "whichkey", "description": "Toggle WhichKey HUD" }
       ]
@@ -38,8 +36,6 @@
     { "id": "reload_bar", "title": "Reload SketchyBar" },
     { "id": "launch_yaze", "title": "Launch YAZE" },
     { "id": "focus_emacs", "title": "Focus Emacs" },
-    { "id": "syshelp_panel", "title": "Toggle Syshelp Panel" },
-    { "id": "syshelp_cli", "title": "Open syshelp" },
     { "id": "whichkey_toggle", "title": "Toggle WhichKey HUD" },
     { "id": "open_control_panel", "title": "Open Control Panel" }
   ],

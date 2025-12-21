@@ -1,7 +1,9 @@
 #import "ConfigurationManager.h"
 #import <Cocoa/Cocoa.h>
 
-@interface IntegrationsTabViewController : NSViewController
+@interface IntegrationsTabViewController : NSViewController <NSTextFieldDelegate>
+@property (strong) NSScrollView *scrollView;
+@property (strong) NSView *contentView;
 @property (strong) NSButton *yazeToggle;
 @property (strong) NSTextField *yazeStatus;
 @property (strong) NSButton *yazeLaunch;
@@ -13,6 +15,24 @@
 @property (strong) NSSecureTextField *halextApiKeyField;
 @property (strong) NSTextField *halextStatus;
 @property (strong) NSButton *halextTestButton;
+@property (strong) NSButton *cortexToggle;
+@property (strong) NSButton *cortexWidgetToggle;
+@property (strong) NSPopUpButton *cortexLabelModeMenu;
+@property (strong) NSTextField *cortexLabelPrefixField;
+@property (strong) NSTextField *cortexUpdateFreqField;
+@property (strong) NSTextField *cortexCacheTtlField;
+@property (strong) NSPopUpButton *cortexPositionMenu;
+@property (strong) NSTextField *cortexLabelTemplateField;
+@property (strong) NSTextField *cortexActiveIconField;
+@property (strong) NSTextField *cortexInactiveIconField;
+@property (strong) NSTextField *cortexActiveIconPreview;
+@property (strong) NSTextField *cortexInactiveIconPreview;
+@property (strong) NSColorWell *cortexActiveColorWell;
+@property (strong) NSTextField *cortexActiveColorHexField;
+@property (strong) NSColorWell *cortexInactiveColorWell;
+@property (strong) NSTextField *cortexInactiveColorHexField;
+@property (strong) NSColorWell *cortexLabelColorWell;
+@property (strong) NSTextField *cortexLabelColorHexField;
 @end
 
 @implementation IntegrationsTabViewController
@@ -25,7 +45,18 @@
   [super viewDidLoad];
 
   ConfigurationManager *config = [ConfigurationManager sharedManager];
-  CGFloat y = self.view.bounds.size.height - 40;
+  CGFloat contentHeight = 1100;
+  self.scrollView = [[NSScrollView alloc] initWithFrame:self.view.bounds];
+  self.scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  self.scrollView.hasVerticalScroller = YES;
+  self.scrollView.autohidesScrollers = YES;
+
+  self.contentView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, self.view.bounds.size.width, contentHeight)];
+  self.contentView.autoresizingMask = NSViewWidthSizable;
+  self.scrollView.documentView = self.contentView;
+  [self.view addSubview:self.scrollView];
+
+  CGFloat y = self.contentView.bounds.size.height - 40;
   CGFloat leftMargin = 40;
   CGFloat sectionSpacing = 80;
 
@@ -36,7 +67,7 @@
   title.bordered = NO;
   title.editable = NO;
   title.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:title];
+  [self.contentView addSubview:title];
   y -= 60;
 
   // MARK: Yaze Integration
@@ -77,7 +108,7 @@
   yazeRepoButton.action = @selector(openYazeRepo:);
   [yazeBox addSubview:yazeRepoButton];
 
-  [self.view addSubview:yazeBox];
+  [self.contentView addSubview:yazeBox];
   [self updateYazeStatus];
   y -= 150;
 
@@ -111,9 +142,265 @@
   self.emacsLaunch.action = @selector(launchEmacs:);
   [emacsBox addSubview:self.emacsLaunch];
 
-  [self.view addSubview:emacsBox];
+  [self.contentView addSubview:emacsBox];
   [self updateEmacsStatus];
   y -= 150;
+
+  // MARK: Cortex Integration
+  NSBox *cortexBox = [[NSBox alloc] initWithFrame:NSMakeRect(leftMargin, y - 160, 700, 160)];
+  cortexBox.title = @"Cortex (HAFS / Training)";
+  cortexBox.titlePosition = NSAtTop;
+
+  self.cortexToggle = [[NSButton alloc] initWithFrame:NSMakeRect(20, 120, 260, 20)];
+  [self.cortexToggle setButtonType:NSButtonTypeSwitch];
+  self.cortexToggle.title = @"Enable Cortex Integration";
+  self.cortexToggle.target = self;
+  self.cortexToggle.action = @selector(cortexToggled:);
+  BOOL cortexEnabled = [[config valueForKeyPath:@"integrations.cortex.enabled" defaultValue:@YES] boolValue];
+  self.cortexToggle.state = cortexEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+  [cortexBox addSubview:self.cortexToggle];
+
+  self.cortexWidgetToggle = [[NSButton alloc] initWithFrame:NSMakeRect(20, 95, 260, 20)];
+  [self.cortexWidgetToggle setButtonType:NSButtonTypeSwitch];
+  self.cortexWidgetToggle.title = @"Show Cortex Widget";
+  self.cortexWidgetToggle.target = self;
+  self.cortexWidgetToggle.action = @selector(cortexWidgetToggled:);
+  BOOL cortexWidgetEnabled = [[config valueForKeyPath:@"integrations.cortex.widget.enabled" defaultValue:@YES] boolValue];
+  self.cortexWidgetToggle.state = cortexWidgetEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+  [cortexBox addSubview:self.cortexWidgetToggle];
+
+  NSTextField *modeLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 66, 120, 20)];
+  modeLabel.stringValue = @"Label Mode:";
+  modeLabel.bordered = NO;
+  modeLabel.editable = NO;
+  modeLabel.backgroundColor = [NSColor clearColor];
+  [cortexBox addSubview:modeLabel];
+
+  self.cortexLabelModeMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(140, 62, 180, 26)];
+  [self.cortexLabelModeMenu addItemsWithTitles:@[@"Training", @"HAFS", @"Status", @"None"]];
+  self.cortexLabelModeMenu.target = self;
+  self.cortexLabelModeMenu.action = @selector(cortexLabelModeChanged:);
+  NSString *labelMode = [config valueForKeyPath:@"integrations.cortex.widget.label_mode" defaultValue:@"training"];
+  if ([labelMode isEqualToString:@"hafs"]) {
+    [self.cortexLabelModeMenu selectItemAtIndex:1];
+  } else if ([labelMode isEqualToString:@"status"]) {
+    [self.cortexLabelModeMenu selectItemAtIndex:2];
+  } else if ([labelMode isEqualToString:@"none"]) {
+    [self.cortexLabelModeMenu selectItemAtIndex:3];
+  } else {
+    [self.cortexLabelModeMenu selectItemAtIndex:0];
+  }
+  [cortexBox addSubview:self.cortexLabelModeMenu];
+
+  NSTextField *prefixLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(340, 66, 80, 20)];
+  prefixLabel.stringValue = @"Prefix:";
+  prefixLabel.bordered = NO;
+  prefixLabel.editable = NO;
+  prefixLabel.backgroundColor = [NSColor clearColor];
+  [cortexBox addSubview:prefixLabel];
+
+  self.cortexLabelPrefixField = [[NSTextField alloc] initWithFrame:NSMakeRect(410, 62, 200, 24)];
+  self.cortexLabelPrefixField.placeholderString = @"HAFS";
+  self.cortexLabelPrefixField.target = self;
+  self.cortexLabelPrefixField.action = @selector(cortexFieldChanged:);
+  NSString *prefix = [config valueForKeyPath:@"integrations.cortex.widget.label_prefix" defaultValue:@"HAFS"];
+  self.cortexLabelPrefixField.stringValue = prefix ?: @"";
+  [cortexBox addSubview:self.cortexLabelPrefixField];
+
+  NSTextField *freqLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 34, 120, 20)];
+  freqLabel.stringValue = @"Update (sec):";
+  freqLabel.bordered = NO;
+  freqLabel.editable = NO;
+  freqLabel.backgroundColor = [NSColor clearColor];
+  [cortexBox addSubview:freqLabel];
+
+  self.cortexUpdateFreqField = [[NSTextField alloc] initWithFrame:NSMakeRect(140, 30, 80, 24)];
+  self.cortexUpdateFreqField.target = self;
+  self.cortexUpdateFreqField.action = @selector(cortexFieldChanged:);
+  NSNumber *updateFreq = [config valueForKeyPath:@"integrations.cortex.widget.update_freq" defaultValue:@180];
+  self.cortexUpdateFreqField.stringValue = [NSString stringWithFormat:@"%@", updateFreq];
+  [cortexBox addSubview:self.cortexUpdateFreqField];
+
+  NSTextField *cacheLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(240, 34, 120, 20)];
+  cacheLabel.stringValue = @"Cache TTL:";
+  cacheLabel.bordered = NO;
+  cacheLabel.editable = NO;
+  cacheLabel.backgroundColor = [NSColor clearColor];
+  [cortexBox addSubview:cacheLabel];
+
+  self.cortexCacheTtlField = [[NSTextField alloc] initWithFrame:NSMakeRect(330, 30, 80, 24)];
+  self.cortexCacheTtlField.target = self;
+  self.cortexCacheTtlField.action = @selector(cortexFieldChanged:);
+  NSNumber *cacheTtl = [config valueForKeyPath:@"integrations.cortex.widget.cache_ttl" defaultValue:@180];
+  self.cortexCacheTtlField.stringValue = [NSString stringWithFormat:@"%@", cacheTtl];
+  [cortexBox addSubview:self.cortexCacheTtlField];
+
+  [self.contentView addSubview:cortexBox];
+  y -= 180;
+
+  // MARK: Cortex Widget Style
+  NSBox *cortexStyleBox = [[NSBox alloc] initWithFrame:NSMakeRect(leftMargin, y - 200, 700, 200)];
+  cortexStyleBox.title = @"Cortex Widget Style";
+  cortexStyleBox.titlePosition = NSAtTop;
+
+  NSTextField *positionLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 162, 120, 20)];
+  positionLabel.stringValue = @"Position:";
+  positionLabel.bordered = NO;
+  positionLabel.editable = NO;
+  positionLabel.backgroundColor = [NSColor clearColor];
+  [cortexStyleBox addSubview:positionLabel];
+
+  self.cortexPositionMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(140, 158, 110, 26)];
+  [self.cortexPositionMenu addItemsWithTitles:@[@"Left", @"Right"]];
+  self.cortexPositionMenu.target = self;
+  self.cortexPositionMenu.action = @selector(cortexPositionChanged:);
+  NSString *position = [config valueForKeyPath:@"integrations.cortex.widget.position" defaultValue:@"right"];
+  if ([position isEqualToString:@"left"]) {
+    [self.cortexPositionMenu selectItemAtIndex:0];
+  } else {
+    [self.cortexPositionMenu selectItemAtIndex:1];
+  }
+  [cortexStyleBox addSubview:self.cortexPositionMenu];
+
+  NSTextField *templateLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(270, 162, 110, 20)];
+  templateLabel.stringValue = @"Label Template:";
+  templateLabel.bordered = NO;
+  templateLabel.editable = NO;
+  templateLabel.backgroundColor = [NSColor clearColor];
+  [cortexStyleBox addSubview:templateLabel];
+
+  self.cortexLabelTemplateField = [[NSTextField alloc] initWithFrame:NSMakeRect(380, 158, 290, 24)];
+  self.cortexLabelTemplateField.placeholderString = @"%prefix% %datasets% • %samples%";
+  self.cortexLabelTemplateField.target = self;
+  self.cortexLabelTemplateField.action = @selector(cortexStyleFieldChanged:);
+  self.cortexLabelTemplateField.delegate = self;
+  NSString *labelTemplate = [config valueForKeyPath:@"integrations.cortex.widget.label_template" defaultValue:@""];
+  self.cortexLabelTemplateField.stringValue = labelTemplate ?: @"";
+  [cortexStyleBox addSubview:self.cortexLabelTemplateField];
+
+  NSTextField *activeIconLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 128, 90, 20)];
+  activeIconLabel.stringValue = @"Active Icon:";
+  activeIconLabel.bordered = NO;
+  activeIconLabel.editable = NO;
+  activeIconLabel.backgroundColor = [NSColor clearColor];
+  [cortexStyleBox addSubview:activeIconLabel];
+
+  self.cortexActiveIconField = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 124, 60, 24)];
+  self.cortexActiveIconField.placeholderString = @"Glyph";
+  self.cortexActiveIconField.target = self;
+  self.cortexActiveIconField.action = @selector(cortexStyleFieldChanged:);
+  self.cortexActiveIconField.delegate = self;
+  NSString *activeIcon = [config valueForKeyPath:@"integrations.cortex.widget.icon_active" defaultValue:@"󰪴"];
+  self.cortexActiveIconField.stringValue = activeIcon ?: @"";
+  [cortexStyleBox addSubview:self.cortexActiveIconField];
+
+  self.cortexActiveIconPreview = [[NSTextField alloc] initWithFrame:NSMakeRect(175, 118, 36, 28)];
+  self.cortexActiveIconPreview.bordered = NO;
+  self.cortexActiveIconPreview.editable = NO;
+  self.cortexActiveIconPreview.backgroundColor = [NSColor clearColor];
+  self.cortexActiveIconPreview.alignment = NSTextAlignmentCenter;
+  self.cortexActiveIconPreview.font = [self preferredIconFontWithSize:18];
+  self.cortexActiveIconPreview.stringValue = self.cortexActiveIconField.stringValue;
+  [cortexStyleBox addSubview:self.cortexActiveIconPreview];
+
+  NSTextField *inactiveIconLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(230, 128, 100, 20)];
+  inactiveIconLabel.stringValue = @"Inactive Icon:";
+  inactiveIconLabel.bordered = NO;
+  inactiveIconLabel.editable = NO;
+  inactiveIconLabel.backgroundColor = [NSColor clearColor];
+  [cortexStyleBox addSubview:inactiveIconLabel];
+
+  self.cortexInactiveIconField = [[NSTextField alloc] initWithFrame:NSMakeRect(330, 124, 60, 24)];
+  self.cortexInactiveIconField.placeholderString = @"Glyph";
+  self.cortexInactiveIconField.target = self;
+  self.cortexInactiveIconField.action = @selector(cortexStyleFieldChanged:);
+  self.cortexInactiveIconField.delegate = self;
+  NSString *inactiveIcon = [config valueForKeyPath:@"integrations.cortex.widget.icon_inactive" defaultValue:@"󰪵"];
+  self.cortexInactiveIconField.stringValue = inactiveIcon ?: @"";
+  [cortexStyleBox addSubview:self.cortexInactiveIconField];
+
+  self.cortexInactiveIconPreview = [[NSTextField alloc] initWithFrame:NSMakeRect(395, 118, 36, 28)];
+  self.cortexInactiveIconPreview.bordered = NO;
+  self.cortexInactiveIconPreview.editable = NO;
+  self.cortexInactiveIconPreview.backgroundColor = [NSColor clearColor];
+  self.cortexInactiveIconPreview.alignment = NSTextAlignmentCenter;
+  self.cortexInactiveIconPreview.font = [self preferredIconFontWithSize:18];
+  self.cortexInactiveIconPreview.stringValue = self.cortexInactiveIconField.stringValue;
+  [cortexStyleBox addSubview:self.cortexInactiveIconPreview];
+
+  NSTextField *activeColorLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 92, 90, 20)];
+  activeColorLabel.stringValue = @"Active Color:";
+  activeColorLabel.bordered = NO;
+  activeColorLabel.editable = NO;
+  activeColorLabel.backgroundColor = [NSColor clearColor];
+  [cortexStyleBox addSubview:activeColorLabel];
+
+  self.cortexActiveColorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(110, 88, 40, 24)];
+  self.cortexActiveColorWell.target = self;
+  self.cortexActiveColorWell.action = @selector(cortexColorChanged:);
+  [cortexStyleBox addSubview:self.cortexActiveColorWell];
+
+  self.cortexActiveColorHexField = [[NSTextField alloc] initWithFrame:NSMakeRect(160, 88, 90, 24)];
+  self.cortexActiveColorHexField.placeholderString = @"0xAARRGGBB";
+  self.cortexActiveColorHexField.delegate = self;
+  [cortexStyleBox addSubview:self.cortexActiveColorHexField];
+
+  NSTextField *inactiveColorLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(270, 92, 100, 20)];
+  inactiveColorLabel.stringValue = @"Inactive Color:";
+  inactiveColorLabel.bordered = NO;
+  inactiveColorLabel.editable = NO;
+  inactiveColorLabel.backgroundColor = [NSColor clearColor];
+  [cortexStyleBox addSubview:inactiveColorLabel];
+
+  self.cortexInactiveColorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(380, 88, 40, 24)];
+  self.cortexInactiveColorWell.target = self;
+  self.cortexInactiveColorWell.action = @selector(cortexColorChanged:);
+  [cortexStyleBox addSubview:self.cortexInactiveColorWell];
+
+  self.cortexInactiveColorHexField = [[NSTextField alloc] initWithFrame:NSMakeRect(430, 88, 90, 24)];
+  self.cortexInactiveColorHexField.placeholderString = @"0xAARRGGBB";
+  self.cortexInactiveColorHexField.delegate = self;
+  [cortexStyleBox addSubview:self.cortexInactiveColorHexField];
+
+  NSTextField *labelColorLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 56, 90, 20)];
+  labelColorLabel.stringValue = @"Label Color:";
+  labelColorLabel.bordered = NO;
+  labelColorLabel.editable = NO;
+  labelColorLabel.backgroundColor = [NSColor clearColor];
+  [cortexStyleBox addSubview:labelColorLabel];
+
+  self.cortexLabelColorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(110, 52, 40, 24)];
+  self.cortexLabelColorWell.target = self;
+  self.cortexLabelColorWell.action = @selector(cortexColorChanged:);
+  [cortexStyleBox addSubview:self.cortexLabelColorWell];
+
+  self.cortexLabelColorHexField = [[NSTextField alloc] initWithFrame:NSMakeRect(160, 52, 90, 24)];
+  self.cortexLabelColorHexField.placeholderString = @"0xAARRGGBB";
+  self.cortexLabelColorHexField.delegate = self;
+  [cortexStyleBox addSubview:self.cortexLabelColorHexField];
+
+  NSString *activeColor = [config valueForKeyPath:@"integrations.cortex.widget.color_active" defaultValue:@"0xffa6e3a1"];
+  NSString *inactiveColor = [config valueForKeyPath:@"integrations.cortex.widget.color_inactive" defaultValue:@"0xff6c7086"];
+  NSString *labelColor = [config valueForKeyPath:@"integrations.cortex.widget.label_color" defaultValue:@"0xffcdd6f4"];
+
+  NSColor *activeWellColor = [self colorFromHexString:activeColor];
+  NSColor *inactiveWellColor = [self colorFromHexString:inactiveColor];
+  NSColor *labelWellColor = [self colorFromHexString:labelColor];
+  if (activeWellColor) {
+    self.cortexActiveColorWell.color = activeWellColor;
+    self.cortexActiveColorHexField.stringValue = [self hexStringFromColor:activeWellColor];
+  }
+  if (inactiveWellColor) {
+    self.cortexInactiveColorWell.color = inactiveWellColor;
+    self.cortexInactiveColorHexField.stringValue = [self hexStringFromColor:inactiveWellColor];
+  }
+  if (labelWellColor) {
+    self.cortexLabelColorWell.color = labelWellColor;
+    self.cortexLabelColorHexField.stringValue = [self hexStringFromColor:labelWellColor];
+  }
+
+  [self.contentView addSubview:cortexStyleBox];
+  y -= 220;
 
   // MARK: halext-org Integration
   NSBox *halextBox = [[NSBox alloc] initWithFrame:NSMakeRect(leftMargin, y - 180, 700, 180)];
@@ -178,7 +465,7 @@
   halextSaveButton.action = @selector(saveHalextSettings:);
   [halextBox addSubview:halextSaveButton];
 
-  [self.view addSubview:halextBox];
+  [self.contentView addSubview:halextBox];
 }
 
 - (void)yazeToggled:(NSButton *)sender {
@@ -199,6 +486,194 @@
   [config setValue:@(enabled) forKeyPath:@"integrations.halext.enabled"];
 }
 
+- (void)cortexToggled:(NSButton *)sender {
+  BOOL enabled = sender.state == NSControlStateValueOn;
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  [config setValue:@(enabled) forKeyPath:@"integrations.cortex.enabled"];
+  [config reloadSketchyBar];
+}
+
+- (void)cortexWidgetToggled:(NSButton *)sender {
+  BOOL enabled = sender.state == NSControlStateValueOn;
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  [config setValue:@(enabled) forKeyPath:@"integrations.cortex.widget.enabled"];
+  [config reloadSketchyBar];
+}
+
+- (void)cortexLabelModeChanged:(NSPopUpButton *)sender {
+  NSString *mode = @"training";
+  switch (sender.indexOfSelectedItem) {
+    case 1: mode = @"hafs"; break;
+    case 2: mode = @"status"; break;
+    case 3: mode = @"none"; break;
+    default: mode = @"training"; break;
+  }
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  [config setValue:mode forKeyPath:@"integrations.cortex.widget.label_mode"];
+  [config reloadSketchyBar];
+}
+
+- (void)cortexFieldChanged:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  if (sender == self.cortexLabelPrefixField) {
+    NSString *value = [self.cortexLabelPrefixField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    [config setValue:value forKeyPath:@"integrations.cortex.widget.label_prefix"];
+    [config reloadSketchyBar];
+    return;
+  }
+  if (sender == self.cortexUpdateFreqField) {
+    NSInteger value = self.cortexUpdateFreqField.integerValue;
+    if (value > 0) {
+      [config setValue:@(value) forKeyPath:@"integrations.cortex.widget.update_freq"];
+      [config reloadSketchyBar];
+    }
+    return;
+  }
+  if (sender == self.cortexCacheTtlField) {
+    NSInteger value = self.cortexCacheTtlField.integerValue;
+    if (value >= 0) {
+      [config setValue:@(value) forKeyPath:@"integrations.cortex.widget.cache_ttl"];
+      [config reloadSketchyBar];
+    }
+    return;
+  }
+}
+
+- (NSFont *)preferredIconFontWithSize:(CGFloat)size {
+  NSArray<NSString *> *candidates = @[
+    @"Hack Nerd Font",
+    @"JetBrainsMono Nerd Font",
+    @"FiraCode Nerd Font",
+    @"SFMono Nerd Font",
+    @"Symbols Nerd Font",
+    @"MesloLGS NF"
+  ];
+  for (NSString *name in candidates) {
+    NSFont *font = [NSFont fontWithName:name size:size];
+    if (font) {
+      return font;
+    }
+  }
+  return [NSFont monospacedSystemFontOfSize:size weight:NSFontWeightRegular];
+}
+
+- (NSColor *)colorFromHexString:(NSString *)hexString {
+  if (!hexString || hexString.length < 8) return nil;
+  NSString *hex = [hexString hasPrefix:@"0x"] ? [hexString substringFromIndex:2] : hexString;
+  if (hex.length != 8) return nil;
+
+  unsigned int alpha, red, green, blue;
+  NSScanner *scanner = [NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(0, 2)]];
+  [scanner scanHexInt:&alpha];
+  scanner = [NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(2, 2)]];
+  [scanner scanHexInt:&red];
+  scanner = [NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(4, 2)]];
+  [scanner scanHexInt:&green];
+  scanner = [NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(6, 2)]];
+  [scanner scanHexInt:&blue];
+
+  return [NSColor colorWithCalibratedRed:red/255.0 green:green/255.0 blue:blue/255.0 alpha:alpha/255.0];
+}
+
+- (NSString *)hexStringFromColor:(NSColor *)color {
+  NSColor *rgbColor = [color colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+  int alpha = (int)(rgbColor.alphaComponent * 255);
+  int red = (int)(rgbColor.redComponent * 255);
+  int green = (int)(rgbColor.greenComponent * 255);
+  int blue = (int)(rgbColor.blueComponent * 255);
+  return [NSString stringWithFormat:@"0x%02X%02X%02X%02X", alpha, red, green, blue];
+}
+
+- (void)cortexPositionChanged:(NSPopUpButton *)sender {
+  NSString *position = sender.indexOfSelectedItem == 0 ? @"left" : @"right";
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  [config setValue:position forKeyPath:@"integrations.cortex.widget.position"];
+  [config reloadSketchyBar];
+}
+
+- (void)cortexStyleFieldChanged:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  if (sender == self.cortexLabelTemplateField) {
+    NSString *value = [self.cortexLabelTemplateField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    [config setValue:value forKeyPath:@"integrations.cortex.widget.label_template"];
+    [config reloadSketchyBar];
+    return;
+  }
+  if (sender == self.cortexActiveIconField) {
+    NSString *value = [self.cortexActiveIconField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    [config setValue:value forKeyPath:@"integrations.cortex.widget.icon_active"];
+    self.cortexActiveIconPreview.stringValue = value ?: @"";
+    [config reloadSketchyBar];
+    return;
+  }
+  if (sender == self.cortexInactiveIconField) {
+    NSString *value = [self.cortexInactiveIconField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    [config setValue:value forKeyPath:@"integrations.cortex.widget.icon_inactive"];
+    self.cortexInactiveIconPreview.stringValue = value ?: @"";
+    [config reloadSketchyBar];
+    return;
+  }
+}
+
+- (void)cortexColorChanged:(NSColorWell *)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  if (sender == self.cortexActiveColorWell) {
+    NSString *hex = [self hexStringFromColor:sender.color];
+    self.cortexActiveColorHexField.stringValue = hex;
+    [config setValue:hex forKeyPath:@"integrations.cortex.widget.color_active"];
+  } else if (sender == self.cortexInactiveColorWell) {
+    NSString *hex = [self hexStringFromColor:sender.color];
+    self.cortexInactiveColorHexField.stringValue = hex;
+    [config setValue:hex forKeyPath:@"integrations.cortex.widget.color_inactive"];
+  } else if (sender == self.cortexLabelColorWell) {
+    NSString *hex = [self hexStringFromColor:sender.color];
+    self.cortexLabelColorHexField.stringValue = hex;
+    [config setValue:hex forKeyPath:@"integrations.cortex.widget.label_color"];
+  }
+  [config reloadSketchyBar];
+}
+
+- (void)controlTextDidChange:(NSNotification *)notification {
+  id field = notification.object;
+  if (field == self.cortexActiveIconField) {
+    self.cortexActiveIconPreview.stringValue = self.cortexActiveIconField.stringValue ?: @"";
+    return;
+  }
+  if (field == self.cortexInactiveIconField) {
+    self.cortexInactiveIconPreview.stringValue = self.cortexInactiveIconField.stringValue ?: @"";
+    return;
+  }
+
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  if (field == self.cortexActiveColorHexField) {
+    NSColor *color = [self colorFromHexString:self.cortexActiveColorHexField.stringValue];
+    if (color) {
+      self.cortexActiveColorWell.color = color;
+      [config setValue:[self hexStringFromColor:color] forKeyPath:@"integrations.cortex.widget.color_active"];
+      [config reloadSketchyBar];
+    }
+    return;
+  }
+  if (field == self.cortexInactiveColorHexField) {
+    NSColor *color = [self colorFromHexString:self.cortexInactiveColorHexField.stringValue];
+    if (color) {
+      self.cortexInactiveColorWell.color = color;
+      [config setValue:[self hexStringFromColor:color] forKeyPath:@"integrations.cortex.widget.color_inactive"];
+      [config reloadSketchyBar];
+    }
+    return;
+  }
+  if (field == self.cortexLabelColorHexField) {
+    NSColor *color = [self colorFromHexString:self.cortexLabelColorHexField.stringValue];
+    if (color) {
+      self.cortexLabelColorWell.color = color;
+      [config setValue:[self hexStringFromColor:color] forKeyPath:@"integrations.cortex.widget.label_color"];
+      [config reloadSketchyBar];
+    }
+    return;
+  }
+}
+
 - (void)updateYazeStatus {
   NSString *yazePath = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/yaze"];
   NSString *buildBinary = [yazePath stringByAppendingPathComponent:@"build/bin/yaze"];
@@ -216,26 +691,36 @@
 }
 
 - (void)updateEmacsStatus {
-  NSTask *task = [[NSTask alloc] init];
-  task.launchPath = @"/usr/bin/pgrep";
-  task.arguments = @[@"-x", @"Emacs"];
-  NSPipe *pipe = [NSPipe pipe];
-  task.standardOutput = pipe;
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    NSString *statusText = @"Status: ✗ Not found";
+    NSColor *statusColor = [NSColor systemRedColor];
 
-  @try {
-    [task launch];
-    [task waitUntilExit];
-    if (task.terminationStatus == 0) {
-      self.emacsStatus.stringValue = @"Status: ✓ Running";
-      self.emacsStatus.textColor = [NSColor systemGreenColor];
-    } else {
-      self.emacsStatus.stringValue = @"Status: Installed but not running";
-      self.emacsStatus.textColor = [NSColor secondaryLabelColor];
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = @"/usr/bin/pgrep";
+    task.arguments = @[@"-x", @"Emacs"];
+    NSPipe *pipe = [NSPipe pipe];
+    task.standardOutput = pipe;
+
+    @try {
+      [task launch];
+      [task waitUntilExit];
+      if (task.terminationStatus == 0) {
+        statusText = @"Status: ✓ Running";
+        statusColor = [NSColor systemGreenColor];
+      } else {
+        statusText = @"Status: Installed but not running";
+        statusColor = [NSColor secondaryLabelColor];
+      }
+    } @catch (NSException *exception) {
+      statusText = @"Status: ✗ Not found";
+      statusColor = [NSColor systemRedColor];
     }
-  } @catch (NSException *exception) {
-    self.emacsStatus.stringValue = @"Status: ✗ Not found";
-    self.emacsStatus.textColor = [NSColor systemRedColor];
-  }
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self.emacsStatus.stringValue = statusText;
+      self.emacsStatus.textColor = statusColor;
+    });
+  });
 }
 
 - (void)launchYaze:(id)sender {
@@ -301,4 +786,3 @@
 }
 
 @end
-

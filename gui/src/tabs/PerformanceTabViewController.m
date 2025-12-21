@@ -121,43 +121,49 @@
 }
 
 - (void)updatePerformanceStats {
-  // Query system stats
-  NSTask *task = [[NSTask alloc] init];
-  task.launchPath = @"/usr/bin/top";
-  task.arguments = @[@"-l", @"1", @"-n", @"0"];
-  NSPipe *pipe = [NSPipe pipe];
-  task.standardOutput = pipe;
-  [task launch];
-  [task waitUntilExit];
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    NSString *cpuLine = @"CPU Usage: N/A";
+    NSString *memoryLine = @"Memory Usage: Calculating...";
 
-  NSData *data = [[pipe fileHandleForReading] readDataToEndOfFile];
-  NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-  
-  // Parse CPU usage (simplified)
-  NSArray *lines = [output componentsSeparatedByString:@"\n"];
-  for (NSString *line in lines) {
-    if ([line containsString:@"CPU usage"]) {
-      self.cpuUsageLabel.stringValue = [NSString stringWithFormat:@"CPU Usage: %@", line];
-      break;
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = @"/usr/bin/top";
+    task.arguments = @[@"-l", @"1", @"-n", @"0"];
+    NSPipe *pipe = [NSPipe pipe];
+    task.standardOutput = pipe;
+    [task launch];
+    [task waitUntilExit];
+
+    NSData *data = [[pipe fileHandleForReading] readDataToEndOfFile];
+    NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+
+    NSArray *lines = [output componentsSeparatedByString:@"\n"];
+    for (NSString *line in lines) {
+      if ([line containsString:@"CPU usage"]) {
+        cpuLine = [NSString stringWithFormat:@"CPU Usage: %@", line];
+        break;
+      }
     }
-  }
 
-  // Memory info
-  task = [[NSTask alloc] init];
-  task.launchPath = @"/usr/bin/vm_stat";
-  pipe = [NSPipe pipe];
-  task.standardOutput = pipe;
-  [task launch];
-  [task waitUntilExit];
-  
-  data = [[pipe fileHandleForReading] readDataToEndOfFile];
-  output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-  // Parse memory (simplified - would need proper parsing)
-  self.memoryUsageLabel.stringValue = @"Memory Usage: Calculating...";
+    task = [[NSTask alloc] init];
+    task.launchPath = @"/usr/bin/vm_stat";
+    pipe = [NSPipe pipe];
+    task.standardOutput = pipe;
+    [task launch];
+    [task waitUntilExit];
 
-  // Cache stats (would come from widget_manager if available)
-  self.cacheHitsLabel.stringValue = @"Cache Hits: N/A";
-  self.updateRateLabel.stringValue = @"Update Rate: N/A";
+    data = [[pipe fileHandleForReading] readDataToEndOfFile];
+    output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+    if (output.length == 0) {
+      memoryLine = @"Memory Usage: N/A";
+    }
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+      self.cpuUsageLabel.stringValue = cpuLine;
+      self.memoryUsageLabel.stringValue = memoryLine;
+      self.cacheHitsLabel.stringValue = @"Cache Hits: N/A";
+      self.updateRateLabel.stringValue = @"Update Rate: N/A";
+    });
+  });
 }
 
 - (void)toggleDaemon:(id)sender {
@@ -178,4 +184,3 @@
 }
 
 @end
-

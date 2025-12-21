@@ -8,6 +8,7 @@ if [ -z "$NAME" ]; then
 fi
 
 HIGHLIGHT="0x40f5c2e7"
+ICON_OVERRIDE="${BARISTA_ICON_BATTERY:-}"
 GREEN_COLOR=${1:-"0xffa6e3a1"}
 YELLOW_COLOR=${2:-"0xfff9e2af"}
 RED_COLOR=${3:-"0xfff38ba8"}
@@ -56,6 +57,10 @@ fi
 if [[ "$CHARGING" != "" ]]; then
   ICON=""
   COLOR="$BLUE_COLOR"
+fi
+
+if [ -n "$ICON_OVERRIDE" ]; then
+  ICON="$ICON_OVERRIDE"
 fi
 
 sketchybar --set "$NAME" icon="$ICON" label="${PERCENTAGE}%" icon.color="$COLOR" label.color="$COLOR"

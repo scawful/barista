@@ -1,6 +1,5 @@
 [
   {"id": "help_center", "icon": "󰘥", "label": "Open Help Center", "action": "help_center"},
-  {"id": "whichkey", "icon": "󰌌", "label": "WhichKey HUD", "command": "sketchybar --trigger whichkey_toggle"},
   {"id": "whichkey_plan", "icon": "󰈙", "label": "WhichKey Plan", "path_key": "whichkey_plan"},
   {"id": "readme", "icon": "󰈙", "label": "README", "path_key": "readme"},
   {"id": "sharing", "icon": "󰓛", "label": "Sharing Guide", "path_key": "sharing"},

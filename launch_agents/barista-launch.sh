@@ -12,6 +12,22 @@ YABAI_LABEL="${BARISTA_YABAI_LABEL:-com.koekeishiya.yabai}"
 SKHD_LABEL="${BARISTA_SKHD_LABEL:-com.koekeishiya.skhd}"
 AGENTS=("$SKETCHYBAR_LABEL" "$YABAI_LABEL" "$SKHD_LABEL")
 
+HOMEBREW_PREFIX="${HOMEBREW_PREFIX:-/opt/homebrew}"
+DEFAULT_PATH="${HOMEBREW_PREFIX}/bin:${HOMEBREW_PREFIX}/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+PYTHON_PATH=""
+if [ -d "${HOMEBREW_PREFIX}/opt/python@3.14/bin" ]; then
+  PYTHON_PATH="${HOMEBREW_PREFIX}/opt/python@3.14/bin"
+fi
+if [ -n "$PYTHON_PATH" ]; then
+  DEFAULT_PATH="${PYTHON_PATH}:${DEFAULT_PATH}"
+fi
+
+export PATH="${BARISTA_PATH:-$DEFAULT_PATH}"
+
+if command -v launchctl >/dev/null 2>&1; then
+  launchctl setenv PATH "$PATH" >/dev/null 2>&1 || true
+fi
+
 log() {
   printf '[barista-agent] %s\n' "$*"
 }

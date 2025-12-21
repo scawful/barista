@@ -2,6 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/opt/homebrew/opt/python@3.14/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
   <key>Label</key>
   <string>dev.barista.control</string>
   <key>ProgramArguments</key>
@@ -20,4 +25,3 @@
   <string>/tmp/barista.control.err.log</string>
 </dict>
 </plist>
-

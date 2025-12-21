@@ -139,31 +139,42 @@
     return;
   }
 
-  NSTask *task = [[NSTask alloc] init];
-  task.launchPath = helper;
-  task.arguments = @[@"list"];
-  NSPipe *pipe = [NSPipe pipe];
-  task.standardOutput = pipe;
-  task.standardError = pipe;
-  [task launch];
-  [task waitUntilExit];
+  self.statusLabel.stringValue = @"Loading launch agents…";
 
-  NSData *data = [[pipe fileHandleForReading] readDataToEndOfFile];
-  if (task.terminationStatus != 0) {
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = helper;
+    task.arguments = @[@"list"];
+    NSPipe *pipe = [NSPipe pipe];
+    task.standardOutput = pipe;
+    task.standardError = pipe;
+    [task launch];
+    [task waitUntilExit];
+
+    NSData *data = [[pipe fileHandleForReading] readDataToEndOfFile];
     NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
-    self.statusLabel.stringValue = output.length ? output : @"Failed to list launch agents.";
-    return;
-  }
+    NSInteger status = task.terminationStatus;
 
-  NSError *error = nil;
-  NSArray *agents = [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingMutableContainers error:&error];
-  if (!agents || ![agents isKindOfClass:[NSArray class]]) {
-    self.statusLabel.stringValue = @"Unable to parse launch agent JSON.";
-    return;
-  }
+    NSError *error = nil;
+    NSArray *agents = nil;
+    if (status == 0) {
+      agents = [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingMutableContainers error:&error];
+    }
 
-  self.launchAgents = [agents mutableCopy];
-  [self applyFilter];
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (status != 0) {
+        self.statusLabel.stringValue = output.length ? output : @"Failed to list launch agents.";
+        return;
+      }
+      if (!agents || ![agents isKindOfClass:[NSArray class]]) {
+        self.statusLabel.stringValue = @"Unable to parse launch agent JSON.";
+        return;
+      }
+
+      self.launchAgents = [agents mutableCopy];
+      [self applyFilter];
+    });
+  });
 }
 
 - (void)filterChanged:(id)sender {
@@ -301,4 +312,3 @@
 }
 
 @end
-

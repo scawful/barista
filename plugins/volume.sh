@@ -8,6 +8,7 @@ if [ -z "$NAME" ]; then
 fi
 
 HIGHLIGHT="0x40f5c2e7"
+ICON_OVERRIDE="${BARISTA_ICON_VOLUME:-}"
 
 case "$SENDER" in
   "volume_change")
@@ -42,6 +43,10 @@ case "$VOLUME" in
   ;;
   *) ICON="󰖁"
 esac
+
+if [ -n "$ICON_OVERRIDE" ]; then
+  ICON="$ICON_OVERRIDE"
+fi
 
 # Update widget
 sketchybar --set "$NAME" icon="$ICON" label="${VOLUME}%"

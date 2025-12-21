@@ -4,6 +4,7 @@ set -euo pipefail
 
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
 FOCUS_SCRIPT="$CONFIG_DIR/plugins/focus_space.sh"
+ICON_CACHE_DIR="$CONFIG_DIR/cache/space_icons"
 
 RAW_SPACES_DATA=""
 if command -v yabai >/dev/null 2>&1; then
@@ -50,6 +51,12 @@ for entry in "${SPACE_LINES[@]}"; do
   item="space.$space_index"
 
   icon="$space_index"
+  if [ -f "$ICON_CACHE_DIR/$space_index" ]; then
+    cached_icon="$(cat "$ICON_CACHE_DIR/$space_index" 2>/dev/null || true)"
+    if [ -n "$cached_icon" ]; then
+      icon="$cached_icon"
+    fi
+  fi
 
   SB_ARGS+=(--add space "$item" left)
   SB_ARGS+=(--set "$item" space="$space_index" \
@@ -104,3 +111,8 @@ SB_ARGS+=(--move space_creator after "$last_item")
 
 # Execute all commands in one single call
 sketchybar "${SB_ARGS[@]}"
+
+# Prefetch icons for faster startup without blocking bar render
+if [ -x "$CONFIG_DIR/plugins/space_icons_prefetch.sh" ]; then
+  ("$CONFIG_DIR/plugins/space_icons_prefetch.sh" >/dev/null 2>&1 &)
+fi

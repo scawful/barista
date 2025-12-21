@@ -122,6 +122,16 @@ local oracle_enabled = integration_enabled("oracle")
 local emacs_enabled = integration_enabled("emacs")
 local halext_enabled = integration_enabled("halext")
 local halext_module = halext_enabled and require("halext") or nil
+local cortex_enabled = integration_enabled("cortex")
+local cortex_module = nil
+if cortex_enabled then
+  local ok, mod = pcall(require, "cortex")
+  if ok then
+    cortex_module = mod
+  else
+    print("Barista: cortex integration enabled but module not found")
+  end
+end
 
 -- Utility functions
 local function clamp(value, min_value, max_value)
@@ -140,6 +150,10 @@ end
 
 local function open_path(path)
   return string.format("open %q", path)
+end
+
+local function open_url(url)
+  return string.format("open %q", url)
 end
 
 local function call_script(script_path, ...)
@@ -187,12 +201,46 @@ local function safe_icon(value)
   return nil
 end
 
+local function icon_for(name, fallback)
+  local from_state = state_module.get_icon(state, name, nil)
+  if type(from_state) == "string" and from_state ~= "" then
+    return from_state
+  end
+  local from_manager = icon_manager.get_char(name, nil)
+  if type(from_manager) == "string" and from_manager ~= "" then
+    return from_manager
+  end
+  local from_icons = icons_module.find(name)
+  if type(from_icons) == "string" and from_icons ~= "" then
+    return from_icons
+  end
+  return fallback or ""
+end
+
 _G.icon_for = icon_for
+
+local function env_prefix(vars)
+  local keys = {}
+  for key, value in pairs(vars or {}) do
+    if type(value) == "string" and value ~= "" then
+      table.insert(keys, key)
+    end
+  end
+  if #keys == 0 then
+    return ""
+  end
+  table.sort(keys)
+  local parts = {}
+  for _, key in ipairs(keys) do
+    table.insert(parts, string.format("%s=%q", key, vars[key]))
+  end
+  return "env " .. table.concat(parts, " ") .. " "
+end
 
 local function attach_hover(name)
   -- Hover script is now integrated into the widgets' own scripts for better performance
-  -- We only need to subscribe to mouse events
-  shell_exec(string.format("sketchybar --subscribe %s mouse.entered mouse.exited", name))
+  -- Small delay avoids "item not found" when subscribing right after creation
+  shell_exec(string.format("sleep 0.1; sketchybar --subscribe %s mouse.entered mouse.exited", name))
 end
 
 local function subscribe_popup_autoclose(name)
@@ -413,6 +461,7 @@ local integrations = {
   oracle = oracle_enabled and oracle_module or nil,
   emacs  = emacs_enabled  and emacs_module  or nil,
   halext = halext_enabled and halext_module or nil,
+  cortex = cortex_module,
 }
 
 local menu_context = {
@@ -425,6 +474,8 @@ local menu_context = {
   shell_exec = shell_exec,
   call_script = call_script,
   open_path = open_path,
+  open_url = open_url,
+  icon_for = icon_for,
   associated_displays = associated_displays,
   paths = paths,
   scripts = scripts,
@@ -698,97 +749,6 @@ for _, entry in ipairs(app_actions) do
   })
 end
 
--- Folded Yabai Menu Items into Front App
-add_front_app_popup_item("front_app.yabai.sep1", {
-  icon = "",
-  label = "───────────────",
-  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Regular"], settings.font.sizes.small),
-  ["label.color"] = theme.DARK_WHITE,
-  background = { drawing = false },
-})
-
-add_front_app_popup_item("front_app.yabai.status.header", {
-  icon = "",
-  label = "Space Status",
-  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
-  background = { drawing = false },
-})
-add_front_app_popup_item("front_app.yabai.status", {
-  icon = "",
-  label = "…",
-  script = PLUGIN_DIR .. "/yabai_status.sh",
-  update_freq = 5,
-  ["label.font"] = font_small,
-})
-
-add_front_app_popup_item("front_app.yabai.mode.header", {
-  icon = "",
-  label = "Layout Modes",
-  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
-  background = { drawing = false },
-})
-local mode_actions = {
-  { name = "front_app.yabai.float", icon = "󰒄", label = "Float (default)", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "float") },
-  { name = "front_app.yabai.bsp", icon = "󰆾", label = "BSP Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "bsp") },
-  { name = "front_app.yabai.stack", icon = "󰓩", label = "Stack Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "stack") },
-}
-for _, entry in ipairs(mode_actions) do
-  add_front_app_popup_item(entry.name, {
-    icon = entry.icon,
-    label = entry.label,
-    click_script = entry.action,
-    ["label.font"] = font_small,
-  })
-end
-
-add_front_app_popup_item("front_app.yabai.window.header", {
-  icon = "",
-  label = "Window Management",
-  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
-  background = { drawing = false },
-})
-
-local window_actions = {
-  { name = "front_app.yabai.balance", icon = "󰓅", label = "Balance Windows", action = call_script(YABAI_CONTROL_SCRIPT, "balance"), shortcut = "⌃⌥B" },
-  { name = "front_app.yabai.rotate", icon = "󰑞", label = "Rotate Layout", action = call_script(YABAI_CONTROL_SCRIPT, "space-rotate"), shortcut = "⌃⌥R" },
-  { name = "front_app.yabai.toggle", icon = "󱂬", label = "Toggle BSP/Stack", action = call_script(YABAI_CONTROL_SCRIPT, "toggle-layout") },
-  { name = "front_app.yabai.flip_x", icon = "󰯌", label = "Flip Horizontal", action = call_script(YABAI_CONTROL_SCRIPT, "space-mirror-x") },
-  { name = "front_app.yabai.flip_y", icon = "󰯎", label = "Flip Vertical", action = call_script(YABAI_CONTROL_SCRIPT, "space-mirror-y") },
-}
-for _, entry in ipairs(window_actions) do
-  add_front_app_popup_item(entry.name, {
-    icon = entry.icon,
-    label = entry.label,
-    click_script = entry.action,
-    ["label.font"] = font_small,
-  })
-end
-
-add_front_app_popup_item("front_app.yabai.nav.header", {
-  icon = "",
-  label = "Space Navigation",
-  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
-  background = { drawing = false },
-})
-
-local nav_actions = {
-  { name = "front_app.yabai.prev", icon = "󰆽", label = "Previous Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-prev"), shortcut = "⌃⌥←" },
-  { name = "front_app.yabai.next", icon = "󰆼", label = "Next Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-next"), shortcut = "⌃⌥→" },
-  { name = "front_app.yabai.recent", icon = "󰔰", label = "Recent Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-recent"), shortcut = "⌃⌥⌫" },
-  { name = "front_app.yabai.first", icon = "󰆿", label = "First Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-first") },
-  { name = "front_app.yabai.last", icon = "󰆾", label = "Last Space", action = call_script(YABAI_CONTROL_SCRIPT, "space-last") },
-}
-for _, entry in ipairs(nav_actions) do
-  add_front_app_popup_item(entry.name, {
-    icon = entry.icon,
-    label = entry.label,
-    click_script = entry.action,
-    ["label.font"] = font_small,
-  })
-end
-
--- OPTIMIZED: Reduced event subscriptions - removed redundant display events (already handled by popup_manager)
-sbar.exec("sleep 0.2; sketchybar --subscribe front_app.yabai.status space_change yabai_status_refresh")
 
 -- Spaces: Refresh after all left items are added
 -- This allows spaces to be appended to the end of the left stack
@@ -802,9 +762,48 @@ shell_exec("sketchybar --trigger space_mode_refresh")
 -- Create widget factory
 local widget_factory = widgets_module.create_factory(sbar, theme, settings, state)
 
+-- Cortex widget (optional)
+local cortex_item_name = nil
+local cortex_integration = state_module.get_integration(state, "cortex")
+local cortex_widget = type(cortex_integration) == "table" and cortex_integration.widget or nil
+if cortex_module and cortex_widget and cortex_widget.enabled ~= false then
+  local cortex_item = cortex_module.create_widget({
+    position = cortex_widget.position or "right",
+    icon_active = cortex_widget.icon_active,
+    icon_inactive = cortex_widget.icon_inactive,
+    color_active = cortex_widget.color_active,
+    color_inactive = cortex_widget.color_inactive,
+    label_color = cortex_widget.label_color,
+    label_font = cortex_widget.label_font or font_string(settings.font.numbers, settings.font.style_map["Semibold"], settings.font.sizes.small),
+    label_mode = cortex_widget.label_mode or "hafs",
+    label_prefix = cortex_widget.label_prefix or "HAFS",
+    label_on = cortex_widget.label_on,
+    label_off = cortex_widget.label_off,
+    label_template = cortex_widget.label_template,
+    show_label = cortex_widget.show_label ~= false,
+    update_freq = cortex_widget.update_freq or 120,
+    cache_ttl = cortex_widget.cache_ttl or 60,
+    context_root = cortex_widget.context_root,
+    script_path = cortex_widget.script_path,
+    icon_font = { family = settings.font.icon, size = settings.font.sizes.icon },
+    click_script = cortex_widget.click_script,
+  })
+
+  cortex_item_name = cortex_item.name or "cortex"
+  cortex_item.name = nil
+  sbar.add("item", cortex_item_name, cortex_item)
+  -- Prime the label immediately so the bar doesn't sit empty until the first update tick.
+  if cortex_item.script and cortex_item.script ~= "" then
+    sbar.exec(string.format("NAME=%s %s", cortex_item_name, cortex_item.script))
+  end
+  sbar.exec("sketchybar --add event cortex_started >/dev/null 2>&1 || true")
+  sbar.exec("sketchybar --add event cortex_stopped >/dev/null 2>&1 || true")
+  sbar.exec("sketchybar --subscribe cortex cortex_started cortex_stopped system_woke")
+end
+
 -- Clock widget (uses C component if available, falls back to shell script)
 widget_factory.create_clock({
-  icon = "󰥔",
+  icon = icon_for("clock", "󰥔"),
   script = compiled_script("clock_widget", PLUGIN_DIR .. "/clock.sh"),
   update_freq = 30,  -- OPTIMIZED: Update every 30 seconds (was 1) - reduces CPU by 97%
   click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
@@ -902,8 +901,16 @@ for _, item in ipairs(calendar_items) do
 end
 
 -- System Info widget
+local system_info_env = env_prefix({
+  BARISTA_ICON_CPU = state_module.get_icon(state, "cpu", ""),
+  BARISTA_ICON_MEM = state_module.get_icon(state, "memory", ""),
+  BARISTA_ICON_DISK = state_module.get_icon(state, "disk", ""),
+  BARISTA_ICON_WIFI = state_module.get_icon(state, "wifi", ""),
+  BARISTA_ICON_WIFI_OFF = state_module.get_icon(state, "wifi_off", ""),
+})
+local system_info_script = system_info_env .. PLUGIN_DIR .. "/system_info.sh"
 widget_factory.create_system_info({
-  script = PLUGIN_DIR .. "/system_info.sh",
+  script = system_info_script,
   update_freq = 45,  -- Reduce refresh rate to lower CPU
   show_cpu = false,  -- Disable CPU row to save resources
 })
@@ -921,9 +928,6 @@ local function info_enabled(key)
 end
 
 local system_info_items = {}
-if info_enabled("cpu") then
-  table.insert(system_info_items, { name = "system_info.cpu", icon = "", label = "CPU …" })
-end
 if info_enabled("mem") then
   table.insert(system_info_items, { name = "system_info.mem", icon = "", label = "Mem …" })
 end
@@ -931,7 +935,7 @@ if info_enabled("disk") then
   table.insert(system_info_items, { name = "system_info.disk", icon = "", label = "Disk …" })
 end
 if info_enabled("net") then
-  table.insert(system_info_items, { name = "system_info.net", icon = "󰖩", label = "Wi-Fi …" })
+  table.insert(system_info_items, { name = "system_info.net", icon = icon_for("wifi", "󰖩"), label = "Wi-Fi …" })
 end
 
 -- Add system tools
@@ -975,8 +979,12 @@ sbar.add("bracket", { "clock", "system_info" }, {
 })
 
 -- Volume widget (click to open Sound preferences)
+local volume_env = env_prefix({
+  BARISTA_ICON_VOLUME = state_module.get_icon(state, "volume", ""),
+})
+local volume_script = volume_env .. PLUGIN_DIR .. "/volume.sh"
 widget_factory.create_volume({
-  script = PLUGIN_DIR .. "/volume.sh",
+  script = volume_script,
   click_script = PLUGIN_DIR .. "/volume_click.sh",
   popup = {
     align = "right",
@@ -1038,8 +1046,11 @@ for _, entry in ipairs(volume_actions) do
 end
 
 -- Battery widget
+local battery_env = env_prefix({
+  BARISTA_ICON_BATTERY = state_module.get_icon(state, "battery", ""),
+})
 widget_factory.create_battery({
-  script = PLUGIN_DIR .. "/battery.sh '" .. theme.GREEN .. "' '" .. theme.YELLOW .. "' '" .. theme.RED .. "' '" .. theme.BLUE .. "'",
+  script = battery_env .. PLUGIN_DIR .. "/battery.sh '" .. theme.GREEN .. "' '" .. theme.YELLOW .. "' '" .. theme.RED .. "' '" .. theme.BLUE .. "'",
   update_freq = 120,
 })
 sbar.exec("sketchybar --subscribe battery system_woke power_source_change")
@@ -1047,6 +1058,11 @@ attach_hover("battery")
 
 -- Trigger initial updates for reactive widgets (batched for performance)
 sbar.exec("sketchybar --trigger volume_change && sketchybar --update volume && sketchybar --update battery")
+
+if cortex_item_name then
+  -- Keep Cortex left of the clock/calendar cluster (right-side order is reversed).
+  sbar.exec(string.format("sketchybar --move %s after clock", cortex_item_name))
+end
 
 -- End configuration
 sbar.end_config()

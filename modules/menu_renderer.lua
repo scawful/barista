@@ -4,17 +4,17 @@ local unpack = table.unpack or _G.unpack
 
 local function menu_label(label, shortcut)
   if shortcut and shortcut ~= "" then
-    return string.format("%-16s %s", label, shortcut)
+    return string.format("%-12s %s", label, shortcut)
   end
   return label
 end
 
 local function menu_entry_padding()
   return {
-    icon_left = 4,
-    icon_right = 6,
-    label_left = 6,
-    label_right = 6,
+    icon_left = 1,
+    icon_right = 2,
+    label_left = 2,
+    label_right = 2,
   }
 end
 
@@ -59,7 +59,7 @@ function menu_renderer.create(ctx)
     sbar.add("item", entry.name, {
       position = "popup." .. popup,
       icon = "",
-      label = entry.label or "───────────────",
+      label = entry.label or "────────",
       ["label.font"] = string.format("%s:%s:%0.1f", settings.font.text, settings.font.style_map["Regular"], settings.font.sizes.small),
       ["label.color"] = theme.DARK_WHITE,
       ["icon.drawing"] = false,
@@ -70,20 +70,24 @@ function menu_renderer.create(ctx)
   end
 
   local function wrap_action(entry, popup_name)
-    if not entry.action or entry.action == "" then
+    local action = entry.action
+    if type(action) == "function" then
+      action = entry.shell_action
+    end
+    if not action or action == "" then
       return ""
     end
     if ctx.scripts and ctx.scripts.menu_action then
       local target_popup = popup_name
       return string.format(
         "MENU_ACTION_CMD=%q %s %q %q",
-        entry.action,
+        action,
         ctx.scripts.menu_action,
         entry.name or "",
         target_popup or ""
       )
     else
-      return string.format("%s; sketchybar -m --set %s popup.drawing=off", entry.action, popup_name or popup)
+      return string.format("%s; sketchybar -m --set %s popup.drawing=off", action, popup_name or popup)
     end
   end
 
@@ -105,7 +109,7 @@ function menu_renderer.create(ctx)
       background = {
         drawing = false,
         corner_radius = 4,
-        height = math.max(widget_height - 10, 16)
+        height = math.max(widget_height - 16, 12)
       }
     }
 
@@ -165,11 +169,13 @@ function menu_renderer.create(ctx)
       background = {
         drawing = false,
         corner_radius = 4,
-        height = math.max(widget_height - 8, 16)
+        height = math.max(widget_height - 16, 12)
       }
     })
     attach_hover(entry.name)
   end
+
+  local add_submenu
 
   local function render_menu_items(popup, entries, parent_popup)
     for _, entry in ipairs(entries or {}) do
@@ -190,7 +196,7 @@ function menu_renderer.create(ctx)
   end
   
   -- Keep old add_submenu for backwards compatibility
-  local function add_submenu(popup, entry, renderer)
+  add_submenu = function(popup, entry, renderer)
     local padding = menu_entry_padding()
     local parent = entry.name
     local arrow = entry.arrow_icon or "󰅂"
@@ -206,7 +212,7 @@ function menu_renderer.create(ctx)
       background = {
         drawing = false,
         corner_radius = 4,
-        height = math.max(widget_height - 8, 16)
+        height = math.max(widget_height - 16, 12)
       },
       popup = {
         align = "right",

@@ -5,14 +5,53 @@ set -euo pipefail
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
 FOCUS_SCRIPT="$CONFIG_DIR/plugins/focus_space.sh"
 ICON_CACHE_DIR="$CONFIG_DIR/cache/space_icons"
+RETRY_FILE="$CONFIG_DIR/.spaces_retry"
+MAX_SPACE_QUERY_ATTEMPTS=12
+SPACE_QUERY_DELAY=0.08
+
+spaces_payload_valid() {
+  local payload="${1:-}"
+  [ -n "$payload" ] || return 1
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$payload" | jq -e 'length > 0' >/dev/null 2>&1
+    return $?
+  fi
+  return 0
+}
+
+schedule_spaces_retry() {
+  local now last
+  now=$(date +%s)
+  last=$(cat "$RETRY_FILE" 2>/dev/null || echo 0)
+  if [ $((now - last)) -lt 2 ]; then
+    return 0
+  fi
+  printf '%s' "$now" > "$RETRY_FILE" 2>/dev/null || true
+  (
+    sleep 0.4
+    CONFIG_DIR="$CONFIG_DIR" "$CONFIG_DIR/plugins/refresh_spaces.sh" >/dev/null 2>&1 || true
+  ) &
+}
 
 RAW_SPACES_DATA=""
 if command -v yabai >/dev/null 2>&1; then
-    RAW_SPACES_DATA=$(yabai -m query --spaces 2>/dev/null || echo "")
+    for ((attempt=1; attempt<=MAX_SPACE_QUERY_ATTEMPTS; attempt++)); do
+      RAW_SPACES_DATA=$(yabai -m query --spaces 2>/dev/null || true)
+      if spaces_payload_valid "$RAW_SPACES_DATA"; then
+        break
+      fi
+      sleep "$SPACE_QUERY_DELAY"
+    done
 else
     echo "ERROR: yabai not found." >&2
     exit 1
 fi
+
+if ! spaces_payload_valid "$RAW_SPACES_DATA"; then
+  schedule_spaces_retry
+  exit 0
+fi
+rm -f "$RETRY_FILE" 2>/dev/null || true
 
 # Wait for front_app anchor to exist (fast poll)
 for i in {1..20}; do

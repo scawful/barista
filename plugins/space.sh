@@ -123,8 +123,12 @@ ensure_space_layout() {
 
 # Icon selection logic - priority: custom icon > app icon > empty
 # We ALWAYS try to show the app icon for all spaces (persistence)
-if [ "$SENDER" = "space_change" ] || [ "$SENDER" = "space_mode_refresh" ]; then
+if [ "$SENDER" = "space_mode_refresh" ]; then
   ensure_space_layout
+elif [ "$SENDER" = "space_change" ]; then
+  if is_selected "$SELECTED"; then
+    ensure_space_layout
+  fi
 fi
 
 if [ "$SENDER" != "mouse.entered" ] && [ "$SENDER" != "mouse.exited" ]; then

@@ -19,7 +19,8 @@ fi
 mkdir -p "$ICON_CACHE_DIR" 2>/dev/null || true
 
 printf '%s' "$windows_json" | jq -r '
-  group_by(.space)
+  sort_by(.space)
+  | group_by(.space)
   | map({
       space: .[0].space,
       app: (

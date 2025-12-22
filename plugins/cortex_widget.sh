@@ -92,8 +92,12 @@ read_metrics() {
   if [[ "$needs_agents" -eq 1 ]]; then
     agent_dir="$root/history/agents"
     if [[ -d "$agent_dir" ]]; then
+      # Count agent directories
       agent_count="$(find "$agent_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')"
-      memory_count="$(find "$agent_dir" -mindepth 3 -maxdepth 3 -type f -name '*.json' -path '*/entries/*' 2>/dev/null | wc -l | tr -d ' ')"
+      # Count history entries (JSONL lines in history/*.jsonl files)
+      if [[ -d "$root/history" ]]; then
+        memory_count="$(cat "$root/history"/*.jsonl 2>/dev/null | wc -l | tr -d ' ')"
+      fi
     fi
   fi
 

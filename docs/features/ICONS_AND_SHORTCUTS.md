@@ -157,7 +157,7 @@ Add to your `~/.config/skhd/skhdrc`:
 
 ```bash
 # Load barista shortcuts
-.load '~/.config/skhd/barista_shortcuts.conf'
+.load "/Users/<user>/.config/skhd/barista_shortcuts.conf"
 ```
 
 Then restart skhd:

@@ -33,7 +33,7 @@ if success then
   print("📄 File: " .. result)
   print("\nTo use these shortcuts:")
   print("1. Include in your ~/.config/skhd/skhdrc:")
-  print("   .load '" .. result .. "'")
+  print("   .load \"" .. result .. "\"")
   print("\n2. Restart skhd:")
   print("   brew services restart skhd")
   print("\n3. Or reload configuration:")

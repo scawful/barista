@@ -11,7 +11,7 @@ Bucket: **lab** (non-commercial). This repo is the source of truth for SketchyBa
 - Update `modules/shortcuts.lua` (bindings) and `data/workflow_shortcuts.json` (help center keymap/actions).
 - Regenerate skhd file: `BARISTA_CONFIG_DIR=/path/to/repo lua helpers/generate_shortcuts.lua`
 - Reload skhd: `skhd --reload`
-- Ensure `~/.config/skhd/skhdrc` includes `.load '~/.config/skhd/barista_shortcuts.conf'`.
+- Ensure `~/.config/skhd/skhdrc` includes `.load "/Users/<user>/.config/skhd/barista_shortcuts.conf"` (absolute path + double quotes required by skhd).
 
 ## Control Panel + Paths
 - `BARISTA_CONFIG_DIR` selects the config root for the GUI and helpers.

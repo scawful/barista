@@ -3,6 +3,8 @@ set -euo pipefail
 
 YABAI_BIN="${YABAI_BIN:-$(command -v yabai || true)}"
 JQ_BIN="${JQ_BIN:-$(command -v jq || true)}"
+SKHD_BIN="${SKHD_BIN:-$(command -v skhd || true)}"
+CONFIG_DIR="${BARISTA_CONFIG_DIR:-$HOME/.config/sketchybar}"
 
 if [[ -z "$YABAI_BIN" ]]; then
   echo "yabai not found in PATH." >&2
@@ -130,7 +132,136 @@ restart_yabai() {
   return 1
 }
 
+skhd_config_path() {
+  if [[ -n "${SKHD_CONFIG:-}" ]]; then
+    echo "$SKHD_CONFIG"
+    return 0
+  fi
+  if [[ -f "$HOME/.config/skhd/skhdrc" ]]; then
+    echo "$HOME/.config/skhd/skhdrc"
+    return 0
+  fi
+  if [[ -f "$HOME/.skhdrc" ]]; then
+    echo "$HOME/.skhdrc"
+    return 0
+  fi
+  echo "$HOME/.config/skhd/skhdrc"
+}
+
+skhd_shortcuts_path() {
+  echo "$HOME/.config/skhd/barista_shortcuts.conf"
+}
+
+skhd_expected_load_line() {
+  printf '.load "%s"' "$(skhd_shortcuts_path)"
+}
+
+skhd_error_log() {
+  local user
+  user=$(id -un 2>/dev/null || echo "user")
+  echo "/tmp/skhd_${user}.err.log"
+}
+
+skhd_error_recent() {
+  local log="$1"
+  local now
+  local mtime
+  now=$(date +%s)
+  mtime=$(stat -f %m "$log" 2>/dev/null || echo 0)
+  (( now - mtime < 3600 ))
+}
+
+skhd_running() {
+  pgrep -x skhd >/dev/null 2>&1
+}
+
+skhd_start() {
+  if [[ -z "$SKHD_BIN" ]]; then
+    return 1
+  fi
+  if "$SKHD_BIN" --start-service >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v brew >/dev/null 2>&1; then
+    brew services start skhd >/dev/null 2>&1
+    return 0
+  fi
+  return 1
+}
+
+skhd_restart() {
+  if [[ -z "$SKHD_BIN" ]]; then
+    return 1
+  fi
+  if "$SKHD_BIN" --restart-service >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v brew >/dev/null 2>&1; then
+    brew services restart skhd >/dev/null 2>&1
+    return 0
+  fi
+  return 1
+}
+
+skhd_reload() {
+  if [[ -z "$SKHD_BIN" ]]; then
+    return 1
+  fi
+  "$SKHD_BIN" --reload >/dev/null 2>&1
+}
+
+skhd_check_load_line() {
+  local config="$1"
+  if [[ ! -f "$config" ]]; then
+    echo "skhd config not found: $config"
+    return 1
+  fi
+  if grep -q "barista_shortcuts.conf" "$config"; then
+    if grep -Eq '^[[:space:]]*\.load[[:space:]]+"[^"]*barista_shortcuts\.conf"' "$config"; then
+      return 0
+    fi
+    echo "skhd config loads barista_shortcuts.conf without double quotes"
+    return 2
+  fi
+  echo "skhd config missing .load for barista shortcuts"
+  return 3
+}
+
+skhd_fix_load_line() {
+  local config="$1"
+  local expected
+  expected=$(skhd_expected_load_line)
+  mkdir -p "$(dirname "$config")" 2>/dev/null || true
+
+  if [[ -f "$config" ]] && grep -q "barista_shortcuts.conf" "$config"; then
+    local tmp
+    tmp=$(mktemp)
+    awk -v expected="$expected" '/barista_shortcuts\.conf/ { print expected; next } { print }' "$config" > "$tmp"
+    mv "$tmp" "$config"
+    return 0
+  fi
+
+  printf "\n%s\n" "$expected" >> "$config"
+}
+
+skhd_generate_shortcuts() {
+  local generator="$CONFIG_DIR/helpers/generate_shortcuts.lua"
+  if [[ ! -f "$generator" ]]; then
+    echo "shortcuts generator not found: $generator" >&2
+    return 1
+  fi
+  if ! command -v lua >/dev/null 2>&1; then
+    echo "lua not found; cannot regenerate shortcuts" >&2
+    return 1
+  fi
+  BARISTA_CONFIG_DIR="$CONFIG_DIR" lua "$generator" >/dev/null 2>&1
+}
+
 run_doctor() {
+  local fix=0
+  case "${1:-}" in
+    fix|--fix) fix=1 ;;
+  esac
   local ok=1
   if ! pgrep -x yabai >/dev/null 2>&1; then
     echo "yabai: not running"
@@ -139,11 +270,66 @@ run_doctor() {
     echo "yabai: running"
   fi
 
-  if ! pgrep -x skhd >/dev/null 2>&1; then
-    echo "skhd: not running"
+  if [[ -z "$SKHD_BIN" ]]; then
+    echo "skhd: not installed"
     ok=0
   else
-    echo "skhd: running"
+    if ! skhd_running; then
+      echo "skhd: not running"
+      ok=0
+      if (( fix == 1 )) && skhd_start; then
+        echo "skhd: started"
+      fi
+    else
+      echo "skhd: running"
+    fi
+  fi
+
+  if [[ -n "$SKHD_BIN" ]]; then
+    local skhd_config
+    local skhd_shortcuts
+    skhd_config=$(skhd_config_path)
+    skhd_shortcuts=$(skhd_shortcuts_path)
+
+    if [[ -f "$skhd_shortcuts" ]] && [[ -s "$skhd_shortcuts" ]]; then
+      echo "skhd shortcuts: present"
+    else
+      echo "skhd shortcuts: missing ($skhd_shortcuts)" >&2
+      ok=0
+      if (( fix == 1 )) && skhd_generate_shortcuts; then
+        echo "skhd shortcuts: regenerated"
+      fi
+    fi
+
+    if skhd_check_load_line "$skhd_config"; then
+      echo "skhd config: load ok"
+    else
+      ok=0
+      if (( fix == 1 )); then
+        skhd_fix_load_line "$skhd_config"
+        echo "skhd config: load updated"
+      fi
+    fi
+
+    local err_log
+    err_log=$(skhd_error_log)
+    if [[ -s "$err_log" ]] && skhd_error_recent "$err_log"; then
+      echo "skhd errors: recent log entries ($err_log)" >&2
+      tail -n 3 "$err_log" | sed 's/^/  /' >&2 || true
+      ok=0
+      if (( fix == 1 )); then
+        skhd_generate_shortcuts || true
+        skhd_fix_load_line "$skhd_config" || true
+      fi
+    fi
+
+    if (( fix == 1 )); then
+      if skhd_running; then
+        skhd_reload || skhd_restart || true
+      else
+        skhd_start || true
+      fi
+    fi
   fi
 
   if command -v jq >/dev/null 2>&1; then
@@ -285,7 +471,7 @@ case "$command" in
     space_focus_app "$@"
     ;;
   doctor)
-    run_doctor
+    run_doctor "$@"
     ;;
   *)
     cat <<'USAGE'
@@ -312,7 +498,7 @@ Commands:
   space-prev|space-next|space-recent|space-first|space-last
   window-space-prev-wrap|window-space-next-wrap
   space-focus-app <AppName>
-  doctor
+  doctor [--fix]
 USAGE
     exit 1
     ;;

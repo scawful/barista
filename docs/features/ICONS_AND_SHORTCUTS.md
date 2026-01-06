@@ -160,6 +160,12 @@ Add to your `~/.config/skhd/skhdrc`:
 .load "/Users/<user>/.config/skhd/barista_shortcuts.conf"
 ```
 
+Note: skhd requires the `.load` line to use double quotes and an absolute path. If shortcuts stop working, run:
+
+```bash
+~/.config/sketchybar/scripts/yabai_control.sh doctor --fix
+```
+
 Then restart skhd:
 
 ```bash

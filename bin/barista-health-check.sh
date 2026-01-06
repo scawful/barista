@@ -234,8 +234,69 @@ if [ -f "$HOME/.skhdrc" ] && grep -q "~/.config/scripts" "$HOME/.skhdrc"; then
 fi
 echo ""
 
-# Check 7: Required binaries
-echo "7. Checking required binaries..."
+# Check 7: skhd shortcuts configuration
+echo "7. Checking skhd shortcuts configuration..."
+SKHD_BIN="$(command -v skhd 2>/dev/null || true)"
+SKHD_SHORTCUTS="$HOME/.config/skhd/barista_shortcuts.conf"
+SKHD_CONFIG_ENV="${SKHD_CONFIG:-}"
+SKHD_CONFIG=""
+
+if [ -n "$SKHD_CONFIG_ENV" ]; then
+    SKHD_CONFIG="$SKHD_CONFIG_ENV"
+elif [ -f "$HOME/.config/skhd/skhdrc" ]; then
+    SKHD_CONFIG="$HOME/.config/skhd/skhdrc"
+elif [ -f "$HOME/.skhdrc" ]; then
+    SKHD_CONFIG="$HOME/.skhdrc"
+else
+    SKHD_CONFIG="$HOME/.config/skhd/skhdrc"
+fi
+
+if [ -z "$SKHD_BIN" ]; then
+    print_status "WARN" "skhd not installed (shortcuts disabled)"
+else
+    if pgrep -x "skhd" > /dev/null; then
+        print_status "OK" "skhd is running"
+    else
+        print_status "WARN" "skhd is not running"
+    fi
+
+    if [ -f "$SKHD_SHORTCUTS" ] && [ -s "$SKHD_SHORTCUTS" ]; then
+        print_status "OK" "barista shortcuts file present"
+    else
+        print_status "WARN" "barista shortcuts file missing: $SKHD_SHORTCUTS"
+        echo "   Fix: BARISTA_CONFIG_DIR=$CONFIG_DIR lua $CONFIG_DIR/helpers/generate_shortcuts.lua"
+    fi
+
+    if [ -f "$SKHD_CONFIG" ]; then
+        if grep -q "barista_shortcuts.conf" "$SKHD_CONFIG"; then
+            if grep -Eq '^[[:space:]]*\.load[[:space:]]+"[^"]*barista_shortcuts\.conf"' "$SKHD_CONFIG"; then
+                print_status "OK" "skhdrc loads barista shortcuts"
+            else
+                print_status "WARN" "skhdrc loads barista shortcuts without double quotes"
+                echo "   Fix: $SCRIPTS_DIR/yabai_control.sh doctor --fix"
+            fi
+        else
+            print_status "WARN" "skhdrc missing barista .load line"
+            echo "   Fix: $SCRIPTS_DIR/yabai_control.sh doctor --fix"
+        fi
+    else
+        print_status "WARN" "skhd config not found: $SKHD_CONFIG"
+        echo "   Fix: $SCRIPTS_DIR/yabai_control.sh doctor --fix"
+    fi
+
+    SKHD_USER=$(id -un 2>/dev/null || echo "user")
+    SKHD_ERR_LOG="/tmp/skhd_${SKHD_USER}.err.log"
+    if [ -s "$SKHD_ERR_LOG" ]; then
+        print_status "WARN" "skhd error log has content: $SKHD_ERR_LOG"
+        echo "   Last 3 lines:"
+        tail -n 3 "$SKHD_ERR_LOG" | sed 's/^/   /'
+        echo "   Fix: $SCRIPTS_DIR/yabai_control.sh doctor --fix"
+    fi
+fi
+echo ""
+
+# Check 8: Required binaries
+echo "8. Checking required binaries..."
 BINARIES=("popup_hover" "popup_anchor" "submenu_hover" "popup_manager" "popup_guard" "menu_action")
 for bin in "${BINARIES[@]}"; do
     BIN_PATH="$CONFIG_DIR/bin/$bin"
@@ -247,8 +308,8 @@ for bin in "${BINARIES[@]}"; do
 done
 echo ""
 
-# Check 8: Permissions
-echo "8. Checking permissions..."
+# Check 9: Permissions
+echo "9. Checking permissions..."
 # Check Accessibility permissions (requires tccutil or sqlite3)
 if command -v sqlite3 >/dev/null 2>&1; then
     SKETCHYBAR_BUNDLE="com.koekeishiya.sketchybar"
@@ -269,8 +330,8 @@ else
 fi
 echo ""
 
-# Check 9: Launch agent logs
-echo "9. Checking logs..."
+# Check 10: Launch agent logs
+echo "10. Checking logs..."
 if [ -f "/tmp/barista.control.out.log" ]; then
     print_status "OK" "Launch agent stdout log exists"
     echo "   Last 5 lines:"
@@ -298,8 +359,8 @@ if [ -f "$SKETCHYBAR_LOG" ]; then
 fi
 echo ""
 
-# Check 10: Dependencies
-echo "10. Checking dependencies..."
+# Check 11: Dependencies
+echo "11. Checking dependencies..."
 if command -v yabai >/dev/null 2>&1; then
     print_status "OK" "yabai is installed"
 else

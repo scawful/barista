@@ -35,9 +35,13 @@
    - `toggle_system_info_item.sh`, `set_app_icon.sh`
    - `toggle_yabai_shortcuts.sh`, `runtime_update.sh`
    - Fix with `chmod +x <script>` or reinstall scripts.
+6. If skhd shortcuts still do nothing, run the doctor with auto-fix:
+   - `~/.config/sketchybar/scripts/yabai_control.sh doctor --fix`
 
 ## Notes
 
 - Space switching requires the Yabai scripting addition for full functionality.
 - `space-prev/next` fall back to AppleScript when the scripting addition is missing.
 - Use Control Panel → Debug to run Yabai Doctor or restart shortcuts.
+- skhd requires `.load "/Users/<user>/.config/skhd/barista_shortcuts.conf"` with double quotes.
+- skhd parse errors are logged in `/tmp/skhd_<user>.err.log`.

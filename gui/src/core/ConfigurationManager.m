@@ -6,6 +6,7 @@
 @property (copy, nonatomic) NSString *statePath;
 @property (copy, nonatomic) NSString *configPath;
 @property (copy, nonatomic) NSString *scriptsPath;
+@property (copy, nonatomic) NSString *codePath;
 @property (strong, nonatomic) NSMutableDictionary *state;
 @property (strong, nonatomic) dispatch_block_t reloadWorkItem;
 
@@ -33,18 +34,124 @@
   self = [super init];
   if (self) {
     NSString *home = NSHomeDirectory();
-    self.statePath = [home stringByAppendingPathComponent:@".config/sketchybar/state.json"];
-    self.configPath = [home stringByAppendingPathComponent:@".config/sketchybar"];
-    self.scriptsPath = [home stringByAppendingPathComponent:@".config/scripts"];
+    NSString *configOverride = [[[NSProcessInfo processInfo] environment] objectForKey:@"BARISTA_CONFIG_DIR"];
+    NSString *configPath = [self expandedPath:configOverride];
+    if (!configPath.length) {
+      configPath = [home stringByAppendingPathComponent:@".config/sketchybar"];
+    }
+    self.configPath = configPath;
+    self.statePath = [configPath stringByAppendingPathComponent:@"state.json"];
     [self loadState];
   }
   return self;
+}
+
+- (NSString *)expandedPath:(NSString *)path {
+  if (!path.length) {
+    return nil;
+  }
+  if ([path hasPrefix:@"~/"]) {
+    return [NSHomeDirectory() stringByAppendingPathComponent:[path substringFromIndex:2]];
+  }
+  return path;
+}
+
+- (NSString *)scriptsOverrideFromState {
+  if (![self.state isKindOfClass:[NSDictionary class]]) {
+    return nil;
+  }
+  id paths = self.state[@"paths"];
+  if (![paths isKindOfClass:[NSDictionary class]]) {
+    return nil;
+  }
+  NSString *override = paths[@"scripts_dir"];
+  if (!override.length) {
+    override = paths[@"scripts"];
+  }
+  return [self expandedPath:override];
+}
+
+- (NSString *)codeOverrideFromState {
+  if (![self.state isKindOfClass:[NSDictionary class]]) {
+    return nil;
+  }
+  id paths = self.state[@"paths"];
+  if (![paths isKindOfClass:[NSDictionary class]]) {
+    return nil;
+  }
+  NSString *override = paths[@"code_dir"];
+  if (!override.length) {
+    override = paths[@"code"];
+  }
+  return [self expandedPath:override];
+}
+
+- (BOOL)pathHasScripts:(NSString *)path {
+  if (!path.length) {
+    return NO;
+  }
+  BOOL isDir = NO;
+  if ([[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&isDir] && isDir) {
+    return YES;
+  }
+  NSString *probe = [path stringByAppendingPathComponent:@"yabai_control.sh"];
+  return [[NSFileManager defaultManager] isExecutableFileAtPath:probe];
+}
+
+- (NSString *)resolveScriptsPath {
+  NSString *envPath = [[[NSProcessInfo processInfo] environment] objectForKey:@"BARISTA_SCRIPTS_DIR"];
+  if (envPath.length) {
+    return [self expandedPath:envPath];
+  }
+
+  NSString *stateOverride = [self scriptsOverrideFromState];
+  if (stateOverride.length) {
+    return stateOverride;
+  }
+
+  NSString *configScripts = [self.configPath stringByAppendingPathComponent:@"scripts"];
+  if ([self pathHasScripts:configScripts]) {
+    return configScripts;
+  }
+
+  NSString *legacyScripts = [NSHomeDirectory() stringByAppendingPathComponent:@".config/scripts"];
+  if ([self pathHasScripts:legacyScripts]) {
+    return legacyScripts;
+  }
+
+  return configScripts;
+}
+
+- (NSString *)resolveCodePath {
+  NSString *envPath = [[[NSProcessInfo processInfo] environment] objectForKey:@"BARISTA_CODE_DIR"];
+  if (envPath.length) {
+    return [self expandedPath:envPath];
+  }
+
+  NSString *stateOverride = [self codeOverrideFromState];
+  if (stateOverride.length) {
+    return stateOverride;
+  }
+
+  NSString *srcPath = [NSHomeDirectory() stringByAppendingPathComponent:@"src"];
+  BOOL isDir = NO;
+  if ([[NSFileManager defaultManager] fileExistsAtPath:srcPath isDirectory:&isDir] && isDir) {
+    return srcPath;
+  }
+
+  return srcPath;
+}
+
+- (void)refreshPaths {
+  self.scriptsPath = [self resolveScriptsPath];
+  self.codePath = [self resolveCodePath];
 }
 
 - (BOOL)loadState {
   NSData *data = [NSData dataWithContentsOfFile:self.statePath];
   if (!data) {
     self.state = [NSMutableDictionary dictionary];
+    [self refreshPaths];
     return NO;
   }
 
@@ -53,10 +160,12 @@
 
   if (error || ![json isKindOfClass:[NSDictionary class]]) {
     self.state = [NSMutableDictionary dictionary];
+    [self refreshPaths];
     return NO;
   }
 
   self.state = [(NSDictionary *)json mutableCopy];
+  [self refreshPaths];
   return YES;
 }
 
@@ -84,7 +193,8 @@
     [fm removeItemAtPath:tempPath error:nil];
     return NO;
   }
-  
+
+  [self refreshPaths];
   return YES;
 }
 
@@ -108,6 +218,24 @@
   }
 
   current[components.lastObject] = value;
+  [self saveState];
+}
+
+- (void)removeValueForKeyPath:(NSString *)keyPath {
+  if (!keyPath) return;
+
+  NSArray *components = [keyPath componentsSeparatedByString:@"."];
+  NSMutableDictionary *current = self.state;
+
+  for (NSInteger i = 0; i < components.count - 1; i++) {
+    NSString *key = components[i];
+    if (!current[key] || ![current[key] isKindOfClass:[NSDictionary class]]) {
+      return;
+    }
+    current = current[key];
+  }
+
+  [current removeObjectForKey:components.lastObject];
   [self saveState];
 }
 

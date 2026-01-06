@@ -6,8 +6,9 @@ CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
 FOCUS_SCRIPT="$CONFIG_DIR/plugins/focus_space.sh"
 ICON_CACHE_DIR="$CONFIG_DIR/cache/space_icons"
 RETRY_FILE="$CONFIG_DIR/.spaces_retry"
-MAX_SPACE_QUERY_ATTEMPTS=12
-SPACE_QUERY_DELAY=0.08
+# OPTIMIZED: Reduced retry attempts and delays for faster startup
+MAX_SPACE_QUERY_ATTEMPTS=3
+SPACE_QUERY_DELAY=0.05
 
 item_exists() {
   local item="${1:-}"
@@ -58,6 +59,7 @@ get_space_display_count() {
   printf '%s' "$payload" | jq -r 'map(.display) | unique | length' || true
 }
 
+# OPTIMIZED: Reduced retry delay from 400ms to 150ms
 schedule_spaces_retry() {
   local now last
   now=$(date +%s)
@@ -67,7 +69,7 @@ schedule_spaces_retry() {
   fi
   printf '%s' "$now" > "$RETRY_FILE" 2>/dev/null || true
   (
-    sleep 0.4
+    sleep 0.15
     CONFIG_DIR="$CONFIG_DIR" "$CONFIG_DIR/plugins/refresh_spaces.sh" >/dev/null 2>&1 || true
   ) &
 }
@@ -109,12 +111,12 @@ if [ "$fallback_active" -eq 1 ]; then
   schedule_spaces_retry
 fi
 
-# Wait for front_app anchor to exist (fast poll)
-for i in {1..20}; do
+# OPTIMIZED: Reduced polling iterations for faster startup
+for i in {1..10}; do
   if sketchybar --query front_app >/dev/null 2>&1; then
     break
   fi
-  sleep 0.05
+  sleep 0.02
 done
 
 declare -a SPACE_LINES=()
@@ -226,6 +228,10 @@ fi
 
 # Execute all commands in one single call
 sketchybar "${SB_ARGS[@]}"
+
+# Force a refresh so selection/highlight updates after rebuilding items.
+sketchybar --trigger space_change >/dev/null 2>&1 || true
+sketchybar --trigger space_mode_refresh >/dev/null 2>&1 || true
 
 # If front_app wasn't ready yet, reorder spaces once it appears.
 if [ "$needs_front_app_reorder" -eq 1 ]; then

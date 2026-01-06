@@ -6,7 +6,7 @@ The `barista` command provides a terminal-based user interface (TUI) for configu
 
 ```bash
 # From the barista repository
-cd ~/Code/barista
+cd ~/src/lab/barista
 ./bin/barista
 
 # Or if barista/bin is in your PATH
@@ -102,9 +102,11 @@ Configure paths via environment variables:
 
 ```bash
 export BARISTA_CONFIG_DIR=~/.config/sketchybar
-export BARISTA_CODE_DIR=~/Code
-export BARISTA_SCRIPTS_DIR=~/.config/scripts
+export BARISTA_CODE_DIR=~/src
+export BARISTA_SCRIPTS_DIR=~/.config/sketchybar/scripts
 ```
+
+You can also override scripts via `state.json` (`paths.scripts_dir` or `paths.scripts`).
 
 ## Work Machine Setup
 

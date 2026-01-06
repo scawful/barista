@@ -75,48 +75,42 @@ local icons = icon_manager.list_icons()
 
 ## Keyboard Shortcuts System
 
-Barista includes a comprehensive keyboard shortcut management system with **non-conflicting** shortcuts using `ctrl+alt` and `fn` key combinations.
+Barista includes a comprehensive keyboard shortcut management system with **non-conflicting** shortcuts using `cmd+alt`, `fn`, and a small `ctrl+shift` layer.
 
 ### Design Philosophy
 
-- **Non-Conflicting**: Uses `ctrl+alt` (⌃⌥) combinations that don't conflict with common apps
-- **fn Key Support**: Leverages the fn (globe) key for additional shortcuts (macOS Ventura+)
+- **Non-Conflicting**: Uses `cmd+alt` (⌘⌥) and `fn` (🌐) combinations that avoid app conflicts
+- **fn Key Support**: Leverages the fn (globe) key for window/space control (macOS Ventura+)
 - **Consistent**: All shortcuts follow logical patterns
 - **Documented**: Every shortcut has a description and symbol
 
-### Global Shortcuts (ctrl+alt)
+### Global Shortcuts (cmd+alt)
 
 These shortcuts work system-wide and don't conflict with common applications:
 
-#### SketchyBar Controls
-- `⌃⌥R` - Reload SketchyBar
-- `⌃⌥P` - Open Control Panel
-- `⌃⌥Y` - Toggle Yabai Shortcuts
-
-#### Window Management
-- `⌃⌥L` - Toggle Layout Mode (BSP/Float)
-- `⌃⌥B` - Balance Windows
-- `⌃⌥F` - Toggle Float
-- `⌃⌥↩` - Toggle Fullscreen
-- `⌃⌥T` - Open Terminal
+#### Barista UI
+- `⌘⌥P` - Open Control Panel
+- `⌘⌥C` - Toggle Cortex
+- `⌘⌥/` - Toggle Control Center
+- `⌘⌥K` - Toggle WhichKey HUD
+- `⌘⌥H` - Open Help Center
+- `⌘⌥I` - Open Icon Browser
+- `⌘⌥R` - Reload SketchyBar
+- `⌘⌥⇧R` - Rebuild + Reload SketchyBar
+- `⌘⌥Y` - Toggle Yabai Shortcuts
 
 #### Display Management
-- `⌃⌥→` - Send Window to Next Display
-- `⌃⌥←` - Send Window to Prev Display
-
-#### Space Management (ctrl+alt+cmd)
-- `⌃⌥⌘→` - Send Window to Next Space
-- `⌃⌥⌘←` - Send Window to Prev Space
-- `⌃⌥⌘1-5` - Send Window to Space 1-5
+- `⌘⌥⇧→` - Send Window to Next Display
+- `⌘⌥⇧←` - Send Window to Prev Display
 
 #### Layout Modes (ctrl+shift)
 - `⌃⇧F` - Set Float Layout
 - `⌃⇧B` - Set BSP Layout
 - `⌃⇧S` - Set Stack Layout
 
-### fn Key Shortcuts (Future)
+### fn Key Shortcuts
 
-The shortcuts module includes support for fn-key combinations (requires skhd configuration):
+The shortcuts module includes fn-key combinations (requires skhd configuration):
 
 #### Window Navigation (fn + vim keys)
 - `fn-h` - Focus Window West
@@ -127,6 +121,14 @@ The shortcuts module includes support for fn-key combinations (requires skhd con
 #### Space Navigation (fn + numbers)
 - `fn-1` to `fn-0` - Focus Spaces 1-10
 
+#### Space Navigation (fn + arrows)
+- `fn-←` - Previous Space
+- `fn-→` - Next Space
+
+#### Space Movement (fn + shift + arrows)
+- `fn-⇧←` - Send Window to Prev Space
+- `fn-⇧→` - Send Window to Next Space
+
 #### Quick Actions (fn + key)
 - `fn-t` - Toggle Layout
 - `fn-f` - Toggle Fullscreen
@@ -134,13 +136,17 @@ The shortcuts module includes support for fn-key combinations (requires skhd con
 - `fn-b` - Balance Windows
 - `fn-space` - Toggle Float
 
+#### Window Sizing (fn + arrows)
+- `fn-↑` - Maximize Window
+- `fn-↓` - Restore Window
+
 ### Generating skhd Configuration
 
 Generate the shortcuts configuration file:
 
 ```bash
-# Generate shortcuts config
-lua ~/.config/sketchybar/bin/generate_shortcuts.lua
+# Generate shortcuts config (uses BARISTA_CONFIG_DIR if set)
+lua ~/.config/sketchybar/helpers/generate_shortcuts.lua
 
 # Output: ~/.config/skhd/barista_shortcuts.conf
 ```
@@ -171,11 +177,11 @@ Edit `modules/shortcuts.lua` to customize:
 ```lua
 -- Add a new shortcut
 table.insert(shortcuts.global, {
-  mods = {"ctrl", "alt"},
+  mods = {"cmd", "alt"},
   key = "m",
   action = "my_custom_action",
   desc = "My Custom Action",
-  symbol = "⌃⌥M"
+  symbol = "⌘⌥M"
 })
 
 -- Define the action
@@ -216,9 +222,9 @@ end
 Icons and shortcuts are automatically integrated into menu items. Shortcuts are displayed next to menu items:
 
 ```
-Toggle Float        ⌃⌥F
-Toggle Fullscreen   ⌃⌥↩
-Open Terminal       ⌃⌥T
+Toggle Float        🌐␣
+Toggle Fullscreen   🌐F
+Open Control Panel  ⌘⌥P
 ```
 
 ## Best Practices
@@ -232,7 +238,7 @@ Open Terminal       ⌃⌥T
 
 ### Shortcuts
 
-1. **Avoid conflicts**: Stick to ctrl+alt combinations for global shortcuts
+1. **Avoid conflicts**: Stick to cmd+alt and fn combinations for global shortcuts
 2. **Document everything**: Add descriptions and symbols to all shortcuts
 3. **Use logical groups**: Group related shortcuts (e.g., all display shortcuts use arrows)
 4. **Test thoroughly**: Ensure shortcuts don't conflict with your most-used apps
@@ -281,7 +287,7 @@ Open Terminal       ⌃⌥T
 
 4. **Check for conflicts**:
    ```bash
-   lua ~/.config/sketchybar/bin/generate_shortcuts.lua
+   lua ~/.config/sketchybar/helpers/generate_shortcuts.lua
    ```
 
 ## Future Enhancements

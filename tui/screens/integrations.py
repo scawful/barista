@@ -1,5 +1,7 @@
 """Integrations tab - integration toggles and paths."""
 
+import os
+
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
 from textual.widgets import Static, Label, Switch, Input
@@ -97,13 +99,14 @@ class IntegrationsTab(Vertical):
     INTEGRATION_INFO = {
         "yaze": ("Yaze", "ROM hacking editor integration"),
         "emacs": ("Emacs", "Emacs org-mode integration"),
+        "cortex": ("Cortex", "AFS + training dashboard integration"),
         "halext": ("Halext", "halext-org task management"),
         "google": ("Google", "Google Workspace integration"),
     }
     
     DEFAULT_PATHS = {
-        "code": ("Code Directory", "~/Code"),
-        "scripts": ("Scripts Directory", "~/.config/scripts"),
+        "code": ("Code Directory", os.getenv("BARISTA_CODE_DIR", "~/src")),
+        "scripts": ("Scripts Directory", os.getenv("BARISTA_SCRIPTS_DIR", "~/.config/sketchybar/scripts")),
     }
     
     def __init__(self, config: BaristaConfig, **kwargs):
@@ -133,7 +136,7 @@ class IntegrationsTab(Vertical):
         yield Static("Custom Paths", classes="section-header")
         yield Static(
             "Configure custom paths for your machine. "
-            "These override defaults.",
+            "Scripts default to ~/.config/sketchybar/scripts unless overridden.",
             classes="help-text"
         )
         

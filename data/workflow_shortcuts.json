@@ -1,46 +1,67 @@
 {
   "keymap": [
     {
-      "section": "Project Navigation",
+      "section": "Barista UI",
       "items": [
-        { "keys": "⌃⌥O", "description": "Open Oracle of Secrets" },
-        { "keys": "⌃⌥Y", "description": "Open YAZE Editor" },
-        { "keys": "⌃⌥G", "description": "Open LazyGit" },
-        { "keys": "fp <name>", "description": "Fuzzy Find Project (Zsh)" }
+        { "keys": "⌘⌥P", "description": "Open Control Panel" },
+        { "keys": "⌘⌥H", "description": "Open Help Center" },
+        { "keys": "⌘⌥I", "description": "Open Icon Browser" },
+        { "keys": "⌘⌥K", "description": "Toggle WhichKey HUD" },
+        { "keys": "⌘⌥/", "description": "Toggle Control Center" },
+        { "keys": "⌘⌥C", "description": "Toggle Cortex" },
+        { "keys": "⌘⌥R", "description": "Reload SketchyBar" },
+        { "keys": "⌘⌥⇧R", "description": "Rebuild + Reload SketchyBar" },
+        { "keys": "⌘⌥Y", "description": "Toggle Yabai Shortcuts" }
+      ]
+    },
+    {
+      "section": "Spaces",
+      "items": [
+        { "keys": "🌐1-0", "description": "Focus space 1-10" },
+        { "keys": "🌐←/→", "description": "Prev/Next space" },
+        { "keys": "🌐⇧←/→", "description": "Send window to prev/next space" }
       ]
     },
     {
       "section": "Window Management",
       "items": [
-        { "keys": "⌥G", "description": "Toggle Zen Mode (Gaps)" },
-        { "keys": "⌥B", "description": "Balance Layout" },
-        { "keys": "⌃⌥←/→", "description": "Prev/Next Space" },
-        { "keys": "⌃⌥R", "description": "Rotate Layout" }
+        { "keys": "🌐H/J/K/L", "description": "Focus window west/south/north/east" },
+        { "keys": "🌐␣", "description": "Toggle float" },
+        { "keys": "🌐F", "description": "Toggle fullscreen" },
+        { "keys": "🌐T", "description": "Toggle BSP/float layout" },
+        { "keys": "🌐B", "description": "Balance layout" },
+        { "keys": "🌐R", "description": "Rotate layout" },
+        { "keys": "🌐M", "description": "Minimize window" },
+        { "keys": "🌐↑/↓", "description": "Maximize/restore window" },
+        { "keys": "⌘⌥⇧←/→", "description": "Send window to prev/next display" }
       ]
     },
     {
-      "section": "System",
+      "section": "Layouts",
       "items": [
-        { "keys": "⌃⌥R", "description": "Restart Services" }
+        { "keys": "⌃⇧F", "description": "Set float layout" },
+        { "keys": "⌃⇧B", "description": "Set BSP layout" },
+        { "keys": "⌃⇧S", "description": "Set stack layout" }
       ]
     },
     {
-      "section": "Syshelp & Panel",
+      "section": "Project Navigation",
       "items": [
-        { "keys": "⌃⌥P", "description": "Open Barista Control Panel" },
-        { "keys": "whichkey", "description": "Toggle WhichKey HUD" }
+        { "keys": "fp <name>", "description": "Fuzzy Find Project (Zsh)" }
       ]
     }
   ],
   "actions": [
-    { "id": "reload_bar", "title": "Reload SketchyBar" },
-    { "id": "launch_yaze", "title": "Launch YAZE" },
-    { "id": "focus_emacs", "title": "Focus Emacs" },
-    { "id": "whichkey_toggle", "title": "Toggle WhichKey HUD" },
-    { "id": "open_control_panel", "title": "Open Control Panel" }
+    { "id": "reload_bar", "title": "Reload SketchyBar", "selector": "reloadBar:" },
+    { "id": "open_control_panel", "title": "Open Control Panel", "selector": "openControlPanel:" },
+    { "id": "toggle_whichkey", "title": "Toggle WhichKey HUD", "selector": "toggleWhichKey:" },
+    { "id": "open_icon_browser", "title": "Open Icon Browser", "selector": "openIconBrowser:" },
+    { "id": "launch_yaze", "title": "Launch Yaze", "selector": "launchYaze:" },
+    { "id": "focus_emacs", "title": "Focus Emacs", "selector": "focusEmacsSpace:" }
   ],
   "docs": [
-    { "id": "oracle", "title": "Oracle Workflow", "path": "~/Code/Oracle-of-Secrets/Docs/oracle.org" },
-    { "id": "handoff", "title": "Handoff Notes", "path": "~/.config/sketchybar/HANDOFF.md" }
+    { "id": "quick_start", "title": "Quick Start", "path": "%CONFIG%/docs/guides/QUICK_START.md" },
+    { "id": "control_panel", "title": "Control Panel Guide", "path": "%CONFIG%/docs/features/CONTROL_PANEL_V2.md" },
+    { "id": "icons", "title": "Icon Reference", "path": "%CONFIG%/docs/features/ICON_REFERENCE.md" }
   ]
 }

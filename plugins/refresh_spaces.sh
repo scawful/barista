@@ -2,7 +2,34 @@
 set -euo pipefail
 
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
-SCRIPTS_DIR="${SCRIPTS_DIR:-$HOME/.config/scripts}"
+STATE_FILE="$CONFIG_DIR/state.json"
+SCRIPTS_DIR="${SCRIPTS_DIR:-${BARISTA_SCRIPTS_DIR:-}}"
+
+expand_path() {
+  case "$1" in
+    "~/"*) printf '%s' "$HOME/${1#~/}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+if [ -z "$SCRIPTS_DIR" ] && command -v jq >/dev/null 2>&1 && [ -f "$STATE_FILE" ]; then
+  SCRIPTS_DIR=$(jq -r '.paths.scripts_dir // .paths.scripts // empty' "$STATE_FILE" 2>/dev/null || true)
+  if [ "$SCRIPTS_DIR" = "null" ]; then
+    SCRIPTS_DIR=""
+  fi
+fi
+
+if [ -n "$SCRIPTS_DIR" ]; then
+  SCRIPTS_DIR="$(expand_path "$SCRIPTS_DIR")"
+fi
+
+if [ -z "$SCRIPTS_DIR" ]; then
+  SCRIPTS_DIR="$CONFIG_DIR/scripts"
+fi
+
+if [ ! -d "$SCRIPTS_DIR" ]; then
+  SCRIPTS_DIR="$HOME/.config/scripts"
+fi
 CACHE_FILE="${CONFIG_DIR}/.spaces_cache"
 LOCK_DIR="${CONFIG_DIR}/.refresh_spaces.lock"
 

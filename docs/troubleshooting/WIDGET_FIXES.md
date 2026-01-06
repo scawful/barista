@@ -148,7 +148,7 @@ script = os.getenv("HOME") .. "/.config/sketchybar/bin/system_info_widget"
 ### Building C Widgets
 
 ```bash
-cd ~/Code/sketchybar/helpers
+cd ~/src/sketchybar/helpers
 make clean
 make
 make install

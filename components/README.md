@@ -52,5 +52,5 @@ To use these components, they would need to be:
 
 ## Origin
 
-Extracted from `~/Code/sketchybar` (branch `fusion/restore-ui`) during December 2025 cleanup.
+Extracted from `~/src/sketchybar` (branch `fusion/restore-ui`) during December 2025 cleanup.
 See `docs/architecture/ARCHITECTURE_ANALYSIS.md` for detailed system documentation from the same branch.

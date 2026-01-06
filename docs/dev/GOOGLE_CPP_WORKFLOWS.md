@@ -41,7 +41,7 @@ Edit `~/.config/sketchybar/state.json`:
   "integrations": {
     "cpp_dev": {
       "enabled": true,
-      "project_path": "/Users/yourname/Code",
+      "project_path": "/Users/yourname/src",
       "current_project": "my-project",
       "build_system": "auto"
     },
@@ -197,7 +197,7 @@ Check CI/CD status.
 
 ### Starting a New C++ Project
 
-1. Create project directory: `mkdir ~/Code/my-project`
+1. Create project directory: `mkdir ~/src/my-project`
 2. Initialize build system (CMake, Bazel, or Make)
 3. Switch to project: `cpp_project_switch.sh switch my-project`
 4. Widget will automatically detect build system

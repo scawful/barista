@@ -1,21 +1,22 @@
 -- Cortex Integration Module for Barista
--- The brain layer that orchestrates HAFS, Barista, and halext-org
+-- The brain layer that orchestrates AFS, Barista, and halext-org
 --
 -- Install: Copy to ~/.config/sketchybar/modules/integrations/cortex.lua
--- Or symlink: ln -sf ~/Code/cortex/barista/cortex.lua ~/.config/sketchybar/modules/integrations/
+-- Or symlink: ln -sf ~/src/cortex/barista/cortex.lua ~/.config/sketchybar/modules/integrations/
 
 local cortex = {}
 
 local HOME = os.getenv("HOME")
 local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
-local CORTEX_CLI = HOME .. "/Code/cortex/bin/cortex-cli"
+local CODE_DIR = os.getenv("BARISTA_CODE_DIR") or (HOME .. "/src")
+local CORTEX_CLI = CODE_DIR .. "/cortex/bin/cortex-cli"
 local CORTEX_BIN = HOME .. "/.local/bin/cortex"
 
 -- Configuration
 cortex.config = {
   cli_path = CORTEX_CLI,
   bin_path = CORTEX_BIN,
-  repo_path = HOME .. "/Code/cortex",
+  repo_path = CODE_DIR .. "/cortex",
 }
 
 -- Notification names (match CortexNotifications.swift)
@@ -224,7 +225,7 @@ local function resolve_widget_script_path()
     file:close()
     return candidate
   end
-  return HOME .. "/Code/cortex/barista/cortex_widget.sh"
+  return CODE_DIR .. "/cortex/barista/cortex_widget.sh"
 end
 
 function cortex.create_widget(opts)
@@ -241,14 +242,14 @@ function cortex.create_widget(opts)
     CORTEX_COLOR_OFF = opts.color_inactive or "0xff6c7086",
     CORTEX_LABEL_COLOR = opts.label_color or "0xffcdd6f4",
     CORTEX_LABEL_FONT = label_font,
-    CORTEX_LABEL_MODE = opts.label_mode or "hafs",
-    CORTEX_LABEL_PREFIX = opts.label_prefix or "HAFS",
+    CORTEX_LABEL_MODE = opts.label_mode or "afs",
+    CORTEX_LABEL_PREFIX = opts.label_prefix or "AFS",
     CORTEX_LABEL_ON = opts.label_on or "Cortex",
     CORTEX_LABEL_OFF = opts.label_off or "Off",
     CORTEX_LABEL_TEMPLATE = opts.label_template or "",
     CORTEX_SHOW_LABEL = (opts.show_label == false) and "0" or "1",
     CORTEX_CACHE_TTL = opts.cache_ttl or 60,
-    HAFS_CONTEXT_ROOT = opts.context_root or "",
+    AFS_CONTEXT_ROOT = opts.context_root or "",
   }, script_path)
 
   local label_drawing = opts.show_label ~= false

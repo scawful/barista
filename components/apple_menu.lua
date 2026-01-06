@@ -144,25 +144,25 @@ local function default_menu(ctx)
   }
 
   local yabai_control_items = {
-    { type = "item", name = "menu.yabai.toggle", icon = "󱂬", label = "Toggle Layout", action = call_script(YABAI_CONTROL_SCRIPT, "toggle-layout"), shortcut = "⌃⌥L" },
-    { type = "item", name = "menu.yabai.balance", icon = "󰓅", label = "Balance Windows", action = call_script(YABAI_CONTROL_SCRIPT, "balance") },
+    { type = "item", name = "menu.yabai.toggle", icon = "󱂬", label = "Toggle Layout", action = call_script(YABAI_CONTROL_SCRIPT, "toggle-layout"), shortcut = "🌐T" },
+    { type = "item", name = "menu.yabai.balance", icon = "󰓅", label = "Balance Windows", action = call_script(YABAI_CONTROL_SCRIPT, "balance"), shortcut = "🌐B" },
     { type = "item", name = "menu.yabai.restart", icon = "󰐥", label = "Restart Yabai", action = call_script(YABAI_CONTROL_SCRIPT, "restart") },
     { type = "item", name = "menu.yabai.doctor", icon = "󰒓", label = "Run Diagnostics", action = call_script(YABAI_CONTROL_SCRIPT, "doctor") },
   }
 
   local window_action_items = {
-    { type = "item", name = "menu.windows.float", icon = "󰒄", label = "Toggle Float", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-float"), shortcut = "⌃⌥F" },
+    { type = "item", name = "menu.windows.float", icon = "󰒄", label = "Toggle Float", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-float"), shortcut = "🌐␣" },
     { type = "item", name = "menu.windows.sticky", icon = "󰐊", label = "Toggle Sticky", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-sticky") },
-    { type = "item", name = "menu.windows.fullscreen", icon = "󰊓", label = "Toggle Fullscreen", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-fullscreen"), shortcut = "⌃⌥↩" },
+    { type = "item", name = "menu.windows.fullscreen", icon = "󰊓", label = "Toggle Fullscreen", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-fullscreen"), shortcut = "🌐F" },
     { type = "item", name = "menu.windows.center", icon = "󰆾", label = "Center Window", action = call_script(YABAI_CONTROL_SCRIPT, "window-center") },
-    { type = "item", name = "menu.windows.display.next", icon = "󰍹", label = "Send to Next Display", action = call_script(YABAI_CONTROL_SCRIPT, "window-display-next"), shortcut = "⌃⌥→" },
-    { type = "item", name = "menu.windows.display.prev", icon = "󰍷", label = "Send to Prev Display", action = call_script(YABAI_CONTROL_SCRIPT, "window-display-prev"), shortcut = "⌃⌥←" },
-    { type = "item", name = "menu.windows.space.next", icon = "󰆼", label = "Send to Next Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-next"), shortcut = "⌃⌥⌘→" },
-    { type = "item", name = "menu.windows.space.prev", icon = "󰆽", label = "Send to Prev Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-prev"), shortcut = "⌃⌥⌘←" },
+    { type = "item", name = "menu.windows.display.next", icon = "󰍹", label = "Send to Next Display", action = call_script(YABAI_CONTROL_SCRIPT, "window-display-next"), shortcut = "⌘⌥⇧→" },
+    { type = "item", name = "menu.windows.display.prev", icon = "󰍷", label = "Send to Prev Display", action = call_script(YABAI_CONTROL_SCRIPT, "window-display-prev"), shortcut = "⌘⌥⇧←" },
+    { type = "item", name = "menu.windows.space.next", icon = "󰆼", label = "Send to Next Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-next"), shortcut = "🌐⇧→" },
+    { type = "item", name = "menu.windows.space.prev", icon = "󰆽", label = "Send to Prev Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-prev"), shortcut = "🌐⇧←" },
   }
 
   local app_tool_items = {
-    { type = "item", name = "menu.apps.terminal", icon = "", label = "Terminal", action = "open -a Terminal", shortcut = "⌃⌥T" },
+    { type = "item", name = "menu.apps.terminal", icon = "", label = "Terminal", action = "open -a Terminal" },
     { type = "item", name = "menu.apps.finder", icon = "", label = "Finder", action = "open -a Finder" },
     { type = "item", name = "menu.apps.vscode", icon = "󰨞", label = "VS Code", action = "open -a 'Visual Studio Code'" },
     { type = "item", name = "menu.apps.activity", icon = "󰨇", label = "Activity Monitor", action = "open -a 'Activity Monitor'" },
@@ -247,4 +247,3 @@ function M.setup(opts)
 end
 
 return M
-

@@ -133,7 +133,7 @@ The configuration deeply integrates with Yabai window manager:
 - `plugins/spaces_setup.sh` rebuilds space items on space/display changes
 - Each space can have custom icon and mode (float/bsp/stack)
 - Space modes stored in state and applied on space change
-- External bar height sync via `~/.config/scripts/update_external_bar.sh`
+- External bar height sync via `~/.config/sketchybar/scripts/update_external_bar.sh`
 
 ## Adding New Widgets
 
@@ -188,7 +188,7 @@ Uses compiled C helper for fast performance. Automatically subscribes to mouse.e
 - Config: `~/.config/sketchybar/`
 - State: `~/.config/sketchybar/state.json`
 - Compiled helpers: `~/.config/sketchybar/bin/`
-- Scripts: `~/.config/scripts/`
+- Scripts: `~/.config/sketchybar/scripts/` (override with `BARISTA_SCRIPTS_DIR` or `paths.scripts_dir` in state.json)
 - Icon map: `~/.config/sketchybar/icon_map.json`
 
 ## Documentation

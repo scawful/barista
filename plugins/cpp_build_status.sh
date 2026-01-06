@@ -89,7 +89,7 @@ main() {
   IFS='|' read -r project_path current_project build_system < <(get_project_config)
   
   if [[ -z "$project_path" ]]; then
-    project_path="${HOME}/Code"
+    project_path="${BARISTA_CODE_DIR:-$HOME/src}"
   fi
   
   local full_path="$project_path/$current_project"
@@ -107,4 +107,3 @@ main() {
 }
 
 main "$@"
-

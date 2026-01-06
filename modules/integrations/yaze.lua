@@ -4,7 +4,7 @@
 local yaze = {}
 
 local HOME = os.getenv("HOME")
-local CODE_DIR = HOME .. "/Code"
+local CODE_DIR = os.getenv("BARISTA_CODE_DIR") or (HOME .. "/src")
 local YAZE_DIR = CODE_DIR .. "/yaze"
 
 -- Configuration

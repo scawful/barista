@@ -2,7 +2,10 @@
 
 # Updates the icon library in config_menu.m with more comprehensive icons
 
-CONFIG_FILE="$HOME/Code/sketchybar/gui/config_menu.m"
+CODE_DIR="${BARISTA_CODE_DIR:-$HOME/src}"
+SOURCE_DIR="${BARISTA_SOURCE_DIR:-$CODE_DIR/lab/barista}"
+CONFIG_FILE="${BARISTA_ICON_CONFIG_FILE:-$SOURCE_DIR/gui/config_menu.m}"
+export CONFIG_FILE
 
 # Backup original file
 cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
@@ -70,7 +73,9 @@ EOF
 python3 << 'PYTHON_EOF'
 import re
 
-config_file = "/Users/scawful/Code/sketchybar/gui/config_menu.m"
+import os
+
+config_file = os.environ.get("CONFIG_FILE", os.path.expanduser("~/src/lab/barista/gui/config_menu.m"))
 
 with open(config_file, 'r', encoding='utf-8') as f:
     content = f.read()

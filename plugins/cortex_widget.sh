@@ -1,10 +1,17 @@
 #!/bin/zsh
 # cortex_widget.sh - SketchyBar widget update script for Cortex
-# Configurable, low-overhead status + HAFS metrics display.
+# Configurable, low-overhead status + AFS metrics display.
 
 set -euo pipefail
 
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
+
+export LC_ALL="${LC_ALL:-en_US.UTF-8}"
+export LANG="${LANG:-en_US.UTF-8}"
+LABEL_BULLET="•"
+if [[ "${LC_ALL}${LANG}" != *"UTF-8"* && "${LC_ALL}${LANG}" != *"utf8"* ]]; then
+  LABEL_BULLET="-"
+fi
 
 ICON_ON="${CORTEX_ICON_ON:-󰪴}"
 ICON_OFF="${CORTEX_ICON_OFF:-󰪵}"
@@ -12,19 +19,19 @@ COLOR_ON="${CORTEX_COLOR_ON:-0xffa6e3a1}"
 COLOR_OFF="${CORTEX_COLOR_OFF:-0xff6c7086}"
 LABEL_COLOR="${CORTEX_LABEL_COLOR:-0xffcdd6f4}"
 LABEL_FONT="${CORTEX_LABEL_FONT:-}"
-LABEL_MODE="${CORTEX_LABEL_MODE:-training}" # training|hafs|status|none
-LABEL_PREFIX="${CORTEX_LABEL_PREFIX:-HAFS}"
+LABEL_MODE="${CORTEX_LABEL_MODE:-training}" # training|afs|status|none
+LABEL_PREFIX="${CORTEX_LABEL_PREFIX:-AFS}"
 LABEL_ON="${CORTEX_LABEL_ON:-Cortex}"
 LABEL_OFF="${CORTEX_LABEL_OFF:-Off}"
 LABEL_TEMPLATE="${CORTEX_LABEL_TEMPLATE:-}"
 SHOW_LABEL="${CORTEX_SHOW_LABEL:-1}"
 CACHE_TTL="${CORTEX_CACHE_TTL:-60}"
-CACHE_FILE="${CORTEX_CACHE_FILE:-$HOME/.cache/cortex/sketchybar_hafs.cache}"
+CACHE_FILE="${CORTEX_CACHE_FILE:-$HOME/.cache/cortex/sketchybar_afs.cache}"
 CORTEX_CONFIG="${CORTEX_CONFIG_PATH:-$HOME/.config/cortex/config.json}"
 
 needs_agents=0
 needs_training=0
-if [[ "$LABEL_MODE" == "hafs" ]]; then
+if [[ "$LABEL_MODE" == "afs" ]]; then
   needs_agents=1
 elif [[ "$LABEL_MODE" == "training" ]]; then
   needs_training=1
@@ -43,9 +50,9 @@ is_running() {
 }
 
 resolve_context_root() {
-  local root="${HAFS_CONTEXT_ROOT:-}"
+  local root="${AFS_CONTEXT_ROOT:-}"
   if [[ -z "$root" && -f "$CORTEX_CONFIG" ]] && command -v jq >/dev/null 2>&1; then
-    root="$(jq -r '.integrations.hafs.contextRoot // empty' "$CORTEX_CONFIG" 2>/dev/null || true)"
+    root="$(jq -r '.integrations.afs.contextRoot // empty' "$CORTEX_CONFIG" 2>/dev/null || true)"
   fi
   if [[ -z "$root" ]]; then
     root="$HOME/.context"
@@ -96,7 +103,7 @@ read_metrics() {
       agent_count="$(find "$agent_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')"
       # Count history entries (JSONL lines in history/*.jsonl files)
       if [[ -d "$root/history" ]]; then
-        memory_count="$(cat "$root/history"/*.jsonl 2>/dev/null | wc -l | tr -d ' ')"
+        memory_count="$(wc -l "$root/history"/*.jsonl 2>/dev/null | tail -1 | awk '{print $1}')"
       fi
     fi
   fi
@@ -186,9 +193,9 @@ else
     LABEL="${LABEL//%datasets%/$dataset_count}"
     LABEL="${LABEL//%samples%/$(format_count "$sample_count")}"
   elif [[ "$LABEL_MODE" == "training" ]]; then
-    LABEL="${LABEL_PREFIX} ${dataset_count} • $(format_count "$sample_count")"
+    LABEL="${LABEL_PREFIX} ${dataset_count} ${LABEL_BULLET} $(format_count "$sample_count")"
   else
-    LABEL="${LABEL_PREFIX} ${agent_count} • $(format_count "$memory_count")"
+    LABEL="${LABEL_PREFIX} ${agent_count} ${LABEL_BULLET} $(format_count "$memory_count")"
   fi
 fi
 

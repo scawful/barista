@@ -10,11 +10,16 @@
 @property (strong) NSTextField *blurValueLabel;
 @property (strong) NSSlider *scaleSlider;
 @property (strong) NSTextField *scaleValueLabel;
+@property (strong) NSSlider *widgetCornerSlider;
+@property (strong) NSTextField *widgetCornerValueLabel;
 @property (strong) NSColorWell *barColorWell;
 @property (strong) NSTextField *barColorHexField;
 @property (strong) NSTextField *menuIconField;
 @property (strong) NSTextField *menuIconPreview;
 @property (strong) NSButton *menuIconBrowseButton;
+@property (strong) NSTextField *fontIconField;
+@property (strong) NSTextField *fontTextField;
+@property (strong) NSTextField *fontNumbersField;
 @property (strong) NSButton *applyButton;
 @property (strong) NSView *previewBox;
 @property (strong) NSTextField *previewBarView;
@@ -147,6 +152,31 @@
   [self updateScaleLabel];
   y -= spacing;
 
+  // Widget Corner Radius
+  NSTextField *widgetCornerLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 150, 20)];
+  widgetCornerLabel.stringValue = @"Widget Radius:";
+  widgetCornerLabel.bordered = NO;
+  widgetCornerLabel.editable = NO;
+  widgetCornerLabel.backgroundColor = [NSColor clearColor];
+  [self.view addSubview:widgetCornerLabel];
+
+  self.widgetCornerValueLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + 160, y, 60, 20)];
+  self.widgetCornerValueLabel.bordered = NO;
+  self.widgetCornerValueLabel.editable = NO;
+  self.widgetCornerValueLabel.backgroundColor = [NSColor clearColor];
+  self.widgetCornerValueLabel.alignment = NSTextAlignmentRight;
+  [self.view addSubview:self.widgetCornerValueLabel];
+
+  self.widgetCornerSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(leftMargin + 230, y, sliderWidth, 20)];
+  self.widgetCornerSlider.minValue = 0;
+  self.widgetCornerSlider.maxValue = 16;
+  self.widgetCornerSlider.doubleValue = [[config valueForKeyPath:@"appearance.widget_corner_radius" defaultValue:@6] doubleValue];
+  self.widgetCornerSlider.target = self;
+  self.widgetCornerSlider.action = @selector(sliderChanged:);
+  [self.view addSubview:self.widgetCornerSlider];
+  [self updateWidgetCornerLabel];
+  y -= spacing;
+
   // Bar Color
   NSTextField *colorLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 150, 20)];
   colorLabel.stringValue = @"Bar Color:";
@@ -202,6 +232,34 @@
   [self updateMenuIconPreview];
   y -= spacing;
 
+  // Fonts
+  NSTextField *fontLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 150, 20)];
+  fontLabel.stringValue = @"Fonts:";
+  fontLabel.bordered = NO;
+  fontLabel.editable = NO;
+  fontLabel.backgroundColor = [NSColor clearColor];
+  [self.view addSubview:fontLabel];
+
+  self.fontIconField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + 160, y - 2, 220, 24)];
+  self.fontIconField.placeholderString = @"Icon font (e.g. Hack Nerd Font)";
+  self.fontIconField.delegate = self;
+  self.fontIconField.stringValue = [config valueForKeyPath:@"appearance.font_icon" defaultValue:@""] ?: @"";
+  [self.view addSubview:self.fontIconField];
+
+  self.fontTextField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + 390, y - 2, 220, 24)];
+  self.fontTextField.placeholderString = @"Text font (e.g. Source Code Pro)";
+  self.fontTextField.delegate = self;
+  self.fontTextField.stringValue = [config valueForKeyPath:@"appearance.font_text" defaultValue:@""] ?: @"";
+  [self.view addSubview:self.fontTextField];
+  y -= 34;
+
+  self.fontNumbersField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + 160, y - 2, 220, 24)];
+  self.fontNumbersField.placeholderString = @"Numbers font (e.g. SF Mono)";
+  self.fontNumbersField.delegate = self;
+  self.fontNumbersField.stringValue = [config valueForKeyPath:@"appearance.font_numbers" defaultValue:@""] ?: @"";
+  [self.view addSubview:self.fontNumbersField];
+  y -= spacing;
+
   // Live Preview
   NSTextField *previewLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 150, 20)];
   previewLabel.stringValue = @"Preview:";
@@ -251,6 +309,8 @@
     [self updateBlurLabel];
   } else if (sender == self.scaleSlider) {
     [self updateScaleLabel];
+  } else if (sender == self.widgetCornerSlider) {
+    [self updateWidgetCornerLabel];
   }
 }
 
@@ -295,7 +355,9 @@
 }
 
 - (void)openIconBrowser:(id)sender {
-  NSString *iconBrowserPath = [[NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"] stringByAppendingPathComponent:@"gui/bin/icon_browser"];
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *configDir = config.configPath ?: [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"];
+  NSString *iconBrowserPath = [configDir stringByAppendingPathComponent:@"gui/bin/icon_browser"];
   if ([[NSFileManager defaultManager] isExecutableFileAtPath:iconBrowserPath]) {
     NSTask *task = [[NSTask alloc] init];
     task.launchPath = iconBrowserPath;
@@ -303,7 +365,7 @@
   } else {
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Icon Browser Not Found";
-    alert.informativeText = @"Build icon_browser first: cd ~/.config/sketchybar/gui && make icon_browser";
+    alert.informativeText = [NSString stringWithFormat:@"Build icon_browser first: cd %@/gui && make icon_browser", configDir];
     [alert runModal];
   }
 }
@@ -369,12 +431,23 @@
   [config setValue:@((int)self.cornerSlider.doubleValue) forKeyPath:@"appearance.corner_radius"];
   [config setValue:@((int)self.blurSlider.doubleValue) forKeyPath:@"appearance.blur_radius"];
   [config setValue:@(self.scaleSlider.doubleValue) forKeyPath:@"appearance.widget_scale"];
+  [config setValue:@((int)self.widgetCornerSlider.doubleValue) forKeyPath:@"appearance.widget_corner_radius"];
 
   NSString *hexColor = [self hexStringFromColor:self.barColorWell.color];
   [config setValue:hexColor forKeyPath:@"appearance.bar_color"];
 
   NSString *menuIcon = self.menuIconField.stringValue ?: @"";
   [config setValue:menuIcon forKeyPath:@"icons.apple"];
+
+  if (self.fontIconField.stringValue.length > 0) {
+    [config setValue:self.fontIconField.stringValue forKeyPath:@"appearance.font_icon"];
+  }
+  if (self.fontTextField.stringValue.length > 0) {
+    [config setValue:self.fontTextField.stringValue forKeyPath:@"appearance.font_text"];
+  }
+  if (self.fontNumbersField.stringValue.length > 0) {
+    [config setValue:self.fontNumbersField.stringValue forKeyPath:@"appearance.font_numbers"];
+  }
 
   [config reloadSketchyBar];
 
@@ -383,6 +456,11 @@
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
     self.applyButton.title = @"Apply & Reload Bar";
   });
+}
+
+- (void)updateWidgetCornerLabel {
+  if (!self.widgetCornerValueLabel) return;
+  [self.widgetCornerValueLabel setStringValue:[NSString stringWithFormat:@"%0.0f", self.widgetCornerSlider.doubleValue]];
 }
 
 @end

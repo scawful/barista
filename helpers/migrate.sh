@@ -49,8 +49,8 @@ try:
     
     # Save if migrated
     if migrated:
-        with open(state_file, "w") as f:
-            json.dump(state, f, indent=2)
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2, ensure_ascii=False)
         print("✅ Configuration migrated")
     else:
         print("✅ Configuration already up to date")
@@ -81,4 +81,3 @@ if [[ "$CURRENT_VERSION" != "$NEW_VERSION" ]]; then
 else
   echo "✅ Already at version $NEW_VERSION"
 fi
-

@@ -1,7 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-DEFAULT_PATH="$HOME/Code/z3ed/bin/z3ed"
+CODE_DIR="${BARISTA_CODE_DIR:-$HOME/src}"
+DEFAULT_PATH="${CODE_DIR}/z3ed/bin/z3ed"
 CMD="${Z3ED_BIN:-$DEFAULT_PATH}"
 if command -v z3ed >/dev/null 2>&1; then
   CMD="$(command -v z3ed)"

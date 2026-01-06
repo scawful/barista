@@ -4,14 +4,46 @@
 # OPTIMIZED: Replaced Python calls with jq for better performance
 
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
+export LC_ALL="${LC_ALL:-en_US.UTF-8}"
+export LANG="${LANG:-en_US.UTF-8}"
 
-STATE_FILE="$HOME/.config/sketchybar/state.json"
-ICON_SCRIPT="$HOME/.config/scripts/app_icon.sh"
+CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
+STATE_FILE="$CONFIG_DIR/state.json"
+JQ_BIN="$(command -v jq 2>/dev/null || true)"
+YABAI_BIN="$(command -v yabai 2>/dev/null || true)"
+SCRIPTS_DIR="${BARISTA_SCRIPTS_DIR:-}"
+
+expand_path() {
+  case "$1" in
+    "~/"*) printf '%s' "$HOME/${1#~/}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+if [ -z "$SCRIPTS_DIR" ] && [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ]; then
+  SCRIPTS_DIR=$(jq -r '.paths.scripts_dir // .paths.scripts // empty' "$STATE_FILE" 2>/dev/null || true)
+  if [ "$SCRIPTS_DIR" = "null" ]; then
+    SCRIPTS_DIR=""
+  fi
+fi
+
+if [ -n "$SCRIPTS_DIR" ]; then
+  SCRIPTS_DIR="$(expand_path "$SCRIPTS_DIR")"
+fi
+
+if [ -z "$SCRIPTS_DIR" ]; then
+  SCRIPTS_DIR="$CONFIG_DIR/scripts"
+fi
+
+if [ ! -d "$SCRIPTS_DIR" ]; then
+  SCRIPTS_DIR="$HOME/.config/scripts"
+fi
+
+ICON_SCRIPT="$SCRIPTS_DIR/app_icon.sh"
 SPACE_INDEX="${NAME#space.}"
 ICON_CACHE_DIR="$HOME/.config/sketchybar/cache/space_icons"
 ICON_CACHE_FILE="$ICON_CACHE_DIR/$SPACE_INDEX"
-JQ_BIN="$(command -v jq 2>/dev/null || true)"
-YABAI_BIN="$(command -v yabai 2>/dev/null || true)"
+SELECTED_STATE="${SELECTED:-}"
 
 # Modern color scheme - Catppuccin Mocha
 IDLE_BG="0x00000000"                    # Transparent when idle
@@ -35,6 +67,32 @@ is_selected() {
   esac
 }
 
+# OPTIMIZED: Cache yabai space data to avoid redundant queries
+SPACE_DATA_CACHE=""
+get_space_data() {
+  if [ -n "$SPACE_DATA_CACHE" ]; then
+    printf '%s' "$SPACE_DATA_CACHE"
+    return 0
+  fi
+  [ -n "$YABAI_BIN" ] || return 1
+  SPACE_DATA_CACHE=$("$YABAI_BIN" -m query --spaces --space "$SPACE_INDEX" 2>/dev/null) || return 1
+  printf '%s' "$SPACE_DATA_CACHE"
+}
+
+resolve_selected_state() {
+  if [ -n "$SELECTED_STATE" ]; then
+    return 0
+  fi
+  [ -n "$JQ_BIN" ] || return 0
+  local data
+  data=$(get_space_data) || return 0
+  local focused
+  focused=$(printf '%s' "$data" | "$JQ_BIN" -r '."has-focus" // empty')
+  if [ -n "$focused" ]; then
+    SELECTED_STATE="$focused"
+  fi
+}
+
 read_cached_icon() {
   [ -f "$ICON_CACHE_FILE" ] || return 0
   cat "$ICON_CACHE_FILE" 2>/dev/null || true
@@ -48,7 +106,8 @@ write_cached_icon() {
 should_refresh_app_icon() {
   case "$SENDER" in
     space_change|space_mode_refresh|front_app_switched)
-      is_selected "$SELECTED" && return 0
+      resolve_selected_state
+      is_selected "$SELECTED_STATE" && return 0
       ;;
   esac
   return 1
@@ -97,36 +156,32 @@ resolve_app_icon() {
   fi
 }
 
+# OPTIMIZED: Use cached space data, single layout command
 ensure_space_layout() {
   [ -n "$YABAI_BIN" ] || return
   [ -n "$JQ_BIN" ] || return
   local desired="$(get_space_mode)"
   if [ -z "$desired" ]; then
-    desired="float"
+    return
   fi
   local info
-  info=$("$YABAI_BIN" -m query --spaces --space "$SPACE_INDEX" 2>/dev/null) || return
-  local current_type current_float
+  info=$(get_space_data) || return  # Use cached data
+  local current_type
   current_type=$(printf '%s' "$info" | "$JQ_BIN" -r '.type // "unknown"')
-  current_float=$(printf '%s' "$info" | "$JQ_BIN" -r '."is-floating" // false')
-  if [ "$desired" = "float" ]; then
-    if [ "$current_float" != "true" ]; then
-      "$YABAI_BIN" -m space "$SPACE_INDEX" --layout float >/dev/null 2>&1 || true
-      "$YABAI_BIN" -m space "$SPACE_INDEX" --toggle float >/dev/null 2>&1 || true
-    fi
-  else
-    if [ "$current_type" != "$desired" ]; then
-      "$YABAI_BIN" -m space "$SPACE_INDEX" --layout "$desired" >/dev/null 2>&1 || true
-    fi
+  # Only change if different (single command, not two)
+  if [ "$current_type" != "$desired" ]; then
+    "$YABAI_BIN" -m space "$SPACE_INDEX" --layout "$desired" >/dev/null 2>&1 || true
   fi
 }
 
 # Icon selection logic - priority: custom icon > app icon > empty
 # We ALWAYS try to show the app icon for all spaces (persistence)
 if [ "$SENDER" = "space_mode_refresh" ]; then
+  resolve_selected_state
   ensure_space_layout
 elif [ "$SENDER" = "space_change" ]; then
-  if is_selected "$SELECTED"; then
+  resolve_selected_state
+  if is_selected "$SELECTED_STATE"; then
     ensure_space_layout
   fi
 fi
@@ -152,7 +207,7 @@ if [ "$SENDER" != "mouse.entered" ] && [ "$SENDER" != "mouse.exited" ]; then
         ICON_VALUE="$CACHED_ICON"
       else
         # If no app, show a subtle dot for active spaces, empty icon for inactive
-        if is_selected "$SELECTED"; then
+        if is_selected "$SELECTED_STATE"; then
           ICON_VALUE="•"
         else
           ICON_VALUE="$EMPTY_ICON"
@@ -162,7 +217,7 @@ if [ "$SENDER" != "mouse.entered" ] && [ "$SENDER" != "mouse.exited" ]; then
       if [ -n "$CACHED_ICON" ]; then
         ICON_VALUE="$CACHED_ICON"
       else
-        if is_selected "$SELECTED"; then
+        if is_selected "$SELECTED_STATE"; then
           ICON_VALUE="•"
         else
           ICON_VALUE="$EMPTY_ICON"
@@ -190,7 +245,8 @@ if [ "$SENDER" = "mouse.entered" ]; then
 fi
 
 if [ "$SENDER" = "mouse.exited" ]; then
-  if is_selected "$SELECTED"; then
+  resolve_selected_state
+  if is_selected "$SELECTED_STATE"; then
     sketchybar --set "$NAME" \
       background.drawing=on \
       background.color="$SELECTED_BG" \
@@ -205,7 +261,8 @@ if [ "$SENDER" = "mouse.exited" ]; then
 fi
 
 # Selection state
-if is_selected "$SELECTED"; then
+resolve_selected_state
+if is_selected "$SELECTED_STATE"; then
   sketchybar --set "$NAME" \
     background.drawing=on \
     background.color="$SELECTED_BG" \

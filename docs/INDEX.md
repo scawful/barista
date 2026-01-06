@@ -1,11 +1,11 @@
 # Barista Documentation Index
 
-**Version:** 2.0 (Hybrid C/Lua Architecture)  
-**Last Updated:** December 2025
+**Status:** Experimental (hybrid C/Lua)
+**Last Updated:** 2026-01-06
 
 ## Quick Links
 
-- [README](../README.md) - Getting started guide
+- [README](../README.md) - Project overview
 - [BUILD.md](BUILD.md) - Build instructions
 - [CHANGELOG.md](CHANGELOG.md) - Version history
 
@@ -28,21 +28,33 @@ User-facing setup and usage guides.
 | [HANDOFF.md](guides/HANDOFF.md) | System overview and handoff notes |
 | [CONTRIBUTING.md](guides/CONTRIBUTING.md) | Contribution guidelines |
 | [GITHUB_SETUP.md](guides/GITHUB_SETUP.md) | GitHub distribution setup |
+| [TUI_CONFIGURATION.md](guides/TUI_CONFIGURATION.md) | TUI setup and config |
 
 ### architecture/
 System design and technical documentation.
 
 | Document | Description |
 |----------|-------------|
-| [ARCHITECTURE_ANALYSIS.md](architecture/ARCHITECTURE_ANALYSIS.md) | Comprehensive event flow and system analysis |
-| [ARCHITECTURE_DIAGRAMS.md](architecture/ARCHITECTURE_DIAGRAMS.md) | Visual system diagrams |
-| [ARCHITECTURE_README.md](architecture/ARCHITECTURE_README.md) | Architecture overview |
-| [ARCHITECTURE_SUMMARY.txt](architecture/ARCHITECTURE_SUMMARY.txt) | Quick architecture summary |
+| [README.md](architecture/README.md) | Architecture overview |
+| [ANALYSIS.md](architecture/ANALYSIS.md) | System analysis and notes |
+| [DIAGRAMS.md](architecture/DIAGRAMS.md) | Visual diagrams |
 | [CODE_ANALYSIS.md](architecture/CODE_ANALYSIS.md) | Codebase metrics and analysis |
 | [CONTROL_PANEL_DESIGN.md](architecture/CONTROL_PANEL_DESIGN.md) | GUI architecture |
 | [PORTABILITY_SUMMARY.md](architecture/PORTABILITY_SUMMARY.md) | Cross-platform notes |
-| [REFACTOR_SUMMARY.md](architecture/REFACTOR_SUMMARY.md) | C/Lua refactor overview |
-| [REFACTORING_SUMMARY.md](architecture/REFACTORING_SUMMARY.md) | Refactoring details |
+
+### dev/
+Implementation notes and engineering details.
+
+| Document | Description |
+|----------|-------------|
+| [CLAUDE.md](dev/CLAUDE.md) | AI assistant context |
+| [CMake_MIGRATION.md](dev/CMake_MIGRATION.md) | CMake migration notes |
+| [DEBUGGING_ANALYSIS.md](dev/DEBUGGING_ANALYSIS.md) | Debugging notes |
+| [FIXES_SUMMARY.md](dev/FIXES_SUMMARY.md) | Bug fixes summary |
+| [GOOGLE_CPP_WORKFLOWS.md](dev/GOOGLE_CPP_WORKFLOWS.md) | Google C++ workflows |
+| [IMPLEMENTATION_SUMMARY.md](dev/IMPLEMENTATION_SUMMARY.md) | Implementation notes |
+| [IMPROVEMENTS.md](dev/IMPROVEMENTS.md) | Planned improvements |
+| [SHARING.md](dev/SHARING.md) | Sharing/export notes |
 
 ### features/
 Feature documentation and specifications.
@@ -70,6 +82,8 @@ Issue resolution and fixes.
 | [FINAL_ICON_STATUS.md](troubleshooting/FINAL_ICON_STATUS.md) | Current icon status |
 | [WIDGET_FIXES.md](troubleshooting/WIDGET_FIXES.md) | Widget troubleshooting |
 | [YABAI_SCRIPTING_ADDITION.md](troubleshooting/YABAI_SCRIPTING_ADDITION.md) | Yabai scripting setup |
+| [DISPLAYLINK_SPACES_FLAKE.md](troubleshooting/DISPLAYLINK_SPACES_FLAKE.md) | DisplayLink spaces flake notes |
+| [SCRIPTS_PATHS.md](troubleshooting/SCRIPTS_PATHS.md) | Script path reference |
 
 ### release/
 Release and distribution documentation.
@@ -81,47 +95,16 @@ Release and distribution documentation.
 | [HOMEBREW_TAP.md](release/HOMEBREW_TAP.md) | Homebrew formula |
 | [LICENSE_ANALYSIS.md](release/LICENSE_ANALYSIS.md) | Licensing details |
 
-### internal/
-Development notes and internal documentation.
-
-| Document | Description |
-|----------|-------------|
-| [IMPROVEMENTS.md](internal/IMPROVEMENTS.md) | Planned improvements |
-| [FIXES_SUMMARY.md](internal/FIXES_SUMMARY.md) | Bug fixes summary |
-| [DEBUGGING_ANALYSIS.md](internal/DEBUGGING_ANALYSIS.md) | Debugging notes |
-| [SYNC_AUDIT.md](internal/SYNC_AUDIT.md) | Repository sync audit |
-| [MENU_MIGRATION_PLAN.md](internal/MENU_MIGRATION_PLAN.md) | Menu migration notes |
-| [HANDOFF_POPUP_FIXES.md](internal/HANDOFF_POPUP_FIXES.md) | Popup fix notes |
-| [FINAL_RECOMMENDATIONS.md](internal/FINAL_RECOMMENDATIONS.md) | Implementation recommendations |
-| [SYSTEM_FIXES.md](internal/SYSTEM_FIXES.md) | System-level fixes |
-| [SHARING.md](internal/SHARING.md) | Sharing/export notes |
-| [CMake_MIGRATION.md](internal/CMake_MIGRATION.md) | CMake migration notes |
-| [GOOGLE_CPP_WORKFLOWS.md](internal/GOOGLE_CPP_WORKFLOWS.md) | Google C++ integration |
-| [GOOGLE_WORKFLOWS_SUMMARY.md](internal/GOOGLE_WORKFLOWS_SUMMARY.md) | Workflow summary |
-
-### meta/
-Project meta-documentation.
-
-| Document | Description |
-|----------|-------------|
-| [CLAUDE.md](meta/CLAUDE.md) | AI assistant context |
-| [IMPLEMENTATION_SUMMARY.md](meta/IMPLEMENTATION_SUMMARY.md) | Implementation notes |
-| [MIGRATION_NOTES.md](meta/MIGRATION_NOTES.md) | Migration documentation |
-| [INTEGRATION_STATUS.md](meta/INTEGRATION_STATUS.md) | Integration tracking |
-
 ---
 
-## Additional Resources
+## Deployment
 
-### Components (Experimental)
-See [components/README.md](../components/README.md) for experimental modular widget architecture from the fusion branch.
+Use `./scripts/deploy.sh` in the repo to sync changes to `~/.config/sketchybar`:
 
-### Deployment
-Use `./deploy.sh` in the repo root to sync changes to `~/.config/sketchybar`:
 ```bash
-./deploy.sh           # Full deploy with restart
-./deploy.sh --dry-run # Preview changes
-./deploy.sh --no-restart # Deploy without restart
+./scripts/deploy.sh              # Full deploy with restart
+./scripts/deploy.sh --dry-run    # Preview changes
+./scripts/deploy.sh --no-restart # Deploy without restart
 ```
 
 ---

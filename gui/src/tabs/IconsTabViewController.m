@@ -34,6 +34,14 @@
   self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
 }
 
+- (NSString *)configDir {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  if (config.configPath.length) {
+    return config.configPath;
+  }
+  return [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"];
+}
+
 - (NSArray *)widgetIconEntries {
   return @[
     @{@"key": @"apple", @"label": @"System Menu"},
@@ -328,7 +336,7 @@
 }
 
 - (void)loadIcons {
-  NSString *iconMapPath = [[NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"] stringByAppendingPathComponent:@"icon_map.json"];
+  NSString *iconMapPath = [[self configDir] stringByAppendingPathComponent:@"icon_map.json"];
   NSData *data = [NSData dataWithContentsOfFile:iconMapPath];
 
   if (data) {
@@ -362,7 +370,7 @@
 }
 
 - (void)loadAppIconMap {
-  NSString *iconMapPath = [[NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"] stringByAppendingPathComponent:@"icon_map.json"];
+  NSString *iconMapPath = [[self configDir] stringByAppendingPathComponent:@"icon_map.json"];
   NSData *data = [NSData dataWithContentsOfFile:iconMapPath];
   if (!data) {
     self.appIconMap = [NSMutableDictionary dictionary];
@@ -387,7 +395,7 @@
 }
 
 - (void)saveAppIconMap {
-  NSString *iconMapPath = [[NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"] stringByAppendingPathComponent:@"icon_map.json"];
+  NSString *iconMapPath = [[self configDir] stringByAppendingPathComponent:@"icon_map.json"];
   NSError *error = nil;
   NSData *data = [NSJSONSerialization dataWithJSONObject:self.appIconMap options:NSJSONWritingPrettyPrinted error:&error];
   if (!data || error) {
@@ -433,7 +441,7 @@
 }
 
 - (void)openIconBrowser:(id)sender {
-  NSString *iconBrowserPath = [[NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"] stringByAppendingPathComponent:@"gui/bin/icon_browser"];
+  NSString *iconBrowserPath = [[self configDir] stringByAppendingPathComponent:@"gui/bin/icon_browser"];
   if ([[NSFileManager defaultManager] isExecutableFileAtPath:iconBrowserPath]) {
     NSTask *task = [[NSTask alloc] init];
     task.launchPath = iconBrowserPath;
@@ -441,7 +449,7 @@
   } else {
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Icon Browser Not Found";
-    alert.informativeText = @"Build icon_browser first: cd ~/.config/sketchybar/gui && make icon_browser";
+    alert.informativeText = [NSString stringWithFormat:@"Build icon_browser first: cd %@/gui && make icon_browser", [self configDir]];
     [alert runModal];
   }
 }

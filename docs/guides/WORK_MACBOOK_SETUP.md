@@ -75,7 +75,7 @@ Edit `~/.config/sketchybar/state.json`:
   "integrations": {
     "cpp_dev": {
       "enabled": true,
-      "project_path": "/Users/yourname/Code",
+      "project_path": "/Users/yourname/src",
       "current_project": "default"
     },
     "ssh_cloud": {
@@ -102,7 +102,7 @@ Edit `~/.config/sketchybar/state.json`:
 {
   "integrations": {
     "cpp_dev": {
-      "project_path": "/Users/yourname/Code",
+      "project_path": "/Users/yourname/src",
       "current_project": "my-project"
     }
   }

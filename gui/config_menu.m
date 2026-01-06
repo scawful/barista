@@ -1,3 +1,4 @@
+#import "ConfigurationManager.h"
 #import <Cocoa/Cocoa.h>
 
 @interface MenuController : NSObject <NSApplicationDelegate, NSWindowDelegate, NSTextFieldDelegate>
@@ -31,6 +32,7 @@
 @property (strong) NSDictionary *workflowData;
 @property (strong) NSTextField *clockFontFamilyField;
 @property (copy) NSString *configPath;
+@property (copy) NSString *codePath;
 @property (strong) NSButton *yazeToggleButton;
 @property (strong) NSButton *emacsToggleButton;
 @property (strong) NSTextField *yazeStatusField;
@@ -46,9 +48,11 @@
 @implementation MenuController
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-  self.scriptsPath = [NSHomeDirectory() stringByAppendingPathComponent:@".config/scripts"];
-  self.configPath = [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"];
-  self.statePath = [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar/state.json"];
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  self.scriptsPath = config.scriptsPath;
+  self.configPath = config.configPath;
+  self.codePath = config.codePath;
+  self.statePath = config.statePath;
   self.workflowData = [self loadWorkflowData];
   [self refreshState];
   [self buildWindow];
@@ -1051,7 +1055,7 @@
       return [raw boolValue];
     }
   }
-  return YES;
+  return NO;
 }
 
 - (void)integrationToggleChanged:(NSButton *)sender {
@@ -1312,7 +1316,7 @@
 }
 
 - (NSDictionary *)loadWorkflowData {
-  NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar/data/workflow_shortcuts.json"];
+  NSString *path = [self.configPath stringByAppendingPathComponent:@"data/workflow_shortcuts.json"];
   NSData *data = [NSData dataWithContentsOfFile:path];
   if (!data) return @{};
   NSError *error = nil;
@@ -1333,6 +1337,12 @@
 
 - (NSString *)expandedWorkflowPath:(NSString *)relativePath {
   if (![relativePath isKindOfClass:[NSString class]]) return nil;
+  if ([relativePath containsString:@"%CONFIG%"] && self.configPath.length) {
+    relativePath = [relativePath stringByReplacingOccurrencesOfString:@"%CONFIG%" withString:self.configPath];
+  }
+  if ([relativePath containsString:@"%CODE%"] && self.codePath.length) {
+    relativePath = [relativePath stringByReplacingOccurrencesOfString:@"%CODE%" withString:self.codePath];
+  }
   if ([relativePath hasPrefix:@"~/"]) {
     return [relativePath stringByReplacingCharactersInRange:NSMakeRange(0, 1) withString:NSHomeDirectory()];
   }
@@ -1384,11 +1394,12 @@
 }
 
 - (void)openIconBrowser:(id)sender {
-  NSString *guiPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/sketchybar/gui/bin/icon_browser"];
+  NSString *guiPath = [self.configPath stringByAppendingPathComponent:@"gui/bin/icon_browser"];
   if (![[NSFileManager defaultManager] isExecutableFileAtPath:guiPath]) {
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:@"Icon Browser Not Found"];
-    [alert setInformativeText:@"The icon browser binary is not built. Run 'make' in the gui/ directory."];
+    NSString *message = [NSString stringWithFormat:@"The icon browser binary is not built. Run 'make' in %@/gui.", self.configPath];
+    [alert setInformativeText:message];
     [alert addButtonWithTitle:@"OK"];
     [alert runModal];
     return;
@@ -1396,8 +1407,17 @@
   [self runCommand:guiPath arguments:@[]];
 }
 
+- (void)openControlPanel:(id)sender {
+  NSString *script = [self.configPath stringByAppendingPathComponent:@"bin/open_control_panel.sh"];
+  [self runScript:script arguments:@[]];
+}
+
+- (void)toggleWhichKey:(id)sender {
+  [self runCommand:@"/opt/homebrew/opt/sketchybar/bin/sketchybar" arguments:@[@"--trigger", @"whichkey_toggle"]];
+}
+
 - (void)openIconMap:(id)sender {
-  NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar/icon_map.json"];
+  NSString *path = [self.configPath stringByAppendingPathComponent:@"icon_map.json"];
   NSFileManager *fm = [NSFileManager defaultManager];
   if (![fm fileExistsAtPath:path]) {
     NSData *empty = [@"{}\n" dataUsingEncoding:NSUTF8StringEncoding];
@@ -1422,7 +1442,8 @@
 }
 
 - (NSString *)checkYazeBuildStatus {
-  NSString *yazePath = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/yaze"];
+  NSString *codeDir = self.codePath ?: [NSHomeDirectory() stringByAppendingPathComponent:@"src"];
+  NSString *yazePath = [codeDir stringByAppendingPathComponent:@"yaze"];
   NSString *buildBinary = [yazePath stringByAppendingPathComponent:@"build/bin/yaze"];
 
   NSFileManager *fm = [NSFileManager defaultManager];
@@ -1456,12 +1477,14 @@
 }
 
 - (void)launchYaze:(id)sender {
-  NSString *yazePath = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/yaze/build/bin/yaze"];
+  NSString *codeDir = self.codePath ?: [NSHomeDirectory() stringByAppendingPathComponent:@"src"];
+  NSString *yazePath = [[codeDir stringByAppendingPathComponent:@"yaze"] stringByAppendingPathComponent:@"build/bin/yaze"];
 
   if (![[NSFileManager defaultManager] fileExistsAtPath:yazePath]) {
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:@"Yaze Not Found"];
-    [alert setInformativeText:@"Build Yaze first: cd ~/Code/yaze && make"];
+    NSString *message = [NSString stringWithFormat:@"Build Yaze first: cd %@/yaze && make", codeDir];
+    [alert setInformativeText:message];
     [alert addButtonWithTitle:@"OK"];
     [alert runModal];
     return;
@@ -1505,7 +1528,8 @@
   if (![[NSFileManager defaultManager] isExecutableFileAtPath:script]) {
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:@"Runtime Script Not Found"];
-    [alert setInformativeText:@"Cannot find runtime_update.sh in ~/.config/scripts"];
+    NSString *path = self.scriptsPath ?: @"(unknown scripts directory)";
+    [alert setInformativeText:[NSString stringWithFormat:@"Cannot find runtime_update.sh in %@", path]];
     [alert addButtonWithTitle:@"OK"];
     [alert runModal];
     return;

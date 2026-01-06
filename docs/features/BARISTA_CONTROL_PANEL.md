@@ -36,14 +36,14 @@ Transform the former “SketchyBar control panel” into a Barista-branded contr
   - Widget refresh intervals.
 - Buttons:
   - “Rebuild & Reload SketchyBar” (calls `bin/rebuild_sketchybar.sh`).
-  - “Open Logs” (wraps `~/.config/scripts/bar_logs.sh --follow sketchybar`).
+  - “Open Logs” (wraps `~/.config/sketchybar/scripts/bar_logs.sh`).
   - “Flush icon cache”, “Reset popup state”.
 
 ## Shortcuts & CLI Wrappers
 - `bin/rebuild_sketchybar.sh`
   1. `make -C helpers all`
   2. `make -C gui all`
-  3. `~/.config/scripts/launch_agents.sh reload sketchybar` (placeholder)
+  3. `~/.config/sketchybar/scripts/launch_agents.sh reload sketchybar` (placeholder)
 - `bin/open_control_panel.sh`
   - Launches `gui/bin/config_menu_enhanced` directly, ensuring Dock icon and logs land in `/tmp/barista_control_panel.log`.
 - Future:
@@ -70,4 +70,3 @@ Transform the former “SketchyBar control panel” into a Barista-branded contr
 - AI assistant integration (Ollama + remote providers) with one-click prompts.
 - Workspace presets (profiles) that reconfigure launch agents, widgets, and shortcuts together.
 - Telemetry opt-in for tracking performance regressions and automated bug reports.
-

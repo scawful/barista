@@ -5,6 +5,7 @@
 set -euo pipefail
 
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
+STATE_JSON="$CONFIG_DIR/state.json"
 SKETCHYBAR_LABEL="homebrew.mxcl.sketchybar"
 DOMAIN="gui/$(id -u)"
 LABEL="${DOMAIN}/${SKETCHYBAR_LABEL}"
@@ -25,6 +26,37 @@ print_status() {
     else
         echo -e "${RED}✗${NC} $message"
     fi
+}
+
+resolve_scripts_dir() {
+    local override="${BARISTA_SCRIPTS_DIR:-}"
+    if [ -n "$override" ]; then
+        echo "$override"
+        return 0
+    fi
+
+    if command -v jq >/dev/null 2>&1 && [ -f "$STATE_JSON" ]; then
+        local state_override
+        state_override=$(jq -r '.paths.scripts_dir // .paths.scripts // empty' "$STATE_JSON" 2>/dev/null || true)
+        if [ -n "$state_override" ] && [ "$state_override" != "null" ]; then
+            echo "$state_override"
+            return 0
+        fi
+    fi
+
+    local config_scripts="$CONFIG_DIR/scripts"
+    if [ -x "$config_scripts/yabai_control.sh" ]; then
+        echo "$config_scripts"
+        return 0
+    fi
+
+    local legacy_scripts="$HOME/.config/scripts"
+    if [ -x "$legacy_scripts/yabai_control.sh" ]; then
+        echo "$legacy_scripts"
+        return 0
+    fi
+
+    echo "$config_scripts"
 }
 
 echo "Barista Health Check"
@@ -84,7 +116,6 @@ else
     print_status "FAIL" "main.lua not found: $MAIN_LUA"
 fi
 
-STATE_JSON="$CONFIG_DIR/state.json"
 if [ -f "$STATE_JSON" ]; then
     print_status "OK" "state.json exists"
     if python3 -m json.tool "$STATE_JSON" >/dev/null 2>&1; then
@@ -95,10 +126,116 @@ if [ -f "$STATE_JSON" ]; then
 else
     print_status "WARN" "state.json not found (will be created on first run)"
 fi
+
+ICON_MAP="$CONFIG_DIR/icon_map.json"
+if [ -f "$ICON_MAP" ]; then
+    print_status "OK" "icon_map.json exists"
+else
+    print_status "WARN" "icon_map.json not found (app icon overrides disabled)"
+fi
 echo ""
 
-# Check 5: Required binaries
-echo "5. Checking required binaries..."
+# Check 5: Deploy metadata
+echo "5. Checking deploy metadata..."
+DEPLOY_META="$CONFIG_DIR/.barista_deploy.json"
+if [ -f "$DEPLOY_META" ]; then
+    print_status "OK" "Deploy metadata found"
+    if command -v jq >/dev/null 2>&1; then
+        summary=$(jq -r '"\(.timestamp) | \(.git.branch) \(.git.commit) | dirty=\(.git.dirty)"' "$DEPLOY_META" 2>/dev/null || true)
+        if [ -n "$summary" ]; then
+            echo "   $summary"
+        fi
+    elif command -v python3 >/dev/null 2>&1; then
+        summary=$(python3 - "$DEPLOY_META" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+git = data.get("git", {})
+timestamp = data.get("timestamp", "unknown")
+branch = git.get("branch", "unknown")
+commit = git.get("commit", "unknown")
+dirty = git.get("dirty", "unknown")
+print(f"{timestamp} | {branch} {commit} | dirty={dirty}")
+PY
+)
+        if [ -n "$summary" ]; then
+            echo "   $summary"
+        fi
+    fi
+else
+    print_status "WARN" "Deploy metadata not found (run scripts/deploy.sh)"
+fi
+echo ""
+
+# Check 6: Script paths
+echo "6. Checking script paths..."
+SCRIPTS_DIR="$(resolve_scripts_dir)"
+if [ -d "$SCRIPTS_DIR" ]; then
+    print_status "OK" "Scripts directory: $SCRIPTS_DIR"
+else
+    print_status "WARN" "Scripts directory not found: $SCRIPTS_DIR"
+fi
+
+required_scripts=("yabai_control.sh" "toggle_shortcuts.sh")
+optional_scripts=(
+    "toggle_yabai_shortcuts.sh"
+    "runtime_update.sh"
+    "set_appearance.sh"
+    "widget_toggle.sh"
+    "set_widget_color.sh"
+    "set_space_icon.sh"
+    "set_menu_icon.sh"
+    "set_clock_font.sh"
+    "toggle_system_info_item.sh"
+    "set_app_icon.sh"
+    "app_icon.sh"
+    "bar_logs.sh"
+    "yabai_accessibility_fix.sh"
+    "update_external_bar.sh"
+    "deploy_info.sh"
+)
+
+for script in "${required_scripts[@]}"; do
+    path="$SCRIPTS_DIR/$script"
+    if [ -x "$path" ]; then
+        print_status "OK" "$script is available"
+    elif [ -f "$path" ]; then
+        print_status "WARN" "$script exists but is not executable"
+    else
+        print_status "FAIL" "$script not found in $SCRIPTS_DIR"
+    fi
+done
+
+for script in "${optional_scripts[@]}"; do
+    path="$SCRIPTS_DIR/$script"
+    if [ -x "$path" ]; then
+        print_status "OK" "$script is available"
+    elif [ -f "$path" ]; then
+        print_status "WARN" "$script exists but is not executable"
+    else
+        print_status "WARN" "$script not found in $SCRIPTS_DIR"
+    fi
+done
+
+LEGACY_LINK="$HOME/.config/scripts"
+if [ -L "$LEGACY_LINK" ] && [ ! -e "$LEGACY_LINK" ]; then
+    print_status "WARN" "Legacy scripts symlink is broken: $LEGACY_LINK"
+    echo "   Fix: ln -sfn \"$SCRIPTS_DIR\" \"$LEGACY_LINK\""
+fi
+
+if [ -f "$HOME/.skhdrc" ] && grep -q "~/.config/scripts" "$HOME/.skhdrc"; then
+    if [ ! -e "$LEGACY_LINK" ]; then
+        print_status "WARN" "skhdrc references ~/.config/scripts but it is missing"
+        echo "   Update ~/.skhdrc to use $SCRIPTS_DIR"
+    fi
+fi
+echo ""
+
+# Check 7: Required binaries
+echo "7. Checking required binaries..."
 BINARIES=("popup_hover" "popup_anchor" "submenu_hover" "popup_manager" "popup_guard" "menu_action")
 for bin in "${BINARIES[@]}"; do
     BIN_PATH="$CONFIG_DIR/bin/$bin"
@@ -110,8 +247,8 @@ for bin in "${BINARIES[@]}"; do
 done
 echo ""
 
-# Check 6: Permissions
-echo "6. Checking permissions..."
+# Check 8: Permissions
+echo "8. Checking permissions..."
 # Check Accessibility permissions (requires tccutil or sqlite3)
 if command -v sqlite3 >/dev/null 2>&1; then
     SKETCHYBAR_BUNDLE="com.koekeishiya.sketchybar"
@@ -132,8 +269,8 @@ else
 fi
 echo ""
 
-# Check 7: Launch agent logs
-echo "7. Checking logs..."
+# Check 9: Launch agent logs
+echo "9. Checking logs..."
 if [ -f "/tmp/barista.control.out.log" ]; then
     print_status "OK" "Launch agent stdout log exists"
     echo "   Last 5 lines:"
@@ -161,8 +298,8 @@ if [ -f "$SKETCHYBAR_LOG" ]; then
 fi
 echo ""
 
-# Check 8: Dependencies
-echo "8. Checking dependencies..."
+# Check 10: Dependencies
+echo "10. Checking dependencies..."
 if command -v yabai >/dev/null 2>&1; then
     print_status "OK" "yabai is installed"
 else
@@ -199,4 +336,3 @@ if ! pgrep -x "sketchybar" > /dev/null; then
     echo "  3. Or reload directly:"
     echo "     sketchybar --reload"
 fi
-

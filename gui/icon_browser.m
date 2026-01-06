@@ -26,7 +26,8 @@
   // Load icon library from icons.lua module
   self.allIcons = [NSMutableArray array];
 
-  NSString *luaScript = @"package.path = package.path .. ';' .. os.getenv('HOME') .. '/.config/sketchybar/modules/?.lua'; "
+  NSString *luaScript = @"local config = os.getenv('BARISTA_CONFIG_DIR') or (os.getenv('HOME') .. '/.config/sketchybar'); "
+                        @"package.path = package.path .. ';' .. config .. '/modules/?.lua'; "
                         @"local icons = require('icons'); "
                         @"local json = require('json'); "
                         @"print(json.encode(icons.get_all()))";

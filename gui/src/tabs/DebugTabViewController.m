@@ -115,7 +115,39 @@
   flushButton.action = @selector(flushMenuCache:);
   [self.view addSubview:flushButton];
 
-  self.statusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(x, 180, 900, 24)];
+  NSTextField *wmTitle = [[NSTextField alloc] initWithFrame:NSMakeRect(x, 300, 300, 24)];
+  wmTitle.stringValue = @"Window Manager";
+  wmTitle.font = [NSFont boldSystemFontOfSize:16];
+  wmTitle.editable = NO;
+  wmTitle.bezeled = NO;
+  wmTitle.backgroundColor = [NSColor clearColor];
+  [self.view addSubview:wmTitle];
+
+  NSButton *doctorButton = [[NSButton alloc] initWithFrame:NSMakeRect(x, 260, 200, 32)];
+  [doctorButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [doctorButton setBezelStyle:NSBezelStyleRounded];
+  doctorButton.title = @"Run Yabai Doctor";
+  doctorButton.target = self;
+  doctorButton.action = @selector(runYabaiDoctor:);
+  [self.view addSubview:doctorButton];
+
+  NSButton *restartYabaiButton = [[NSButton alloc] initWithFrame:NSMakeRect(x, 220, 200, 32)];
+  [restartYabaiButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [restartYabaiButton setBezelStyle:NSBezelStyleRounded];
+  restartYabaiButton.title = @"Restart Yabai";
+  restartYabaiButton.target = self;
+  restartYabaiButton.action = @selector(restartYabai:);
+  [self.view addSubview:restartYabaiButton];
+
+  NSButton *restartShortcutsButton = [[NSButton alloc] initWithFrame:NSMakeRect(x, 180, 200, 32)];
+  [restartShortcutsButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [restartShortcutsButton setBezelStyle:NSBezelStyleRounded];
+  restartShortcutsButton.title = @"Restart Shortcuts";
+  restartShortcutsButton.target = self;
+  restartShortcutsButton.action = @selector(restartShortcuts:);
+  [self.view addSubview:restartShortcutsButton];
+
+  self.statusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(x, 140, 900, 24)];
   self.statusLabel.editable = NO;
   self.statusLabel.bezeled = NO;
   self.statusLabel.backgroundColor = [NSColor clearColor];
@@ -218,10 +250,18 @@
 }
 
 - (void)openLogs:(id)sender {
-  NSString *logScript = [NSHomeDirectory() stringByAppendingPathComponent:@".config/scripts/bar_logs.sh"];
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *pluginScript = [config.configPath stringByAppendingPathComponent:@"plugins/bar_logs.sh"];
+  NSString *legacyScript = [config.scriptsPath stringByAppendingPathComponent:@"bar_logs.sh"];
+  NSString *logScript = pluginScript;
+
   if (![[NSFileManager defaultManager] isExecutableFileAtPath:logScript]) {
-    self.statusLabel.stringValue = @"bar_logs.sh not found in ~/.config/scripts.";
-    return;
+    if ([[NSFileManager defaultManager] isExecutableFileAtPath:legacyScript]) {
+      logScript = legacyScript;
+    } else {
+      self.statusLabel.stringValue = @"bar_logs.sh not found in plugins or scripts.";
+      return;
+    }
   }
 
   NSTask *task = [[NSTask alloc] init];
@@ -229,6 +269,60 @@
   task.arguments = @[@"sketchybar", @"80"];
   [task launch];
   self.statusLabel.stringValue = @"Streaming logs via bar_logs.sh (check Terminal).";
+}
+
+- (NSString *)runTask:(NSString *)launchPath arguments:(NSArray<NSString *> *)arguments {
+  NSTask *task = [[NSTask alloc] init];
+  task.launchPath = launchPath;
+  task.arguments = arguments;
+  NSPipe *pipe = [NSPipe pipe];
+  task.standardOutput = pipe;
+  task.standardError = pipe;
+  [task launch];
+  [task waitUntilExit];
+  NSData *data = [[pipe fileHandleForReading] readDataToEndOfFile];
+  NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+  return [output stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
+
+- (void)runYabaiDoctor:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *script = [config.scriptsPath stringByAppendingPathComponent:@"yabai_control.sh"];
+  if (![[NSFileManager defaultManager] isExecutableFileAtPath:script]) {
+    self.statusLabel.stringValue = @"yabai_control.sh not found in scripts directory.";
+    return;
+  }
+  NSString *output = [self runTask:script arguments:@[@"doctor"]];
+  NSString *summary = [[output componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]] componentsJoinedByString:@" • "];
+  if (summary.length == 0) {
+    summary = @"Yabai doctor completed.";
+  }
+  if (summary.length > 200) {
+    summary = [[summary substringToIndex:200] stringByAppendingString:@"…"];
+  }
+  self.statusLabel.stringValue = summary;
+}
+
+- (void)restartYabai:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *script = [config.scriptsPath stringByAppendingPathComponent:@"yabai_control.sh"];
+  if (![[NSFileManager defaultManager] isExecutableFileAtPath:script]) {
+    self.statusLabel.stringValue = @"yabai_control.sh not found in scripts directory.";
+    return;
+  }
+  NSString *output = [self runTask:script arguments:@[@"restart"]];
+  self.statusLabel.stringValue = output.length ? output : @"Yabai restarted.";
+}
+
+- (void)restartShortcuts:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *script = [config.scriptsPath stringByAppendingPathComponent:@"toggle_yabai_shortcuts.sh"];
+  if (![[NSFileManager defaultManager] isExecutableFileAtPath:script]) {
+    self.statusLabel.stringValue = @"toggle_yabai_shortcuts.sh not found in scripts directory.";
+    return;
+  }
+  NSString *output = [self runTask:script arguments:@[@"restart"]];
+  self.statusLabel.stringValue = output.length ? output : @"Shortcuts restarted.";
 }
 
 - (void)flushMenuCache:(id)sender {
@@ -241,4 +335,3 @@
 }
 
 @end
-

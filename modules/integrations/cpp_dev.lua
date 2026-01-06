@@ -73,7 +73,7 @@ function cpp_dev.get_menu_items(ctx)
   end
   
   local items = {}
-  local project_path = cpp_dev.config.project_path or os.getenv("HOME") .. "/Code"
+  local project_path = cpp_dev.config.project_path or (os.getenv("BARISTA_CODE_DIR") or (os.getenv("HOME") .. "/src"))
   
   -- Detect current project
   local current_project = cpp_dev.config.current_project or "default"
@@ -197,4 +197,3 @@ function cpp_dev.create_build_widget(sbar, factory, theme, state_data)
 end
 
 return cpp_dev
-

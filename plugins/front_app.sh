@@ -1,7 +1,11 @@
 #!/bin/sh
 # OPTIMIZED: Avoid expensive osascript, use yabai if available
+# Updated: Show app name only (icon shown in space widget instead)
 
-ICON_SCRIPT="$HOME/.config/scripts/app_icon.sh"
+export LC_ALL="${LC_ALL:-en_US.UTF-8}"
+export LANG="${LANG:-en_US.UTF-8}"
+
+SPACE_SCRIPT="$HOME/.config/sketchybar/plugins/space.sh"
 APP_NAME="$INFO"
 
 # Barista's own binaries to filter out
@@ -34,13 +38,9 @@ case "$APP_NAME" in
     ;;
 esac
 
-ICON="󰣆"
-if [ -x "$ICON_SCRIPT" ]; then
-  LOOKUP=$("$ICON_SCRIPT" "$APP_NAME")
-  if [ -n "$LOOKUP" ]; then
-    ICON="$LOOKUP"
-  fi
-fi
-
-sketchybar --set "$NAME" icon="$ICON" label="$APP_NAME"
+# Show app name only - icon is shown in the space widget
+sketchybar --set "$NAME" icon.drawing=off label="$APP_NAME"
 sketchybar --set front_app.menu.header label="App Controls · $APP_NAME" >/dev/null 2>&1 || true
+
+# Trigger space update so it shows the app icon
+sketchybar --trigger space_change >/dev/null 2>&1 || true

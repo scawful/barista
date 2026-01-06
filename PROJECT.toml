@@ -1,0 +1,29 @@
+name = "barista"
+description = "macOS menu bar system with hybrid C/Lua architecture and Control Center-style popover. Parent framework for halext ecosystem tools."
+tags = ["halext-ecosystem", "tools", "macos", "c", "lua", "gui", "sketchybar", "menu-bar"]
+aliases = ["sketchybar-config", "sketchybar"]
+platforms = ["mac"]
+stage = "experimental"
+public = true
+is_product = false
+
+[build]
+system = "cmake"
+command = "cmake -B build -S . && cmake --build build"
+
+[sync]
+type = "git"
+direction = "both"
+remote = "server"
+
+[docs]
+ecosystem = "HALEXT_GUI_VISION.md"
+integration = "INTEGRATION_SUMMARY.md"
+tools-guide = "../../../.config/sketchybar/docs/TOOLS_INTEGRATION.md"
+quick-start = "../../../shared/cpp/halext/docs/QUICKSTART_TOOLS.md"
+
+[integrations]
+cortex = "Menu bar widget integration"
+sys_manual = "Documentation viewer integration"
+barista_config = "Configuration GUI (Phase 2)"
+afs = "Workspace state integration"

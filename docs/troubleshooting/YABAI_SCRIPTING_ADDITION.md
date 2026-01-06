@@ -7,6 +7,16 @@ cannot focus space due to an error with the scripting-addition.
 ```
 This prevents `skhd` shortcuts like `yabai -m space --focus next` from working.
 
+## Barista Behavior
+Barista falls back to AppleScript for `space-prev` and `space-next` when the scripting addition is missing. Other space focus commands still require the scripting addition. Run:
+```bash
+~/.config/sketchybar/scripts/yabai_control.sh doctor
+```
+
+## Control Panel Shortcuts
+- Debug tab: Run Yabai Doctor, Restart Yabai, Restart Shortcuts
+- Advanced tab: Scripts Directory override (if you moved scripts)
+
 ## Root Cause
 Yabai relies on a **Scripting Addition (SA)** to inject code into the macOS Dock process. This allows it to perform advanced actions like instant space switching, removing animations, and creating spaces.
 

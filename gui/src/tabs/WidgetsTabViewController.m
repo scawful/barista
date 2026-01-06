@@ -123,7 +123,8 @@
     colorWell.action = @selector(widgetColorChanged:);
     colorWell.tag = index;
     NSString *colorKeyPath = [NSString stringWithFormat:@"widget_colors.%@", key];
-    NSString *hexColor = [config valueForKeyPath:colorKeyPath defaultValue:nil];
+    id colorValue = [config valueForKeyPath:colorKeyPath defaultValue:nil];
+    NSString *hexColor = [self hexStringFromValue:colorValue];
     if (hexColor) {
       NSColor *color = [self colorFromHexString:hexColor];
       if (color) {
@@ -187,6 +188,17 @@
     }
   }
   return [NSFont monospacedSystemFontOfSize:size weight:NSFontWeightRegular];
+}
+
+- (NSString *)hexStringFromValue:(id)value {
+  if ([value isKindOfClass:[NSString class]]) {
+    return (NSString *)value;
+  }
+  if ([value isKindOfClass:[NSNumber class]]) {
+    unsigned int num = [(NSNumber *)value unsignedIntValue];
+    return [NSString stringWithFormat:@"0x%08X", num];
+  }
+  return nil;
 }
 
 - (NSColor *)colorFromHexString:(NSString *)hexString {

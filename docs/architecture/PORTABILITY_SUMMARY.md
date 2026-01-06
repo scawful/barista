@@ -190,7 +190,7 @@ end
 - ✅ ROM hacking (Yaze integration)
 - ✅ Personal Emacs workflows
 - ✅ Custom space icons
-- ✅ Specific paths (~/Code/yaze, ~/Code/docs)
+- ✅ Specific paths (~/src/yaze, ~/src/docs)
 
 ### Work (profiles/work.lua)
 - ❌ No ROM hacking

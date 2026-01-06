@@ -2,6 +2,9 @@
 -- ROM hacking, personal Emacs workflows, development tools
 
 local profile = {}
+local HOME = os.getenv("HOME")
+local CODE_DIR = os.getenv("BARISTA_CODE_DIR") or (HOME .. "/src")
+local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
 
 -- Profile metadata
 profile.name = "personal"
@@ -13,13 +16,14 @@ profile.integrations = {
   yaze = true,        -- ROM hacking with Yaze
   emacs = true,       -- Personal Emacs org-mode workflows
   halext = false,     -- halext-org (when ready)
+  cortex = true,      -- Cortex + AFS quick actions
 }
 
 -- Custom paths
 profile.paths = {
-  rom_doc = os.getenv("HOME") .. "/Code/docs/workflow/rom-hacking.org",
-  yaze = os.getenv("HOME") .. "/Code/yaze",
-  workflow_data = os.getenv("HOME") .. "/.config/sketchybar/data/workflow_shortcuts.json",
+  rom_doc = CODE_DIR .. "/docs/workflow/rom-hacking.org",
+  yaze = CODE_DIR .. "/yaze",
+  workflow_data = CONFIG_DIR .. "/data/workflow_shortcuts.json",
 }
 
 -- Custom menu sections (add to Apple menu)

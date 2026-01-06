@@ -37,6 +37,14 @@
 
 @implementation IntegrationsTabViewController
 
+- (NSString *)codeDir {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  if (config.codePath.length) {
+    return config.codePath;
+  }
+  return [NSHomeDirectory() stringByAppendingPathComponent:@"src"];
+}
+
 - (void)loadView {
   self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
 }
@@ -45,7 +53,7 @@
   [super viewDidLoad];
 
   ConfigurationManager *config = [ConfigurationManager sharedManager];
-  CGFloat contentHeight = 1100;
+  CGFloat contentHeight = 1400;
   self.scrollView = [[NSScrollView alloc] initWithFrame:self.view.bounds];
   self.scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   self.scrollView.hasVerticalScroller = YES;
@@ -80,7 +88,7 @@
   self.yazeToggle.title = @"Enable Yaze Integration";
   self.yazeToggle.target = self;
   self.yazeToggle.action = @selector(yazeToggled:);
-  BOOL yazeEnabled = [[config valueForKeyPath:@"integrations.yaze.enabled" defaultValue:@YES] boolValue];
+  BOOL yazeEnabled = [[config valueForKeyPath:@"integrations.yaze.enabled" defaultValue:@NO] boolValue];
   self.yazeToggle.state = yazeEnabled ? NSControlStateValueOn : NSControlStateValueOff;
   [yazeBox addSubview:self.yazeToggle];
 
@@ -122,7 +130,7 @@
   self.emacsToggle.title = @"Enable Emacs Integration";
   self.emacsToggle.target = self;
   self.emacsToggle.action = @selector(emacsToggled:);
-  BOOL emacsEnabled = [[config valueForKeyPath:@"integrations.emacs.enabled" defaultValue:@YES] boolValue];
+  BOOL emacsEnabled = [[config valueForKeyPath:@"integrations.emacs.enabled" defaultValue:@NO] boolValue];
   self.emacsToggle.state = emacsEnabled ? NSControlStateValueOn : NSControlStateValueOff;
   [emacsBox addSubview:self.emacsToggle];
 
@@ -148,7 +156,7 @@
 
   // MARK: Cortex Integration
   NSBox *cortexBox = [[NSBox alloc] initWithFrame:NSMakeRect(leftMargin, y - 160, 700, 160)];
-  cortexBox.title = @"Cortex (HAFS / Training)";
+  cortexBox.title = @"Cortex (AFS / Training)";
   cortexBox.titlePosition = NSAtTop;
 
   self.cortexToggle = [[NSButton alloc] initWithFrame:NSMakeRect(20, 120, 260, 20)];
@@ -156,7 +164,7 @@
   self.cortexToggle.title = @"Enable Cortex Integration";
   self.cortexToggle.target = self;
   self.cortexToggle.action = @selector(cortexToggled:);
-  BOOL cortexEnabled = [[config valueForKeyPath:@"integrations.cortex.enabled" defaultValue:@YES] boolValue];
+  BOOL cortexEnabled = [[config valueForKeyPath:@"integrations.cortex.enabled" defaultValue:@NO] boolValue];
   self.cortexToggle.state = cortexEnabled ? NSControlStateValueOn : NSControlStateValueOff;
   [cortexBox addSubview:self.cortexToggle];
 
@@ -177,11 +185,11 @@
   [cortexBox addSubview:modeLabel];
 
   self.cortexLabelModeMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(140, 62, 180, 26)];
-  [self.cortexLabelModeMenu addItemsWithTitles:@[@"Training", @"HAFS", @"Status", @"None"]];
+  [self.cortexLabelModeMenu addItemsWithTitles:@[@"Training", @"AFS", @"Status", @"None"]];
   self.cortexLabelModeMenu.target = self;
   self.cortexLabelModeMenu.action = @selector(cortexLabelModeChanged:);
   NSString *labelMode = [config valueForKeyPath:@"integrations.cortex.widget.label_mode" defaultValue:@"training"];
-  if ([labelMode isEqualToString:@"hafs"]) {
+  if ([labelMode isEqualToString:@"afs"]) {
     [self.cortexLabelModeMenu selectItemAtIndex:1];
   } else if ([labelMode isEqualToString:@"status"]) {
     [self.cortexLabelModeMenu selectItemAtIndex:2];
@@ -200,10 +208,10 @@
   [cortexBox addSubview:prefixLabel];
 
   self.cortexLabelPrefixField = [[NSTextField alloc] initWithFrame:NSMakeRect(410, 62, 200, 24)];
-  self.cortexLabelPrefixField.placeholderString = @"HAFS";
+  self.cortexLabelPrefixField.placeholderString = @"AFS";
   self.cortexLabelPrefixField.target = self;
   self.cortexLabelPrefixField.action = @selector(cortexFieldChanged:);
-  NSString *prefix = [config valueForKeyPath:@"integrations.cortex.widget.label_prefix" defaultValue:@"HAFS"];
+  NSString *prefix = [config valueForKeyPath:@"integrations.cortex.widget.label_prefix" defaultValue:@"AFS"];
   self.cortexLabelPrefixField.stringValue = prefix ?: @"";
   [cortexBox addSubview:self.cortexLabelPrefixField];
 
@@ -466,6 +474,56 @@
   [halextBox addSubview:halextSaveButton];
 
   [self.contentView addSubview:halextBox];
+  y -= 200;
+
+  // MARK: AFS / Cortex / Halext Quick Actions
+  NSBox *afsBox = [[NSBox alloc] initWithFrame:NSMakeRect(leftMargin, y - 160, 700, 160)];
+  afsBox.title = @"AFS + Cortex + Halext (Quick Actions)";
+  afsBox.titlePosition = NSAtTop;
+
+  NSButton *openHafsButton = [[NSButton alloc] initWithFrame:NSMakeRect(20, 110, 160, 28)];
+  [openHafsButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [openHafsButton setBezelStyle:NSBezelStyleRounded];
+  openHafsButton.title = @"Open AFS Repo";
+  openHafsButton.target = self;
+  openHafsButton.action = @selector(openHafsRepo:);
+  [afsBox addSubview:openHafsButton];
+
+  NSButton *openHafsTuiButton = [[NSButton alloc] initWithFrame:NSMakeRect(190, 110, 180, 28)];
+  [openHafsTuiButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [openHafsTuiButton setBezelStyle:NSBezelStyleRounded];
+  openHafsTuiButton.title = @"Launch AFS TUI";
+  openHafsTuiButton.target = self;
+  openHafsTuiButton.action = @selector(openHafsTui:);
+  [afsBox addSubview:openHafsTuiButton];
+
+  NSButton *openCortexRepoButton = [[NSButton alloc] initWithFrame:NSMakeRect(380, 110, 160, 28)];
+  [openCortexRepoButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [openCortexRepoButton setBezelStyle:NSBezelStyleRounded];
+  openCortexRepoButton.title = @"Open Cortex Repo";
+  openCortexRepoButton.target = self;
+  openCortexRepoButton.action = @selector(openCortexRepo:);
+  [afsBox addSubview:openCortexRepoButton];
+
+  NSButton *openHalextRepoButton = [[NSButton alloc] initWithFrame:NSMakeRect(20, 70, 180, 28)];
+  [openHalextRepoButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [openHalextRepoButton setBezelStyle:NSBezelStyleRounded];
+  openHalextRepoButton.title = @"Open halext-org Repo";
+  openHalextRepoButton.target = self;
+  openHalextRepoButton.action = @selector(openHalextRepo:);
+  [afsBox addSubview:openHalextRepoButton];
+
+  NSButton *openCortexAppButton = [[NSButton alloc] initWithFrame:NSMakeRect(210, 70, 160, 28)];
+  [openCortexAppButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [openCortexAppButton setBezelStyle:NSBezelStyleRounded];
+  openCortexAppButton.title = @"Open Cortex App";
+  openCortexAppButton.target = self;
+  openCortexAppButton.action = @selector(openCortexApp:);
+  [afsBox addSubview:openCortexAppButton];
+
+  [self.contentView addSubview:afsBox];
+  y -= 190;
+
 }
 
 - (void)yazeToggled:(NSButton *)sender {
@@ -503,7 +561,7 @@
 - (void)cortexLabelModeChanged:(NSPopUpButton *)sender {
   NSString *mode = @"training";
   switch (sender.indexOfSelectedItem) {
-    case 1: mode = @"hafs"; break;
+    case 1: mode = @"afs"; break;
     case 2: mode = @"status"; break;
     case 3: mode = @"none"; break;
     default: mode = @"training"; break;
@@ -675,7 +733,7 @@
 }
 
 - (void)updateYazeStatus {
-  NSString *yazePath = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/yaze"];
+  NSString *yazePath = [[self codeDir] stringByAppendingPathComponent:@"yaze"];
   NSString *buildBinary = [yazePath stringByAppendingPathComponent:@"build/bin/yaze"];
 
   if ([[NSFileManager defaultManager] fileExistsAtPath:buildBinary]) {
@@ -724,19 +782,20 @@
 }
 
 - (void)launchYaze:(id)sender {
-  NSString *yazePath = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/yaze/build/bin/yaze"];
+  NSString *yazePath = [[[self codeDir] stringByAppendingPathComponent:@"yaze"] stringByAppendingPathComponent:@"build/bin/yaze"];
   if ([[NSFileManager defaultManager] fileExistsAtPath:yazePath]) {
     [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:yazePath]];
   } else {
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:@"Yaze Not Found"];
-    [alert setInformativeText:@"Build Yaze first: cd ~/Code/yaze && make"];
+    NSString *message = [NSString stringWithFormat:@"Build Yaze first: cd %@/yaze && make", [self codeDir]];
+    [alert setInformativeText:message];
     [alert runModal];
   }
 }
 
 - (void)openYazeRepo:(id)sender {
-  NSString *yazePath = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/yaze"];
+  NSString *yazePath = [[self codeDir] stringByAppendingPathComponent:@"yaze"];
   [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:yazePath]];
 }
 
@@ -757,6 +816,45 @@
   [alert setMessageText:@"Emacs Not Found"];
   [alert setInformativeText:@"Install Emacs first"];
   [alert runModal];
+}
+
+- (void)openHafsRepo:(id)sender {
+  NSString *path = [[self codeDir] stringByAppendingPathComponent:@"afs"];
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
+}
+
+- (void)openHafsTui:(id)sender {
+  NSString *command = [NSString stringWithFormat:@"cd %@/afs && python3 -m tui.app", [self codeDir]];
+  [self openTerminalCommand:command];
+}
+
+- (void)openCortexRepo:(id)sender {
+  NSString *path = [[self codeDir] stringByAppendingPathComponent:@"cortex"];
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
+}
+
+- (void)openCortexApp:(id)sender {
+  NSString *appPath = @"/Applications/Cortex.app";
+  if ([[NSFileManager defaultManager] fileExistsAtPath:appPath]) {
+    [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:appPath]];
+  } else {
+    NSString *path = [[self codeDir] stringByAppendingPathComponent:@"cortex"];
+    [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
+  }
+}
+
+- (void)openHalextRepo:(id)sender {
+  NSString *path = [[self codeDir] stringByAppendingPathComponent:@"halext-org"];
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
+}
+
+- (void)openTerminalCommand:(NSString *)command {
+  NSString *escaped = [command stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
+  NSString *script = [NSString stringWithFormat:@"tell application \"Terminal\" to do script \"%@\"", escaped];
+  NSTask *task = [[NSTask alloc] init];
+  task.launchPath = @"/usr/bin/osascript";
+  task.arguments = @[@"-e", script];
+  [task launch];
 }
 
 - (void)saveHalextSettings:(id)sender {

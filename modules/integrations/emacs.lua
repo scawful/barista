@@ -4,7 +4,8 @@
 local emacs = {}
 
 local HOME = os.getenv("HOME")
-local CODE_DIR = HOME .. "/Code"
+local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
+local CODE_DIR = os.getenv("BARISTA_CODE_DIR") or (HOME .. "/src")
 local EMACS_DIR = CODE_DIR .. "/lisp"
 local DOCS_DIR = CODE_DIR .. "/docs/workflow"
 
@@ -17,6 +18,56 @@ emacs.config = {
   dev_workflow = DOCS_DIR .. "/development.org",
   workspace_name = "Emacs", -- Default workspace/space name for Emacs
 }
+
+local function expand_path(path)
+  if type(path) ~= "string" or path == "" then
+    return nil
+  end
+  if path:sub(1, 2) == "~/" then
+    return HOME .. path:sub(2)
+  end
+  return path
+end
+
+local function resolve_scripts_dir()
+  local override = os.getenv("BARISTA_SCRIPTS_DIR")
+  if override and override ~= "" then
+    return expand_path(override)
+  end
+
+  local ok, json = pcall(require, "json")
+  if ok then
+    local state_path = CONFIG_DIR .. "/state.json"
+    local file = io.open(state_path, "r")
+    if file then
+      local content = file:read("*a")
+      file:close()
+      local ok_decode, data = pcall(json.decode, content)
+      if ok_decode and type(data) == "table" and type(data.paths) == "table" then
+        local candidate = expand_path(data.paths.scripts_dir or data.paths.scripts)
+        if candidate and candidate ~= "" then
+          return candidate
+        end
+      end
+    end
+  end
+
+  local config_scripts = CONFIG_DIR .. "/scripts"
+  local probe = io.open(config_scripts .. "/yabai_control.sh", "r")
+  if probe then
+    probe:close()
+    return config_scripts
+  end
+
+  local legacy_scripts = HOME .. "/.config/scripts"
+  local legacy_probe = io.open(legacy_scripts .. "/yabai_control.sh", "r")
+  if legacy_probe then
+    legacy_probe:close()
+    return legacy_scripts
+  end
+
+  return config_scripts
+end
 
 -- Check if Emacs is installed
 function emacs.is_installed()
@@ -63,7 +114,8 @@ end
 -- Focus Emacs workspace using yabai
 function emacs.focus_workspace(yabai_control_script)
   if not yabai_control_script then
-    yabai_control_script = HOME .. "/.config/scripts/yabai_control.sh"
+    local scripts_dir = resolve_scripts_dir()
+    yabai_control_script = scripts_dir .. "/yabai_control.sh"
   end
 
   local cmd = string.format(

@@ -6,6 +6,9 @@
 
 set -euo pipefail
 
+export LC_ALL="${LC_ALL:-en_US.UTF-8}"
+export LANG="${LANG:-en_US.UTF-8}"
+
 HIGHLIGHT="0x40f5c2e7"
 ICON_CPU_OVERRIDE="${BARISTA_ICON_CPU:-}"
 ICON_MEM_OVERRIDE="${BARISTA_ICON_MEM:-}"

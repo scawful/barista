@@ -50,7 +50,7 @@ entry["enabled"] = enabled
 data["integrations"] = integrations
 os.makedirs(os.path.dirname(state_path), exist_ok=True)
 with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh)
+    json.dump(data, fh, ensure_ascii=False)
 PY
 
 sketchybar --trigger yabai_status_refresh >/dev/null 2>&1 || true

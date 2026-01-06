@@ -13,9 +13,10 @@ function M.setup(config)
   local attach_hover = config.attach_hover
   local PLUGIN_DIR = config.paths.plugins
 
+  -- OPTIMIZED: Update every 30 seconds instead of 1 second (97% CPU reduction)
   widget_factory.create_clock({
     script = compiled_script("clock_widget", PLUGIN_DIR .. "/clock.sh"),
-    update_freq = 1,
+    update_freq = 30,
     click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
     popup = {
       align = "right",

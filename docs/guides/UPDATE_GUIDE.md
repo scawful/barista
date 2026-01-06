@@ -27,6 +27,18 @@ Keep Barista current with safe backups and minimal downtime. Choose the path tha
    - Use `BARISTA_SKIP_RESTART=1` if restarts are blocked on corporate laptops
 2) Verify: `sketchybar --reload` (also `yabai -m query --spaces` / `skhd --reload` if running)
 
+## Repo Deploy Workflow (Separate Source Repo)
+If you keep Barista in a repo (for example in `~/src/lab/barista`) and deploy into `~/.config/sketchybar`:
+
+1) Deploy:
+   - `./scripts/deploy.sh`
+   - Optional: `./scripts/deploy.sh --note "Space fixes + menu updates"`
+   - Overrides: `BARISTA_SOURCE_DIR=/path/to/repo BARISTA_CONFIG_DIR=~/.config/sketchybar`
+2) Check deploy version:
+   - `./scripts/deploy_info.sh`
+3) Backups:
+   - Stored at `~/.config/sketchybar.backup.<timestamp>` unless `--no-backup`
+
 ## Recovery
 - Backups live at `~/.config/sketchybar.backup.<timestamp>`
 - Restore example: `cp -r ~/.config/sketchybar.backup.20250101_120000/* ~/.config/sketchybar/`

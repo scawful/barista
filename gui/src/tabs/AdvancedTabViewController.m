@@ -6,6 +6,10 @@
 @property (strong) NSButton *saveButton;
 @property (strong) NSButton *reloadButton;
 @property (strong) NSTextField *statusLabel;
+@property (strong) NSTextField *scriptsField;
+@property (strong) NSTextField *scriptsResolvedLabel;
+@property (strong) NSTextField *codeField;
+@property (strong) NSTextField *codeResolvedLabel;
 @end
 
 @implementation AdvancedTabViewController
@@ -41,7 +45,8 @@
   y -= 30;
 
   // JSON Editor
-  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(leftMargin, 100, self.view.bounds.size.width - 80, y - 100)];
+  CGFloat scrollBottom = 250;
+  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(leftMargin, scrollBottom, self.view.bounds.size.width - 80, y - scrollBottom)];
   scrollView.hasVerticalScroller = YES;
   scrollView.autohidesScrollers = YES;
   scrollView.borderType = NSBezelBorder;
@@ -55,6 +60,102 @@
   [self.view addSubview:scrollView];
 
   [self loadJSON];
+
+  // Scripts Path
+  CGFloat scriptsTop = scrollBottom - 10;
+  NSTextField *scriptsLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, scriptsTop, 400, 20)];
+  scriptsLabel.stringValue = @"Scripts Directory (optional override):";
+  scriptsLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
+  scriptsLabel.bordered = NO;
+  scriptsLabel.editable = NO;
+  scriptsLabel.backgroundColor = [NSColor clearColor];
+  [self.view addSubview:scriptsLabel];
+
+  self.scriptsField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, scriptsTop - 28, 420, 24)];
+  self.scriptsField.placeholderString = @"Auto (uses config/scripts)";
+  [self.view addSubview:self.scriptsField];
+
+  NSButton *scriptsApplyButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 430, scriptsTop - 30, 70, 26)];
+  [scriptsApplyButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [scriptsApplyButton setBezelStyle:NSBezelStyleRounded];
+  scriptsApplyButton.title = @"Apply";
+  scriptsApplyButton.target = self;
+  scriptsApplyButton.action = @selector(applyScriptsPath:);
+  [self.view addSubview:scriptsApplyButton];
+
+  NSButton *scriptsAutoButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 510, scriptsTop - 30, 80, 26)];
+  [scriptsAutoButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [scriptsAutoButton setBezelStyle:NSBezelStyleRounded];
+  scriptsAutoButton.title = @"Auto";
+  scriptsAutoButton.target = self;
+  scriptsAutoButton.action = @selector(resetScriptsPath:);
+  [self.view addSubview:scriptsAutoButton];
+
+  NSButton *scriptsOpenButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 600, scriptsTop - 30, 120, 26)];
+  [scriptsOpenButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [scriptsOpenButton setBezelStyle:NSBezelStyleRounded];
+  scriptsOpenButton.title = @"Open Folder";
+  scriptsOpenButton.target = self;
+  scriptsOpenButton.action = @selector(openScriptsFolder:);
+  [self.view addSubview:scriptsOpenButton];
+
+  self.scriptsResolvedLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, scriptsTop - 52, 600, 18)];
+  self.scriptsResolvedLabel.bordered = NO;
+  self.scriptsResolvedLabel.editable = NO;
+  self.scriptsResolvedLabel.backgroundColor = [NSColor clearColor];
+  self.scriptsResolvedLabel.font = [NSFont systemFontOfSize:11];
+  self.scriptsResolvedLabel.textColor = [NSColor secondaryLabelColor];
+  [self.view addSubview:self.scriptsResolvedLabel];
+
+  [self loadScriptsPath];
+
+  // Code Path
+  CGFloat codeTop = scriptsTop - 70;
+  NSTextField *codeLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, codeTop, 400, 20)];
+  codeLabel.stringValue = @"Code Directory (repos + workflows):";
+  codeLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
+  codeLabel.bordered = NO;
+  codeLabel.editable = NO;
+  codeLabel.backgroundColor = [NSColor clearColor];
+  [self.view addSubview:codeLabel];
+
+  self.codeField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, codeTop - 28, 420, 24)];
+  self.codeField.placeholderString = @"Auto (uses ~/src)";
+  [self.view addSubview:self.codeField];
+
+  NSButton *codeApplyButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 430, codeTop - 30, 70, 26)];
+  [codeApplyButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [codeApplyButton setBezelStyle:NSBezelStyleRounded];
+  codeApplyButton.title = @"Apply";
+  codeApplyButton.target = self;
+  codeApplyButton.action = @selector(applyCodePath:);
+  [self.view addSubview:codeApplyButton];
+
+  NSButton *codeAutoButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 510, codeTop - 30, 80, 26)];
+  [codeAutoButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [codeAutoButton setBezelStyle:NSBezelStyleRounded];
+  codeAutoButton.title = @"Auto";
+  codeAutoButton.target = self;
+  codeAutoButton.action = @selector(resetCodePath:);
+  [self.view addSubview:codeAutoButton];
+
+  NSButton *codeOpenButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 600, codeTop - 30, 120, 26)];
+  [codeOpenButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [codeOpenButton setBezelStyle:NSBezelStyleRounded];
+  codeOpenButton.title = @"Open Folder";
+  codeOpenButton.target = self;
+  codeOpenButton.action = @selector(openCodeFolder:);
+  [self.view addSubview:codeOpenButton];
+
+  self.codeResolvedLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, codeTop - 52, 600, 18)];
+  self.codeResolvedLabel.bordered = NO;
+  self.codeResolvedLabel.editable = NO;
+  self.codeResolvedLabel.backgroundColor = [NSColor clearColor];
+  self.codeResolvedLabel.font = [NSFont systemFontOfSize:11];
+  self.codeResolvedLabel.textColor = [NSColor secondaryLabelColor];
+  [self.view addSubview:self.codeResolvedLabel];
+
+  [self loadCodePath];
 
   // Buttons
   self.saveButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin, 50, 120, 32)];
@@ -81,7 +182,15 @@
   openConfigButton.action = @selector(openConfigFolder:);
   [self.view addSubview:openConfigButton];
 
-  NSButton *reloadBarButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 450, 50, 140, 32)];
+  NSButton *openMenuDataButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 450, 50, 160, 32)];
+  [openMenuDataButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [openMenuDataButton setBezelStyle:NSBezelStyleRounded];
+  openMenuDataButton.title = @"Open Menu Data";
+  openMenuDataButton.target = self;
+  openMenuDataButton.action = @selector(openMenuData:);
+  [self.view addSubview:openMenuDataButton];
+
+  NSButton *reloadBarButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 620, 50, 140, 32)];
   [reloadBarButton setButtonType:NSButtonTypeMomentaryPushIn];
   [reloadBarButton setBezelStyle:NSBezelStyleRounded];
   reloadBarButton.title = @"Reload Bar";
@@ -101,14 +210,37 @@
   // System Info
   NSTextField *infoLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, 10, 600, 8)];
   ConfigurationManager *config = [ConfigurationManager sharedManager];
-  infoLabel.stringValue = [NSString stringWithFormat:@"Config: %@ | State: %@",
-                           config.configPath, config.statePath];
+  infoLabel.stringValue = [NSString stringWithFormat:@"Config: %@ | State: %@ | Code: %@",
+                           config.configPath, config.statePath, config.codePath ?: @"(auto)"];
   infoLabel.bordered = NO;
   infoLabel.editable = NO;
   infoLabel.backgroundColor = [NSColor clearColor];
   infoLabel.font = [NSFont systemFontOfSize:9];
   infoLabel.textColor = [NSColor secondaryLabelColor];
   [self.view addSubview:infoLabel];
+}
+
+- (void)loadScriptsPath {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *override = [config valueForKeyPath:@"paths.scripts_dir" defaultValue:@""];
+  if (![override isKindOfClass:[NSString class]]) {
+    override = @"";
+  }
+  self.scriptsField.stringValue = override;
+  self.scriptsResolvedLabel.stringValue = [NSString stringWithFormat:@"Resolved: %@", config.scriptsPath ?: @"(unknown)"];
+}
+
+- (void)loadCodePath {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *override = [config valueForKeyPath:@"paths.code_dir" defaultValue:@""];
+  if (![override isKindOfClass:[NSString class]] || override.length == 0) {
+    override = [config valueForKeyPath:@"paths.code" defaultValue:@""];
+  }
+  if (![override isKindOfClass:[NSString class]]) {
+    override = @"";
+  }
+  self.codeField.stringValue = override;
+  self.codeResolvedLabel.stringValue = [NSString stringWithFormat:@"Resolved: %@", config.codePath ?: @"(unknown)"];
 }
 
 - (void)loadJSON {
@@ -172,6 +304,67 @@
   [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:config.configPath]];
 }
 
+- (void)openMenuData:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *path = [config.configPath stringByAppendingPathComponent:@"data"];
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
+}
+
+- (void)applyScriptsPath:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *value = [self.scriptsField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if (value.length == 0) {
+    [config removeValueForKeyPath:@"paths.scripts_dir"];
+  } else {
+    [config setValue:value forKeyPath:@"paths.scripts_dir"];
+  }
+  [config refreshPaths];
+  self.scriptsResolvedLabel.stringValue = [NSString stringWithFormat:@"Resolved: %@", config.scriptsPath ?: @"(unknown)"];
+  self.statusLabel.stringValue = @"✓ Scripts path saved (reload bar to apply)";
+  self.statusLabel.textColor = [NSColor systemGreenColor];
+}
+
+- (void)resetScriptsPath:(id)sender {
+  self.scriptsField.stringValue = @"";
+  [self applyScriptsPath:sender];
+}
+
+- (void)openScriptsFolder:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  if (!config.scriptsPath) {
+    return;
+  }
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:config.scriptsPath]];
+}
+
+- (void)applyCodePath:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *value = [self.codeField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if (value.length == 0) {
+    [config removeValueForKeyPath:@"paths.code_dir"];
+    [config removeValueForKeyPath:@"paths.code"];
+  } else {
+    [config setValue:value forKeyPath:@"paths.code_dir"];
+  }
+  [config refreshPaths];
+  self.codeResolvedLabel.stringValue = [NSString stringWithFormat:@"Resolved: %@", config.codePath ?: @"(unknown)"];
+  self.statusLabel.stringValue = @"✓ Code path saved (reload bar to apply)";
+  self.statusLabel.textColor = [NSColor systemGreenColor];
+}
+
+- (void)resetCodePath:(id)sender {
+  self.codeField.stringValue = @"";
+  [self applyCodePath:sender];
+}
+
+- (void)openCodeFolder:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  if (!config.codePath) {
+    return;
+  }
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:config.codePath]];
+}
+
 - (void)reloadBar:(id)sender {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
   [config reloadSketchyBar];
@@ -185,4 +378,3 @@
 }
 
 @end
-

@@ -4,7 +4,7 @@
 local profile = {}
 
 local HOME = os.getenv("HOME")
-local CONFIG_DIR = HOME .. "/.config/sketchybar"
+local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
 
 -- Load profile by name
 function profile.load(profile_name)
@@ -57,26 +57,28 @@ function profile.merge_config(base_config, user_profile)
     return base_config
   end
 
-  -- Merge appearance (only for non-nil values to preserve state.json)
+  -- Merge appearance (only when state.json doesn't already define a value)
   if user_profile.appearance then
     base_config.appearance = base_config.appearance or {}
     for k, v in pairs(user_profile.appearance) do
       -- Only merge if value is not nil (allows profiles to preserve existing settings)
-      if v ~= nil then
+      if v ~= nil and base_config.appearance[k] == nil then
         base_config.appearance[k] = v
       end
     end
   end
 
-  -- Merge widgets
+  -- Merge widgets (only when state.json doesn't already define a value)
   if user_profile.widgets then
     base_config.widgets = base_config.widgets or {}
     for k, v in pairs(user_profile.widgets) do
-      base_config.widgets[k] = v
+      if base_config.widgets[k] == nil then
+        base_config.widgets[k] = v
+      end
     end
   end
 
-  -- Merge integrations
+  -- Merge integrations (only when state.json doesn't already define enabled)
   if user_profile.integrations then
     base_config.integrations = base_config.integrations or {}
     for k, v in pairs(user_profile.integrations) do
@@ -84,7 +86,9 @@ function profile.merge_config(base_config, user_profile)
         base_config.integrations[k] = {}
       end
       if type(base_config.integrations[k]) == "table" then
-        base_config.integrations[k].enabled = v
+        if base_config.integrations[k].enabled == nil then
+          base_config.integrations[k].enabled = v
+        end
       end
     end
   end

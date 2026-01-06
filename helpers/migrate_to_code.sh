@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SOURCE="${HOME}/.config/sketchybar"
-DEFAULT_TARGET="${HOME}/Code/sketchybar"
+DEFAULT_TARGET="${HOME}/src/sketchybar"
 TARGET="${1:-$DEFAULT_TARGET}"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP="${SOURCE}.backup.${TIMESTAMP}"

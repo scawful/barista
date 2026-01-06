@@ -1,15 +1,21 @@
+#import "ConfigurationManager.h"
 #import <Cocoa/Cocoa.h>
 
 @interface HelpCenterController : NSObject <NSApplicationDelegate>
 @property (strong) NSWindow *window;
 @property (strong) NSDictionary *workflowData;
+@property (copy) NSString *configPath;
 @property (copy) NSString *scriptsPath;
+@property (copy) NSString *codePath;
 @end
 
 @implementation HelpCenterController
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-  self.scriptsPath = [NSHomeDirectory() stringByAppendingPathComponent:@".config/scripts"];
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  self.configPath = config.configPath;
+  self.scriptsPath = config.scriptsPath;
+  self.codePath = config.codePath;
   self.workflowData = [self loadWorkflowData];
   [self buildWindow];
   [NSApp activateIgnoringOtherApps:YES];
@@ -240,7 +246,7 @@
 }
 
 - (NSDictionary *)loadWorkflowData {
-  NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar/data/workflow_shortcuts.json"];
+  NSString *path = [self.configPath stringByAppendingPathComponent:@"data/workflow_shortcuts.json"];
   NSData *data = [NSData dataWithContentsOfFile:path];
   if (!data) return @{};
   NSError *error = nil;
@@ -253,6 +259,12 @@
 
 - (NSString *)expandedWorkflowPath:(NSString *)relativePath {
   if (![relativePath isKindOfClass:[NSString class]]) return nil;
+  if ([relativePath containsString:@"%CONFIG%"] && self.configPath.length) {
+    relativePath = [relativePath stringByReplacingOccurrencesOfString:@"%CONFIG%" withString:self.configPath];
+  }
+  if ([relativePath containsString:@"%CODE%"] && self.codePath.length) {
+    relativePath = [relativePath stringByReplacingOccurrencesOfString:@"%CODE%" withString:self.codePath];
+  }
   if ([relativePath hasPrefix:@"~/"]) {
     return [relativePath stringByReplacingCharactersInRange:NSMakeRange(0, 1) withString:NSHomeDirectory()];
   }
@@ -287,7 +299,10 @@
 }
 
 - (void)runAccessibilityFix:(id)sender {
-  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"yabai_accessibility_fix.sh"];
+  NSString *script = [self.configPath stringByAppendingPathComponent:@"helpers/setup_permissions.sh"];
+  if (![[NSFileManager defaultManager] isExecutableFileAtPath:script]) {
+    script = [self.scriptsPath stringByAppendingPathComponent:@"yabai_accessibility_fix.sh"];
+  }
   [self runScript:script arguments:@[]];
 }
 
@@ -297,14 +312,36 @@
 }
 
 - (void)launchYaze:(id)sender {
-  NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/yaze/build/bin/yaze"];
+  NSString *path = [[self.codePath stringByAppendingPathComponent:@"yaze"] stringByAppendingPathComponent:@"build/bin/yaze"];
   if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
     [self runCommand:path arguments:@[]];
   } else {
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:@"Yaze Not Found"];
-    [alert setInformativeText:@"Build Yaze first: cd ~/Code/yaze && make"];
+    NSString *message = [NSString stringWithFormat:@"Build Yaze first: cd %@/yaze && make", self.codePath ?: @"~/src"];
+    [alert setInformativeText:message];
     [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+  }
+}
+
+- (void)openControlPanel:(id)sender {
+  NSString *script = [self.configPath stringByAppendingPathComponent:@"bin/open_control_panel.sh"];
+  [self runScript:script arguments:@[]];
+}
+
+- (void)toggleWhichKey:(id)sender {
+  [self runCommand:@"/opt/homebrew/opt/sketchybar/bin/sketchybar" arguments:@[@"--trigger", @"whichkey_toggle"]];
+}
+
+- (void)openIconBrowser:(id)sender {
+  NSString *path = [self.configPath stringByAppendingPathComponent:@"gui/bin/icon_browser"];
+  if ([[NSFileManager defaultManager] isExecutableFileAtPath:path]) {
+    [self runCommand:path arguments:@[]];
+  } else {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Icon Browser Not Found";
+    alert.informativeText = [NSString stringWithFormat:@"Build icon_browser first: cd %@/gui && make icon_browser", self.configPath];
     [alert runModal];
   }
 }

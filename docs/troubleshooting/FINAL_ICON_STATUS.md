@@ -29,7 +29,7 @@
 ### What Works:
 - Icon is in state.json: `"apple": ""`
 - Direct set command works: `sketchybar --set apple_menu icon=""`
-- Test script works: `~/Code/sketchybar/test_apple_icon.sh`
+- Test script works: `~/src/sketchybar/test_apple_icon.sh`
 
 ### What Doesn't Work:
 - Icon doesn't load from state.json during bar initialization
@@ -43,7 +43,7 @@ sketchybar --set apple_menu icon=""
 
 Or use the test script:
 ```bash
-~/Code/sketchybar/test_apple_icon.sh
+~/src/sketchybar/test_apple_icon.sh
 ```
 
 ## Root Cause Analysis
@@ -139,7 +139,7 @@ cat ~/.config/sketchybar/state.json | jq '.icons.apple'
 sketchybar --set apple_menu icon=""
 
 # Run test script
-~/Code/sketchybar/test_apple_icon.sh
+~/src/sketchybar/test_apple_icon.sh
 
 # Reload bar
 sketchybar --reload

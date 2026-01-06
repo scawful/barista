@@ -171,7 +171,7 @@ lua -e 'print("")'
 
 ### Icon Categories in config_menu.m
 
-Located at `/Users/scawful/Code/sketchybar/gui/config_menu.m:130-180`:
+Located at `/Users/scawful/src/sketchybar/gui/config_menu.m:130-180`:
 
 - System & Hardware (Apple, CPU, Network, Battery, etc.)
 - Development (Terminal, Code, Git, VSCode, etc.)

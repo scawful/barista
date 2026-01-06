@@ -4,7 +4,7 @@
 -- Usage: lua generate_shortcuts.lua [output_file]
 
 local HOME = os.getenv("HOME")
-local CONFIG_DIR = HOME .. "/.config/sketchybar"
+local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
 package.path = package.path .. ";" .. CONFIG_DIR .. "/modules/?.lua"
 
 local shortcuts = require("shortcuts")

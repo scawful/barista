@@ -33,12 +33,39 @@
   self = [super init];
   if (self) {
     NSString *home = NSHomeDirectory();
-    self.statePath = [home stringByAppendingPathComponent:@".config/sketchybar/state.json"];
-    self.configPath = [home stringByAppendingPathComponent:@".config/sketchybar"];
-    self.scriptsPath = [home stringByAppendingPathComponent:@".config/scripts"];
+    NSString *configOverride = [[[NSProcessInfo processInfo] environment] objectForKey:@"BARISTA_CONFIG_DIR"];
+    if ([configOverride hasPrefix:@"~/"]) {
+      configOverride = [home stringByAppendingPathComponent:[configOverride substringFromIndex:2]];
+    }
+    if (configOverride.length) {
+      self.configPath = configOverride;
+    } else {
+      self.configPath = [home stringByAppendingPathComponent:@".config/sketchybar"];
+    }
+    self.statePath = [self.configPath stringByAppendingPathComponent:@"state.json"];
+    self.scriptsPath = [self resolveScriptsPath];
     [self loadState];
   }
   return self;
+}
+
+- (NSString *)resolveScriptsPath {
+  NSString *override = [[[NSProcessInfo processInfo] environment] objectForKey:@"BARISTA_SCRIPTS_DIR"];
+  if (override.length) {
+    return override;
+  }
+
+  NSString *configScripts = [self.configPath stringByAppendingPathComponent:@"scripts"];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:configScripts]) {
+    return configScripts;
+  }
+
+  NSString *legacyScripts = [NSHomeDirectory() stringByAppendingPathComponent:@".config/scripts"];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:legacyScripts]) {
+    return legacyScripts;
+  }
+
+  return configScripts;
 }
 
 - (BOOL)loadState {
@@ -1049,6 +1076,19 @@
 
 @implementation IntegrationsTabViewController
 
+- (NSString *)codeDir {
+  NSString *envPath = [[[NSProcessInfo processInfo] environment] objectForKey:@"BARISTA_CODE_DIR"];
+  if (envPath.length) {
+    return envPath;
+  }
+  NSString *defaultPath = [NSHomeDirectory() stringByAppendingPathComponent:@"src"];
+  BOOL isDir = NO;
+  if ([[NSFileManager defaultManager] fileExistsAtPath:defaultPath isDirectory:&isDir] && isDir) {
+    return defaultPath;
+  }
+  return defaultPath;
+}
+
 - (void)loadView {
   self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
 }
@@ -1232,7 +1272,7 @@
 }
 
 - (void)updateYazeStatus {
-  NSString *yazePath = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/yaze"];
+  NSString *yazePath = [[self codeDir] stringByAppendingPathComponent:@"yaze"];
   NSString *buildBinary = [yazePath stringByAppendingPathComponent:@"build/bin/yaze"];
 
   if ([[NSFileManager defaultManager] fileExistsAtPath:buildBinary]) {
@@ -1271,19 +1311,20 @@
 }
 
 - (void)launchYaze:(id)sender {
-  NSString *yazePath = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/yaze/build/bin/yaze"];
+  NSString *yazePath = [[[self codeDir] stringByAppendingPathComponent:@"yaze"] stringByAppendingPathComponent:@"build/bin/yaze"];
   if ([[NSFileManager defaultManager] fileExistsAtPath:yazePath]) {
     [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:yazePath]];
   } else {
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:@"Yaze Not Found"];
-    [alert setInformativeText:@"Build Yaze first: cd ~/Code/yaze && make"];
+    NSString *message = [NSString stringWithFormat:@"Build Yaze first: cd %@/yaze && make", [self codeDir]];
+    [alert setInformativeText:message];
     [alert runModal];
   }
 }
 
 - (void)openYazeRepo:(id)sender {
-  NSString *yazePath = [NSHomeDirectory() stringByAppendingPathComponent:@"Code/yaze"];
+  NSString *yazePath = [[self codeDir] stringByAppendingPathComponent:@"yaze"];
   [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:yazePath]];
 }
 

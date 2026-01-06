@@ -65,13 +65,58 @@ icon_manager.import_from_module(icons_module)
 -- Paths (configurable via environment variables)
 local PLUGIN_DIR = CONFIG_DIR .. "/plugins"
 local EVENT_DIR = CONFIG_DIR .. "/helpers/event_providers"
-local SCRIPTS_DIR = os.getenv("BARISTA_SCRIPTS_DIR") or (HOME .. "/.config/scripts")
-local CODE_DIR = os.getenv("BARISTA_CODE_DIR") or (HOME .. "/Code")
+local function expand_path(path)
+  if type(path) ~= "string" or path == "" then
+    return nil
+  end
+  if path:sub(1, 2) == "~/" then
+    return HOME .. path:sub(2)
+  end
+  return path
+end
 
--- Scripts
-local YABAI_CONTROL_SCRIPT = SCRIPTS_DIR .. "/yabai_control.sh"
-local SKHD_CONTROL_SCRIPT = SCRIPTS_DIR .. "/skhd_control.sh"
-local FRONT_APP_ACTION_SCRIPT = SCRIPTS_DIR .. "/front_app_action.sh"
+local function resolve_scripts_dir(state)
+  local override = os.getenv("BARISTA_SCRIPTS_DIR")
+  if override and override ~= "" then
+    return expand_path(override)
+  end
+  if state and type(state.paths) == "table" then
+    local candidate = state.paths.scripts_dir or state.paths.scripts
+    candidate = expand_path(candidate)
+    if candidate and candidate ~= "" then
+      return candidate
+    end
+  end
+  local config_scripts = CONFIG_DIR .. "/scripts"
+  local probe = io.open(config_scripts .. "/yabai_control.sh", "r")
+  if probe then
+    probe:close()
+    return config_scripts
+  end
+  local legacy_scripts = HOME .. "/.config/scripts"
+  local legacy_probe = io.open(legacy_scripts .. "/yabai_control.sh", "r")
+  if legacy_probe then
+    legacy_probe:close()
+    return legacy_scripts
+  end
+  return config_scripts
+end
+
+local function resolve_code_dir(state)
+  local override = os.getenv("BARISTA_CODE_DIR")
+  if override and override ~= "" then
+    return expand_path(override)
+  end
+  if state and type(state.paths) == "table" then
+    local candidate = state.paths.code_dir or state.paths.code
+    candidate = expand_path(candidate)
+    if candidate and candidate ~= "" then
+      return candidate
+    end
+  end
+  return HOME .. "/src"
+end
+
 local function compiled_script(binary_name, fallback)
   if LUA_ONLY then
     return fallback
@@ -106,13 +151,22 @@ if user_profile then
   print("Loaded profile: " .. user_profile.name)
 end
 
+local CODE_DIR = resolve_code_dir(state)
+
+local SCRIPTS_DIR = resolve_scripts_dir(state)
+
+-- Scripts
+local YABAI_CONTROL_SCRIPT = SCRIPTS_DIR .. "/yabai_control.sh"
+local SKHD_CONTROL_SCRIPT = SCRIPTS_DIR .. "/skhd_control.sh"
+local FRONT_APP_ACTION_SCRIPT = SCRIPTS_DIR .. "/front_app_action.sh"
+
 local function integration_enabled(name)
   local entry = state_module.get_integration(state, name)
   if type(entry) ~= "table" then
-    return true
+    return false
   end
   if entry.enabled == nil then
-    return true
+    return false
   end
   return entry.enabled ~= false
 end
@@ -130,6 +184,18 @@ if cortex_enabled then
     cortex_module = mod
   else
     print("Barista: cortex integration enabled but module not found")
+  end
+end
+
+-- Control Center module (replaces/augments cortex widget)
+local control_center_enabled = integration_enabled("control_center") or cortex_enabled
+local control_center_module = nil
+if control_center_enabled then
+  local ok, mod = pcall(require, "control_center")
+  if ok then
+    control_center_module = mod
+  else
+    print("Barista: control_center module not found, falling back to cortex")
   end
 end
 
@@ -202,15 +268,15 @@ local function safe_icon(value)
 end
 
 local function icon_for(name, fallback)
-  local from_state = state_module.get_icon(state, name, nil)
+  local from_state = safe_icon(state_module.get_icon(state, name, nil))
   if type(from_state) == "string" and from_state ~= "" then
     return from_state
   end
-  local from_manager = icon_manager.get_char(name, nil)
+  local from_manager = safe_icon(icon_manager.get_char(name, nil))
   if type(from_manager) == "string" and from_manager ~= "" then
     return from_manager
   end
-  local from_icons = icons_module.find(name)
+  local from_icons = safe_icon(icons_module.find(name))
   if type(from_icons) == "string" and from_icons ~= "" then
     return from_icons
   end
@@ -334,7 +400,7 @@ end
 
 local function watch_spaces()
   local refresh_action = string.format("CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR)
-  local change_action = string.format("sketchybar --trigger space_change; %s", refresh_action)
+  local change_action = "sketchybar --trigger space_change; sketchybar --trigger space_mode_refresh"
   
   -- Batch signal removal commands
   local remove_cmds = {
@@ -431,11 +497,19 @@ local settings = {
 -- Build shared context for menus/whichkey/popups
 local profile_paths = profile_module.get_paths(user_profile)
 local paths = {
+  config_dir     = CONFIG_DIR,
+  code_dir       = CODE_DIR,
   menu_data      = CONFIG_DIR .. "/data",
   workflow_data  = CONFIG_DIR .. "/data/workflow_shortcuts.json",
   rom_doc        = CODE_DIR .. "/docs/workflow/rom-hacking.org",
   yaze           = CODE_DIR .. "/yaze",
+  afs           = CODE_DIR .. "/afs",
+  cortex         = CODE_DIR .. "/cortex",
+  halext_org     = CODE_DIR .. "/halext-org",
+  halext_windows = CODE_DIR .. "/halext-org/docs/BACKGROUND_AGENTS.md",
   whichkey_plan  = CONFIG_DIR .. "/docs/WHICHKEY_PLAN.md",
+  readme         = CONFIG_DIR .. "/README.md",
+  sharing        = CONFIG_DIR .. "/docs/dev/SHARING.md",
   handoff        = CONFIG_DIR .. "/docs/HANDOFF_POPUP_FIXES.md",
   apple_launcher = CONFIG_DIR .. "/bin/open_control_panel.sh",
 }
@@ -470,6 +544,7 @@ local integrations = {
   emacs  = emacs_enabled  and emacs_module  or nil,
   halext = halext_enabled and halext_module or nil,
   cortex = cortex_module,
+  control_center = control_center_module,
 }
 
 local menu_context = {
@@ -586,39 +661,7 @@ print("Setting up WhichKey...")
 whichkey_module.setup(menu_context)
 print("WhichKey setup complete")
 
--- Space Mode Indicator
-sbar.add("item", "space_mode", {
-  position = "left",
-  icon = { font = { size = 14.0 } },
-  label = { font = { size = 11.0, style = "Bold" } },
-  script = PLUGIN_DIR .. "/space_mode.sh",
-  click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
-  padding_right = 8,
-  background = {
-    color = "0x00000000",
-    corner_radius = widget_corner_radius,
-    height = widget_height,
-  },
-  popup = {
-    align = "left",
-    background = {
-      border_width = 2,
-      corner_radius = 6,
-      border_color = theme.WHITE,
-      color = theme.bar.bg,
-      padding_left = 8,
-      padding_right = 8
-    }
-  }
-})
--- OPTIMIZED: Reduced delay from 0.3s to 0.1s
-sbar.exec("sleep 0.1; sketchybar --subscribe space_mode space_change space_mode_refresh")
-sbar.exec("sleep 0.1; sketchybar --set space_mode associated_display=active associated_space=all")
-sbar.exec("sketchybar --trigger space_mode_refresh") -- Initial update
-subscribe_popup_autoclose("space_mode")
-attach_hover("space_mode")
-
--- Front App indicator (actions handled in control_center)
+-- Front App indicator
 sbar.add("item", "front_app", {
   position = "left",
   icon = { drawing = true },
@@ -666,74 +709,7 @@ end
 
 local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
 
-local function add_space_mode_popup_item(id, props)
-  local defaults = {
-    position = "popup.space_mode",
-    script = HOVER_SCRIPT,
-    ["icon.padding_left"] = 6,
-    ["icon.padding_right"] = 6,
-    ["label.padding_left"] = 8,
-    ["label.padding_right"] = 8,
-    background = { drawing = false },
-  }
-  for k, v in pairs(props) do
-    defaults[k] = v
-  end
-  sbar.add("item", id, defaults)
-end
-
-add_space_mode_popup_item("space_mode.header", {
-  icon = "",
-  label = "Space Layout",
-  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
-  background = { drawing = false },
-})
-
-local layout_actions = {
-  { name = "space_mode.float", icon = "󰒄", label = "Float (default)", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "float") },
-  { name = "space_mode.bsp",   icon = "󰆾", label = "BSP Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "bsp") },
-  { name = "space_mode.stack", icon = "󰓩", label = "Stack Tiling", action = call_script(CONFIG_DIR .. "/plugins/set_space_mode.sh", "current", "stack") },
-}
-for _, entry in ipairs(layout_actions) do
-  add_space_mode_popup_item(entry.name, {
-    icon = entry.icon,
-    label = entry.label,
-    click_script = entry.action,
-    ["label.font"] = font_small,
-  })
-end
-
-add_space_mode_popup_item("space_mode.sep", {
-  icon = "",
-  label = "───────────────",
-  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Regular"], settings.font.sizes.small),
-  ["label.color"] = theme.DARK_WHITE,
-  background = { drawing = false },
-})
-
-add_space_mode_popup_item("space_mode.window.header", {
-  icon = "",
-  label = "Window Ops",
-  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
-  background = { drawing = false },
-})
-
-local layout_ops = {
-  { name = "space_mode.balance", icon = "󰓅", label = "Balance Windows", action = call_script(YABAI_CONTROL_SCRIPT, "balance") },
-  { name = "space_mode.rotate",  icon = "󰑞", label = "Rotate Layout", action = call_script(YABAI_CONTROL_SCRIPT, "space-rotate") },
-  { name = "space_mode.toggle",  icon = "󱂬", label = "Toggle BSP/Stack", action = call_script(YABAI_CONTROL_SCRIPT, "toggle-layout") },
-  { name = "space_mode.flipx",   icon = "󰯌", label = "Flip Horizontal", action = call_script(YABAI_CONTROL_SCRIPT, "space-mirror-x") },
-  { name = "space_mode.flipy",   icon = "󰯎", label = "Flip Vertical", action = call_script(YABAI_CONTROL_SCRIPT, "space-mirror-y") },
-}
-for _, entry in ipairs(layout_ops) do
-  add_space_mode_popup_item(entry.name, {
-    icon = entry.icon,
-    label = entry.label,
-    click_script = entry.action,
-    ["label.font"] = font_small,
-  })
-end
-
+-- Front App popup items
 add_front_app_popup_item("front_app.header", {
   icon = "",
   label = "Application Controls",
@@ -771,43 +747,56 @@ shell_exec(string.format("sleep 1.2; CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG
 -- Create widget factory
 local widget_factory = widgets_module.create_factory(sbar, theme, settings, state)
 
--- Cortex widget (optional)
-local cortex_item_name = nil
-local cortex_integration = state_module.get_integration(state, "cortex")
-local cortex_widget = type(cortex_integration) == "table" and cortex_integration.widget or nil
-if cortex_module and cortex_widget and cortex_widget.enabled ~= false then
-  local cortex_item = cortex_module.create_widget({
-    position = cortex_widget.position or "right",
-    icon_active = cortex_widget.icon_active,
-    icon_inactive = cortex_widget.icon_inactive,
-    color_active = cortex_widget.color_active,
-    color_inactive = cortex_widget.color_inactive,
-    label_color = cortex_widget.label_color,
-    label_font = cortex_widget.label_font or font_string(settings.font.numbers, settings.font.style_map["Semibold"], settings.font.sizes.small),
-    label_mode = cortex_widget.label_mode or "hafs",
-    label_prefix = cortex_widget.label_prefix or "HAFS",
-    label_on = cortex_widget.label_on,
-    label_off = cortex_widget.label_off,
-    label_template = cortex_widget.label_template,
-    show_label = cortex_widget.show_label ~= false,
-    update_freq = cortex_widget.update_freq or 120,
-    cache_ttl = cortex_widget.cache_ttl or 60,
-    context_root = cortex_widget.context_root,
-    script_path = cortex_widget.script_path,
+-- Control Center widget (left side, replaces space_mode)
+local control_center_item_name = nil
+if control_center_module then
+  local cc_widget = control_center_module.create_widget({
+    position = "left",  -- Left side near front_app
     icon_font = { family = settings.font.icon, size = settings.font.sizes.icon },
-    click_script = cortex_widget.click_script,
+    label_font = font_string(settings.font.text, settings.font.style_map["Bold"], 11),
+    label_color = "0xffcdd6f4",
+    show_label = true,
+    update_freq = 30,
+    script_path = PLUGIN_DIR .. "/control_center.sh",
+    height = widget_height,
   })
 
-  cortex_item_name = cortex_item.name or "cortex"
-  cortex_item.name = nil
-  sbar.add("item", cortex_item_name, cortex_item)
-  -- Prime the label immediately so the bar doesn't sit empty until the first update tick.
-  if cortex_item.script and cortex_item.script ~= "" then
-    sbar.exec(string.format("NAME=%s %s", cortex_item_name, cortex_item.script))
+  control_center_item_name = cc_widget.name or "control_center"
+  cc_widget.name = nil
+  sbar.add("item", control_center_item_name, cc_widget)
+
+  -- Position before front_app (delay to ensure front_app exists)
+  sbar.exec("sleep 0.3; sketchybar --move control_center before front_app 2>/dev/null || true")
+
+  -- Prime the widget immediately
+  if cc_widget.script and cc_widget.script ~= "" then
+    sbar.exec(string.format("NAME=%s %s", control_center_item_name, cc_widget.script))
   end
-  sbar.exec("sketchybar --add event cortex_started >/dev/null 2>&1 || true")
-  sbar.exec("sketchybar --add event cortex_stopped >/dev/null 2>&1 || true")
-  sbar.exec("sketchybar --subscribe cortex cortex_started cortex_stopped system_woke")
+
+  -- Add popup items for the control center
+  local cc_popup_items = control_center_module.create_popup_items(sbar, theme, font_string, settings)
+  for _, popup_item in ipairs(cc_popup_items) do
+    local item_name = popup_item.name
+    popup_item.name = nil
+    sbar.add("item", item_name, popup_item)
+  end
+
+  -- Subscribe to relevant events (includes space_mode_refresh for layout changes)
+  sbar.exec("sleep 0.1; sketchybar --subscribe control_center mouse.entered mouse.exited space_change space_mode_refresh system_woke")
+  subscribe_popup_autoclose("control_center")
+  attach_hover("control_center")
+  sbar.exec("sleep 0.1; sketchybar --set control_center associated_display=active associated_space=all")
+
+  -- Visual grouping: Control Center & Front App on left
+  sbar.add("bracket", { "control_center", "front_app" }, {
+    background = {
+      color = "0x30313244",
+      corner_radius = math.max(widget_corner_radius, 4),
+      height = math.max(widget_height + 2, 18),
+      border_width = 1,
+      border_color = "0x20585b70",
+    }
+  })
 end
 
 -- Clock widget (uses C component if available, falls back to shell script)
@@ -979,11 +968,14 @@ for _, item in ipairs(system_info_items) do
   attach_hover(item.name)
 end
 
+-- Visual grouping: Clock & System Info
 sbar.add("bracket", { "clock", "system_info" }, {
   background = {
-    color = "0x40111111",
-    corner_radius = math.max(widget_corner_radius, 2),
-    height = math.max(widget_height + 2, 18)
+    color = "0x30313244",  -- Subtle surface color for grouping
+    corner_radius = math.max(widget_corner_radius, 4),
+    height = math.max(widget_height + 2, 18),
+    border_width = 1,
+    border_color = "0x20585b70",  -- Very subtle border
   }
 })
 
@@ -1065,13 +1057,19 @@ widget_factory.create_battery({
 sbar.exec("sketchybar --subscribe battery system_woke power_source_change")
 attach_hover("battery")
 
+-- Visual grouping: Volume & Battery
+sbar.add("bracket", { "volume", "battery" }, {
+  background = {
+    color = "0x30313244",
+    corner_radius = math.max(widget_corner_radius, 4),
+    height = math.max(widget_height + 2, 18),
+    border_width = 1,
+    border_color = "0x20585b70",
+  }
+})
+
 -- Trigger initial updates for reactive widgets (batched for performance)
 sbar.exec("sketchybar --trigger volume_change && sketchybar --update volume && sketchybar --update battery")
-
-if cortex_item_name then
-  -- Keep Cortex left of the clock/calendar cluster (right-side order is reversed).
-  sbar.exec(string.format("sketchybar --move %s after clock", cortex_item_name))
-end
 
 -- End configuration
 sbar.end_config()

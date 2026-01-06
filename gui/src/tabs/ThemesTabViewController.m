@@ -18,7 +18,9 @@
   [super viewDidLoad];
 
   // Scan themes directory
-  NSString *themesPath = [[NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"] stringByAppendingPathComponent:@"themes"];
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *configDir = config.configPath ?: [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"];
+  NSString *themesPath = [configDir stringByAppendingPathComponent:@"themes"];
   NSFileManager *fm = [NSFileManager defaultManager];
   NSArray *themeFiles = [fm contentsOfDirectoryAtPath:themesPath error:nil];
   
@@ -31,7 +33,6 @@
   }
   self.availableThemes = [themes sortedArrayUsingSelector:@selector(compare:)];
 
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
   CGFloat y = self.view.bounds.size.height - 40;
   CGFloat leftMargin = 50;
 
@@ -104,6 +105,22 @@
   applyButton.action = @selector(applyTheme:);
   [self.view addSubview:applyButton];
 
+  NSButton *openThemesButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 220, y, 180, 32)];
+  [openThemesButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [openThemesButton setBezelStyle:NSBezelStyleRounded];
+  openThemesButton.title = @"Open Themes Folder";
+  openThemesButton.target = self;
+  openThemesButton.action = @selector(openThemesFolder:);
+  [self.view addSubview:openThemesButton];
+
+  NSButton *openOverrideButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 420, y, 200, 32)];
+  [openOverrideButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [openOverrideButton setBezelStyle:NSBezelStyleRounded];
+  openOverrideButton.title = @"Edit theme.local.lua";
+  openOverrideButton.target = self;
+  openOverrideButton.action = @selector(openThemeOverride:);
+  [self.view addSubview:openOverrideButton];
+
   [self updatePreview];
 }
 
@@ -120,6 +137,7 @@
 
 - (void)applyTheme:(id)sender {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *configDir = config.configPath ?: [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"];
   NSString *themeName = self.themeSelector.selectedItem.title;
   
   if (!themeName) {
@@ -131,7 +149,7 @@
   [config setValue:themeName forKeyPath:@"appearance.theme"];
 
   // Update theme.lua file
-  NSString *themeLuaPath = [[NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"] stringByAppendingPathComponent:@"theme.lua"];
+  NSString *themeLuaPath = [configDir stringByAppendingPathComponent:@"theme.lua"];
   NSString *themeContent = [NSString stringWithFormat:@"local current_theme = \"%@\"\nlocal theme = require(\"themes.\" .. current_theme)\n\nreturn theme\n", themeName];
   
   NSError *error = nil;
@@ -154,5 +172,19 @@
   });
 }
 
-@end
+- (void)openThemesFolder:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *themesPath = [[config.configPath ?: [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"]] stringByAppendingPathComponent:@"themes"];
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:themesPath]];
+}
 
+- (void)openThemeOverride:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *overridePath = [[config.configPath ?: [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"]] stringByAppendingPathComponent:@"themes/theme.local.lua"];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:overridePath]) {
+    [@"" writeToFile:overridePath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  }
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:overridePath]];
+}
+
+@end

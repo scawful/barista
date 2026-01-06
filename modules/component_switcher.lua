@@ -5,7 +5,7 @@
 local component_switcher = {}
 
 local HOME = os.getenv("HOME")
-local CONFIG_DIR = HOME .. "/.config/sketchybar"
+local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
 local SETTINGS_FILE = CONFIG_DIR .. "/component_settings.json"
 
 -- Component types

@@ -6,22 +6,22 @@
 - Provide clear onboarding steps plus a switch to re-enable your heavy integrations when you need them.
 
 ## Installation Flow (New Mac)
-1. **Clone the repo** somewhere convenient (e.g. `~/Code/sketchybar`).
+1. **Clone the repo** somewhere convenient (e.g. `~/src/sketchybar`).
 2. **Install prerequisites** if missing: Homebrew, `sketchybar`, `jq`, and your preferred font (`Hack Nerd Font`).
 3. **Link/copy the config** into place:
    ```sh
    mkdir -p ~/.config
-   ln -s ~/Code/sketchybar ~/.config/sketchybar
+   ln -s ~/src/sketchybar ~/.config/sketchybar
    ```
    (Or copy instead of symlink if you prefer.)
 4. **Build the GUI tools** (optional but recommended):
    ```sh
-   cd ~/Code/sketchybar/gui
+   cd ~/src/sketchybar/gui
    make
    ```
 5. **Apply the shared profile** (disables ROM hacking + Emacs integrations and keeps spaces floating by default):
    ```sh
-   cd ~/Code/sketchybar
+   cd ~/src/sketchybar
    ./bin/apply_profile.sh shared
    ```
 6. Launch Sketchybar (or `sketchybar --reload`). The control panel now exposes the same customization options without the Zelda-specific menu items.

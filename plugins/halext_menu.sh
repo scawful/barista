@@ -4,12 +4,13 @@
 
 set -euo pipefail
 
-CONFIG_DIR="${HOME}/.config/sketchybar"
+CONFIG_DIR="${BARISTA_CONFIG_DIR:-$HOME/.config/sketchybar}"
+CODE_DIR="${BARISTA_CODE_DIR:-$HOME/src}"
 STATE_FILE="${CONFIG_DIR}/state.json"
 CACHE_DIR="${CONFIG_DIR}/cache"
 TASKS_CACHE="${CACHE_DIR}/halext_tasks.json"
 CALENDAR_CACHE="${CACHE_DIR}/halext_calendar.json"
-FRONTEND_CTL="${HOME}/Code/halext-org/scripts/frontend-service.sh"
+FRONTEND_CTL="${CODE_DIR}/halext-org/scripts/frontend-service.sh"
 
 # Read configuration from state.json
 read_config() {

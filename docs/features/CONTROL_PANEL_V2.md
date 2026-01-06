@@ -75,6 +75,7 @@ Three major integrations with room for expansion:
 - **Syntax Highlighting**: Readable formatted JSON
 - **Save/Reload**: Manual control over configuration
 - **Power User Features**: Full access to all settings
+- **Scripts Directory Override**: Point to a custom scripts path used by GUI helpers
 - **Backup/Restore**: (Planned)
 
 ## Architecture

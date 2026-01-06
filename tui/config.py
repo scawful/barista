@@ -69,16 +69,21 @@ class IntegrationConfig(BaseModel):
 
 class YazeIntegration(IntegrationConfig):
     """Yaze ROM hacking integration."""
-    enabled: bool = True
+    enabled: bool = False
     recent_roms: list[str] = Field(default_factory=list)
     build_dir: str = "build/bin"
 
 
 class EmacsIntegration(IntegrationConfig):
     """Emacs integration."""
-    enabled: bool = True
+    enabled: bool = False
     workspace_name: str = "Emacs"
     recent_org_files: list[str] = Field(default_factory=list)
+
+
+class CortexIntegration(IntegrationConfig):
+    """Cortex integration."""
+    enabled: bool = False
 
 
 class HalextIntegration(IntegrationConfig):
@@ -101,6 +106,7 @@ class IntegrationsConfig(BaseModel):
     """All integration settings."""
     yaze: YazeIntegration = Field(default_factory=YazeIntegration)
     emacs: EmacsIntegration = Field(default_factory=EmacsIntegration)
+    cortex: CortexIntegration = Field(default_factory=CortexIntegration)
     halext: HalextIntegration = Field(default_factory=HalextIntegration)
     google: GoogleIntegration = Field(default_factory=GoogleIntegration)
 
@@ -126,8 +132,8 @@ class LocalConfig(BaseModel):
     """Machine-specific local configuration (local.json)."""
     machine: str = ""
     paths: dict[str, str] = Field(default_factory=lambda: {
-        "code": os.path.expanduser("~/Code"),
-        "scripts": os.path.expanduser("~/.config/scripts"),
+        "code": os.path.expanduser(os.getenv("BARISTA_CODE_DIR", "~/src")),
+        "scripts": os.path.expanduser(os.getenv("BARISTA_SCRIPTS_DIR", "~/.config/sketchybar/scripts")),
     })
     integrations: dict[str, dict] = Field(default_factory=dict)
 
@@ -194,8 +200,8 @@ def save_config(config: BaristaConfig) -> None:
     
     # Write atomically (temp file + rename)
     temp_file = state_file.with_suffix(".tmp")
-    with open(temp_file, "w") as f:
-        json.dump(data, f, indent=2)
+    with open(temp_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
     temp_file.rename(state_file)
 
 
@@ -223,8 +229,8 @@ def save_local_config(config: LocalConfig) -> None:
     data = config.model_dump(exclude_none=True)
     
     temp_file = local_file.with_suffix(".tmp")
-    with open(temp_file, "w") as f:
-        json.dump(data, f, indent=2)
+    with open(temp_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
     temp_file.rename(local_file)
 
 

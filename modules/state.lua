@@ -72,45 +72,10 @@ local default_state = {
   toggles = {
     yabai_shortcuts = true,
   },
-  integrations = {
-    yaze = {
-      enabled = true,
-      recent_roms = {},
-      build_dir = "build/bin",
-    },
-    emacs = {
-      enabled = true,
-      workspace_name = "Emacs",
-      recent_org_files = {},
-    },
-    halext = {
-      enabled = false,
-      server_url = "",
-      api_key = "",
-      sync_interval = 300, -- 5 minutes
-      show_tasks = true,
-      show_calendar = true,
-      show_suggestions = true,
-    },
-    cortex = {
-      enabled = true,
-      widget = {
-        enabled = true,
-        position = "right",
-        show_label = true,
-        label_mode = "training",
-        label_prefix = "HAFS",
-        label_template = "",
-        icon_active = "󰪴",
-        icon_inactive = "󰪵",
-        color_active = "0xffa6e3a1",
-        color_inactive = "0xff6c7086",
-        label_color = "0xffcdd6f4",
-        update_freq = 180,
-        cache_ttl = 180,
-      },
-    },
+  paths = {
+    scripts_dir = "",
   },
+  integrations = {},
 }
 
 -- Utility functions
@@ -131,6 +96,7 @@ local function sanitize_state(data)
   if type(data.appearance) ~= "table" then data.appearance = {} end
   if type(data.toggles) ~= "table" then data.toggles = {} end
   if type(data.icons) ~= "table" then data.icons = {} end
+  if type(data.paths) ~= "table" then data.paths = {} end
   if type(data.integrations) ~= "table" then data.integrations = {} end
   if type(data.space_modes) ~= "table" then data.space_modes = {} end
 

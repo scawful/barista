@@ -58,7 +58,7 @@ if mode == "float":
 else:
     space_modes[str(space)] = mode
 with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh)
+    json.dump(data, fh, ensure_ascii=False)
 PY
 }
 

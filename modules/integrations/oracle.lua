@@ -4,7 +4,7 @@
 local oracle = {}
 
 local HOME = os.getenv("HOME")
-local CODE_DIR = HOME .. "/Code"
+local CODE_DIR = os.getenv("BARISTA_CODE_DIR") or (HOME .. "/src")
 local ORACLE_DIR = CODE_DIR .. "/Oracle-of-Secrets"
 
 -- Configuration

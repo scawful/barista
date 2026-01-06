@@ -4,9 +4,9 @@
 
 set -euo pipefail
 
-CONFIG_DIR="${HOME}/.config/sketchybar"
+CONFIG_DIR="${BARISTA_CONFIG_DIR:-$HOME/.config/sketchybar}"
 STATE_FILE="$CONFIG_DIR/state.json"
-PROJECT_PATH="${HOME}/Code"
+PROJECT_PATH="${BARISTA_CODE_DIR:-$HOME/src}"
 
 action="${1:-list}"
 
@@ -92,4 +92,3 @@ case "$action" in
     exit 1
     ;;
 esac
-

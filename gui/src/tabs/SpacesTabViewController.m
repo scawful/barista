@@ -7,6 +7,8 @@
 @property (strong) NSTextField *iconPreview;
 @property (strong) NSSegmentedControl *modeSelector;
 @property (strong) NSButton *applyButton;
+@property (strong) NSButton *clearModeButton;
+@property (strong) NSButton *resetModesButton;
 @property (assign) NSInteger currentSpace;
 @end
 
@@ -145,6 +147,24 @@
   self.applyButton.action = @selector(applySettings:);
   [self.view addSubview:self.applyButton];
 
+  self.clearModeButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 220, y, 160, 32)];
+  [self.clearModeButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [self.clearModeButton setBezelStyle:NSBezelStyleRounded];
+  self.clearModeButton.title = @"Clear Mode";
+  self.clearModeButton.toolTip = @"Stop enforcing layout for this space (use default)";
+  self.clearModeButton.target = self;
+  self.clearModeButton.action = @selector(clearMode:);
+  [self.view addSubview:self.clearModeButton];
+
+  self.resetModesButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 400, y, 180, 32)];
+  [self.resetModesButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [self.resetModesButton setBezelStyle:NSBezelStyleRounded];
+  self.resetModesButton.title = @"Reset All Modes";
+  self.resetModesButton.toolTip = @"Clear space_modes for every space";
+  self.resetModesButton.target = self;
+  self.resetModesButton.action = @selector(resetAllModes:);
+  [self.view addSubview:self.resetModesButton];
+
   [self loadSpaceSettings];
 }
 
@@ -164,7 +184,9 @@
 
 - (void)browseIcons:(id)sender {
   // Launch icon browser
-  NSString *iconBrowserPath = [[NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"] stringByAppendingPathComponent:@"gui/bin/icon_browser"];
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *configDir = config.configPath ?: [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"];
+  NSString *iconBrowserPath = [configDir stringByAppendingPathComponent:@"gui/bin/icon_browser"];
   if ([[NSFileManager defaultManager] isExecutableFileAtPath:iconBrowserPath]) {
     NSTask *task = [[NSTask alloc] init];
     task.launchPath = iconBrowserPath;
@@ -172,7 +194,7 @@
   } else {
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Icon Browser Not Found";
-    alert.informativeText = @"Build icon_browser first: cd ~/.config/sketchybar/gui && make icon_browser";
+    alert.informativeText = [NSString stringWithFormat:@"Build icon_browser first: cd %@/gui && make icon_browser", configDir];
     [alert runModal];
   }
 }
@@ -245,5 +267,31 @@
   });
 }
 
-@end
+- (void)clearMode:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *keyPath = [NSString stringWithFormat:@"space_modes.%ld", (long)self.currentSpace];
+  [config removeValueForKeyPath:keyPath];
 
+  NSString *script = [[config.configPath stringByAppendingPathComponent:@"plugins"] stringByAppendingPathComponent:@"set_space_mode.sh"];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:script]) {
+    [config runScript:@"set_space_mode.sh" arguments:@[[NSString stringWithFormat:@"%ld", (long)self.currentSpace], @"float"]];
+  }
+
+  [config reloadSketchyBar];
+  [self loadSpaceSettings];
+}
+
+- (void)resetAllModes:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  [config setValue:[NSMutableDictionary dictionary] forKeyPath:@"space_modes"];
+
+  NSString *script = [[config.configPath stringByAppendingPathComponent:@"plugins"] stringByAppendingPathComponent:@"set_space_mode.sh"];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:script]) {
+    [config runScript:@"set_space_mode.sh" arguments:@[[NSString stringWithFormat:@"%ld", (long)self.currentSpace], @"float"]];
+  }
+
+  [config reloadSketchyBar];
+  [self loadSpaceSettings];
+}
+
+@end

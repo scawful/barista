@@ -33,13 +33,15 @@ gui/
 
 ## Key Paths & Commands
 
-- Config root: `~/.config/sketchybar` (→ `~/Code/sketchybar`)
+- Config root: `~/.config/sketchybar` (→ `~/src/sketchybar`)
 - Control panel: Shift+click Apple icon or `gui/bin/config_menu`
 - Icon browser: `gui/bin/icon_browser` or via control panel
-- Runtime updates: `~/.config/scripts/runtime_update.sh`
-- Logs: `~/.config/scripts/bar_logs.sh [sketchybar|yabai|skhd] [-f] [lines]`
+- Runtime updates: `~/.config/sketchybar/scripts/runtime_update.sh`
+- Logs: `~/.config/sketchybar/scripts/bar_logs.sh [sketchybar|yabai|skhd] [-f] [lines]`
 - Native rebuild (helpers + GUI + reload): `bin/rebuild_native.sh`
 - Single-shot reload when menus act up: `/opt/homebrew/opt/sketchybar/bin/sketchybar --reload`
+
+Note: If you override the scripts directory, update `BARISTA_SCRIPTS_DIR` or `paths.scripts_dir` in `state.json` and run the commands with the resolved path.
 
 ### Native Build Workflow
 
@@ -104,7 +106,7 @@ Spaces now use **icon-only** display with intelligent fallbacks:
  CPU 12%  󰓅 Load 1.5
  Memory 8.2G
 󰋊 Disk 45GB / 500GB (9%)
-󰖩 192.168.1.100
+󰖩 <lan-ip>
 ```
 
 ### 🎯 **Icon Browser**

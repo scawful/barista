@@ -3,6 +3,73 @@
 -- Non-conflicting shortcuts for global operations
 
 local shortcuts = {}
+local HOME = os.getenv("HOME")
+local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
+
+local function expand_path(path)
+  if type(path) ~= "string" or path == "" then
+    return nil
+  end
+  if path:sub(1, 2) == "~/" then
+    return HOME .. path:sub(2)
+  end
+  return path
+end
+
+local function read_state_scripts_dir()
+  local ok, json = pcall(require, "json")
+  if not ok then
+    return nil
+  end
+
+  local state_file = CONFIG_DIR .. "/state.json"
+  local file = io.open(state_file, "r")
+  if not file then
+    return nil
+  end
+
+  local contents = file:read("*a")
+  file:close()
+
+  local ok_decode, data = pcall(json.decode, contents)
+  if not ok_decode or type(data) ~= "table" then
+    return nil
+  end
+
+  if type(data.paths) ~= "table" then
+    return nil
+  end
+
+  local candidate = data.paths.scripts_dir or data.paths.scripts
+  return expand_path(candidate)
+end
+
+local function resolve_scripts_dir()
+  local override = os.getenv("BARISTA_SCRIPTS_DIR")
+  if override and override ~= "" then
+    return expand_path(override)
+  end
+
+  local state_override = read_state_scripts_dir()
+  if state_override and state_override ~= "" then
+    return state_override
+  end
+  local config_scripts = CONFIG_DIR .. "/scripts"
+  local probe = io.open(config_scripts .. "/yabai_control.sh", "r")
+  if probe then
+    probe:close()
+    return config_scripts
+  end
+  local legacy_scripts = HOME .. "/.config/scripts"
+  local legacy_probe = io.open(legacy_scripts .. "/yabai_control.sh", "r")
+  if legacy_probe then
+    legacy_probe:close()
+    return legacy_scripts
+  end
+  return config_scripts
+end
+
+local SCRIPTS_DIR = resolve_scripts_dir()
 
 -- Modifier key symbols and their skhd representations
 shortcuts.modifiers = {
@@ -55,6 +122,10 @@ shortcuts.fn_mappings = {
   ["fn-9"] = "focus_space_9",
   ["fn-0"] = "focus_space_10",
 
+  -- Space Navigation (fn + arrows)
+  ["fn-left"] = "space_prev",
+  ["fn-right"] = "space_next",
+
   -- Quick Actions (fn + key)
   ["fn-t"] = "toggle_layout",          -- Toggle BSP/Float
   ["fn-f"] = "toggle_fullscreen",      -- Fullscreen current window
@@ -64,158 +135,119 @@ shortcuts.fn_mappings = {
   ["fn-c"] = "center_window",          -- Center floating window
   ["fn-space"] = "toggle_float",       -- Toggle float
 
-  -- Display Management (fn + arrow)
-  ["fn-right"] = "window_display_next",
-  ["fn-left"] = "window_display_prev",
+  -- Window sizing (fn + arrows)
   ["fn-up"] = "maximize_window",
   ["fn-down"] = "restore_window",
 }
 
--- Global shortcuts (using ctrl+alt to avoid conflicts)
+shortcuts.fn_order = {
+  "fn-h", "fn-j", "fn-k", "fn-l",
+  "fn-1", "fn-2", "fn-3", "fn-4", "fn-5",
+  "fn-6", "fn-7", "fn-8", "fn-9", "fn-0",
+  "fn-left", "fn-right",
+  "fn-t", "fn-f", "fn-r", "fn-b", "fn-m", "fn-c", "fn-space",
+  "fn-up", "fn-down",
+}
+
+-- Global shortcuts (cmd/alt + fn-centric)
 shortcuts.global = {
-  -- SketchyBar Controls
+  -- Barista UI
   {
-    mods = {"ctrl", "alt"},
-    key = "r",
-    action = "reload_sketchybar",
-    desc = "Reload SketchyBar",
-    symbol = "⌃⌥R"
-  },
-  {
-    mods = {"ctrl", "alt", "shift"},
-    key = "r",
-    action = "rebuild_and_reload",
-    desc = "Rebuild + Reload SketchyBar",
-    symbol = "⌃⌥⇧R"
-  },
-  {
-    mods = {"ctrl", "alt"},
+    mods = {"cmd", "alt"},
     key = "p",
     action = "open_control_panel",
     desc = "Open Control Panel",
-    symbol = "⌃⌥P"
+    symbol = "⌘⌥P"
   },
   {
-    mods = {"ctrl", "alt"},
+    mods = {"cmd", "alt"},
+    key = "c",
+    action = "toggle_cortex",
+    desc = "Toggle Cortex",
+    symbol = "⌘⌥C"
+  },
+  {
+    mods = {"cmd", "alt"},
     key = "/",
     action = "toggle_control_center",
     desc = "Toggle Control Center",
-    symbol = "⌃⌥/"
+    symbol = "⌘⌥/"
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "k",
+    action = "toggle_whichkey",
+    desc = "Toggle WhichKey HUD",
+    symbol = "⌘⌥K"
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "h",
+    action = "open_help_center",
+    desc = "Open Help Center",
+    symbol = "⌘⌥H"
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "i",
+    action = "open_icon_browser",
+    desc = "Open Icon Browser",
+    symbol = "⌘⌥I"
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "r",
+    action = "reload_sketchybar",
+    desc = "Reload SketchyBar",
+    symbol = "⌘⌥R"
+  },
+  {
+    mods = {"cmd", "alt", "shift"},
+    key = "r",
+    action = "rebuild_and_reload",
+    desc = "Rebuild + Reload SketchyBar",
+    symbol = "⌘⌥⇧R"
   },
 
   -- Yabai Controls
   {
-    mods = {"ctrl", "alt"},
+    mods = {"cmd", "alt"},
     key = "y",
     action = "toggle_yabai_shortcuts",
     desc = "Toggle Yabai Shortcuts",
-    symbol = "⌃⌥Y"
-  },
-  {
-    mods = {"ctrl", "alt"},
-    key = "l",
-    action = "toggle_layout",
-    desc = "Toggle Layout Mode",
-    symbol = "⌃⌥L"
-  },
-  {
-    mods = {"ctrl", "alt"},
-    key = "b",
-    action = "balance_windows",
-    desc = "Balance Windows",
-    symbol = "⌃⌥B"
+    symbol = "⌘⌥Y"
   },
 
-  -- Window Operations
+  -- Window Movement (fn + shift)
   {
-    mods = {"ctrl", "alt"},
-    key = "f",
-    action = "toggle_float",
-    desc = "Toggle Float",
-    symbol = "⌃⌥F"
-  },
-  {
-    mods = {"ctrl", "alt"},
-    key = "return",
-    action = "toggle_fullscreen",
-    desc = "Toggle Fullscreen",
-    symbol = "⌃⌥↩"
-  },
-  {
-    mods = {"ctrl", "alt"},
-    key = "t",
-    action = "open_terminal",
-    desc = "Open Terminal",
-    symbol = "⌃⌥T"
-  },
-
-  -- Display Management
-  {
-    mods = {"ctrl", "alt"},
-    key = "right",
-    action = "window_display_next",
-    desc = "Send to Next Display",
-    symbol = "⌃⌥→"
-  },
-  {
-    mods = {"ctrl", "alt"},
-    key = "left",
-    action = "window_display_prev",
-    desc = "Send to Prev Display",
-    symbol = "⌃⌥←"
-  },
-
-  -- Space Movement (ctrl+alt+cmd to avoid conflicts)
-  {
-    mods = {"ctrl", "alt", "cmd"},
-    key = "right",
-    action = "window_space_next",
-    desc = "Send to Next Space",
-    symbol = "⌃⌥⌘→"
-  },
-  {
-    mods = {"ctrl", "alt", "cmd"},
+    mods = {"fn", "shift"},
     key = "left",
     action = "window_space_prev",
     desc = "Send to Prev Space",
-    symbol = "⌃⌥⌘←"
+    symbol = "🌐⇧←"
+  },
+  {
+    mods = {"fn", "shift"},
+    key = "right",
+    action = "window_space_next",
+    desc = "Send to Next Space",
+    symbol = "🌐⇧→"
   },
 
-  -- Space focus with number keys (ctrl+alt+cmd+num)
+  -- Display Movement (cmd + alt + shift)
   {
-    mods = {"ctrl", "alt", "cmd"},
-    key = "1",
-    action = "send_window_space_1",
-    desc = "Send to Space 1",
-    symbol = "⌃⌥⌘1"
+    mods = {"cmd", "alt", "shift"},
+    key = "left",
+    action = "window_display_prev",
+    desc = "Send to Prev Display",
+    symbol = "⌘⌥⇧←"
   },
   {
-    mods = {"ctrl", "alt", "cmd"},
-    key = "2",
-    action = "send_window_space_2",
-    desc = "Send to Space 2",
-    symbol = "⌃⌥⌘2"
-  },
-  {
-    mods = {"ctrl", "alt", "cmd"},
-    key = "3",
-    action = "send_window_space_3",
-    desc = "Send to Space 3",
-    symbol = "⌃⌥⌘3"
-  },
-  {
-    mods = {"ctrl", "alt", "cmd"},
-    key = "4",
-    action = "send_window_space_4",
-    desc = "Send to Space 4",
-    symbol = "⌃⌥⌘4"
-  },
-  {
-    mods = {"ctrl", "alt", "cmd"},
-    key = "5",
-    action = "send_window_space_5",
-    desc = "Send to Space 5",
-    symbol = "⌃⌥⌘5"
+    mods = {"cmd", "alt", "shift"},
+    key = "right",
+    action = "window_display_next",
+    desc = "Send to Next Display",
+    symbol = "⌘⌥⇧→"
   },
 
   -- Layout modes (ctrl+shift)
@@ -245,42 +277,51 @@ shortcuts.global = {
 -- Action handlers (maps action names to actual commands)
 shortcuts.actions = {
   -- SketchyBar
-  reload_sketchybar = "~/.config/sketchybar/bin/rebuild_sketchybar.sh --reload-only",
-  rebuild_and_reload = "~/.config/sketchybar/bin/rebuild_sketchybar.sh",
-  open_control_panel = "~/.config/sketchybar/bin/open_control_panel.sh",
+  reload_sketchybar = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh --reload-only",
+  rebuild_and_reload = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh",
+  open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh",
   toggle_control_center = "/opt/homebrew/opt/sketchybar/bin/sketchybar --set control_center popup.drawing=toggle",
+  toggle_whichkey = "/opt/homebrew/opt/sketchybar/bin/sketchybar --trigger whichkey_toggle",
+  open_help_center = CONFIG_DIR .. "/gui/bin/help_center",
+  open_icon_browser = CONFIG_DIR .. "/gui/bin/icon_browser",
+  toggle_cortex = "~/.local/bin/cortex toggle",
 
   -- Yabai
-  toggle_yabai_shortcuts = "~/.config/scripts/toggle_shortcuts.sh toggle",
-  toggle_layout = "~/.config/scripts/yabai_control.sh toggle-layout",
-  balance_windows = "~/.config/scripts/yabai_control.sh balance",
-  rotate_layout = "~/.config/scripts/yabai_control.sh space-rotate",
+  toggle_yabai_shortcuts = SCRIPTS_DIR .. "/toggle_shortcuts.sh toggle",
+  toggle_layout = SCRIPTS_DIR .. "/yabai_control.sh toggle-layout",
+  balance_windows = SCRIPTS_DIR .. "/yabai_control.sh balance",
+  rotate_layout = SCRIPTS_DIR .. "/yabai_control.sh space-rotate",
 
   -- Window
-  toggle_float = "~/.config/scripts/yabai_control.sh window-toggle-float",
-  toggle_fullscreen = "~/.config/scripts/yabai_control.sh window-toggle-fullscreen",
-  center_window = "~/.config/scripts/yabai_control.sh window-center",
+  toggle_float = SCRIPTS_DIR .. "/yabai_control.sh window-toggle-float",
+  toggle_fullscreen = SCRIPTS_DIR .. "/yabai_control.sh window-toggle-fullscreen",
+  center_window = SCRIPTS_DIR .. "/yabai_control.sh window-center",
   minimize_window = "yabai -m window --minimize",
   maximize_window = "yabai -m window --toggle zoom-fullscreen",
   restore_window = "yabai -m window --toggle zoom-fullscreen",
 
   -- Display
-  window_display_next = "~/.config/scripts/yabai_control.sh window-display-next",
-  window_display_prev = "~/.config/scripts/yabai_control.sh window-display-prev",
+  window_display_next = SCRIPTS_DIR .. "/yabai_control.sh window-display-next",
+  window_display_prev = SCRIPTS_DIR .. "/yabai_control.sh window-display-prev",
+
+  -- Space Navigation
+  space_prev = SCRIPTS_DIR .. "/yabai_control.sh space-prev",
+  space_next = SCRIPTS_DIR .. "/yabai_control.sh space-next",
+  space_recent = SCRIPTS_DIR .. "/yabai_control.sh space-recent",
 
   -- Space Movement
-  window_space_next = "~/.config/scripts/yabai_control.sh window-space-next",
-  window_space_prev = "~/.config/scripts/yabai_control.sh window-space-prev",
-  send_window_space_1 = "~/.config/scripts/yabai_control.sh window-space 1",
-  send_window_space_2 = "~/.config/scripts/yabai_control.sh window-space 2",
-  send_window_space_3 = "~/.config/scripts/yabai_control.sh window-space 3",
-  send_window_space_4 = "~/.config/scripts/yabai_control.sh window-space 4",
-  send_window_space_5 = "~/.config/scripts/yabai_control.sh window-space 5",
+  window_space_next = SCRIPTS_DIR .. "/yabai_control.sh window-space-next",
+  window_space_prev = SCRIPTS_DIR .. "/yabai_control.sh window-space-prev",
+  send_window_space_1 = SCRIPTS_DIR .. "/yabai_control.sh window-space 1",
+  send_window_space_2 = SCRIPTS_DIR .. "/yabai_control.sh window-space 2",
+  send_window_space_3 = SCRIPTS_DIR .. "/yabai_control.sh window-space 3",
+  send_window_space_4 = SCRIPTS_DIR .. "/yabai_control.sh window-space 4",
+  send_window_space_5 = SCRIPTS_DIR .. "/yabai_control.sh window-space 5",
 
   -- Layout Modes
-  set_layout_float = "~/.config/scripts/space_mode.sh current float",
-  set_layout_bsp = "~/.config/scripts/space_mode.sh current bsp",
-  set_layout_stack = "~/.config/scripts/space_mode.sh current stack",
+  set_layout_float = SCRIPTS_DIR .. "/space_mode.sh current float",
+  set_layout_bsp = SCRIPTS_DIR .. "/space_mode.sh current bsp",
+  set_layout_stack = SCRIPTS_DIR .. "/space_mode.sh current stack",
 
   -- Apps
   open_terminal = "open -a Terminal",
@@ -304,9 +345,78 @@ shortcuts.actions = {
   focus_space_10 = "yabai -m space --focus 10",
 }
 
+local function action_label(action_name)
+  local overrides = {
+    space_prev = "Previous Space",
+    space_next = "Next Space",
+    space_recent = "Recent Space",
+  }
+  local override = overrides[action_name]
+  if override then
+    return override
+  end
+  for _, shortcut in ipairs(shortcuts.global) do
+    if shortcut.action == action_name and shortcut.desc then
+      return shortcut.desc
+    end
+  end
+  local label = action_name:gsub("_", " ")
+  label = label:gsub("(%a)([%w']*)", function(head, tail)
+    return head:upper() .. tail
+  end)
+  return label
+end
+
+local function key_symbol(key)
+  local symbol = shortcuts.symbols[key]
+  if symbol then
+    return symbol
+  end
+  if #key == 1 then
+    return key:upper()
+  end
+  return key
+end
+
+function shortcuts.fn_shortcuts()
+  local list = {}
+  local order = shortcuts.fn_order or {}
+  if #order == 0 then
+    for combo in pairs(shortcuts.fn_mappings or {}) do
+      table.insert(order, combo)
+    end
+    table.sort(order)
+  end
+  for _, combo in ipairs(order) do
+    local action = shortcuts.fn_mappings[combo]
+    if action then
+      local key = combo:match("^fn%-(.+)$") or combo
+      table.insert(list, {
+        mods = {"fn"},
+        key = key,
+        action = action,
+        desc = action_label(action),
+        symbol = shortcuts.symbols.fn .. key_symbol(key),
+      })
+    end
+  end
+  return list
+end
+
+local function all_shortcuts()
+  local list = {}
+  for _, shortcut in ipairs(shortcuts.global) do
+    table.insert(list, shortcut)
+  end
+  for _, shortcut in ipairs(shortcuts.fn_shortcuts()) do
+    table.insert(list, shortcut)
+  end
+  return list
+end
+
 -- Get shortcut by action name
 function shortcuts.get(action_name)
-  for _, shortcut in ipairs(shortcuts.global) do
+  for _, shortcut in ipairs(all_shortcuts()) do
     if shortcut.action == action_name then
       return shortcut
     end
@@ -347,13 +457,13 @@ end
 -- Generate skhd configuration
 function shortcuts.generate_skhd_config()
   local lines = {
-    "# SketchyBar Global Shortcuts",
+    "# SketchyBar Shortcuts",
     "# Generated by barista shortcuts module",
-    "# Non-conflicting shortcuts using ctrl+alt combinations",
+    "# fn + cmd/alt focused shortcut set",
     "",
   }
 
-  for _, shortcut in ipairs(shortcuts.global) do
+  for _, shortcut in ipairs(all_shortcuts()) do
     local formatted = shortcuts.format_for_skhd(shortcut)
     if formatted then
       table.insert(lines, string.format("# %s - %s", shortcut.desc, shortcut.symbol))
@@ -385,7 +495,7 @@ end
 -- List all shortcuts
 function shortcuts.list_all()
   local list = {}
-  for _, shortcut in ipairs(shortcuts.global) do
+  for _, shortcut in ipairs(all_shortcuts()) do
     table.insert(list, {
       desc = shortcut.desc,
       symbol = shortcut.symbol,
@@ -401,7 +511,7 @@ function shortcuts.check_conflicts()
   local seen = {}
   local conflicts = {}
 
-  for _, shortcut in ipairs(shortcuts.global) do
+  for _, shortcut in ipairs(all_shortcuts()) do
     local key_combo = string.format("%s-%s", table.concat(shortcut.mods, "+"), shortcut.key)
     if seen[key_combo] then
       table.insert(conflicts, {

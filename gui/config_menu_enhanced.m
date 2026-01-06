@@ -1,3 +1,4 @@
+#import "ConfigurationManager.h"
 #import <Cocoa/Cocoa.h>
 
 // Enhanced Control Panel with comprehensive customization options
@@ -332,8 +333,9 @@ didSelectItemsAtIndexPaths:(NSSet<NSIndexPath *> *)indexPaths {
 @implementation EnhancedMenuController
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-    self.configPath = [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"];
-    self.scriptsPath = [NSHomeDirectory() stringByAppendingPathComponent:@".config/scripts"];
+    ConfigurationManager *config = [ConfigurationManager sharedManager];
+    self.configPath = config.configPath;
+    self.scriptsPath = config.scriptsPath;
     self.helpersPath = [self.configPath stringByAppendingPathComponent:@"bin"];
 
     [self loadState];
@@ -832,6 +834,46 @@ didSelectItemsAtIndexPaths:(NSSet<NSIndexPath *> *)indexPaths {
     flushButton.action = @selector(flushMenuCache:);
     [view addSubview:flushButton];
 
+    CGFloat wmX = x + 240;
+    CGFloat wmTitleY = buttonY + 170;
+    NSTextField *wmTitle = [[NSTextField alloc] initWithFrame:NSMakeRect(wmX, wmTitleY, 260, 24)];
+    wmTitle.stringValue = @"Window Manager";
+    wmTitle.font = [NSFont boldSystemFontOfSize:14];
+    wmTitle.editable = NO;
+    wmTitle.bezeled = NO;
+    wmTitle.backgroundColor = [NSColor clearColor];
+    [view addSubview:wmTitle];
+
+    NSButton *restartYabaiButton = [[NSButton alloc] initWithFrame:NSMakeRect(wmX, wmTitleY - 40, 220, 28)];
+    restartYabaiButton.title = @"Restart Yabai";
+    restartYabaiButton.target = self;
+    restartYabaiButton.action = @selector(restartYabai:);
+    [view addSubview:restartYabaiButton];
+
+    NSButton *restartSkhdButton = [[NSButton alloc] initWithFrame:NSMakeRect(wmX, wmTitleY - 75, 220, 28)];
+    restartSkhdButton.title = @"Restart Skhd";
+    restartSkhdButton.target = self;
+    restartSkhdButton.action = @selector(restartSkhd:);
+    [view addSubview:restartSkhdButton];
+
+    NSButton *doctorButton = [[NSButton alloc] initWithFrame:NSMakeRect(wmX, wmTitleY - 110, 220, 28)];
+    doctorButton.title = @"Space Switch Diagnostics";
+    doctorButton.target = self;
+    doctorButton.action = @selector(runYabaiDoctor:);
+    [view addSubview:doctorButton];
+
+    NSButton *openSkhdButton = [[NSButton alloc] initWithFrame:NSMakeRect(wmX, wmTitleY - 145, 220, 28)];
+    openSkhdButton.title = @"Open skhdrc";
+    openSkhdButton.target = self;
+    openSkhdButton.action = @selector(openSkhdConfig:);
+    [view addSubview:openSkhdButton];
+
+    NSButton *openYabaiButton = [[NSButton alloc] initWithFrame:NSMakeRect(wmX, wmTitleY - 180, 220, 28)];
+    openYabaiButton.title = @"Open yabairc";
+    openYabaiButton.target = self;
+    openYabaiButton.action = @selector(openYabaiConfig:);
+    [view addSubview:openYabaiButton];
+
     self.debugStatusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(x, 180, 900, 24)];
     self.debugStatusLabel.editable = NO;
     self.debugStatusLabel.bezeled = NO;
@@ -1076,9 +1118,17 @@ didSelectItemsAtIndexPaths:(NSSet<NSIndexPath *> *)indexPaths {
 }
 
 - (void)openLogs:(id)sender {
-    NSString *logScript = [self.scriptsPath stringByAppendingPathComponent:@"bar_logs.sh"];
+    NSString *pluginScript = [self.configPath stringByAppendingPathComponent:@"plugins/bar_logs.sh"];
+    NSString *logScript = pluginScript;
     if (![[NSFileManager defaultManager] isExecutableFileAtPath:logScript]) {
-        self.debugStatusLabel.stringValue = @"bar_logs.sh not found in ~/.config/scripts.";
+        NSString *legacyScript = [self.scriptsPath stringByAppendingPathComponent:@"bar_logs.sh"];
+        if ([[NSFileManager defaultManager] isExecutableFileAtPath:legacyScript]) {
+            logScript = legacyScript;
+        } else {
+            self.debugStatusLabel.stringValue = @"bar_logs.sh not found in plugins or scripts.";
+            return;
+        }
+    }
         return;
     }
 
@@ -1096,6 +1146,39 @@ didSelectItemsAtIndexPaths:(NSSet<NSIndexPath *> *)indexPaths {
     [task launch];
     [task waitUntilExit];
     self.debugStatusLabel.stringValue = @"Cleared cached menu render files.";
+}
+
+- (void)restartYabai:(id)sender {
+    NSString *output = [self runTask:@"/bin/bash" arguments:@[@"-lc", @"yabai --restart-service 2>&1 || brew services restart yabai 2>&1"]];
+    self.debugStatusLabel.stringValue = output.length ? [output stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"yabai restarted.";
+}
+
+- (void)restartSkhd:(id)sender {
+    NSString *output = [self runTask:@"/bin/bash" arguments:@[@"-lc", @"skhd --restart-service 2>&1 || brew services restart skhd 2>&1"]];
+    self.debugStatusLabel.stringValue = output.length ? [output stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"skhd restarted.";
+}
+
+- (void)runYabaiDoctor:(id)sender {
+    NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"yabai_control.sh"];
+    if (![[NSFileManager defaultManager] isExecutableFileAtPath:script]) {
+        NSString *path = self.scriptsPath ?: @"(unknown scripts directory)";
+        self.debugStatusLabel.stringValue = [NSString stringWithFormat:@"yabai_control.sh not found in %@", path];
+        return;
+    }
+    NSString *output = [self runTask:script arguments:@[@"doctor"]];
+    self.debugStatusLabel.stringValue = output.length ? [output stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] : @"Diagnostics complete.";
+}
+
+- (void)openSkhdConfig:(id)sender {
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@".config/skhd/skhdrc"];
+    [self runTask:@"/usr/bin/open" arguments:@[path]];
+    self.debugStatusLabel.stringValue = @"Opened skhdrc.";
+}
+
+- (void)openYabaiConfig:(id)sender {
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@".config/yabai/yabairc"];
+    [self runTask:@"/usr/bin/open" arguments:@[path]];
+    self.debugStatusLabel.stringValue = @"Opened yabairc.";
 }
 
 - (void)runSketchybarCommand:(NSArray<NSString *> *)arguments {

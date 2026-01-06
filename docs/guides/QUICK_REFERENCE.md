@@ -32,6 +32,12 @@ brew upgrade barista
 BARISTA_SKIP_RESTART=1 ~/.config/sketchybar/bin/barista-update
 ```
 
+### Repo Deploy (Separate Source Repo)
+```bash
+./scripts/deploy.sh --note "yabai space fixes"
+./scripts/deploy_info.sh
+```
+
 ### Themes & Fallbacks
 ```bash
 BARISTA_THEME=espresso sketchybar --reload        # Quick theme switch (see themes/*.lua)
@@ -117,6 +123,8 @@ tail -f ~/Library/Logs/sketchybar/sketchybar.log
 - **Profiles:** `~/.config/sketchybar/profiles/`
 - **Themes:** `~/.config/sketchybar/themes/`
 - **Backups:** `~/.config/sketchybar.backup.*`
+- **Deploy metadata:** `~/.config/sketchybar/.barista_deploy.json`
+- **Deploy history:** `~/.config/sketchybar/.deployments.log`
 
 ## Troubleshooting
 

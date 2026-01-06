@@ -24,7 +24,7 @@ profile.paths = {
   work_docs = os.getenv("HOME") .. "/work/docs",
   google_tools = os.getenv("HOME") .. "/google/tools",
   google3 = os.getenv("HOME") .. "/google3",  -- Google3 monorepo
-  code = os.getenv("HOME") .. "/Code",        -- General code directory
+  code = os.getenv("BARISTA_CODE_DIR") or (os.getenv("HOME") .. "/src"),  -- General code directory
   -- Add custom Google program paths here
   -- Example: custom_tool = os.getenv("HOME") .. "/google/tools/custom_tool",
 }

@@ -168,7 +168,7 @@ shortcuts.global = {
   },
   {
     mods = {"cmd", "alt"},
-    key = "/",
+    key = "0x2C",
     action = "toggle_control_center",
     desc = "Toggle Control Center",
     symbol = "⌘⌥/"

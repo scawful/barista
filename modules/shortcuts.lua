@@ -218,6 +218,22 @@ shortcuts.global = {
     symbol = "⌘⌥Y"
   },
 
+  -- Space Navigation (ctrl + arrows)
+  {
+    mods = {"ctrl"},
+    key = "left",
+    action = "space_prev",
+    desc = "Previous Space",
+    symbol = "⌃←"
+  },
+  {
+    mods = {"ctrl"},
+    key = "right",
+    action = "space_next",
+    desc = "Next Space",
+    symbol = "⌃→"
+  },
+
   -- Window Movement (fn + shift)
   {
     mods = {"fn", "shift"},

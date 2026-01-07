@@ -124,8 +124,8 @@ shortcuts.global = {
   {
     mods = {"cmd", "alt"},
     key = "k",
-    action = "toggle_whichkey",
-    desc = "Toggle WhichKey HUD",
+    action = "open_help_center",
+    desc = "Open Help Center",
     symbol = "⌘⌥K"
   },
   {
@@ -229,7 +229,6 @@ shortcuts.actions = {
   rebuild_and_reload = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh",
   open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh",
   toggle_control_center = "/opt/homebrew/opt/sketchybar/bin/sketchybar --set control_center popup.drawing=toggle",
-  toggle_whichkey = "/opt/homebrew/opt/sketchybar/bin/sketchybar --trigger whichkey_toggle",
   open_help_center = CONFIG_DIR .. "/gui/bin/help_center",
   open_icon_browser = CONFIG_DIR .. "/gui/bin/icon_browser",
   toggle_cortex = "~/.local/bin/cortex toggle",

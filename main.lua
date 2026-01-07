@@ -23,7 +23,6 @@ local menu_module = require("menu")
 local yaze_module = require("yaze")
 local oracle_module = require("oracle")
 local emacs_module = require("emacs")
-local whichkey_module = require("whichkey")
 
 -- Initialize component switcher for C/Lua hybrid architecture
 local component_switcher = require("component_switcher")
@@ -573,7 +572,6 @@ local menu_context = {
 sbar.begin_config()
 sbar.exec("sketchybar --add event space_change >/dev/null 2>&1 || true")
 sbar.exec("sketchybar --add event space_mode_refresh >/dev/null 2>&1 || true")
-sbar.exec("sketchybar --add event whichkey_toggle >/dev/null 2>&1 || true")
 
 -- Global popup manager (invisible item that handles popup dismissal)
 sbar.add("item", "popup_manager", {
@@ -657,10 +655,6 @@ end
 
 init_spaces()
 
-print("Setting up WhichKey...")
--- Setup WhichKey after spaces to ensure correct visual order on the left
-whichkey_module.setup(menu_context)
-print("WhichKey setup complete")
 
 -- Front App indicator
 sbar.add("item", "front_app", {

@@ -1,4 +1,6 @@
-# WhichKey Bottom Bar Plan
+# WhichKey Bottom Bar Plan (Deprecated)
+
+This plan is archived. The WhichKey HUD was removed in favor of Apple Menu + Control Center tooling and the native Help Center window.
 
 ## Goals
 - Present a HUD-style cheat sheet inspired by `which-key` to expose shortcuts, quick actions, and repo health directly inside Sketchybar.

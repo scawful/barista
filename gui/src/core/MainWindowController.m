@@ -4,6 +4,7 @@
 #import "WidgetsTabViewController.h"
 #import "SpacesTabViewController.h"
 #import "IconsTabViewController.h"
+#import "MenuTabViewController.h"
 #import "IntegrationsTabViewController.h"
 #import "ThemesTabViewController.h"
 #import "ShortcutsTabViewController.h"
@@ -77,6 +78,14 @@
   iconsItem.label = @"Icons";
   iconsItem.viewController = self.iconsTab;
   [self.tabView addTabViewItem:iconsItem];
+
+  // Menu Tab
+  NSLog(@"[barista] setupTabView menu");
+  self.menuTab = [[MenuTabViewController alloc] init];
+  NSTabViewItem *menuItem = [[NSTabViewItem alloc] initWithIdentifier:@"menu"];
+  menuItem.label = @"Menu";
+  menuItem.viewController = self.menuTab;
+  [self.tabView addTabViewItem:menuItem];
 
   // Themes Tab
   NSLog(@"[barista] setupTabView themes");

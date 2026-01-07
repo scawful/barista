@@ -66,6 +66,7 @@ The unified configuration window with 11 tabs:
 - **Widgets** - Widget management and configuration
 - **Spaces** - Space customization with icon browser integration
 - **Icons** - Icon library with search and browser integration
+- **Menu** - Apple menu tool list and ordering controls
 - **Themes** - Theme switcher with preview
 - **Shortcuts** - Keyboard shortcuts viewer/editor
 - **Integrations** - External integrations (Yaze, Emacs, halext)
@@ -159,4 +160,3 @@ Make sure all imports use the correct paths. The build system includes:
 - `src/tabs/` for tab view controllers
 
 All imports should use just the filename (e.g., `#import "ConfigurationManager.h"`), not paths.
-

@@ -274,6 +274,9 @@ function menu.render_all_menus(ctx)
       subscribe_mouse_exit = ctx.subscribe_popup_autoclose,
       icon_for = ctx.icon_for,
       call_script = ctx.call_script,
+      paths = ctx.paths,
+      helpers = ctx.helpers,
+      menu_action = ctx.scripts and ctx.scripts.menu_action or nil,
       scripts_dir = scripts_dir,
       config_dir = CONFIG_DIR,
       associated_displays = ctx.associated_displays,
@@ -316,9 +319,7 @@ function menu.render_all_menus(ctx)
   })
   ctx.subscribe_popup_autoclose("apple_menu")
   
-  local apple_menu_items = {
-    { type = "header", name = "menu.tools.header", label = "Tools" },
-  }
+  local apple_menu_items = {}
 
   local afs_root = resolve_afs_root(ctx)
   local studio_root = resolve_afs_studio_root(ctx, afs_root)
@@ -414,7 +415,28 @@ function menu.render_all_menus(ctx)
     })
   end
 
-  table.insert(apple_menu_items, { type = "separator", name = "menu.tools.sep1" })
+  local help_center = ctx.helpers and ctx.helpers.help_center or nil
+  if help_center and path_exists(help_center, false) then
+    table.insert(apple_menu_items, {
+      type = "item",
+      name = "menu.tools.help_center",
+      icon = "󰘥",
+      label = "Help Center",
+      action = help_center,
+    })
+  end
+
+  local icon_browser = (ctx.paths and ctx.paths.config_dir) and (ctx.paths.config_dir .. "/gui/bin/icon_browser") or nil
+  if icon_browser and path_exists(icon_browser, false) then
+    table.insert(apple_menu_items, {
+      type = "item",
+      name = "menu.tools.icon_browser",
+      icon = "󰈙",
+      label = "Icon Browser",
+      action = icon_browser,
+    })
+  end
+
   table.insert(apple_menu_items, {
     type = "item",
     name = "menu.tools.barista.config",

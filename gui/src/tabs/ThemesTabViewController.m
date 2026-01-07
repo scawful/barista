@@ -174,13 +174,19 @@
 
 - (void)openThemesFolder:(id)sender {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
-  NSString *themesPath = [[config.configPath ?: [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"]] stringByAppendingPathComponent:@"themes"];
+  NSString *basePath = config.configPath.length
+    ? config.configPath
+    : [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"];
+  NSString *themesPath = [basePath stringByAppendingPathComponent:@"themes"];
   [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:themesPath]];
 }
 
 - (void)openThemeOverride:(id)sender {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
-  NSString *overridePath = [[config.configPath ?: [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"]] stringByAppendingPathComponent:@"themes/theme.local.lua"];
+  NSString *basePath = config.configPath.length
+    ? config.configPath
+    : [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"];
+  NSString *overridePath = [basePath stringByAppendingPathComponent:@"themes/theme.local.lua"];
   if (![[NSFileManager defaultManager] fileExistsAtPath:overridePath]) {
     [@"" writeToFile:overridePath atomically:YES encoding:NSUTF8StringEncoding error:nil];
   }

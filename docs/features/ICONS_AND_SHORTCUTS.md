@@ -92,7 +92,7 @@ These shortcuts work system-wide and don't conflict with common applications:
 - `⌘⌥P` - Open Control Panel
 - `⌘⌥C` - Toggle Cortex
 - `⌘⌥/` - Toggle Control Center
-- `⌘⌥K` - Toggle WhichKey HUD
+- `⌘⌥K` - Open Help Center
 - `⌘⌥H` - Open Help Center
 - `⌘⌥I` - Open Icon Browser
 - `⌘⌥R` - Reload SketchyBar

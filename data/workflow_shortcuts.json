@@ -11,7 +11,8 @@
         { "keys": "⌘⌥C", "description": "Toggle Cortex" },
         { "keys": "⌘⌥R", "description": "Reload SketchyBar" },
         { "keys": "⌘⌥⇧R", "description": "Rebuild + Reload SketchyBar" },
-        { "keys": "⌘⌥Y", "description": "Toggle Yabai Shortcuts" }
+        { "keys": "⌘⌥Y", "description": "Toggle Yabai Shortcuts" },
+        { "keys": "⌘⌥K", "description": "Open Help Center" }
       ]
     },
     {
@@ -44,7 +45,6 @@
   "actions": [
     { "id": "reload_bar", "title": "Reload SketchyBar", "selector": "reloadBar:" },
     { "id": "open_control_panel", "title": "Open Control Panel", "selector": "openControlPanel:" },
-    { "id": "toggle_whichkey", "title": "Toggle WhichKey HUD", "selector": "toggleWhichKey:" },
     { "id": "open_icon_browser", "title": "Open Icon Browser", "selector": "openIconBrowser:" },
     { "id": "launch_yaze", "title": "Launch Yaze", "selector": "launchYaze:" },
     { "id": "focus_emacs", "title": "Focus Emacs", "selector": "focusEmacsSpace:" }

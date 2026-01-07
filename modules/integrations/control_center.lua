@@ -10,6 +10,18 @@ local HOME = os.getenv("HOME")
 local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
 local SCRIPTS_DIR = os.getenv("BARISTA_SCRIPTS_DIR") or (HOME .. "/.config/scripts")
 
+local function path_exists(path)
+  if not path or path == "" then
+    return false
+  end
+  local file = io.open(path, "r")
+  if file then
+    file:close()
+    return true
+  end
+  return false
+end
+
 -- Check service status
 local function check_service(name)
   local handle = io.popen(string.format("pgrep -x %s >/dev/null 2>&1 && echo 1 || echo 0", name))
@@ -234,6 +246,68 @@ function control_center.create_popup_items(sbar, theme, font_string, settings)
     background = { drawing = false },
   })
 
+  -- Tools Section
+  table.insert(items, {
+    name = "cc.tools_header",
+    position = "popup.control_center",
+    icon = { string = "", drawing = false },
+    label = { string = "Tools", font = font_bold, color = theme.SAPPHIRE },
+    ["label.padding_left"] = 8,
+    ["label.padding_right"] = 8,
+    background = { drawing = false },
+  })
+
+  local control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh"
+  local help_center = CONFIG_DIR .. "/build/bin/help_center"
+  local icon_browser = CONFIG_DIR .. "/gui/bin/icon_browser"
+  local rebuild_bar = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh"
+
+  local function tool_action(cmd, available)
+    if available == false then
+      return string.format("bash %q", control_panel)
+    end
+    return cmd
+  end
+
+  local tools = {
+    { id = "help", name = "Help Center", icon = "󰘥", color = theme.BLUE, cmd = help_center, ok = path_exists(help_center) },
+    { id = "icons", name = "Icon Browser", icon = "󰈙", color = theme.SKY, cmd = icon_browser, ok = path_exists(icon_browser) },
+    { id = "config", name = "Barista Config", icon = "󰒓", color = theme.SKY, cmd = string.format("bash %q", control_panel), ok = true },
+    { id = "reload", name = "Reload SketchyBar", icon = "󰑐", color = theme.YELLOW, cmd = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload", ok = true },
+    { id = "rebuild", name = "Rebuild + Reload", icon = "󰑓", color = theme.PEACH, cmd = rebuild_bar, ok = path_exists(rebuild_bar) },
+    { id = "shortcuts", name = "Toggle Yabai Shortcuts", icon = "󰌌", color = theme.LAVENDER, cmd = SCRIPTS_DIR .. "/toggle_shortcuts.sh toggle", ok = true },
+  }
+
+  for _, tool in ipairs(tools) do
+    local label = tool.name
+    local action = tool_action(tool.cmd, tool.ok)
+    if tool.ok == false then
+      label = "Build " .. tool.name
+    end
+    table.insert(items, {
+      name = "cc.tools." .. tool.id,
+      position = "popup.control_center",
+      icon = { string = tool.icon, color = tool.color },
+      label = { string = label, font = font_small },
+      ["icon.padding_left"] = 8,
+      ["icon.padding_right"] = 6,
+      ["label.padding_left"] = 4,
+      ["label.padding_right"] = 8,
+      click_script = action .. "; sketchybar --set control_center popup.drawing=off",
+      background = { drawing = false },
+    })
+  end
+
+  -- Separator
+  table.insert(items, {
+    name = "cc.sep3",
+    position = "popup.control_center",
+    icon = { drawing = false },
+    label = { string = "───────────────", font = font_small, color = "0x40cdd6f4" },
+    ["label.padding_left"] = 8,
+    background = { drawing = false },
+  })
+
   -- Services Section
   table.insert(items, {
     name = "cc.services_header",
@@ -271,7 +345,7 @@ function control_center.create_popup_items(sbar, theme, font_string, settings)
 
   -- Separator
   table.insert(items, {
-    name = "cc.sep3",
+    name = "cc.sep4",
     position = "popup.control_center",
     icon = { drawing = false },
     label = { string = "───────────────", font = font_small, color = "0x40cdd6f4" },

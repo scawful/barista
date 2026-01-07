@@ -330,10 +330,6 @@
   [self runScript:script arguments:@[]];
 }
 
-- (void)toggleWhichKey:(id)sender {
-  [self runCommand:@"/opt/homebrew/opt/sketchybar/bin/sketchybar" arguments:@[@"--trigger", @"whichkey_toggle"]];
-}
-
 - (void)openIconBrowser:(id)sender {
   NSString *path = [self.configPath stringByAppendingPathComponent:@"gui/bin/icon_browser"];
   if ([[NSFileManager defaultManager] isExecutableFileAtPath:path]) {

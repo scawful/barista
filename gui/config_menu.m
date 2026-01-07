@@ -1412,10 +1412,6 @@
   [self runScript:script arguments:@[]];
 }
 
-- (void)toggleWhichKey:(id)sender {
-  [self runCommand:@"/opt/homebrew/opt/sketchybar/bin/sketchybar" arguments:@[@"--trigger", @"whichkey_toggle"]];
-}
-
 - (void)openIconMap:(id)sender {
   NSString *path = [self.configPath stringByAppendingPathComponent:@"icon_map.json"];
   NSFileManager *fm = [NSFileManager defaultManager];

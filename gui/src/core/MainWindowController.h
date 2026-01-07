@@ -4,6 +4,7 @@
 @class WidgetsTabViewController;
 @class SpacesTabViewController;
 @class IconsTabViewController;
+@class MenuTabViewController;
 @class IntegrationsTabViewController;
 @class ThemesTabViewController;
 @class ShortcutsTabViewController;
@@ -18,6 +19,7 @@
 @property (strong) WidgetsTabViewController *widgetsTab;
 @property (strong) SpacesTabViewController *spacesTab;
 @property (strong) IconsTabViewController *iconsTab;
+@property (strong) MenuTabViewController *menuTab;
 @property (strong) IntegrationsTabViewController *integrationsTab;
 @property (strong) ThemesTabViewController *themesTab;
 @property (strong) ShortcutsTabViewController *shortcutsTab;
@@ -26,4 +28,3 @@
 @property (strong) PerformanceTabViewController *performanceTab;
 @property (strong) AdvancedTabViewController *advancedTab;
 @end
-

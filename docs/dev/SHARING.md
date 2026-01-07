@@ -32,11 +32,11 @@
 - The helper script behind the scenes (`plugins/set_integration_enabled.sh`) updates `state.json` and tells Sketchybar to refresh immediately.
 
 ## Customization Notes for New Users
-- **Docs + Actions**: edit `data/workflow_shortcuts.json` to point to your own org files, quick actions, and repo list. Those entries feed the control panel, the WhichKey HUD, and the new Help Center.
+- **Docs + Actions**: edit `data/workflow_shortcuts.json` to point to your own org files, quick actions, and repo list. Those entries feed the control panel and the Help Center.
 - **Help Center**: run `gui/bin/help_center` for a native macOS window that lists shortcuts, quick actions, and repo statuses. Nothing opens Parallels/VSCode automatically anymore.
 - **Space Behavior**: spaces default to floating windows unless you explicitly pick BSP/Stack from the Yabai widget popup or via `set_space_mode.sh`. That keeps macOS feeling native for users who don’t want tiling.
 
 ## Sharing Tips
 - Keep personal scripts (Yaze build helpers, Emacs workflow notes, etc.) out of the shared profile by default. Use the integration toggles if/when she wants to explore them.
-- Encourage customizing the *Workflow Shortcuts* box and WhichKey HUD so her favorite apps / repos appear first.
+- Encourage customizing the *Workflow Shortcuts* box and Apple Menu tools so her favorite apps / repos appear first.
 - If she creates her own profile, `bin/apply_profile.sh` can be extended with more cases—e.g. `./bin/apply_profile.sh design` to toggle different integrations/colors.

@@ -96,6 +96,9 @@ build_gui() {
         echo ""
         print_info "Built components:"
         ls -lh build/bin/config_menu build/bin/icon_browser build/bin/help_center 2>/dev/null | awk '{print "  - " $9 " (" $5 ")"}'
+        mkdir -p gui/bin
+        cp -f build/bin/config_menu build/bin/icon_browser build/bin/help_center gui/bin/
+        print_info "Synced GUI binaries to gui/bin/"
     else
         print_error "Build failed! Check /tmp/barista_gui_build.log for details"
         exit 1

@@ -36,6 +36,8 @@ if(APPLE)
     src/tabs/SpacesTabViewController.h
     src/tabs/IconsTabViewController.m
     src/tabs/IconsTabViewController.h
+    src/tabs/MenuTabViewController.m
+    src/tabs/MenuTabViewController.h
     src/tabs/IntegrationsTabViewController.m
     src/tabs/IntegrationsTabViewController.h
     src/tabs/ThemesTabViewController.m
@@ -119,6 +121,7 @@ if(APPLE)
   # Help Center
   add_executable(help_center
     help_center.m
+    src/core/ConfigurationManager.m
   )
   
   target_compile_options(help_center PRIVATE ${OBJC_FLAGS})

@@ -64,6 +64,44 @@ local function resolve_code_dir(ctx)
   return candidate
 end
 
+local function resolve_config_dir(ctx)
+  local home = os.getenv("HOME") or ""
+  return (ctx.paths and ctx.paths.config_dir)
+    or ctx.config_dir
+    or os.getenv("BARISTA_CONFIG_DIR")
+    or (home .. "/.config/sketchybar")
+end
+
+local function load_state(config_dir)
+  local ok, json = pcall(require, "json")
+  if not ok then
+    return nil
+  end
+  local file = io.open(config_dir .. "/state.json", "r")
+  if not file then
+    return nil
+  end
+  local contents = file:read("*a")
+  file:close()
+  local ok_decode, data = pcall(json.decode, contents)
+  if not ok_decode or type(data) ~= "table" then
+    return nil
+  end
+  return data
+end
+
+local function read_menu_config(config_dir)
+  local state = load_state(config_dir)
+  local menu_state = state and state.menus and state.menus.apple or {}
+  local items = type(menu_state.items) == "table" and menu_state.items or {}
+  local custom = type(menu_state.custom) == "table" and menu_state.custom or {}
+  return {
+    show_missing = menu_state.show_missing,
+    items = items,
+    custom = custom,
+  }
+end
+
 local function resolve_path(ctx, candidates, want_dir)
   local fallback = nil
   for _, candidate in ipairs(candidates or {}) do
@@ -151,7 +189,8 @@ local function wrap_action(ctx, popup_name, entry_name, action)
   if not action or action == "" then
     return ""
   end
-  local menu_action = ctx.menu_action or (ctx.config_dir and (ctx.config_dir .. "/helpers/menu_action")) or ""
+  local config_dir = resolve_config_dir(ctx)
+  local menu_action = ctx.menu_action or (config_dir .. "/helpers/menu_action")
   if menu_action ~= "" then
     return string.format(
       "MENU_ACTION_CMD=%q %s %q %q",
@@ -171,7 +210,8 @@ function apple_menu.setup(ctx)
   local widget_height = ctx.widget_height
   local associated_displays = ctx.associated_displays or "all"
   local font_small = font_string(ctx, settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
-  local font_bold = font_string(ctx, settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small)
+  local config_dir = resolve_config_dir(ctx)
+  local menu_config = read_menu_config(config_dir)
 
   local popup_border_width = (ctx.appearance and ctx.appearance.popup_border_width) or 2
   local popup_corner_radius = (ctx.appearance and ctx.appearance.popup_corner_radius) or 8
@@ -211,55 +251,62 @@ function apple_menu.setup(ctx)
 
   local item_height = math.max(widget_height - 6, 20)
 
-  local function add_header(name, icon, label, color)
-    sbar.add("item", name, {
-      position = "popup.apple_menu",
-      icon = { string = icon or "", color = color or theme.WHITE, drawing = icon and icon ~= "" },
-      label = { string = label or "", font = font_bold, color = theme.WHITE },
-      ["icon.padding_left"] = 8,
-      ["icon.padding_right"] = 6,
-      ["label.padding_left"] = 4,
-      ["label.padding_right"] = 8,
-      ["label.padding_top"] = 2,
-      background = { drawing = false },
-    })
-  end
-
-  local function add_separator(name)
-    sbar.add("item", name, {
-      position = "popup.apple_menu",
-      icon = { drawing = false },
-      label = { string = "───────────────", font = font_small, color = "0x40cdd6f4" },
-      ["label.padding_left"] = 8,
-      background = { drawing = false },
-    })
-  end
-
   local hover_script = ctx.HOVER_SCRIPT
-  if not hover_script and ctx.config_dir then
-    local compiled_hover = ctx.config_dir .. "/bin/popup_hover"
+  if not hover_script and config_dir then
+    local compiled_hover = config_dir .. "/bin/popup_hover"
     if path_exists(compiled_hover, false) then
       hover_script = compiled_hover
     else
-      hover_script = ctx.config_dir .. "/plugins/popup_hover.sh"
+      hover_script = config_dir .. "/plugins/popup_hover.sh"
     end
   end
 
   local code_dir = resolve_code_dir(ctx)
   local has_lab = code_dir and path_exists(code_dir .. "/lab", true)
-  local show_missing = os.getenv("BARISTA_SHOW_MISSING_TOOLS") == "1" or has_lab
+  local show_missing = os.getenv("BARISTA_SHOW_MISSING_TOOLS") == "1"
+  if type(menu_config.show_missing) == "boolean" then
+    show_missing = menu_config.show_missing
+  elseif show_missing == false and has_lab then
+    show_missing = true
+  end
+
+  local function normalize_bool(value)
+    if type(value) == "boolean" then
+      return value
+    end
+    if type(value) == "number" then
+      return value ~= 0
+    end
+    if type(value) == "string" then
+      local lowered = value:lower()
+      if lowered == "true" or lowered == "yes" or lowered == "1" then
+        return true
+      end
+      if lowered == "false" or lowered == "no" or lowered == "0" then
+        return false
+      end
+    end
+    return nil
+  end
+
+  local function normalize_order(value)
+    if type(value) == "number" then
+      return value
+    end
+    if type(value) == "string" then
+      return tonumber(value)
+    end
+    return nil
+  end
 
   local function add_item(entry)
-    local enabled = entry.enabled ~= false
+    local enabled = not entry.missing
     local label = entry.label
     local icon_color = enabled and (entry.icon_color or theme.WHITE) or theme.DARK_WHITE
     local label_color = enabled and (entry.label_color or theme.WHITE) or theme.DARK_WHITE
     local action = entry.action
-    if not enabled and not show_missing then
-      return
-    end
-    if not enabled then
-      local launcher = (ctx.config_dir or "") .. "/bin/open_control_panel.sh"
+    if entry.missing then
+      local launcher = config_dir .. "/bin/open_control_panel.sh"
       local fallback = ctx.call_script and ctx.call_script(launcher, "--panel") or ""
       action = fallback
       label = label .. " (missing)"
@@ -285,138 +332,218 @@ function apple_menu.setup(ctx)
     end
   end
 
-  add_header("menu.tools.header", "󰕮", "Creative Tools", theme.LAVENDER)
-
   local afs_root, afs_ok = resolve_afs_root(ctx)
   local studio_root, studio_ok = resolve_afs_studio_root(ctx, afs_root)
   local stemforge_app, stemforge_ok = resolve_stemforge_app(ctx)
   local stem_sampler_app, stem_sampler_ok = resolve_stem_sampler_app(ctx)
   local yaze_app, yaze_ok = resolve_yaze_app(ctx)
+  local help_center = (ctx.helpers and ctx.helpers.help_center) or (config_dir .. "/build/bin/help_center")
+  local help_center_ok = path_exists(help_center, false)
+  local icon_browser = config_dir .. "/gui/bin/icon_browser"
+  local icon_browser_ok = path_exists(icon_browser, false)
 
-  if not afs_root and code_dir then
-    afs_root = code_dir .. "/lab/afs"
-  end
-  if not studio_root and code_dir then
-    studio_root = code_dir .. "/lab/afs/apps/studio"
+  local afs_tui = afs_root and string.format("cd %s && python3 -m tui.app", shell_quote(afs_root)) or nil
+  local studio_bin, studio_bin_ok = resolve_path(ctx, {
+    studio_root and (studio_root .. "/build/afs_studio") or nil,
+    studio_root and (studio_root .. "/build/bin/afs_studio") or nil,
+  }, false)
+  local studio_action
+  if studio_bin_ok and studio_bin then
+    studio_action = open_terminal(shell_quote(studio_bin))
+  elseif afs_root then
+    studio_action = open_terminal(afs_cli(afs_root, "studio run --build"))
+  elseif studio_root then
+    studio_action = open_terminal(string.format(
+      "cd %s && cmake --build build --target afs_studio && ./build/afs_studio",
+      shell_quote(studio_root)
+    ))
   end
 
-  if afs_root or show_missing then
-    local afs_tui = string.format("cd %s && python3 -m tui.app", shell_quote(afs_root or ""))
-    add_item({
-      name = "menu.tools.afs.browser",
-      icon = "󰈙",
+  local labeler_bin, labeler_bin_ok = resolve_path(ctx, {
+    studio_root and (studio_root .. "/build/afs_labeler") or nil,
+    studio_root and (studio_root .. "/build/bin/afs_labeler") or nil,
+  }, false)
+  local labeler_csv = os.getenv("AFS_LABELER_CSV")
+  local labeler_cmd
+  if labeler_bin_ok and labeler_bin then
+    labeler_cmd = shell_quote(labeler_bin)
+    if labeler_csv and labeler_csv ~= "" then
+      labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
+    end
+  elseif studio_root then
+    labeler_cmd = string.format("cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler", shell_quote(studio_root))
+    if labeler_csv and labeler_csv ~= "" then
+      labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
+    end
+  end
+
+  local base_items = {
+    {
+      id = "afs_browser",
       label = "AFS Browser",
+      icon = "󰈙",
       icon_color = theme.SAPPHIRE,
-      action = open_terminal(afs_tui),
-      enabled = afs_ok or has_lab,
-    })
-  end
-
-  if studio_root or show_missing then
-    local studio_bin, studio_bin_ok = resolve_path(ctx, {
-      studio_root and (studio_root .. "/build/afs_studio") or nil,
-      studio_root and (studio_root .. "/build/bin/afs_studio") or nil,
-    }, false)
-    local studio_action
-    if studio_bin_ok and studio_bin then
-      studio_action = open_terminal(shell_quote(studio_bin))
-    elseif afs_root then
-      studio_action = open_terminal(afs_cli(afs_root, "studio run --build"))
-    elseif studio_root then
-      studio_action = open_terminal(string.format(
-        "cd %s && cmake --build build --target afs_studio && ./build/afs_studio",
-        shell_quote(studio_root)
-      ))
-    end
-    add_item({
-      name = "menu.tools.afs.studio",
-      icon = "󰆍",
+      action = afs_tui and open_terminal(afs_tui) or "",
+      available = afs_ok and afs_tui ~= nil,
+      default_enabled = true,
+    },
+    {
+      id = "afs_studio",
       label = "AFS Studio",
+      icon = "󰆍",
       icon_color = theme.LAVENDER,
-      action = studio_action,
-      enabled = studio_ok or has_lab,
-    })
+      action = studio_action or "",
+      available = studio_ok and studio_action ~= nil,
+      default_enabled = true,
+    },
+    {
+      id = "afs_labeler",
+      label = "AFS Labeler",
+      icon = "󰓹",
+      icon_color = theme.TEAL,
+      action = labeler_cmd and open_terminal(labeler_cmd) or "",
+      available = studio_ok and labeler_cmd ~= nil,
+      default_enabled = true,
+    },
+    {
+      id = "stemforge",
+      label = "StemForge",
+      icon = "󰎈",
+      icon_color = theme.PINK,
+      action = stemforge_app and string.format("open %s", shell_quote(stemforge_app)) or "",
+      available = stemforge_ok,
+      default_enabled = true,
+    },
+    {
+      id = "stem_sampler",
+      label = "StemSampler",
+      icon = "󰎈",
+      icon_color = theme.PEACH,
+      action = stem_sampler_app and string.format("open %s", shell_quote(stem_sampler_app)) or "",
+      available = stem_sampler_ok,
+      default_enabled = true,
+    },
+    {
+      id = "yaze",
+      label = "Yaze",
+      icon = "󰯙",
+      icon_color = theme.GREEN,
+      action = yaze_app and string.format("open %s", shell_quote(yaze_app)) or "",
+      available = yaze_ok,
+      default_enabled = true,
+    },
+    {
+      id = "help_center",
+      label = "Help Center",
+      icon = "󰘥",
+      icon_color = theme.BLUE,
+      action = help_center,
+      available = help_center_ok,
+      default_enabled = true,
+    },
+    {
+      id = "icon_browser",
+      label = "Icon Browser",
+      icon = "󰈙",
+      icon_color = theme.SKY,
+      action = icon_browser,
+      available = icon_browser_ok,
+      default_enabled = true,
+    },
+    {
+      id = "barista_config",
+      label = "Barista Config",
+      icon = "󰒓",
+      icon_color = theme.SKY,
+      action = ctx.call_script(config_dir .. "/bin/open_control_panel.sh", "--panel"),
+      available = true,
+      default_enabled = true,
+    },
+    {
+      id = "reload_bar",
+      label = "Reload SketchyBar",
+      icon = "󰑐",
+      icon_color = theme.YELLOW,
+      action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload",
+      available = true,
+      default_enabled = true,
+    },
+  }
 
-    local labeler_bin, labeler_bin_ok = resolve_path(ctx, {
-      studio_root and (studio_root .. "/build/afs_labeler") or nil,
-      studio_root and (studio_root .. "/build/bin/afs_labeler") or nil,
-    }, false)
-    local labeler_csv = os.getenv("AFS_LABELER_CSV")
-    local labeler_cmd
-    if labeler_bin_ok and labeler_bin then
-      labeler_cmd = shell_quote(labeler_bin)
-      if labeler_csv and labeler_csv ~= "" then
-        labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
-      end
-    elseif studio_root then
-      labeler_cmd = string.format("cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler", shell_quote(studio_root))
-      if labeler_csv and labeler_csv ~= "" then
-        labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
+  local rendered = {}
+  for index, item in ipairs(base_items) do
+    local override = menu_config.items[item.id] or {}
+    local enabled_override = normalize_bool(override.enabled)
+    local should_show = false
+    local missing = false
+
+    if enabled_override == false then
+      should_show = false
+    elseif enabled_override == true then
+      should_show = true
+      missing = not item.available
+    else
+      if item.default_enabled == false then
+        should_show = false
+      elseif item.available then
+        should_show = true
+      elseif show_missing then
+        should_show = true
+        missing = true
       end
     end
-    add_item({
-      name = "menu.tools.afs.labeler",
-      icon = "󰓹",
-      label = "AFS Labeler",
-      icon_color = theme.TEAL,
-      action = open_terminal(labeler_cmd),
-      enabled = (studio_ok and (labeler_bin_ok or (labeler_cmd and labeler_cmd ~= ""))) or has_lab,
-    })
+
+    if should_show then
+      local order = normalize_order(override.order) or item.order or (1000 + index)
+      table.insert(rendered, {
+        id = item.id,
+        name = "menu.tools." .. item.id,
+        label = override.label or item.label,
+        icon = override.icon or item.icon,
+        icon_color = override.icon_color or override.color or item.icon_color,
+        label_color = override.label_color or item.label_color,
+        action = item.action,
+        missing = missing,
+        order = order,
+        default_index = index,
+      })
+    end
   end
 
-  if stemforge_app or show_missing then
-    add_item({
-      name = "menu.tools.stemforge",
-      icon = "󰎈",
-      label = "StemForge",
-      icon_color = theme.PINK,
-      action = string.format("open %s", shell_quote(stemforge_app or "")),
-      enabled = stemforge_ok or has_lab,
-    })
+  for index, custom in ipairs(menu_config.custom or {}) do
+    if type(custom) == "table" then
+      local enabled_override = normalize_bool(custom.enabled)
+      if enabled_override ~= false then
+        local label = custom.label or custom.title or ("Custom " .. index)
+        local action = custom.command or custom.action or ""
+        if label ~= "" and action ~= "" then
+          table.insert(rendered, {
+            id = "custom_" .. index,
+            name = "menu.tools.custom." .. index,
+            label = label,
+            icon = custom.icon or "",
+            icon_color = custom.icon_color or custom.color,
+            label_color = custom.label_color,
+            action = action,
+            missing = false,
+            order = normalize_order(custom.order) or (2000 + index),
+            default_index = 1000 + index,
+          })
+        end
+      end
+    end
   end
 
-  if stem_sampler_app or show_missing then
-    add_item({
-      name = "menu.tools.stem_sampler",
-      icon = "󰎈",
-      label = "StemSampler",
-      icon_color = theme.PEACH,
-      action = string.format("open %s", shell_quote(stem_sampler_app or "")),
-      enabled = stem_sampler_ok or has_lab,
-    })
+  table.sort(rendered, function(a, b)
+    if a.order == b.order then
+      return a.default_index < b.default_index
+    end
+    return a.order < b.order
+  end)
+
+  for _, entry in ipairs(rendered) do
+    add_item(entry)
   end
-
-  if yaze_app or show_missing then
-    add_item({
-      name = "menu.tools.yaze",
-      icon = "󰯙",
-      label = "Yaze",
-      icon_color = theme.GREEN,
-      action = string.format("open %s", shell_quote(yaze_app or "")),
-      enabled = yaze_ok or has_lab,
-    })
-  end
-
-  add_separator("menu.tools.sep1")
-  add_header("menu.tools.barista.header", "󰒓", "Barista", theme.SKY)
-
-  add_item({
-    name = "menu.tools.barista.config",
-    icon = "󰒓",
-    label = "Barista Config",
-    icon_color = theme.SKY,
-    action = ctx.call_script((ctx.config_dir or "") .. "/bin/open_control_panel.sh", "--panel"),
-    enabled = true,
-  })
-
-  add_item({
-    name = "menu.tools.barista.reload",
-    icon = "󰑐",
-    label = "Reload SketchyBar",
-    icon_color = theme.YELLOW,
-    action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload",
-    enabled = true,
-  })
 end
 
 return apple_menu

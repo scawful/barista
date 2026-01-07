@@ -61,7 +61,7 @@ menus.apple.hover = {
 - Missing tools are hidden unless `show_missing` is enabled.
 - Missing/blocked items open Barista Config so you can adjust paths or disable them.
 - Terminal-only tools are hidden unless `menus.apple.terminal` is enabled (AFS Studio/Labeler CLI fallbacks honor this).
-- Help Center and Icon Browser fall back to docs when binaries are missing; Sys Manual falls back to the repo README.
+- Help Center and Icon Browser fall back to docs when binaries are missing; Sys Manual requires the app binary.
 - Shortcut glyphs are sourced from `modules/shortcuts.lua` (per-action) and rendered in the menu.
 - Hover styles can be overridden via `menus.apple.hover` or env vars:
   `POPUP_HOVER_COLOR`, `POPUP_HOVER_BORDER_COLOR`, `POPUP_HOVER_BORDER_WIDTH`.

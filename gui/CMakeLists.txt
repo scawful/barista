@@ -124,6 +124,7 @@ if(APPLE)
   add_executable(help_center
     help_center.m
     src/core/ConfigurationManager.m
+    src/core/BaristaStyle.m
   )
   
   target_compile_options(help_center PRIVATE ${OBJC_FLAGS})

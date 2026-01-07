@@ -241,13 +241,6 @@ local function resolve_sys_manual_binary(code_dir)
   })
 end
 
-local function resolve_sys_manual_doc(code_dir)
-  return resolve_path({
-    code_dir and (code_dir .. "/lab/sys_manual/README.md") or nil,
-    code_dir and (code_dir .. "/sys_manual/README.md") or nil,
-  }, false)
-end
-
 local function resolve_help_center_bin()
   return resolve_executable_path({
     CONFIG_DIR .. "/gui/bin/help_center",
@@ -350,7 +343,6 @@ local STEMFORGE_APP = select(1, resolve_stemforge_app(CODE_DIR))
 local STEM_SAMPLER_APP = select(1, resolve_stem_sampler_app(CODE_DIR))
 local YAZE_APP = select(1, resolve_yaze_app(CODE_DIR))
 local SYS_MANUAL_BIN, SYS_MANUAL_OK = resolve_sys_manual_binary(CODE_DIR)
-local SYS_MANUAL_DOC = select(1, resolve_sys_manual_doc(CODE_DIR))
 local HELP_CENTER_BIN, HELP_CENTER_OK = resolve_help_center_bin()
 local ICON_BROWSER_BIN, ICON_BROWSER_OK = resolve_icon_browser_bin()
 
@@ -396,9 +388,6 @@ end
 local function sys_manual_action()
   if SYS_MANUAL_OK and SYS_MANUAL_BIN then
     return shell_quote(SYS_MANUAL_BIN)
-  end
-  if SYS_MANUAL_DOC then
-    return open_path_command(SYS_MANUAL_DOC)
   end
   return ""
 end

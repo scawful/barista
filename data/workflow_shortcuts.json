@@ -76,7 +76,6 @@
     { "id": "quick_start", "title": "Quick Start", "path": "%CONFIG%/docs/guides/QUICK_START.md" },
     { "id": "control_panel", "title": "Control Panel Guide", "path": "%CONFIG%/docs/features/CONTROL_PANEL_V2.md" },
     { "id": "control_panel_roadmap", "title": "Control Panel Roadmap", "path": "%CONFIG%/docs/features/BARISTA_CONTROL_PANEL.md" },
-    { "id": "sys_manual", "title": "Sys Manual", "path": "%CODE%/lab/sys_manual/README.md" },
     { "id": "icons", "title": "Icon Reference", "path": "%CONFIG%/docs/features/ICON_REFERENCE.md" }
   ]
 }

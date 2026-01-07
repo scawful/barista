@@ -286,14 +286,6 @@ local function resolve_sys_manual_binary(ctx)
   })
 end
 
-local function resolve_sys_manual_doc(ctx)
-  local code_dir = resolve_code_dir(ctx)
-  return resolve_path(ctx, {
-    code_dir .. "/lab/sys_manual/README.md",
-    code_dir .. "/sys_manual/README.md",
-  }, false)
-end
-
 local function resolve_cortex_cli(ctx)
   local override = os.getenv("CORTEX_CLI") or os.getenv("CORTEX_CLI_PATH")
   if override and override ~= "" then
@@ -616,15 +608,11 @@ function apple_menu.setup(ctx)
   end
 
   local sys_manual_bin, sys_manual_ok = resolve_sys_manual_binary(ctx)
-  local sys_manual_doc, sys_manual_doc_ok = resolve_sys_manual_doc(ctx)
   local sys_manual_action = ""
   local sys_manual_available = false
   if sys_manual_ok and sys_manual_bin then
     sys_manual_action = shell_quote(sys_manual_bin)
     sys_manual_available = true
-  elseif sys_manual_doc then
-    sys_manual_action = string.format("open %s", shell_quote(sys_manual_doc))
-    sys_manual_available = sys_manual_doc_ok
   end
 
   local afs_action = afs_browser_app and string.format("open %s", shell_quote(afs_browser_app)) or ""

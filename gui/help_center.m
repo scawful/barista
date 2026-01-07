@@ -1,6 +1,10 @@
 #import "BaristaStyle.h"
 #import "ConfigurationManager.h"
 #import <Cocoa/Cocoa.h>
+#import <objc/runtime.h>
+
+static char kWorkflowDocKey;
+static char kWorkflowActionKey;
 
 @interface HelpCenterController : NSObject <NSApplicationDelegate, NSTableViewDataSource, NSTableViewDelegate>
 @property (strong) NSWindow *window;
@@ -52,7 +56,7 @@
   content.layer.backgroundColor = style.backgroundColor.CGColor;
 
   NSTabView *tabs = [[NSTabView alloc] initWithFrame:content.bounds];
-  tabs.tabViewType = NSTabViewTypeNoTabsNoBorder;
+  tabs.tabViewType = NSNoTabsNoBorder;
   tabs.drawsBackground = YES;
   tabs.wantsLayer = YES;
   tabs.layer.backgroundColor = style.backgroundColor.CGColor;
@@ -76,10 +80,14 @@
   [tabs selectTabViewItemAtIndex:0];
 
   NSArray *labels = @[ @"Shortcuts", @"Workflow", @"Repos" ];
-  NSSegmentedControl *tabControl = [[NSSegmentedControl alloc] initWithLabels:labels
-                                                                 trackingMode:NSSegmentSwitchTrackingSelectOne
-                                                                       target:self
-                                                                       action:@selector(changeTab:)];
+  NSSegmentedControl *tabControl = [[NSSegmentedControl alloc] initWithFrame:NSZeroRect];
+  tabControl.segmentCount = labels.count;
+  for (NSInteger idx = 0; idx < labels.count; idx++) {
+    [tabControl setLabel:labels[idx] forSegment:idx];
+  }
+  tabControl.trackingMode = NSSegmentSwitchTrackingSelectOne;
+  tabControl.target = self;
+  tabControl.action = @selector(changeTab:);
   tabControl.segmentStyle = NSSegmentStyleSeparated;
   tabControl.selectedSegment = 0;
   tabControl.font = style.sectionFont;
@@ -207,7 +215,7 @@
       button.target = self;
       button.action = @selector(openDoc:);
       button.toolTip = doc[@"path"];
-      button.representedObject = doc;
+      objc_setAssociatedObject(button, &kWorkflowDocKey, doc, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
       [container addSubview:button];
       y -= 34;
     }
@@ -242,7 +250,7 @@
       button.action = selector;
     } else if (hasCommand || hasPath) {
       button.action = @selector(runWorkflowAction:);
-      button.representedObject = action;
+      objc_setAssociatedObject(button, &kWorkflowActionKey, action, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     } else {
       button.enabled = NO;
     }
@@ -607,7 +615,7 @@
 }
 
 - (void)runWorkflowAction:(NSButton *)sender {
-  NSDictionary *action = sender.representedObject;
+  NSDictionary *action = objc_getAssociatedObject(sender, &kWorkflowActionKey);
   if (![action isKindOfClass:[NSDictionary class]]) {
     return;
   }
@@ -811,7 +819,7 @@
 }
 
 - (void)openDoc:(NSButton *)sender {
-  NSDictionary *entry = sender.representedObject;
+  NSDictionary *entry = objc_getAssociatedObject(sender, &kWorkflowDocKey);
   NSString *urlString = [entry isKindOfClass:[NSDictionary class]] ? entry[@"url"] : nil;
   NSString *path = [entry isKindOfClass:[NSDictionary class]] ? entry[@"path"] : sender.toolTip;
   if ([urlString isKindOfClass:[NSString class]] && urlString.length > 0) {

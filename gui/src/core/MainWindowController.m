@@ -56,7 +56,7 @@
   self.tabView = [[NSTabView alloc] initWithFrame:self.window.contentView.bounds];
   self.tabView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   self.tabView.delegate = self;
-  [self.tabView setTabViewType:NSTabViewTypeNoTabsNoBorder];
+  [self.tabView setTabViewType:NSNoTabsNoBorder];
   self.tabView.drawsBackground = NO;
 
   BaristaStyle *style = [BaristaStyle sharedStyle];

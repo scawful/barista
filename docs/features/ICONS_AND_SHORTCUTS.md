@@ -99,6 +99,23 @@ These shortcuts work system-wide and don't conflict with common applications:
 - `⌘⌥⇧R` - Rebuild + Reload SketchyBar
 - `⌘⌥Y` - Toggle Yabai Shortcuts
 
+#### AFS Tools
+- `⌘⌥B` - Launch AFS Browser
+- `⌘⌥S` - Launch AFS Studio
+- `⌘⌥L` - Launch AFS Labeler
+
+#### Audio
+- `⌘⌥F` - Launch StemForge
+- `⌘⌥M` - Launch StemSampler
+
+#### Apps
+- `⌘⌥Z` - Launch Yaze
+- `⌘⌥D` - Open Sys Manual
+
+#### AFS app paths
+- AFS Browser uses the ImGui app bundle (override with `AFS_BROWSER_APP`).
+- AFS Studio/Labeler prefer `%CODE%/lab/afs/apps/studio` binaries; CLI fallback requires `menus.apple.terminal = true`.
+
 #### Display Management
 - `⌘⌥⇧→` - Send Window to Next Display
 - `⌘⌥⇧←` - Send Window to Prev Display

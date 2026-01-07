@@ -54,15 +54,25 @@ menus.apple.hover = {
 - `stemforge`, `stem_sampler`
 - `yaze`
 - `cortex_toggle`, `cortex_hub`
-- `help_center`, `icon_browser`, `barista_config`, `reload_bar`
+- `help_center`, `sys_manual`, `icon_browser`, `barista_config`, `reload_bar`
 
 ## Behavior notes
 
 - Missing tools are hidden unless `show_missing` is enabled.
 - Missing/blocked items open Barista Config so you can adjust paths or disable them.
-- Terminal-only tools are hidden unless `menus.apple.terminal` is enabled.
+- Terminal-only tools are hidden unless `menus.apple.terminal` is enabled (AFS Studio/Labeler CLI fallbacks honor this).
+- Help Center and Icon Browser fall back to docs when binaries are missing; Sys Manual falls back to the repo README.
+- Shortcut glyphs are sourced from `modules/shortcuts.lua` (per-action) and rendered in the menu.
 - Hover styles can be overridden via `menus.apple.hover` or env vars:
   `POPUP_HOVER_COLOR`, `POPUP_HOVER_BORDER_COLOR`, `POPUP_HOVER_BORDER_WIDTH`.
+
+## AFS app resolution
+
+- **AFS Browser**: ImGui app bundle (override via `AFS_BROWSER_APP`).
+  Default: `%CODE%/lab/afs_suite/build/apps/browser/afs-browser.app`
+- **AFS Studio/Labeler**: direct binaries in `AFS_STUDIO_ROOT` or `%CODE%/lab/afs/apps/studio`.
+  Terminal fallback uses `AFS_ROOT` CLI and requires `menus.apple.terminal = true`.
+- **AFS Root**: `AFS_ROOT` env var or `%CODE%/lab/afs`.
 
 ## Cortex integration
 

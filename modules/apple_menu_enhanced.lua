@@ -1,4 +1,8 @@
 local apple_menu = {}
+local shortcuts_ok, shortcuts = pcall(require, "shortcuts")
+if not shortcuts_ok then
+  shortcuts = nil
+end
 
 local function expand_path(path)
   if type(path) ~= "string" or path == "" then
@@ -83,6 +87,13 @@ local function open_terminal(command)
   return string.format("osascript -e 'tell application \"Terminal\" to do script %q'", command)
 end
 
+local function menu_label(label, shortcut)
+  if shortcut and shortcut ~= "" then
+    return string.format("%-16s %s", label, shortcut)
+  end
+  return label
+end
+
 local function font_string(ctx, family, style, size)
   if ctx.font_string then
     return ctx.font_string(family, style, size)
@@ -156,7 +167,14 @@ end
 
 local function resolve_path(ctx, candidates, want_dir)
   local fallback = nil
-  for _, candidate in ipairs(candidates or {}) do
+  local max_index = 0
+  for index in pairs(candidates or {}) do
+    if type(index) == "number" and index > max_index then
+      max_index = index
+    end
+  end
+  for i = 1, max_index do
+    local candidate = candidates[i]
     if candidate and candidate ~= "" then
       candidate = expand_path(candidate)
       fallback = fallback or candidate
@@ -170,7 +188,14 @@ end
 
 local function resolve_executable_path(candidates)
   local fallback = nil
-  for _, candidate in ipairs(candidates or {}) do
+  local max_index = 0
+  for index in pairs(candidates or {}) do
+    if type(index) == "number" and index > max_index then
+      max_index = index
+    end
+  end
+  for i = 1, max_index do
+    local candidate = candidates[i]
     if candidate and candidate ~= "" then
       candidate = expand_path(candidate)
       fallback = fallback or candidate
@@ -202,6 +227,18 @@ local function resolve_afs_studio_root(ctx, afs_root)
     code_dir .. "/lab/afs_studio",
     code_dir .. "/afs/apps/studio",
     code_dir .. "/afs_studio",
+  }, true)
+end
+
+local function resolve_afs_browser_app(ctx)
+  local code_dir = resolve_code_dir(ctx)
+  return resolve_path(ctx, {
+    ctx.paths and ctx.paths.afs_browser_app or nil,
+    os.getenv("AFS_BROWSER_APP"),
+    code_dir .. "/lab/afs_suite/build/apps/browser/afs-browser.app",
+    code_dir .. "/lab/afs_suite/build_ai/apps/browser/afs-browser.app",
+    code_dir .. "/lab/afs_suite/build/apps/browser/Debug/afs-browser.app",
+    code_dir .. "/lab/afs_suite/build/apps/browser/Release/afs-browser.app",
   }, true)
 end
 
@@ -238,6 +275,23 @@ local function resolve_yaze_app(ctx)
     code_dir .. "/hobby/yaze/build/bin/yaze.app",
     code_dir .. "/yaze/build/bin/yaze.app",
   }, true)
+end
+
+local function resolve_sys_manual_binary(ctx)
+  local code_dir = resolve_code_dir(ctx)
+  return resolve_executable_path({
+    code_dir .. "/lab/sys_manual/build/sys_manual",
+    code_dir .. "/sys_manual/build/sys_manual",
+    "/Applications/sys_manual.app/Contents/MacOS/sys_manual",
+  })
+end
+
+local function resolve_sys_manual_doc(ctx)
+  local code_dir = resolve_code_dir(ctx)
+  return resolve_path(ctx, {
+    code_dir .. "/lab/sys_manual/README.md",
+    code_dir .. "/sys_manual/README.md",
+  }, false)
 end
 
 local function resolve_cortex_cli(ctx)
@@ -409,6 +463,8 @@ function apple_menu.setup(ctx)
     return nil
   end
 
+  local terminal_defaults = {}
+
   local function terminal_allowed(item_id)
     local override = menu_config.items[item_id] or {}
     if type(override.launch) == "string" then
@@ -434,7 +490,7 @@ function apple_menu.setup(ctx)
       env = env:lower()
       return env == "1" or env == "true" or env == "yes"
     end
-    return false
+    return terminal_defaults[item_id] == true
   end
 
   local function terminal_action(item_id, command)
@@ -478,7 +534,11 @@ function apple_menu.setup(ctx)
 
   local function add_item(entry)
     local muted = entry.missing or entry.blocked
-    local label = entry.label
+    local shortcut = entry.shortcut
+    if (not shortcut or shortcut == "") and entry.shortcut_action and shortcuts and shortcuts.get_symbol then
+      shortcut = shortcuts.get_symbol(entry.shortcut_action)
+    end
+    local label = menu_label(entry.label, shortcut)
     local icon_color = entry.icon_color or (muted and theme.DARK_WHITE or theme.WHITE)
     local label_color = entry.label_color or theme.WHITE
     local action = entry.action
@@ -514,21 +574,60 @@ function apple_menu.setup(ctx)
 
   local afs_root, afs_ok = resolve_afs_root(ctx)
   local studio_root, studio_ok = resolve_afs_studio_root(ctx, afs_root)
+  local afs_browser_app, afs_browser_ok = resolve_afs_browser_app(ctx)
   local stemforge_app, stemforge_ok = resolve_stemforge_app(ctx)
   local stem_sampler_app, stem_sampler_ok = resolve_stem_sampler_app(ctx)
   local yaze_app, yaze_ok = resolve_yaze_app(ctx)
   local cortex_cli, cortex_cli_ok = resolve_cortex_cli(ctx)
-  local help_center = resolve_path(ctx, {
+  local help_center_bin, help_center_ok = resolve_executable_path({
     ctx.helpers and ctx.helpers.help_center or nil,
     config_dir .. "/gui/bin/help_center",
     config_dir .. "/build/bin/help_center",
+  })
+  local help_center_doc, help_center_doc_ok = resolve_path(ctx, {
+    config_dir .. "/docs/features/ICONS_AND_SHORTCUTS.md",
+    config_dir .. "/docs/guides/QUICK_START.md",
   }, false)
-  local help_center_ok = path_is_executable(help_center)
-  local icon_browser = config_dir .. "/gui/bin/icon_browser"
-  local icon_browser_ok = path_is_executable(icon_browser)
+  local help_center_action = ""
+  local help_center_available = false
+  if help_center_ok and help_center_bin then
+    help_center_action = shell_quote(help_center_bin)
+    help_center_available = true
+  elseif help_center_doc then
+    help_center_action = string.format("open %s", shell_quote(help_center_doc))
+    help_center_available = help_center_doc_ok
+  end
 
-  local afs_tui = afs_root and string.format("cd %s && python3 -m tui.app", shell_quote(afs_root)) or nil
-  local afs_action = terminal_action("afs_browser", afs_tui)
+  local icon_browser_bin, icon_browser_ok = resolve_executable_path({
+    config_dir .. "/gui/bin/icon_browser",
+    config_dir .. "/build/bin/icon_browser",
+  })
+  local icon_browser_doc, icon_browser_doc_ok = resolve_path(ctx, {
+    config_dir .. "/docs/features/ICON_REFERENCE.md",
+  }, false)
+  local icon_browser_action = ""
+  local icon_browser_available = false
+  if icon_browser_ok and icon_browser_bin then
+    icon_browser_action = shell_quote(icon_browser_bin)
+    icon_browser_available = true
+  elseif icon_browser_doc then
+    icon_browser_action = string.format("open %s", shell_quote(icon_browser_doc))
+    icon_browser_available = icon_browser_doc_ok
+  end
+
+  local sys_manual_bin, sys_manual_ok = resolve_sys_manual_binary(ctx)
+  local sys_manual_doc, sys_manual_doc_ok = resolve_sys_manual_doc(ctx)
+  local sys_manual_action = ""
+  local sys_manual_available = false
+  if sys_manual_ok and sys_manual_bin then
+    sys_manual_action = shell_quote(sys_manual_bin)
+    sys_manual_available = true
+  elseif sys_manual_doc then
+    sys_manual_action = string.format("open %s", shell_quote(sys_manual_doc))
+    sys_manual_available = sys_manual_doc_ok
+  end
+
+  local afs_action = afs_browser_app and string.format("open %s", shell_quote(afs_browser_app)) or ""
   local studio_bin, studio_bin_ok = resolve_path(ctx, {
     studio_root and (studio_root .. "/build/afs_studio") or nil,
     studio_root and (studio_root .. "/build/bin/afs_studio") or nil,
@@ -536,16 +635,20 @@ function apple_menu.setup(ctx)
   local studio_action
   local studio_cmd
   if studio_bin_ok and studio_bin then
-    studio_cmd = shell_quote(studio_bin)
-  elseif afs_root then
-    studio_cmd = afs_cli(afs_root, "studio run --build")
-  elseif studio_root then
-    studio_cmd = string.format(
-      "cd %s && cmake --build build --target afs_studio && ./build/afs_studio",
-      shell_quote(studio_root)
-    )
+    studio_action = shell_quote(studio_bin)
+  else
+    if afs_root then
+      studio_cmd = afs_cli(afs_root, "studio run --build")
+    elseif studio_root then
+      studio_cmd = string.format(
+        "cd %s && cmake --build build --target afs_studio && ./build/afs_studio",
+        shell_quote(studio_root)
+      )
+    end
+    studio_action = terminal_action("afs_studio", studio_cmd)
   end
-  studio_action = terminal_action("afs_studio", studio_cmd)
+  local studio_available = studio_ok and (studio_bin_ok or studio_cmd ~= nil)
+  local studio_blocked = studio_ok and studio_cmd ~= nil and studio_action == nil
 
   local labeler_bin, labeler_bin_ok = resolve_path(ctx, {
     studio_root and (studio_root .. "/build/afs_labeler") or nil,
@@ -553,18 +656,20 @@ function apple_menu.setup(ctx)
   }, false)
   local labeler_csv = os.getenv("AFS_LABELER_CSV")
   local labeler_cmd
+  local labeler_action
   if labeler_bin_ok and labeler_bin then
     labeler_cmd = shell_quote(labeler_bin)
     if labeler_csv and labeler_csv ~= "" then
       labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
     end
+    labeler_action = labeler_cmd
   elseif studio_root then
     labeler_cmd = string.format("cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler", shell_quote(studio_root))
     if labeler_csv and labeler_csv ~= "" then
       labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
     end
+    labeler_action = terminal_action("afs_labeler", labeler_cmd)
   end
-  local labeler_action = terminal_action("afs_labeler", labeler_cmd)
 
   local cortex_toggle = cortex_cli_ok and (shell_quote(cortex_cli) .. " toggle") or ""
   local cortex_hub = cortex_cli_ok and (shell_quote(cortex_cli) .. " hub") or ""
@@ -577,8 +682,8 @@ function apple_menu.setup(ctx)
       icon_color = theme.SAPPHIRE,
       section = "afs",
       action = afs_action or "",
-      available = afs_ok and afs_tui ~= nil,
-      blocked = afs_ok and afs_tui ~= nil and afs_action == nil,
+      shortcut_action = "launch_afs_browser",
+      available = afs_browser_ok,
       default_enabled = true,
     },
     {
@@ -588,8 +693,9 @@ function apple_menu.setup(ctx)
       icon_color = theme.LAVENDER,
       section = "afs",
       action = studio_action or "",
-      available = studio_ok and studio_cmd ~= nil,
-      blocked = studio_ok and studio_cmd ~= nil and studio_action == nil,
+      shortcut_action = "launch_afs_studio",
+      available = studio_available,
+      blocked = studio_blocked,
       default_enabled = true,
     },
     {
@@ -599,6 +705,7 @@ function apple_menu.setup(ctx)
       icon_color = theme.TEAL,
       section = "afs",
       action = labeler_action or "",
+      shortcut_action = "launch_afs_labeler",
       available = studio_ok and labeler_cmd ~= nil,
       blocked = studio_ok and labeler_cmd ~= nil and labeler_action == nil,
       default_enabled = true,
@@ -610,6 +717,7 @@ function apple_menu.setup(ctx)
       icon_color = theme.PINK,
       section = "audio",
       action = stemforge_app and string.format("open %s", shell_quote(stemforge_app)) or "",
+      shortcut_action = "launch_stemforge",
       available = stemforge_ok,
       default_enabled = true,
     },
@@ -620,6 +728,7 @@ function apple_menu.setup(ctx)
       icon_color = theme.PEACH,
       section = "audio",
       action = stem_sampler_app and string.format("open %s", shell_quote(stem_sampler_app)) or "",
+      shortcut_action = "launch_stem_sampler",
       available = stem_sampler_ok,
       default_enabled = true,
     },
@@ -630,6 +739,7 @@ function apple_menu.setup(ctx)
       icon_color = theme.GREEN,
       section = "apps",
       action = yaze_app and string.format("open %s", shell_quote(yaze_app)) or "",
+      shortcut_action = "launch_yaze",
       available = yaze_ok,
       default_enabled = true,
     },
@@ -640,6 +750,7 @@ function apple_menu.setup(ctx)
       icon_color = theme.MAUVE,
       section = "cortex",
       action = cortex_toggle,
+      shortcut_action = "toggle_cortex",
       available = cortex_cli_ok,
       default_enabled = true,
     },
@@ -659,8 +770,20 @@ function apple_menu.setup(ctx)
       icon = "󰘥",
       icon_color = theme.BLUE,
       section = "barista",
-      action = help_center,
-      available = help_center_ok,
+      action = help_center_action,
+      shortcut_action = "open_help_center",
+      available = help_center_available,
+      default_enabled = true,
+    },
+    {
+      id = "sys_manual",
+      label = "Sys Manual",
+      icon = "󰋜",
+      icon_color = theme.BLUE,
+      section = "barista",
+      action = sys_manual_action,
+      shortcut_action = "open_sys_manual",
+      available = sys_manual_available,
       default_enabled = true,
     },
     {
@@ -669,8 +792,9 @@ function apple_menu.setup(ctx)
       icon = "󰈙",
       icon_color = theme.SKY,
       section = "barista",
-      action = icon_browser,
-      available = icon_browser_ok,
+      action = icon_browser_action,
+      shortcut_action = "open_icon_browser",
+      available = icon_browser_available,
       default_enabled = true,
     },
     {
@@ -680,6 +804,7 @@ function apple_menu.setup(ctx)
       icon_color = theme.SKY,
       section = "barista",
       action = ctx.call_script(config_dir .. "/bin/open_control_panel.sh", "--panel"),
+      shortcut_action = "open_control_panel",
       available = true,
       default_enabled = true,
     },
@@ -690,6 +815,7 @@ function apple_menu.setup(ctx)
       icon_color = theme.YELLOW,
       section = "barista",
       action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload",
+      shortcut_action = "reload_sketchybar",
       available = true,
       default_enabled = true,
     },
@@ -739,6 +865,8 @@ function apple_menu.setup(ctx)
         icon_color = override.icon_color or override.color or item.icon_color,
         label_color = override.label_color or item.label_color,
         action = item.action,
+        shortcut = override.shortcut or item.shortcut,
+        shortcut_action = override.shortcut_action or item.shortcut_action,
         missing = missing,
         order = order,
         default_index = index,
@@ -762,6 +890,7 @@ function apple_menu.setup(ctx)
             icon_color = custom.icon_color or custom.color,
             label_color = custom.label_color,
             action = action,
+            shortcut = custom.shortcut,
             missing = false,
             order = normalize_order(custom.order) or (2000 + index),
             default_index = 1000 + index,

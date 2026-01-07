@@ -14,6 +14,28 @@
       ]
     },
     {
+      "section": "AFS Tools",
+      "items": [
+        { "keys": "⌘⌥B", "description": "Launch AFS Browser" },
+        { "keys": "⌘⌥S", "description": "Launch AFS Studio" },
+        { "keys": "⌘⌥L", "description": "Launch AFS Labeler" }
+      ]
+    },
+    {
+      "section": "Audio",
+      "items": [
+        { "keys": "⌘⌥F", "description": "Launch StemForge" },
+        { "keys": "⌘⌥M", "description": "Launch StemSampler" }
+      ]
+    },
+    {
+      "section": "Apps",
+      "items": [
+        { "keys": "⌘⌥Z", "description": "Launch Yaze" },
+        { "keys": "⌘⌥D", "description": "Open Sys Manual" }
+      ]
+    },
+    {
       "section": "Spaces",
       "items": [
         { "keys": "⌃←/→", "description": "Prev/Next space" }

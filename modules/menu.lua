@@ -93,6 +93,36 @@ local function resolve_stemforge_app(ctx)
   }, true)
 end
 
+local function resolve_stem_sampler_app(ctx)
+  local code_dir = resolve_code_dir(ctx)
+  return resolve_path(ctx, {
+    ctx.paths and ctx.paths.stem_sampler_app or nil,
+    os.getenv("STEM_SAMPLER_APP"),
+    code_dir .. "/tools/stemsampler/StemSampler.app",
+    code_dir .. "/tools/stem_sampler/StemSampler.app",
+    os.getenv("HOME") .. "/Applications/StemSampler.app",
+    "/Applications/StemSampler.app",
+  }, true)
+end
+
+local function resolve_yaze_app(ctx)
+  local code_dir = resolve_code_dir(ctx)
+  local roots = {
+    ctx.paths and ctx.paths.yaze or nil,
+    code_dir .. "/hobby/yaze",
+    code_dir .. "/yaze",
+  }
+  for _, root in ipairs(roots) do
+    if root and root ~= "" then
+      local app = root .. "/build/bin/yaze.app"
+      if path_exists(app, true) then
+        return app
+      end
+    end
+  end
+  return nil
+end
+
 local function afs_cli(afs_root, args)
   local pythonpath = afs_root .. "/src"
   return string.format(
@@ -291,52 +321,24 @@ function menu.render_all_menus(ctx)
   })
   ctx.subscribe_popup_autoclose("apple_menu")
   
-  local system_items = {
-    { type = "header", name = "menu.system.header", label = "System" },
-    { type = "item", name = "menu.system.about", icon = "󰋗", label = "About This Mac", action = "open -a 'System Information'" },
-    { type = "item", name = "menu.system.settings", icon = "", label = "System Settings…", action = "open -a 'System Settings'", shortcut = "⌘," },
-    { type = "item", name = "menu.system.forcequit", icon = "󰜏", label = "Force Quit…", action = [[osascript -e 'tell application "System Events" to key code 53 using {command down, option down}']], shortcut = "⌘⌥⎋", label_color = theme.PEACH },
+  local apple_menu_items = {
+    { type = "header", name = "menu.tools.header", label = "Tools" },
   }
 
-  local tools_items = {}
   local afs_root = resolve_afs_root(ctx)
   local studio_root = resolve_afs_studio_root(ctx, afs_root)
   local stemforge_app = resolve_stemforge_app(ctx)
-  local code_dir = resolve_code_dir(ctx)
-
-  if ctx.integrations and ctx.integrations.cortex then
-    local status, cortex_icon, cortex_color = ctx.integrations.cortex.get_status()
-    local label = status == "running" and "Cortex (Running)" or "Cortex (Stopped)"
-    local action = ""
-    local cli_path = ctx.integrations.cortex.config and ctx.integrations.cortex.config.cli_path or ""
-    local bin_path = ctx.integrations.cortex.config and ctx.integrations.cortex.config.bin_path or ""
-    if cli_path ~= "" and path_exists(cli_path, false) then
-      action = string.format("%s toggle", shell_quote(cli_path))
-    elseif bin_path ~= "" and path_exists(bin_path, false) then
-      action = shell_quote(bin_path)
-    end
-    if action ~= "" then
-      table.insert(tools_items, {
-        type = "item",
-        name = "menu.tools.cortex",
-        icon = cortex_icon or "󰪴",
-        icon_color = cortex_color,
-        label = label,
-        action = action,
-        label_color = cortex_color,
-      })
-    end
-  end
+  local stem_sampler_app = resolve_stem_sampler_app(ctx)
+  local yaze_app = resolve_yaze_app(ctx)
 
   if afs_root then
     local afs_tui = string.format("cd %s && python3 -m tui.app", shell_quote(afs_root))
-    table.insert(tools_items, {
+    table.insert(apple_menu_items, {
       type = "item",
       name = "menu.tools.afs.browser",
       icon = "󰈙",
       label = "AFS Browser",
       action = open_terminal(afs_tui),
-      label_color = theme.SAPPHIRE,
     })
   end
 
@@ -353,13 +355,12 @@ function menu.render_all_menus(ctx)
     else
       studio_action = open_terminal(string.format("cd %s && cmake --build build --target afs_studio && ./build/afs_studio", shell_quote(studio_root)))
     end
-    table.insert(tools_items, {
+    table.insert(apple_menu_items, {
       type = "item",
       name = "menu.tools.afs.studio",
       icon = "󰆍",
       label = "AFS Studio",
       action = studio_action,
-      label_color = theme.BLUE,
     })
 
     local labeler_bin = resolve_path(ctx, {
@@ -379,77 +380,62 @@ function menu.render_all_menus(ctx)
         labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
       end
     end
-    table.insert(tools_items, {
+    table.insert(apple_menu_items, {
       type = "item",
       name = "menu.tools.afs.labeler",
       icon = "󰓹",
       label = labeler_bin and "AFS Labeler" or "Build AFS Labeler",
       action = open_terminal(labeler_cmd),
-      label_color = theme.TEAL,
     })
   end
 
   if stemforge_app then
-    table.insert(tools_items, {
+    table.insert(apple_menu_items, {
       type = "item",
       name = "menu.tools.stemforge",
       icon = "󰎈",
-      label = "Stem Sampler",
+      label = "StemForge",
       action = string.format("open %s", shell_quote(stemforge_app)),
-      label_color = theme.PEACH,
     })
   end
 
-  table.insert(tools_items, { type = "item", name = "menu.tools.terminal", icon = "", label = "Terminal", action = "open -a Terminal" })
-  table.insert(tools_items, { type = "item", name = "menu.tools.finder", icon = "", label = "Finder", action = "open -a Finder" })
-  if path_exists(code_dir, true) then
-    table.insert(tools_items, { type = "item", name = "menu.tools.workspace", icon = "󰈙", label = "Open Workspace", action = ctx.open_path(code_dir) })
+  if stem_sampler_app then
+    table.insert(apple_menu_items, {
+      type = "item",
+      name = "menu.tools.stem_sampler",
+      icon = "󰎈",
+      label = "StemSampler",
+      action = string.format("open %s", shell_quote(stem_sampler_app)),
+    })
   end
 
-  local sketchybar_tool_items = {
-    { type = "item", name = "menu.sketchybar.panel", icon = "󰒓", label = "Control Panel…", action = ctx.call_script(ctx.paths.apple_launcher, "--panel"), shortcut = "⌘⌥P" },
-    { type = "item", name = "menu.sketchybar.reload", icon = "󰑐", label = "Reload Bar", action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload", shortcut = "⌘⌥R" },
-    { type = "item", name = "menu.sketchybar.logs", icon = "󰍛", label = "Follow Logs (Terminal)", action = open_terminal(ctx.scripts.logs) },
-    { type = "item", name = "menu.sketchybar.shortcuts", icon = "󰌌", label = "Toggle Yabai Shortcuts", action = ctx.call_script(ctx.paths.config_dir .. "/scripts/toggle_shortcuts.sh", "toggle"), shortcut = "⌘⌥Y" },
-    { type = "item", name = "menu.sketchybar.accessibility", icon = "󰈈", label = "Repair Accessibility", action = ctx.call_script(ctx.scripts.accessibility) },
-  }
-
-  local yabai_control_items = {
-    { type = "item", name = "menu.yabai.toggle", icon = "󱂬", label = "Toggle Layout", action = ctx.call_script(ctx.scripts.yabai_control, "toggle-layout"), shortcut = "🌐T" },
-    { type = "item", name = "menu.yabai.balance", icon = "󰓅", label = "Balance Windows", action = ctx.call_script(ctx.scripts.yabai_control, "balance"), shortcut = "🌐B" },
-    { type = "item", name = "menu.yabai.restart", icon = "󰐥", label = "Restart Yabai", action = ctx.call_script(ctx.scripts.yabai_control, "restart") },
-    { type = "item", name = "menu.yabai.doctor", icon = "󰒓", label = "Run Diagnostics", action = ctx.call_script(ctx.scripts.yabai_control, "doctor") },
-  }
-
-  local window_action_items = {
-    { type = "item", name = "menu.window.float", icon = "󰒄", label = "Toggle Float", action = ctx.call_script(ctx.scripts.yabai_control, "window-toggle-float"), shortcut = "🌐␣" },
-    { type = "item", name = "menu.window.fullscreen", icon = "󰊓", label = "Toggle Fullscreen", action = ctx.call_script(ctx.scripts.yabai_control, "window-toggle-fullscreen"), shortcut = "🌐F" },
-    { type = "item", name = "menu.window.center", icon = "󰆾", label = "Center Window", action = ctx.call_script(ctx.scripts.yabai_control, "window-center") },
-    { type = "item", name = "menu.window.display.prev", icon = "󰍷", label = "Send to Prev Display", action = ctx.call_script(ctx.scripts.yabai_control, "window-display-prev"), shortcut = "⌘⌥⇧←" },
-    { type = "item", name = "menu.window.display.next", icon = "󰍹", label = "Send to Next Display", action = ctx.call_script(ctx.scripts.yabai_control, "window-display-next"), shortcut = "⌘⌥⇧→" },
-  }
-
-  local apple_menu_items = {}
-  append_items(apple_menu_items, system_items)
-
-  if #tools_items > 0 then
-    table.insert(apple_menu_items, { type = "header", name = "menu.tools.header", label = "Tools & Workspace" })
-    append_items(apple_menu_items, tools_items)
+  if yaze_app then
+    table.insert(apple_menu_items, {
+      type = "item",
+      name = "menu.tools.yaze",
+      icon = "󰯙",
+      label = "Yaze",
+      action = string.format("open -a %s", shell_quote(yaze_app)),
+    })
   end
 
-  table.insert(apple_menu_items, { type = "submenu", name = "menu.sketchybar.tools", icon = "󰒓", label = "SketchyBar Tools", items = sketchybar_tool_items })
-  table.insert(apple_menu_items, { type = "submenu", name = "menu.yabai.section", icon = "󱂬", label = "Yabai Controls", items = yabai_control_items })
-  table.insert(apple_menu_items, { type = "submenu", name = "menu.windows.section", icon = "󰍿", label = "Window Actions", items = window_action_items })
-
-  local help = help_items(ctx)
-  if help and #help > 0 then
-    table.insert(apple_menu_items, { type = "submenu", name = "menu.help.section", icon = "󰋖", label = "Help & Tips", items = help })
-  end
-
-  table.insert(apple_menu_items, { type = "header", name = "menu.power.header", label = "Sleep / Lock" })
-  table.insert(apple_menu_items, { type = "item", name = "menu.power.sleep", icon = "󰒲", label = "Sleep Display", action = "pmset displaysleepnow" })
-  table.insert(apple_menu_items, { type = "item", name = "menu.power.lock", icon = "󰷛", label = "Lock Screen", action = [[osascript -e 'tell application "System Events" to keystroke "q" using {control down, command down}']], shortcut = "⌃⌘Q", label_color = theme.YELLOW })
-  table.insert(apple_menu_items, { type = "item", name = "menu.power.logout", icon = "󰍃", label = "Log Out...", action = "osascript -e 'tell application \"System Events\" to log out'", label_color = theme.RED })
+  table.insert(apple_menu_items, { type = "separator", name = "menu.tools.sep1" })
+  table.insert(apple_menu_items, {
+    type = "item",
+    name = "menu.tools.barista.config",
+    icon = "󰒓",
+    label = "Barista Config",
+    action = ctx.call_script(ctx.paths.apple_launcher, "--panel"),
+    shortcut = "⌘⌥P",
+  })
+  table.insert(apple_menu_items, {
+    type = "item",
+    name = "menu.tools.barista.reload",
+    icon = "󰑐",
+    label = "Reload SketchyBar",
+    action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload",
+    shortcut = "⌘⌥R",
+  })
 
   render_menu_items("apple_menu", apple_menu_items)
 end

@@ -70,6 +70,7 @@ Feature documentation and specifications.
 | [ICON_REFERENCE.md](features/ICON_REFERENCE.md) | Icon library reference |
 | [WHICHKEY_PLAN.md](features/WHICHKEY_PLAN.md) | Which-key implementation plan |
 | [MENU_REDESIGN_PROPOSAL.md](features/MENU_REDESIGN_PROPOSAL.md) | Menu system redesign |
+| [APPLE_MENU_TOOLS.md](features/APPLE_MENU_TOOLS.md) | Apple menu tools configuration |
 
 ### troubleshooting/
 Issue resolution and fixes.

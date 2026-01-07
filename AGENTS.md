@@ -21,6 +21,7 @@ Bucket: **lab** (non-commercial). This repo is the source of truth for SketchyBa
 ## Menu Data
 - Menu/help entries live in `data/menu_help.json` and `data/workflow_shortcuts.json`.
 - Use `%CONFIG%` and `%CODE%` tokens in JSON paths; GUI helpers expand them.
+- If you change Apple menu items in `modules/apple_menu_enhanced.lua`, update `gui/src/tabs/MenuTabViewController.m` and `docs/features/APPLE_MENU_TOOLS.md`.
 
 ## Experiments
 - Use `ws fork` for experimental changes and merge only with user approval.

@@ -23,12 +23,15 @@
 }
 
 - (void)buildWindow {
-  NSRect frame = NSMakeRect(0, 0, 720, 520);
+  NSRect frame = [self preferredWindowFrame];
   self.window = [[NSWindow alloc] initWithContentRect:frame
                                             styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable)
                                               backing:NSBackingStoreBuffered
                                                 defer:NO];
   [self.window setTitle:@"Sketchybar Help Center"];
+  CGFloat minWidth = MIN(600.0, frame.size.width);
+  CGFloat minHeight = MIN(420.0, frame.size.height);
+  [self.window setMinSize:NSMakeSize(minWidth, minHeight)];
   [self.window center];
   NSView *content = [self.window contentView];
 
@@ -54,11 +57,18 @@
 }
 
 - (NSView *)buildKeymapTab {
-  NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 680, 460)];
+  NSRect bounds = self.window.contentView.bounds;
+  NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:bounds];
   [scroll setBorderType:NSNoBorder];
   [scroll setHasVerticalScroller:YES];
+  [scroll setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
   NSSize contentSize = scroll.contentSize;
   NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, contentSize.width, contentSize.height)];
+  textView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  textView.horizontallyResizable = YES;
+  textView.verticallyResizable = YES;
+  textView.textContainer.widthTracksTextView = YES;
+  textView.textContainer.containerSize = NSMakeSize(contentSize.width, CGFLOAT_MAX);
   [textView setEditable:NO];
   [textView setDrawsBackground:NO];
   [textView setFont:[NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular]];
@@ -85,13 +95,19 @@
 }
 
 - (NSView *)buildWorkflowTab {
-  CGFloat width = 680.0;
+  NSRect bounds = self.window.contentView.bounds;
+  NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:bounds];
+  [scroll setBorderType:NSNoBorder];
+  [scroll setHasVerticalScroller:YES];
+  [scroll setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+  CGFloat width = scroll.contentSize.width;
   NSArray *docs = [self workflowArrayForKey:@"docs" fallback:nil];
   NSArray *actions = [self workflowArrayForKey:@"actions" fallback:nil];
   NSInteger rows = MAX(1, docs.count);
   NSInteger actionRows = MAX(1, (actions.count + 1) / 2);
   CGFloat height = MAX(420.0, 60.0 + rows * 34.0 + actionRows * 42.0 + 80.0);
   NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, width, height)];
+  container.autoresizingMask = NSViewWidthSizable;
   CGFloat y = height - 40;
 
   NSTextField *docsHeader = [self headerLabelWithString:@"Reference Docs" frame:NSMakeRect(20, y, width - 40, 20)];
@@ -139,19 +155,22 @@
     idx++;
   }
 
-  NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, width, 460)];
-  [scroll setBorderType:NSNoBorder];
-  [scroll setHasVerticalScroller:YES];
   [scroll setDocumentView:container];
   return scroll;
 }
 
 - (NSView *)buildRepoTab {
-  CGFloat width = 680.0;
+  NSRect bounds = self.window.contentView.bounds;
+  NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:bounds];
+  [scroll setBorderType:NSNoBorder];
+  [scroll setHasVerticalScroller:YES];
+  [scroll setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+  CGFloat width = scroll.contentSize.width;
   NSArray *repos = [self workflowArrayForKey:@"repos" fallback:nil];
   NSInteger rows = MAX(1, repos.count);
   CGFloat height = MAX(360.0, 40.0 + rows * 70.0);
   NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, width, height)];
+  container.autoresizingMask = NSViewWidthSizable;
   CGFloat y = height - 50;
 
   for (NSDictionary *repo in repos) {
@@ -163,6 +182,7 @@
 
     NSBox *box = [[NSBox alloc] initWithFrame:NSMakeRect(20, y - 40, width - 40, 60)];
     [box setTitle:name];
+    box.autoresizingMask = NSViewWidthSizable;
     [container addSubview:box];
     NSView *content = [box contentView];
 
@@ -172,6 +192,7 @@
     [branchLabel setDrawsBackground:NO];
     [branchLabel setStringValue:[NSString stringWithFormat:@"Branch: %@%@", branch, dirty ? @" *" : @""]];
     [branchLabel setTextColor:dirty ? [NSColor systemOrangeColor] : [NSColor labelColor]];
+    branchLabel.autoresizingMask = NSViewWidthSizable;
     [content addSubview:branchLabel];
 
     NSButton *openButton = [[NSButton alloc] initWithFrame:NSMakeRect(content.bounds.size.width - 110, content.bounds.size.height - 32, 100, 24)];
@@ -181,16 +202,35 @@
     openButton.target = self;
     openButton.action = @selector(openPathFromButton:);
     openButton.toolTip = path;
+    openButton.autoresizingMask = NSViewMinXMargin;
     [content addSubview:openButton];
 
     y -= 80;
   }
 
-  NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, width, 460)];
-  [scroll setBorderType:NSNoBorder];
-  [scroll setHasVerticalScroller:YES];
   [scroll setDocumentView:container];
   return scroll;
+}
+
+- (NSRect)preferredWindowFrame {
+  NSScreen *screen = [NSScreen mainScreen];
+  if (!screen) {
+    screen = [NSScreen screens].firstObject;
+  }
+  if (!screen) {
+    return NSMakeRect(0, 0, 720, 520);
+  }
+
+  NSRect visible = screen.visibleFrame;
+  CGFloat margin = 80.0;
+  CGFloat maxWidth = MAX(520.0, visible.size.width - margin);
+  CGFloat maxHeight = MAX(420.0, visible.size.height - margin);
+  CGFloat width = MIN(860.0, maxWidth);
+  CGFloat height = MIN(620.0, maxHeight);
+
+  CGFloat originX = NSMidX(visible) - width / 2.0;
+  CGFloat originY = NSMidY(visible) - height / 2.0;
+  return NSMakeRect(originX, originY, width, height);
 }
 
 - (NSTextField *)headerLabelWithString:(NSString *)value frame:(NSRect)frame {

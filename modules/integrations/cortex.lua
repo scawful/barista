@@ -2,27 +2,181 @@
 -- The brain layer that orchestrates AFS, Barista, and halext-org
 --
 -- Install: Copy to ~/.config/sketchybar/modules/integrations/cortex.lua
--- Or symlink: ln -sf ~/src/cortex/barista/cortex.lua ~/.config/sketchybar/modules/integrations/
+-- Or symlink: ln -sf ~/src/lab/cortex/barista/cortex.lua ~/.config/sketchybar/modules/integrations/
+-- (repo may live at ~/src/cortex or ~/src/lab/cortex)
 
 local cortex = {}
 
 local HOME = os.getenv("HOME")
 local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
-local CODE_DIR = os.getenv("BARISTA_CODE_DIR") or (HOME .. "/src")
-local CORTEX_CLI = CODE_DIR .. "/cortex/bin/cortex-cli"
-local CORTEX_BIN = HOME .. "/.local/bin/cortex"
+local DEFAULT_CODE_DIR = HOME .. "/src"
+
+local function expand_path(path)
+  if type(path) ~= "string" or path == "" then
+    return nil
+  end
+  if path:sub(1, 2) == "~/" then
+    return HOME .. path:sub(2)
+  end
+  return path
+end
+
+local function path_exists(path, want_dir)
+  if not path or path == "" then
+    return false
+  end
+  if want_dir then
+    local ok = os.execute(string.format("test -d %q", path))
+    return ok == true or ok == 0
+  end
+  local file = io.open(path, "r")
+  if file then
+    file:close()
+    return true
+  end
+  return false
+end
+
+local function path_is_executable(path)
+  if not path or path == "" then
+    return false
+  end
+  local ok = os.execute(string.format("test -x %q", path))
+  return ok == true or ok == 0
+end
+
+local function shell_quote(value)
+  return string.format("%q", tostring(value))
+end
+
+local function command_path(command)
+  local handle = io.popen(string.format("command -v %q 2>/dev/null", command))
+  if not handle then
+    return nil
+  end
+  local result = handle:read("*a") or ""
+  handle:close()
+  result = result:gsub("%s+$", "")
+  if result == "" then
+    return nil
+  end
+  return result
+end
+
+local function resolve_code_dir(ctx)
+  local candidate = (ctx and ctx.paths and ctx.paths.code_dir)
+    or os.getenv("BARISTA_CODE_DIR")
+    or DEFAULT_CODE_DIR
+  candidate = expand_path(candidate)
+  local fallback = DEFAULT_CODE_DIR
+  if candidate and candidate:match("/Code/?$") and path_exists(fallback, true) then
+    return fallback
+  end
+  if candidate and not path_exists(candidate, true) and path_exists(fallback, true) then
+    return fallback
+  end
+  if candidate and not path_exists(candidate .. "/lab", true) and path_exists(fallback .. "/lab", true) then
+    return fallback
+  end
+  return candidate or fallback
+end
+
+local function resolve_repo_path(code_dir)
+  if not code_dir or code_dir == "" then
+    return nil
+  end
+  local lab_path = code_dir .. "/lab/cortex"
+  if path_exists(lab_path, true) then
+    return lab_path
+  end
+  local root_path = code_dir .. "/cortex"
+  if path_exists(root_path, true) then
+    return root_path
+  end
+  return lab_path
+end
+
+local function resolve_cli_path(ctx)
+  local override = os.getenv("CORTEX_CLI") or os.getenv("CORTEX_CLI_PATH")
+  if override and override ~= "" then
+    override = expand_path(override)
+    if path_is_executable(override) then
+      return override
+    end
+  end
+
+  local resolved = command_path("cortex-cli")
+  if resolved then
+    return resolved
+  end
+
+  local code_dir = resolve_code_dir(ctx)
+  local candidates = {
+    code_dir .. "/lab/cortex/bin/cortex-cli",
+    code_dir .. "/cortex/bin/cortex-cli",
+    HOME .. "/.local/bin/cortex-cli",
+  }
+  for _, candidate in ipairs(candidates) do
+    if path_is_executable(candidate) then
+      return candidate
+    end
+  end
+
+  return nil
+end
+
+local function resolve_bin_path(ctx)
+  local override = os.getenv("CORTEX_BINARY") or os.getenv("CORTEX_BIN")
+  if override and override ~= "" then
+    override = expand_path(override)
+    if path_is_executable(override) then
+      return override
+    end
+  end
+
+  local resolved = command_path("cortex")
+  if resolved then
+    return resolved
+  end
+
+  local code_dir = resolve_code_dir(ctx)
+  local candidates = {
+    code_dir .. "/lab/cortex/bin/cortex",
+    code_dir .. "/cortex/bin/cortex",
+    HOME .. "/.local/bin/cortex",
+  }
+  for _, candidate in ipairs(candidates) do
+    if path_is_executable(candidate) then
+      return candidate
+    end
+  end
+
+  return nil
+end
 
 -- Configuration
 cortex.config = {
-  cli_path = CORTEX_CLI,
-  bin_path = CORTEX_BIN,
-  repo_path = CODE_DIR .. "/cortex",
+  cli_path = nil,
+  bin_path = nil,
+  repo_path = nil,
+  code_dir = nil,
 }
+
+function cortex.refresh_config(ctx)
+  local code_dir = resolve_code_dir(ctx)
+  cortex.config.code_dir = code_dir
+  cortex.config.cli_path = resolve_cli_path(ctx) or "cortex-cli"
+  cortex.config.bin_path = resolve_bin_path(ctx)
+  cortex.config.repo_path = resolve_repo_path(code_dir)
+end
+
+cortex.refresh_config()
 
 -- Notification names (match CortexNotifications.swift)
 cortex.notifications = {
   toggle = "com.scawful.cortex.dashboard.toggle",
   refresh = "com.scawful.cortex.refresh",
+  hub = "com.scawful.cortex.hub.open",
   quit = "com.scawful.cortex.quit",
   restart = "com.scawful.cortex.restart",
 }
@@ -57,9 +211,9 @@ end
 -- Get Cortex status for widgets
 function cortex.get_status()
   if cortex.is_running() then
-    return "running", "󰪴", "#a6e3a1"  -- icon, green
+    return "running", "󰪴", "0xffa6e3a1"  -- icon, green
   else
-    return "stopped", "󰪵", "#6c7086"  -- icon, gray
+    return "stopped", "󰪵", "0xff6c7086"  -- icon, gray
   end
 end
 
@@ -69,9 +223,10 @@ function cortex.start()
     return true, "Already running"
   end
 
+  cortex.refresh_config()
   local bin = cortex.config.bin_path
-  if io.open(bin, "r") then
-    os.execute(string.format("%s &", bin))
+  if path_is_executable(bin) then
+    os.execute(string.format("%q &", bin))
     return true, "Started"
   end
   return false, "Binary not found"
@@ -102,6 +257,15 @@ function cortex.toggle()
   return true
 end
 
+function cortex.open_hub()
+  if not cortex.is_running() then
+    cortex.start()
+    os.execute("sleep 0.4")
+  end
+  post_notification(cortex.notifications.hub)
+  return true
+end
+
 -- Refresh widgets
 function cortex.refresh()
   if not cortex.is_running() then
@@ -113,10 +277,12 @@ end
 
 -- Create menu items for barista
 function cortex.create_menu_items(ctx)
+  cortex.refresh_config(ctx)
+  local cli_path = cortex.config.cli_path or "cortex-cli"
   local items = {}
   local running = cortex.is_running()
   local status_icon = running and "󰪴" or "󰪵"
-  local status_color = running and "#a6e3a1" or "#6c7086"
+  local status_color = running and "0xffa6e3a1" or "0xff6c7086"
 
   -- Header
   table.insert(items, {
@@ -137,7 +303,19 @@ function cortex.create_menu_items(ctx)
       cortex.toggle()
     end,
     -- Alternative CLI action for non-lua contexts
-    shell_action = CORTEX_CLI .. " toggle",
+    shell_action = string.format("%s toggle", shell_quote(cli_path)),
+  })
+
+  -- Open Hub
+  table.insert(items, {
+    type = "item",
+    name = "cortex.hub",
+    icon = "󰣖",
+    label = "Open Cortex Hub",
+    action = function()
+      cortex.open_hub()
+    end,
+    shell_action = string.format("%s hub", shell_quote(cli_path)),
   })
 
   -- Refresh
@@ -150,7 +328,7 @@ function cortex.create_menu_items(ctx)
       action = function()
         cortex.refresh()
       end,
-      shell_action = CORTEX_CLI .. " refresh",
+      shell_action = string.format("%s refresh", shell_quote(cli_path)),
     })
   end
 
@@ -166,7 +344,7 @@ function cortex.create_menu_items(ctx)
       action = function()
         cortex.restart()
       end,
-      shell_action = CORTEX_CLI .. " restart",
+      shell_action = string.format("%s restart", shell_quote(cli_path)),
     })
 
     table.insert(items, {
@@ -177,7 +355,7 @@ function cortex.create_menu_items(ctx)
       action = function()
         cortex.stop()
       end,
-      shell_action = CORTEX_CLI .. " stop",
+      shell_action = string.format("%s stop", shell_quote(cli_path)),
     })
   else
     table.insert(items, {
@@ -188,7 +366,7 @@ function cortex.create_menu_items(ctx)
       action = function()
         cortex.start()
       end,
-      shell_action = CORTEX_CLI .. " start",
+      shell_action = string.format("%s start", shell_quote(cli_path)),
     })
   end
 
@@ -225,11 +403,17 @@ local function resolve_widget_script_path()
     file:close()
     return candidate
   end
-  return CODE_DIR .. "/cortex/barista/cortex_widget.sh"
+  local repo_path = cortex.config.repo_path or resolve_repo_path(resolve_code_dir())
+  if repo_path then
+    return repo_path .. "/barista/cortex_widget.sh"
+  end
+  return candidate
 end
 
 function cortex.create_widget(opts)
   opts = opts or {}
+  cortex.refresh_config(opts.ctx)
+  local cli_path = cortex.config.cli_path or "cortex-cli"
   local position = opts.position or "right"
   local _, icon, color = cortex.get_status()
 
@@ -264,7 +448,7 @@ function cortex.create_widget(opts)
       color = color,
     },
     label = { drawing = label_drawing },
-    click_script = opts.click_script or (CORTEX_CLI .. " toggle"),
+    click_script = opts.click_script or string.format("%s toggle", shell_quote(cli_path)),
     update_freq = tonumber(opts.update_freq) or 120,
     script = script,
     background = opts.background or { drawing = false },

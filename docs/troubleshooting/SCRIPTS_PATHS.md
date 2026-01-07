@@ -37,6 +37,7 @@
    - Fix with `chmod +x <script>` or reinstall scripts.
 6. If skhd shortcuts still do nothing, run the doctor with auto-fix:
    - `~/.config/sketchybar/scripts/yabai_control.sh doctor --fix`
+   - The doctor will also clean up duplicate skhd processes and restart skhd if needed.
 
 ## Notes
 

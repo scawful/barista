@@ -24,8 +24,56 @@ local function path_exists(path, want_dir)
   return result and result:match("1") ~= nil
 end
 
+local function path_is_executable(path)
+  if not path or path == "" then
+    return false
+  end
+  local handle = io.popen(string.format("test -x %q && printf 1 || printf 0", path))
+  if not handle then
+    return false
+  end
+  local result = handle:read("*a")
+  handle:close()
+  return result and result:match("1") ~= nil
+end
+
 local function shell_quote(value)
   return string.format("%q", tostring(value))
+end
+
+local function command_path(command)
+  if not command or command == "" then
+    return nil
+  end
+  local handle = io.popen(string.format("command -v %q 2>/dev/null", command))
+  if not handle then
+    return nil
+  end
+  local result = handle:read("*a") or ""
+  handle:close()
+  result = result:gsub("%s+$", "")
+  if result == "" then
+    return nil
+  end
+  return result
+end
+
+local function env_prefix(vars)
+  local keys = {}
+  for key, value in pairs(vars or {}) do
+    if type(value) == "string" and value ~= "" then
+      table.insert(keys, key)
+    end
+  end
+  if #keys == 0 then
+    return ""
+  end
+  table.sort(keys)
+  local parts = {}
+  for _, key in ipairs(keys) do
+    table.insert(parts, string.format("%s=%q", key, vars[key]))
+  end
+  return "env " .. table.concat(parts, " ") .. " "
 end
 
 local function open_terminal(command)
@@ -95,10 +143,14 @@ local function read_menu_config(config_dir)
   local menu_state = state and state.menus and state.menus.apple or {}
   local items = type(menu_state.items) == "table" and menu_state.items or {}
   local custom = type(menu_state.custom) == "table" and menu_state.custom or {}
+  local hover = type(menu_state.hover) == "table" and menu_state.hover or {}
   return {
     show_missing = menu_state.show_missing,
+    terminal = menu_state.terminal,
+    launch = menu_state.launch,
     items = items,
     custom = custom,
+    hover = hover,
   }
 end
 
@@ -109,6 +161,20 @@ local function resolve_path(ctx, candidates, want_dir)
       candidate = expand_path(candidate)
       fallback = fallback or candidate
       if path_exists(candidate, want_dir) then
+        return candidate, true
+      end
+    end
+  end
+  return fallback, false
+end
+
+local function resolve_executable_path(candidates)
+  local fallback = nil
+  for _, candidate in ipairs(candidates or {}) do
+    if candidate and candidate ~= "" then
+      candidate = expand_path(candidate)
+      fallback = fallback or candidate
+      if path_is_executable(candidate) then
         return candidate, true
       end
     end
@@ -174,6 +240,28 @@ local function resolve_yaze_app(ctx)
   }, true)
 end
 
+local function resolve_cortex_cli(ctx)
+  local override = os.getenv("CORTEX_CLI") or os.getenv("CORTEX_CLI_PATH")
+  if override and override ~= "" then
+    override = expand_path(override)
+    if path_is_executable(override) then
+      return override, true
+    end
+  end
+
+  local resolved = command_path("cortex-cli")
+  if resolved then
+    return resolved, true
+  end
+
+  local code_dir = resolve_code_dir(ctx)
+  return resolve_executable_path({
+    code_dir .. "/lab/cortex/bin/cortex-cli",
+    code_dir .. "/cortex/bin/cortex-cli",
+    (os.getenv("HOME") or "") .. "/.local/bin/cortex-cli",
+  })
+end
+
 local function afs_cli(afs_root, args)
   local pythonpath = afs_root .. "/src"
   return string.format(
@@ -210,6 +298,7 @@ function apple_menu.setup(ctx)
   local widget_height = ctx.widget_height
   local associated_displays = ctx.associated_displays or "all"
   local font_small = font_string(ctx, settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
+  local font_bold = font_string(ctx, settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small)
   local config_dir = resolve_config_dir(ctx)
   local menu_config = read_menu_config(config_dir)
 
@@ -260,6 +349,27 @@ function apple_menu.setup(ctx)
       hover_script = config_dir .. "/plugins/popup_hover.sh"
     end
   end
+  local hover_env = {}
+  local hover_color = (menu_config.hover and menu_config.hover.color)
+    or (ctx.appearance and ctx.appearance.hover_bg)
+    or "0x60cdd6f4"
+  local hover_border_color = (menu_config.hover and menu_config.hover.border_color)
+    or (ctx.appearance and ctx.appearance.hover_border_color)
+  local hover_border_width = (menu_config.hover and menu_config.hover.border_width)
+    or (ctx.appearance and ctx.appearance.hover_border_width)
+  if hover_color then
+    hover_env.POPUP_HOVER_COLOR = tostring(hover_color)
+  end
+  if hover_border_color then
+    hover_env.POPUP_HOVER_BORDER_COLOR = tostring(hover_border_color)
+  end
+  if hover_border_width then
+    hover_env.POPUP_HOVER_BORDER_WIDTH = tostring(hover_border_width)
+  end
+  local hover_script_cmd = hover_script
+  if hover_script and next(hover_env) then
+    hover_script_cmd = env_prefix(hover_env) .. hover_script
+  end
 
   local code_dir = resolve_code_dir(ctx)
   local has_lab = code_dir and path_exists(code_dir .. "/lab", true)
@@ -299,24 +409,94 @@ function apple_menu.setup(ctx)
     return nil
   end
 
+  local function terminal_allowed(item_id)
+    local override = menu_config.items[item_id] or {}
+    if type(override.launch) == "string" then
+      return override.launch:lower() == "terminal"
+    end
+    local override_terminal = normalize_bool(override.terminal or override.open_terminal)
+    if override_terminal ~= nil then
+      return override_terminal
+    end
+    local enabled_override = normalize_bool(override.enabled)
+    if enabled_override == true then
+      return true
+    end
+    if type(menu_config.launch) == "string" then
+      return menu_config.launch:lower() == "terminal"
+    end
+    local menu_terminal = normalize_bool(menu_config.terminal or menu_config.open_terminal)
+    if menu_terminal ~= nil then
+      return menu_terminal
+    end
+    local env = os.getenv("BARISTA_MENU_TERMINAL")
+    if env and env ~= "" then
+      env = env:lower()
+      return env == "1" or env == "true" or env == "yes"
+    end
+    return false
+  end
+
+  local function terminal_action(item_id, command)
+    if not command or command == "" then
+      return nil
+    end
+    if not terminal_allowed(item_id) then
+      return nil
+    end
+    return open_terminal(command)
+  end
+
+  local function add_separator(index)
+    sbar.add("item", string.format("menu.tools.sep.%d", index), {
+      position = "popup.apple_menu",
+      icon = { drawing = false },
+      label = { string = "───────────────", font = font_small, color = theme.DARK_WHITE },
+      ["label.padding_left"] = 8,
+      ["label.padding_right"] = 8,
+      background = { drawing = false },
+    })
+  end
+
+  local function add_header(meta, index)
+    local label = meta.label or ""
+    label = label:upper()
+    sbar.add("item", string.format("menu.tools.header.%s.%d", meta.id or "section", index), {
+      position = "popup.apple_menu",
+      icon = { drawing = false },
+      label = { string = label, font = font_bold, color = meta.color or theme.WHITE },
+      ["label.padding_left"] = 10,
+      ["label.padding_right"] = 10,
+      background = {
+        drawing = true,
+        color = meta.bg_color or theme.BG_SEC_COLR or theme.bar.bg,
+        corner_radius = 6,
+        height = item_height,
+      },
+    })
+  end
+
   local function add_item(entry)
-    local enabled = not entry.missing
+    local muted = entry.missing or entry.blocked
     local label = entry.label
-    local icon_color = enabled and (entry.icon_color or theme.WHITE) or theme.DARK_WHITE
-    local label_color = enabled and (entry.label_color or theme.WHITE) or theme.DARK_WHITE
+    local icon_color = entry.icon_color or (muted and theme.DARK_WHITE or theme.WHITE)
+    local label_color = entry.label_color or theme.WHITE
     local action = entry.action
     if entry.missing then
       local launcher = config_dir .. "/bin/open_control_panel.sh"
       local fallback = ctx.call_script and ctx.call_script(launcher, "--panel") or ""
       action = fallback
-      label = label .. " (missing)"
+    elseif entry.blocked then
+      local launcher = config_dir .. "/bin/open_control_panel.sh"
+      local fallback = ctx.call_script and ctx.call_script(launcher, "--panel") or ""
+      action = fallback
     end
     sbar.add("item", entry.name, {
       position = "popup.apple_menu",
       icon = { string = entry.icon or "", color = icon_color },
       label = { string = label, font = font_small, color = label_color },
       click_script = wrap_action(ctx, "apple_menu", entry.name, action),
-      script = hover_script,
+      script = hover_script_cmd,
       ["icon.padding_left"] = 10,
       ["icon.padding_right"] = 6,
       ["label.padding_left"] = 4,
@@ -337,27 +517,35 @@ function apple_menu.setup(ctx)
   local stemforge_app, stemforge_ok = resolve_stemforge_app(ctx)
   local stem_sampler_app, stem_sampler_ok = resolve_stem_sampler_app(ctx)
   local yaze_app, yaze_ok = resolve_yaze_app(ctx)
-  local help_center = (ctx.helpers and ctx.helpers.help_center) or (config_dir .. "/build/bin/help_center")
-  local help_center_ok = path_exists(help_center, false)
+  local cortex_cli, cortex_cli_ok = resolve_cortex_cli(ctx)
+  local help_center = resolve_path(ctx, {
+    ctx.helpers and ctx.helpers.help_center or nil,
+    config_dir .. "/gui/bin/help_center",
+    config_dir .. "/build/bin/help_center",
+  }, false)
+  local help_center_ok = path_is_executable(help_center)
   local icon_browser = config_dir .. "/gui/bin/icon_browser"
-  local icon_browser_ok = path_exists(icon_browser, false)
+  local icon_browser_ok = path_is_executable(icon_browser)
 
   local afs_tui = afs_root and string.format("cd %s && python3 -m tui.app", shell_quote(afs_root)) or nil
+  local afs_action = terminal_action("afs_browser", afs_tui)
   local studio_bin, studio_bin_ok = resolve_path(ctx, {
     studio_root and (studio_root .. "/build/afs_studio") or nil,
     studio_root and (studio_root .. "/build/bin/afs_studio") or nil,
   }, false)
   local studio_action
+  local studio_cmd
   if studio_bin_ok and studio_bin then
-    studio_action = open_terminal(shell_quote(studio_bin))
+    studio_cmd = shell_quote(studio_bin)
   elseif afs_root then
-    studio_action = open_terminal(afs_cli(afs_root, "studio run --build"))
+    studio_cmd = afs_cli(afs_root, "studio run --build")
   elseif studio_root then
-    studio_action = open_terminal(string.format(
+    studio_cmd = string.format(
       "cd %s && cmake --build build --target afs_studio && ./build/afs_studio",
       shell_quote(studio_root)
-    ))
+    )
   end
+  studio_action = terminal_action("afs_studio", studio_cmd)
 
   local labeler_bin, labeler_bin_ok = resolve_path(ctx, {
     studio_root and (studio_root .. "/build/afs_labeler") or nil,
@@ -376,6 +564,10 @@ function apple_menu.setup(ctx)
       labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
     end
   end
+  local labeler_action = terminal_action("afs_labeler", labeler_cmd)
+
+  local cortex_toggle = cortex_cli_ok and (shell_quote(cortex_cli) .. " toggle") or ""
+  local cortex_hub = cortex_cli_ok and (shell_quote(cortex_cli) .. " hub") or ""
 
   local base_items = {
     {
@@ -383,8 +575,10 @@ function apple_menu.setup(ctx)
       label = "AFS Browser",
       icon = "󰈙",
       icon_color = theme.SAPPHIRE,
-      action = afs_tui and open_terminal(afs_tui) or "",
+      section = "afs",
+      action = afs_action or "",
       available = afs_ok and afs_tui ~= nil,
+      blocked = afs_ok and afs_tui ~= nil and afs_action == nil,
       default_enabled = true,
     },
     {
@@ -392,8 +586,10 @@ function apple_menu.setup(ctx)
       label = "AFS Studio",
       icon = "󰆍",
       icon_color = theme.LAVENDER,
+      section = "afs",
       action = studio_action or "",
-      available = studio_ok and studio_action ~= nil,
+      available = studio_ok and studio_cmd ~= nil,
+      blocked = studio_ok and studio_cmd ~= nil and studio_action == nil,
       default_enabled = true,
     },
     {
@@ -401,8 +597,10 @@ function apple_menu.setup(ctx)
       label = "AFS Labeler",
       icon = "󰓹",
       icon_color = theme.TEAL,
-      action = labeler_cmd and open_terminal(labeler_cmd) or "",
+      section = "afs",
+      action = labeler_action or "",
       available = studio_ok and labeler_cmd ~= nil,
+      blocked = studio_ok and labeler_cmd ~= nil and labeler_action == nil,
       default_enabled = true,
     },
     {
@@ -410,6 +608,7 @@ function apple_menu.setup(ctx)
       label = "StemForge",
       icon = "󰎈",
       icon_color = theme.PINK,
+      section = "audio",
       action = stemforge_app and string.format("open %s", shell_quote(stemforge_app)) or "",
       available = stemforge_ok,
       default_enabled = true,
@@ -419,6 +618,7 @@ function apple_menu.setup(ctx)
       label = "StemSampler",
       icon = "󰎈",
       icon_color = theme.PEACH,
+      section = "audio",
       action = stem_sampler_app and string.format("open %s", shell_quote(stem_sampler_app)) or "",
       available = stem_sampler_ok,
       default_enabled = true,
@@ -428,8 +628,29 @@ function apple_menu.setup(ctx)
       label = "Yaze",
       icon = "󰯙",
       icon_color = theme.GREEN,
+      section = "apps",
       action = yaze_app and string.format("open %s", shell_quote(yaze_app)) or "",
       available = yaze_ok,
+      default_enabled = true,
+    },
+    {
+      id = "cortex_toggle",
+      label = "Cortex Dashboard",
+      icon = "󰕮",
+      icon_color = theme.MAUVE,
+      section = "cortex",
+      action = cortex_toggle,
+      available = cortex_cli_ok,
+      default_enabled = true,
+    },
+    {
+      id = "cortex_hub",
+      label = "Cortex Hub",
+      icon = "󰣖",
+      icon_color = theme.SKY,
+      section = "cortex",
+      action = cortex_hub,
+      available = cortex_cli_ok,
       default_enabled = true,
     },
     {
@@ -437,6 +658,7 @@ function apple_menu.setup(ctx)
       label = "Help Center",
       icon = "󰘥",
       icon_color = theme.BLUE,
+      section = "barista",
       action = help_center,
       available = help_center_ok,
       default_enabled = true,
@@ -446,6 +668,7 @@ function apple_menu.setup(ctx)
       label = "Icon Browser",
       icon = "󰈙",
       icon_color = theme.SKY,
+      section = "barista",
       action = icon_browser,
       available = icon_browser_ok,
       default_enabled = true,
@@ -455,6 +678,7 @@ function apple_menu.setup(ctx)
       label = "Barista Config",
       icon = "󰒓",
       icon_color = theme.SKY,
+      section = "barista",
       action = ctx.call_script(config_dir .. "/bin/open_control_panel.sh", "--panel"),
       available = true,
       default_enabled = true,
@@ -464,10 +688,20 @@ function apple_menu.setup(ctx)
       label = "Reload SketchyBar",
       icon = "󰑐",
       icon_color = theme.YELLOW,
+      section = "barista",
       action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload",
       available = true,
       default_enabled = true,
     },
+  }
+
+  local sections = {
+    afs = { id = "afs", label = "AFS Tools", icon = "󰈙", color = theme.SAPPHIRE, order = 1 },
+    audio = { id = "audio", label = "Audio", icon = "󰎈", color = theme.PEACH, order = 2 },
+    apps = { id = "apps", label = "Apps", icon = "󰯙", color = theme.GREEN, order = 3 },
+    cortex = { id = "cortex", label = "Cortex", icon = "󰕮", color = theme.MAUVE, order = 4 },
+    barista = { id = "barista", label = "Barista", icon = "󰒓", color = theme.SKY, order = 5 },
+    custom = { id = "custom", label = "Custom", icon = "󰘥", color = theme.LAVENDER, order = 6 },
   }
 
   local rendered = {}
@@ -479,6 +713,8 @@ function apple_menu.setup(ctx)
 
     if enabled_override == false then
       should_show = false
+    elseif item.blocked then
+      should_show = true
     elseif enabled_override == true then
       should_show = true
       missing = not item.available
@@ -506,6 +742,7 @@ function apple_menu.setup(ctx)
         missing = missing,
         order = order,
         default_index = index,
+        section = item.section or "barista",
       })
     end
   end
@@ -528,6 +765,7 @@ function apple_menu.setup(ctx)
             missing = false,
             order = normalize_order(custom.order) or (2000 + index),
             default_index = 1000 + index,
+            section = custom.section or "custom",
           })
         end
       end
@@ -535,13 +773,29 @@ function apple_menu.setup(ctx)
   end
 
   table.sort(rendered, function(a, b)
+    local section_a = sections[a.section] and sections[a.section].order or 99
+    local section_b = sections[b.section] and sections[b.section].order or 99
+    if section_a ~= section_b then
+      return section_a < section_b
+    end
     if a.order == b.order then
       return a.default_index < b.default_index
     end
     return a.order < b.order
   end)
 
+  local current_section = nil
+  local section_index = 1
   for _, entry in ipairs(rendered) do
+    if entry.section ~= current_section then
+      if current_section ~= nil then
+        add_separator(section_index)
+        section_index = section_index + 1
+      end
+      add_header(sections[entry.section] or { id = entry.section, label = entry.section }, section_index)
+      section_index = section_index + 1
+      current_section = entry.section
+    end
     add_item(entry)
   end
 end

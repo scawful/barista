@@ -21,6 +21,7 @@
 
 static const char *DEFAULT_HIGHLIGHT = "0x40f5c2e7";
 static const char *IDLE_COLOR = "0x00000000";
+static const char *DEFAULT_BORDER_COLOR = "0x60cdd6f4";
 static char state_dir[PATH_MAX];
 static char parent_state_path[PATH_MAX];
 
@@ -64,8 +65,13 @@ int main(void) {
 
   const char *sender = getenv("SENDER");
   const char *highlight = getenv("POPUP_HOVER_COLOR");
+  const char *border_color = getenv("POPUP_HOVER_BORDER_COLOR");
+  const char *border_width = getenv("POPUP_HOVER_BORDER_WIDTH");
   if (!highlight || highlight[0] == '\0') {
     highlight = DEFAULT_HIGHLIGHT;
+  }
+  if (!border_color || border_color[0] == '\0') {
+    border_color = DEFAULT_BORDER_COLOR;
   }
 
   if (!sender || strcmp(sender, "mouse.entered") == 0) {
@@ -78,6 +84,10 @@ int main(void) {
     // Highlight on hover
     run_cmd("sketchybar --set %s background.drawing=on background.color=%s",
             name, highlight);
+    if (border_width && border_width[0] != '\0') {
+      run_cmd("sketchybar --set %s background.border_width=%s background.border_color=%s",
+              name, border_width, border_color);
+    }
     return 0;
   }
 
@@ -85,6 +95,9 @@ int main(void) {
     // Remove highlight
     run_cmd("sketchybar --set %s background.drawing=off background.color=%s",
             name, IDLE_COLOR);
+    if (border_width && border_width[0] != '\0') {
+      run_cmd("sketchybar --set %s background.border_width=0", name);
+    }
     return 0;
   }
 

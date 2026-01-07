@@ -6,6 +6,7 @@
 @property (strong) NSScrollView *scrollView;
 @property (strong) NSView *contentView;
 @property (strong) NSButton *showMissingToggle;
+@property (strong) NSButton *allowTerminalToggle;
 @end
 
 @implementation MenuTabViewController
@@ -18,19 +19,21 @@
   [super viewDidLoad];
 
   self.tools = @[
-    @{@"key": @"afs_browser", @"label": @"AFS Browser", @"icon": @"󰈙", @"default_enabled": @YES},
-    @{@"key": @"afs_studio", @"label": @"AFS Studio", @"icon": @"󰆍", @"default_enabled": @YES},
-    @{@"key": @"afs_labeler", @"label": @"AFS Labeler", @"icon": @"󰓹", @"default_enabled": @YES},
+    @{@"key": @"afs_browser", @"label": @"AFS Browser", @"icon": @"󰈙", @"default_enabled": @NO},
+    @{@"key": @"afs_studio", @"label": @"AFS Studio", @"icon": @"󰆍", @"default_enabled": @NO},
+    @{@"key": @"afs_labeler", @"label": @"AFS Labeler", @"icon": @"󰓹", @"default_enabled": @NO},
     @{@"key": @"stemforge", @"label": @"StemForge", @"icon": @"󰎈", @"default_enabled": @YES},
     @{@"key": @"stem_sampler", @"label": @"StemSampler", @"icon": @"󰎈", @"default_enabled": @YES},
     @{@"key": @"yaze", @"label": @"Yaze", @"icon": @"󰯙", @"default_enabled": @YES},
+    @{@"key": @"cortex_toggle", @"label": @"Cortex Dashboard", @"icon": @"󰕮", @"default_enabled": @YES},
+    @{@"key": @"cortex_hub", @"label": @"Cortex Hub", @"icon": @"󰣖", @"default_enabled": @YES},
     @{@"key": @"help_center", @"label": @"Help Center", @"icon": @"󰘥", @"default_enabled": @YES},
     @{@"key": @"icon_browser", @"label": @"Icon Browser", @"icon": @"󰈙", @"default_enabled": @YES},
     @{@"key": @"barista_config", @"label": @"Barista Config", @"icon": @"󰒓", @"default_enabled": @YES},
     @{@"key": @"reload_bar", @"label": @"Reload SketchyBar", @"icon": @"󰑐", @"default_enabled": @YES}
   ];
 
-  CGFloat contentHeight = MAX(520.0, 200.0 + self.tools.count * 40.0);
+  CGFloat contentHeight = MAX(560.0, 240.0 + self.tools.count * 40.0);
   self.scrollView = [[NSScrollView alloc] initWithFrame:self.view.bounds];
   self.scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   self.scrollView.hasVerticalScroller = YES;
@@ -72,6 +75,16 @@
   self.showMissingToggle.action = @selector(toggleShowMissing:);
   self.showMissingToggle.state = showMissing ? NSControlStateValueOn : NSControlStateValueOff;
   [self.contentView addSubview:self.showMissingToggle];
+  y -= 26;
+
+  BOOL allowTerminal = [[config valueForKeyPath:@"menus.apple.terminal" defaultValue:@NO] boolValue];
+  self.allowTerminalToggle = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin, y, 320, 20)];
+  [self.allowTerminalToggle setButtonType:NSButtonTypeSwitch];
+  self.allowTerminalToggle.title = @"Allow terminal-only tools";
+  self.allowTerminalToggle.target = self;
+  self.allowTerminalToggle.action = @selector(toggleAllowTerminal:);
+  self.allowTerminalToggle.state = allowTerminal ? NSControlStateValueOn : NSControlStateValueOff;
+  [self.contentView addSubview:self.allowTerminalToggle];
   y -= 36;
 
   CGFloat iconX = leftMargin;
@@ -211,6 +224,13 @@
   NSString *keyPath = [NSString stringWithFormat:@"menus.apple.items.%@.enabled", key];
   ConfigurationManager *config = [ConfigurationManager sharedManager];
   [config setValue:@(enabled) forKeyPath:keyPath];
+  [config reloadSketchyBar];
+}
+
+- (void)toggleAllowTerminal:(NSButton *)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  BOOL enabled = sender.state == NSControlStateValueOn;
+  [config setValue:@(enabled) forKeyPath:@"menus.apple.terminal"];
   [config reloadSketchyBar];
 }
 

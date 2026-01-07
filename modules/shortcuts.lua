@@ -44,6 +44,106 @@ local function read_state_scripts_dir()
   return expand_path(candidate)
 end
 
+local function read_state_code_dir()
+  local ok, json = pcall(require, "json")
+  if not ok then
+    return nil
+  end
+
+  local state_file = CONFIG_DIR .. "/state.json"
+  local file = io.open(state_file, "r")
+  if not file then
+    return nil
+  end
+
+  local contents = file:read("*a")
+  file:close()
+
+  local ok_decode, data = pcall(json.decode, contents)
+  if not ok_decode or type(data) ~= "table" then
+    return nil
+  end
+
+  if type(data.paths) ~= "table" then
+    return nil
+  end
+
+  local candidate = data.paths.code_dir or data.paths.code
+  return expand_path(candidate)
+end
+
+local function command_path(command)
+  if not command or command == "" then
+    return nil
+  end
+  local handle = io.popen(string.format("command -v %q 2>/dev/null", command))
+  if not handle then
+    return nil
+  end
+  local result = handle:read("*a") or ""
+  handle:close()
+  result = result:gsub("%s+$", "")
+  if result == "" then
+    return nil
+  end
+  return result
+end
+
+local function path_is_executable(path)
+  if not path or path == "" then
+    return false
+  end
+  local ok = os.execute(string.format("test -x %q", path))
+  return ok == true or ok == 0
+end
+
+local function resolve_cortex_cli()
+  local override = os.getenv("CORTEX_CLI") or os.getenv("CORTEX_CLI_PATH")
+  if override and override ~= "" then
+    override = expand_path(override)
+    if path_is_executable(override) then
+      return override
+    end
+  end
+
+  local resolved = command_path("cortex-cli")
+  if resolved then
+    return resolved
+  end
+
+  local code_dir = read_state_code_dir() or os.getenv("BARISTA_CODE_DIR") or (HOME .. "/src")
+  code_dir = expand_path(code_dir) or (HOME .. "/src")
+  local candidates = {
+    code_dir .. "/lab/cortex/bin/cortex-cli",
+    code_dir .. "/cortex/bin/cortex-cli",
+    HOME .. "/.local/bin/cortex-cli",
+  }
+  for _, candidate in ipairs(candidates) do
+    if path_is_executable(candidate) then
+      return candidate
+    end
+  end
+
+  return nil
+end
+
+local function scripts_available(path)
+  if not path or path == "" then
+    return false
+  end
+  local probe = io.open(path .. "/yabai_control.sh", "r")
+  if probe then
+    probe:close()
+    return true
+  end
+  probe = io.open(path .. "/toggle_shortcuts.sh", "r")
+  if probe then
+    probe:close()
+    return true
+  end
+  return false
+end
+
 local function resolve_scripts_dir()
   local override = os.getenv("BARISTA_SCRIPTS_DIR")
   if override and override ~= "" then
@@ -51,25 +151,22 @@ local function resolve_scripts_dir()
   end
 
   local state_override = read_state_scripts_dir()
-  if state_override and state_override ~= "" then
+  if state_override and state_override ~= "" and scripts_available(state_override) then
     return state_override
   end
   local config_scripts = CONFIG_DIR .. "/scripts"
-  local probe = io.open(config_scripts .. "/yabai_control.sh", "r")
-  if probe then
-    probe:close()
+  if scripts_available(config_scripts) then
     return config_scripts
   end
   local legacy_scripts = HOME .. "/.config/scripts"
-  local legacy_probe = io.open(legacy_scripts .. "/yabai_control.sh", "r")
-  if legacy_probe then
-    legacy_probe:close()
+  if scripts_available(legacy_scripts) then
     return legacy_scripts
   end
   return config_scripts
 end
 
 local SCRIPTS_DIR = resolve_scripts_dir()
+local CORTEX_CLI = resolve_cortex_cli() or "cortex-cli"
 
 -- Modifier key symbols and their skhd representations
 shortcuts.modifiers = {
@@ -231,7 +328,7 @@ shortcuts.actions = {
   toggle_control_center = "/opt/homebrew/opt/sketchybar/bin/sketchybar --set control_center popup.drawing=toggle",
   open_help_center = CONFIG_DIR .. "/gui/bin/help_center",
   open_icon_browser = CONFIG_DIR .. "/gui/bin/icon_browser",
-  toggle_cortex = "~/.local/bin/cortex toggle",
+  toggle_cortex = string.format("%q toggle", CORTEX_CLI),
 
   -- Yabai
   toggle_yabai_shortcuts = SCRIPTS_DIR .. "/toggle_shortcuts.sh toggle",

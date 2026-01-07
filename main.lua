@@ -83,7 +83,11 @@ local function resolve_scripts_dir(state)
     local candidate = state.paths.scripts_dir or state.paths.scripts
     candidate = expand_path(candidate)
     if candidate and candidate ~= "" then
-      return candidate
+      local probe = io.open(candidate .. "/yabai_control.sh", "r")
+      if probe then
+        probe:close()
+        return candidate
+      end
     end
   end
   local config_scripts = CONFIG_DIR .. "/scripts"
@@ -534,7 +538,7 @@ local scripts = {
 }
 
 local helpers = {
-  help_center = CONFIG_DIR .. "/build/bin/help_center",
+  help_center = CONFIG_DIR .. "/gui/bin/help_center",
 }
 
 local integrations = {
@@ -703,25 +707,92 @@ local function add_front_app_popup_item(id, props)
 end
 
 local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
+local font_bold = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small)
 
 -- Front App popup items
 add_front_app_popup_item("front_app.header", {
   icon = "",
   label = "Application Controls",
-  ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+  ["label.font"] = font_bold,
+  ["label.color"] = theme.SAPPHIRE,
   background = { drawing = false },
 })
 
 local app_actions = {
-  { name = "front_app.show", icon = "󰓇", label = "Bring to Front", action = call_script(FRONT_APP_ACTION_SCRIPT, "show"), shortcut = "⌘⇥" },
-  { name = "front_app.hide", icon = "󰘔", label = "Hide App", action = call_script(FRONT_APP_ACTION_SCRIPT, "hide"), shortcut = "⌘H" },
-  { name = "front_app.quit", icon = "󰅘", label = "Quit App", action = call_script(FRONT_APP_ACTION_SCRIPT, "quit"), shortcut = "⌘Q" },
-  { name = "front_app.force_quit", icon = "󰜏", label = "Force Quit", action = call_script(FRONT_APP_ACTION_SCRIPT, "force-quit") },
+  { name = "front_app.show", icon = "󰓇", icon_color = theme.SKY, label = "Bring to Front", action = call_script(FRONT_APP_ACTION_SCRIPT, "show"), shortcut = "⌘⇥" },
+  { name = "front_app.hide", icon = "󰘔", icon_color = theme.PEACH, label = "Hide App", action = call_script(FRONT_APP_ACTION_SCRIPT, "hide"), shortcut = "⌘H" },
+  { name = "front_app.quit", icon = "󰅘", icon_color = theme.RED, label = "Quit App", action = call_script(FRONT_APP_ACTION_SCRIPT, "quit"), shortcut = "⌘Q" },
+  { name = "front_app.force_quit", icon = "󰜏", icon_color = theme.MAROON or theme.RED, label = "Force Quit", action = call_script(FRONT_APP_ACTION_SCRIPT, "force-quit") },
 }
 
 for _, entry in ipairs(app_actions) do
   add_front_app_popup_item(entry.name, {
-    icon = entry.icon,
+    icon = { string = entry.icon, color = entry.icon_color },
+    label = entry.label,
+    click_script = entry.action,
+    ["label.font"] = font_small,
+  })
+end
+
+add_front_app_popup_item("front_app.sep1", {
+  icon = "",
+  label = "───────────────",
+  ["label.font"] = font_small,
+  ["label.color"] = "0x40cdd6f4",
+  background = { drawing = false },
+})
+
+add_front_app_popup_item("front_app.window_header", {
+  icon = "",
+  label = "Window Controls",
+  ["label.font"] = font_bold,
+  ["label.color"] = theme.TEAL,
+  background = { drawing = false },
+})
+
+local window_actions = {
+  { name = "front_app.window.float", icon = "󰒄", icon_color = theme.SAPPHIRE, label = "Toggle Float", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-float") },
+  { name = "front_app.window.fullscreen", icon = "󰊓", icon_color = theme.GREEN, label = "Toggle Fullscreen", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-fullscreen") },
+  { name = "front_app.window.sticky", icon = "󰐊", icon_color = theme.YELLOW, label = "Toggle Sticky", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-sticky") },
+  { name = "front_app.window.topmost", icon = "󰁜", icon_color = theme.MAUVE or theme.LAVENDER, label = "Toggle Topmost", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-topmost") },
+  { name = "front_app.window.center", icon = "󰘞", icon_color = theme.BLUE, label = "Center Window", action = call_script(YABAI_CONTROL_SCRIPT, "window-center") },
+}
+
+for _, entry in ipairs(window_actions) do
+  add_front_app_popup_item(entry.name, {
+    icon = { string = entry.icon, color = entry.icon_color },
+    label = entry.label,
+    click_script = entry.action,
+    ["label.font"] = font_small,
+  })
+end
+
+add_front_app_popup_item("front_app.sep2", {
+  icon = "",
+  label = "───────────────",
+  ["label.font"] = font_small,
+  ["label.color"] = "0x40cdd6f4",
+  background = { drawing = false },
+})
+
+add_front_app_popup_item("front_app.move_header", {
+  icon = "",
+  label = "Move Window",
+  ["label.font"] = font_bold,
+  ["label.color"] = theme.MAUVE or theme.LAVENDER,
+  background = { drawing = false },
+})
+
+local move_actions = {
+  { name = "front_app.move.display_prev", icon = "󰍺", icon_color = theme.SKY, label = "Move to Prev Display", action = call_script(YABAI_CONTROL_SCRIPT, "window-display-prev") },
+  { name = "front_app.move.display_next", icon = "󰍹", icon_color = theme.SKY, label = "Move to Next Display", action = call_script(YABAI_CONTROL_SCRIPT, "window-display-next") },
+  { name = "front_app.move.space_prev", icon = "󱂬", icon_color = theme.PEACH, label = "Move to Prev Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-prev-wrap") },
+  { name = "front_app.move.space_next", icon = "󱂬", icon_color = theme.PEACH, label = "Move to Next Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-next-wrap") },
+}
+
+for _, entry in ipairs(move_actions) do
+  add_front_app_popup_item(entry.name, {
+    icon = { string = entry.icon, color = entry.icon_color },
     label = entry.label,
     click_script = entry.action,
     ["label.font"] = font_small,

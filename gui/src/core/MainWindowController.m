@@ -22,6 +22,16 @@
 
 - (instancetype)init {
   NSRect frame = NSMakeRect(0, 0, 950, 750);
+  NSScreen *screen = [NSScreen mainScreen];
+  if (screen) {
+    NSRect visible = screen.visibleFrame;
+    CGFloat margin = 80.0;
+    CGFloat maxWidth = MAX(700.0, visible.size.width - margin);
+    CGFloat maxHeight = MAX(560.0, visible.size.height - margin);
+    CGFloat width = MIN(980.0, maxWidth);
+    CGFloat height = MIN(780.0, maxHeight);
+    frame = NSMakeRect(0, 0, width, height);
+  }
   NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
                                                   styleMask:(NSWindowStyleMaskTitled |
                                                             NSWindowStyleMaskClosable |
@@ -162,6 +172,19 @@
   return [NSScreen mainScreen];
 }
 
+- (NSSize)preferredWindowSizeForScreen:(NSScreen *)screen {
+  if (!screen) {
+    return NSMakeSize(950, 750);
+  }
+  NSRect visible = screen.visibleFrame;
+  CGFloat margin = 80.0;
+  CGFloat maxWidth = MAX(700.0, visible.size.width - margin);
+  CGFloat maxHeight = MAX(560.0, visible.size.height - margin);
+  CGFloat width = MIN(980.0, maxWidth);
+  CGFloat height = MIN(780.0, maxHeight);
+  return NSMakeSize(width, height);
+}
+
 - (void)centerWindowOnActiveScreen {
   NSScreen *screen = [self activeScreenForPoint:[NSEvent mouseLocation]];
   if (!screen) { return; }
@@ -202,7 +225,12 @@
 
   self.window.title = @"Barista Configuration";
   self.window.delegate = self;
-  [self.window setMinSize:NSMakeSize(850, 650)];
+  NSScreen *screen = [self activeScreenForPoint:[NSEvent mouseLocation]];
+  NSSize preferred = [self preferredWindowSizeForScreen:screen];
+  [self.window setContentSize:preferred];
+  CGFloat minWidth = MIN(850.0, preferred.width);
+  CGFloat minHeight = MIN(650.0, preferred.height);
+  [self.window setMinSize:NSMakeSize(minWidth, minHeight)];
   [self.window center];
   self.window.alphaValue = 1.0;
   self.window.opaque = YES;
@@ -230,15 +258,19 @@
   NSRect visible = screen.visibleFrame;
   NSRect frame = window.frame;
 
-  if (!NSIntersectsRect(frame, visible)) {
-    NSLog(@"[barista] window offscreen frame=%@ visible=%@", NSStringFromRect(frame), NSStringFromRect(visible));
-    CGFloat width = MIN(frame.size.width, visible.size.width - 40.0);
-    CGFloat height = MIN(frame.size.height, visible.size.height - 40.0);
-    CGFloat originX = NSMidX(visible) - width / 2.0;
-    CGFloat originY = NSMidY(visible) - height / 2.0;
-    NSRect corrected = NSMakeRect(originX, originY, width, height);
+  CGFloat margin = 40.0;
+  CGFloat width = MIN(frame.size.width, visible.size.width - margin);
+  CGFloat height = MIN(frame.size.height, visible.size.height - margin);
+  CGFloat minX = visible.origin.x + (margin / 2.0);
+  CGFloat minY = visible.origin.y + (margin / 2.0);
+  CGFloat maxX = visible.origin.x + visible.size.width - width - (margin / 2.0);
+  CGFloat maxY = visible.origin.y + visible.size.height - height - (margin / 2.0);
+  CGFloat originX = MIN(MAX(frame.origin.x, minX), maxX);
+  CGFloat originY = MIN(MAX(frame.origin.y, minY), maxY);
+  NSRect corrected = NSMakeRect(originX, originY, width, height);
+  if (!NSEqualRects(frame, corrected)) {
+    NSLog(@"[barista] window corrected frame=%@ visible=%@", NSStringFromRect(frame), NSStringFromRect(visible));
     [window setFrame:corrected display:YES];
-    NSLog(@"[barista] window corrected frame=%@", NSStringFromRect(corrected));
   }
 }
 

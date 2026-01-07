@@ -8,7 +8,6 @@ local control_center = {}
 
 local HOME = os.getenv("HOME")
 local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
-local SCRIPTS_DIR = os.getenv("BARISTA_SCRIPTS_DIR") or (HOME .. "/.config/scripts")
 
 local function path_exists(path)
   if not path or path == "" then
@@ -21,6 +20,89 @@ local function path_exists(path)
   end
   return false
 end
+
+local function shell_quote(value)
+  return string.format("%q", tostring(value))
+end
+
+local function expand_path(path)
+  if type(path) ~= "string" or path == "" then
+    return nil
+  end
+  if path:sub(1, 2) == "~/" then
+    return HOME .. path:sub(2)
+  end
+  return path
+end
+
+local function read_state_scripts_dir()
+  local ok, json = pcall(require, "json")
+  if not ok then
+    return nil
+  end
+
+  local file = io.open(CONFIG_DIR .. "/state.json", "r")
+  if not file then
+    return nil
+  end
+
+  local contents = file:read("*a")
+  file:close()
+
+  local ok_decode, data = pcall(json.decode, contents)
+  if not ok_decode or type(data) ~= "table" then
+    return nil
+  end
+
+  if type(data.paths) ~= "table" then
+    return nil
+  end
+
+  local candidate = data.paths.scripts_dir or data.paths.scripts
+  return expand_path(candidate)
+end
+
+local function scripts_available(path)
+  if not path or path == "" then
+    return false
+  end
+  if path_exists(path .. "/yabai_control.sh") then
+    return true
+  end
+  if path_exists(path .. "/toggle_shortcuts.sh") then
+    return true
+  end
+  if path_exists(path .. "/toggle_yabai_shortcuts.sh") then
+    return true
+  end
+  return false
+end
+
+local function resolve_scripts_dir()
+  local override = os.getenv("BARISTA_SCRIPTS_DIR")
+  if override and override ~= "" then
+    return expand_path(override)
+  end
+
+  local state_override = read_state_scripts_dir()
+  if state_override and state_override ~= "" and scripts_available(state_override) then
+    return state_override
+  end
+
+  local config_scripts = CONFIG_DIR .. "/scripts"
+  if scripts_available(config_scripts) then
+    return config_scripts
+  end
+
+  local legacy_scripts = HOME .. "/.config/scripts"
+  if scripts_available(legacy_scripts) then
+    return legacy_scripts
+  end
+
+  return config_scripts
+end
+
+local SCRIPTS_DIR = resolve_scripts_dir()
 
 -- Check service status
 local function check_service(name)
@@ -59,7 +141,7 @@ function control_center.get_status()
     yabai = check_service("yabai"),
     skhd = check_service("skhd"),
     sketchybar = check_service("sketchybar"),
-    cortex = check_service("Cortex"),
+    cortex = check_service("cortex") or check_service("Cortex"),
   }
 
   local all_running = services.yabai and services.skhd and services.sketchybar
@@ -202,18 +284,18 @@ function control_center.create_popup_items(sbar, theme, font_string, settings)
     background = { drawing = false },
   })
 
-  -- Window Operations Section
+  -- Layout Operations Section
   table.insert(items, {
-    name = "cc.window_header",
+    name = "cc.layout_ops_header",
     position = "popup.control_center",
     icon = { string = "", drawing = false },
-    label = { string = "Window Ops", font = font_bold, color = theme.GREEN },
+    label = { string = "Layout Ops", font = font_bold, color = theme.GREEN },
     ["label.padding_left"] = 8,
     ["label.padding_right"] = 8,
     background = { drawing = false },
   })
 
-  local window_ops = {
+  local layout_ops = {
     { id = "balance", name = "Balance Windows", icon = "󰓅", cmd = YABAI_CONTROL .. " balance" },
     { id = "rotate", name = "Rotate Layout", icon = "󰑞", cmd = YABAI_CONTROL .. " space-rotate" },
     { id = "toggle", name = "Toggle BSP/Stack", icon = "󱂬", cmd = YABAI_CONTROL .. " toggle-layout" },
@@ -221,9 +303,9 @@ function control_center.create_popup_items(sbar, theme, font_string, settings)
     { id = "flipy", name = "Flip Vertical", icon = "󰯎", cmd = YABAI_CONTROL .. " space-mirror-y" },
   }
 
-  for _, op in ipairs(window_ops) do
+  for _, op in ipairs(layout_ops) do
     table.insert(items, {
-      name = "cc.window." .. op.id,
+      name = "cc.layout_ops." .. op.id,
       position = "popup.control_center",
       icon = { string = op.icon, color = theme.TEAL },
       label = { string = op.name, font = font_small },
@@ -246,57 +328,37 @@ function control_center.create_popup_items(sbar, theme, font_string, settings)
     background = { drawing = false },
   })
 
-  -- Tools Section
+  -- Yabai Shortcuts Toggle
+  local shortcuts_running = check_service("skhd")
+  local shortcuts_on_label = "Yabai Shortcuts: On"
+  local shortcuts_off_label = "Yabai Shortcuts: Off"
+  local shortcuts_label = shortcuts_running and shortcuts_on_label or shortcuts_off_label
+  local shortcuts_color = shortcuts_running and theme.GREEN or theme.RED
+  local toggle_script = SCRIPTS_DIR .. "/toggle_yabai_shortcuts.sh"
+  if not path_exists(toggle_script) then
+    toggle_script = SCRIPTS_DIR .. "/toggle_shortcuts.sh"
+  end
+  local toggle_action = path_exists(toggle_script) and (shell_quote(toggle_script) .. " toggle")
+    or ("bash " .. shell_quote(CONFIG_DIR .. "/bin/open_control_panel.sh"))
+  local update_action = string.format(
+    "if pgrep -x skhd >/dev/null 2>&1; then sketchybar --set $NAME label='%s' icon.color=%s; else sketchybar --set $NAME label='%s' icon.color=%s; fi",
+    shortcuts_on_label,
+    theme.GREEN,
+    shortcuts_off_label,
+    theme.RED
+  )
   table.insert(items, {
-    name = "cc.tools_header",
+    name = "cc.yabai.shortcuts",
     position = "popup.control_center",
-    icon = { string = "", drawing = false },
-    label = { string = "Tools", font = font_bold, color = theme.SAPPHIRE },
-    ["label.padding_left"] = 8,
+    icon = { string = "󰌌", color = shortcuts_color },
+    label = { string = shortcuts_label, font = font_small },
+    ["icon.padding_left"] = 8,
+    ["icon.padding_right"] = 6,
+    ["label.padding_left"] = 4,
     ["label.padding_right"] = 8,
+    click_script = toggle_action .. "; " .. update_action .. "; sketchybar --set control_center popup.drawing=off",
     background = { drawing = false },
   })
-
-  local control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh"
-  local help_center = CONFIG_DIR .. "/build/bin/help_center"
-  local icon_browser = CONFIG_DIR .. "/gui/bin/icon_browser"
-  local rebuild_bar = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh"
-
-  local function tool_action(cmd, available)
-    if available == false then
-      return string.format("bash %q", control_panel)
-    end
-    return cmd
-  end
-
-  local tools = {
-    { id = "help", name = "Help Center", icon = "󰘥", color = theme.BLUE, cmd = help_center, ok = path_exists(help_center) },
-    { id = "icons", name = "Icon Browser", icon = "󰈙", color = theme.SKY, cmd = icon_browser, ok = path_exists(icon_browser) },
-    { id = "config", name = "Barista Config", icon = "󰒓", color = theme.SKY, cmd = string.format("bash %q", control_panel), ok = true },
-    { id = "reload", name = "Reload SketchyBar", icon = "󰑐", color = theme.YELLOW, cmd = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload", ok = true },
-    { id = "rebuild", name = "Rebuild + Reload", icon = "󰑓", color = theme.PEACH, cmd = rebuild_bar, ok = path_exists(rebuild_bar) },
-    { id = "shortcuts", name = "Toggle Yabai Shortcuts", icon = "󰌌", color = theme.LAVENDER, cmd = SCRIPTS_DIR .. "/toggle_shortcuts.sh toggle", ok = true },
-  }
-
-  for _, tool in ipairs(tools) do
-    local label = tool.name
-    local action = tool_action(tool.cmd, tool.ok)
-    if tool.ok == false then
-      label = "Build " .. tool.name
-    end
-    table.insert(items, {
-      name = "cc.tools." .. tool.id,
-      position = "popup.control_center",
-      icon = { string = tool.icon, color = tool.color },
-      label = { string = label, font = font_small },
-      ["icon.padding_left"] = 8,
-      ["icon.padding_right"] = 6,
-      ["label.padding_left"] = 4,
-      ["label.padding_right"] = 8,
-      click_script = action .. "; sketchybar --set control_center popup.drawing=off",
-      background = { drawing = false },
-    })
-  end
 
   -- Separator
   table.insert(items, {
@@ -365,7 +427,7 @@ function control_center.create_popup_items(sbar, theme, font_string, settings)
     ["label.padding_left"] = 4,
     ["label.padding_right"] = 8,
     ["label.padding_bottom"] = 4,
-    click_script = "open -a Terminal ~/src",
+    click_script = "open ~/src",
     background = { drawing = false },
   })
 

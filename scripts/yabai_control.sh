@@ -175,6 +175,16 @@ skhd_running() {
   pgrep -x skhd >/dev/null 2>&1
 }
 
+skhd_pid_count() {
+  local count
+  count=$( (pgrep -x skhd 2>/dev/null || true) | wc -l | tr -d ' ' )
+  echo "${count:-0}"
+}
+
+skhd_kill_all() {
+  pkill -x skhd >/dev/null 2>&1 || true
+}
+
 skhd_start() {
   if [[ -z "$SKHD_BIN" ]]; then
     return 1
@@ -282,6 +292,19 @@ run_doctor() {
       fi
     else
       echo "skhd: running"
+    fi
+
+    local pid_count
+    pid_count=$(skhd_pid_count)
+    if (( pid_count > 1 )); then
+      echo "skhd: multiple instances (${pid_count})" >&2
+      ok=0
+      if (( fix == 1 )); then
+        skhd_kill_all
+        if skhd_start; then
+          echo "skhd: restarted after duplicate cleanup"
+        fi
+      fi
     fi
   fi
 

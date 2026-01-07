@@ -4,15 +4,13 @@
       "section": "Barista UI",
       "items": [
         { "keys": "⌘⌥P", "description": "Open Control Panel" },
-        { "keys": "⌘⌥H", "description": "Open Help Center" },
+        { "keys": "⌘⌥K / ⌘⌥H", "description": "Open Help Center" },
         { "keys": "⌘⌥I", "description": "Open Icon Browser" },
-        { "keys": "⌘⌥K", "description": "Toggle WhichKey HUD" },
         { "keys": "⌘⌥/", "description": "Toggle Control Center" },
         { "keys": "⌘⌥C", "description": "Toggle Cortex" },
         { "keys": "⌘⌥R", "description": "Reload SketchyBar" },
         { "keys": "⌘⌥⇧R", "description": "Rebuild + Reload SketchyBar" },
-        { "keys": "⌘⌥Y", "description": "Toggle Yabai Shortcuts" },
-        { "keys": "⌘⌥K", "description": "Open Help Center" }
+        { "keys": "⌘⌥Y", "description": "Toggle Yabai Shortcuts" }
       ]
     },
     {

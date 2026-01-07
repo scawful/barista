@@ -18,7 +18,6 @@
       "section": "Spaces",
       "items": [
         { "keys": "🌐1-0", "description": "Focus space 1-10" },
-        { "keys": "🌐←/→", "description": "Prev/Next space" },
         { "keys": "⌃←/→", "description": "Prev/Next space" },
         { "keys": "🌐⇧←/→", "description": "Send window to prev/next space" }
       ]

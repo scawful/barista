@@ -121,10 +121,6 @@ The shortcuts module includes fn-key combinations (requires skhd configuration):
 #### Space Navigation (fn + numbers)
 - `fn-1` to `fn-0` - Focus Spaces 1-10
 
-#### Space Navigation (fn + arrows)
-- `fn-←` - Previous Space
-- `fn-→` - Next Space
-
 #### Space Movement (fn + shift + arrows)
 - `fn-⇧←` - Send Window to Prev Space
 - `fn-⇧→` - Send Window to Next Space

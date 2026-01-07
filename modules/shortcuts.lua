@@ -122,10 +122,6 @@ shortcuts.fn_mappings = {
   ["fn-9"] = "focus_space_9",
   ["fn-0"] = "focus_space_10",
 
-  -- Space Navigation (fn + arrows)
-  ["fn-left"] = "space_prev",
-  ["fn-right"] = "space_next",
-
   -- Quick Actions (fn + key)
   ["fn-t"] = "toggle_layout",          -- Toggle BSP/Float
   ["fn-f"] = "toggle_fullscreen",      -- Fullscreen current window
@@ -144,7 +140,6 @@ shortcuts.fn_order = {
   "fn-h", "fn-j", "fn-k", "fn-l",
   "fn-1", "fn-2", "fn-3", "fn-4", "fn-5",
   "fn-6", "fn-7", "fn-8", "fn-9", "fn-0",
-  "fn-left", "fn-right",
   "fn-t", "fn-f", "fn-r", "fn-b", "fn-m", "fn-c", "fn-space",
   "fn-up", "fn-down",
 }

@@ -564,6 +564,7 @@ local menu_context = {
   scripts = scripts,
   helpers = helpers,
   HOVER_SCRIPT = HOVER_SCRIPT,
+  SUBMENU_HOVER_SCRIPT = SUBMENU_HOVER_SCRIPT,
   integration_flags = profile_module.get_integration_flags(user_profile),
   integrations = integrations,
 }

@@ -4,17 +4,17 @@ local unpack = table.unpack or _G.unpack
 
 local function menu_label(label, shortcut)
   if shortcut and shortcut ~= "" then
-    return string.format("%-12s %s", label, shortcut)
+    return string.format("%-16s %s", label, shortcut)
   end
   return label
 end
 
 local function menu_entry_padding()
   return {
-    icon_left = 1,
-    icon_right = 2,
-    label_left = 2,
-    label_right = 2,
+    icon_left = 4,
+    icon_right = 6,
+    label_left = 6,
+    label_right = 6,
   }
 end
 
@@ -59,7 +59,7 @@ function menu_renderer.create(ctx)
     sbar.add("item", entry.name, {
       position = "popup." .. popup,
       icon = "",
-      label = entry.label or "────────",
+      label = entry.label or "───────────────",
       ["label.font"] = string.format("%s:%s:%0.1f", settings.font.text, settings.font.style_map["Regular"], settings.font.sizes.small),
       ["label.color"] = theme.DARK_WHITE,
       ["icon.drawing"] = false,
@@ -109,7 +109,7 @@ function menu_renderer.create(ctx)
       background = {
         drawing = false,
         corner_radius = 4,
-        height = math.max(widget_height - 16, 12)
+        height = math.max(widget_height - 10, 16)
       }
     }
 
@@ -174,7 +174,7 @@ function menu_renderer.create(ctx)
       background = {
         drawing = false,
         corner_radius = 4,
-        height = math.max(widget_height - 16, 12)
+        height = math.max(widget_height - 10, 16)
       }
     })
     attach_hover(entry.name)
@@ -210,6 +210,7 @@ function menu_renderer.create(ctx)
       icon = entry.icon or "",
       label = string.format("%s  %s", entry.label, arrow),
       script = ctx.SUBMENU_HOVER_SCRIPT,
+      click_script = "sketchybar -m --set $NAME popup.drawing=toggle",
       ["icon.padding_left"] = padding.icon_left,
       ["icon.padding_right"] = padding.icon_right,
       ["label.padding_left"] = padding.label_left,
@@ -217,7 +218,7 @@ function menu_renderer.create(ctx)
       background = {
         drawing = false,
         corner_radius = 4,
-        height = math.max(widget_height - 16, 12)
+        height = math.max(widget_height - 8, 16)
       },
       popup = {
         align = "right",

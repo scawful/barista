@@ -51,12 +51,16 @@ local function resolve_code_dir(ctx)
 end
 
 local function resolve_path(ctx, candidates, want_dir)
+  local fallback = nil
   for _, candidate in ipairs(candidates or {}) do
-    if candidate and candidate ~= "" and path_exists(candidate, want_dir) then
-      return candidate
+    if candidate and candidate ~= "" then
+      fallback = fallback or candidate
+      if path_exists(candidate, want_dir) then
+        return candidate
+      end
     end
   end
-  return nil
+  return fallback
 end
 
 local function resolve_afs_root(ctx)
@@ -107,20 +111,11 @@ end
 
 local function resolve_yaze_app(ctx)
   local code_dir = resolve_code_dir(ctx)
-  local roots = {
-    ctx.paths and ctx.paths.yaze or nil,
-    code_dir .. "/hobby/yaze",
-    code_dir .. "/yaze",
-  }
-  for _, root in ipairs(roots) do
-    if root and root ~= "" then
-      local app = root .. "/build/bin/yaze.app"
-      if path_exists(app, true) then
-        return app
-      end
-    end
-  end
-  return nil
+  return resolve_path(ctx, {
+    ctx.paths and ctx.paths.yaze and (ctx.paths.yaze .. "/build/bin/yaze.app") or nil,
+    code_dir .. "/hobby/yaze/build/bin/yaze.app",
+    code_dir .. "/yaze/build/bin/yaze.app",
+  }, true)
 end
 
 local function afs_cli(afs_root, args)
@@ -348,7 +343,7 @@ function menu.render_all_menus(ctx)
       studio_root .. "/build/bin/afs_studio",
     }, false)
     local studio_action
-    if studio_bin then
+    if studio_bin and studio_bin ~= "" then
       studio_action = open_terminal(shell_quote(studio_bin))
     elseif afs_root then
       studio_action = open_terminal(afs_cli(afs_root, "studio run --build"))
@@ -369,7 +364,7 @@ function menu.render_all_menus(ctx)
     }, false)
     local labeler_csv = os.getenv("AFS_LABELER_CSV")
     local labeler_cmd
-    if labeler_bin then
+    if labeler_bin and labeler_bin ~= "" then
       labeler_cmd = shell_quote(labeler_bin)
       if labeler_csv and labeler_csv ~= "" then
         labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
@@ -415,7 +410,7 @@ function menu.render_all_menus(ctx)
       name = "menu.tools.yaze",
       icon = "󰯙",
       label = "Yaze",
-      action = string.format("open -a %s", shell_quote(yaze_app)),
+      action = string.format("open %s", shell_quote(yaze_app)),
     })
   end
 

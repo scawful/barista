@@ -75,12 +75,12 @@ local icons = icon_manager.list_icons()
 
 ## Keyboard Shortcuts System
 
-Barista includes a comprehensive keyboard shortcut management system with **non-conflicting** shortcuts using `cmd+alt`, `fn`, and a small `ctrl+shift` layer.
+Barista includes a comprehensive keyboard shortcut management system with **non-conflicting** shortcuts using `cmd+alt`, plus a small `ctrl`/`ctrl+shift` layer.
 
 ### Design Philosophy
 
-- **Non-Conflicting**: Uses `cmd+alt` (⌘⌥) and `fn` (🌐) combinations that avoid app conflicts
-- **fn Key Support**: Leverages the fn (globe) key for window/space control (macOS Ventura+)
+- **Non-Conflicting**: Uses `cmd+alt` (⌘⌥) combinations that avoid app conflicts
+- **Lightweight**: Keeps `ctrl` for space navigation and `ctrl+shift` for layout modes
 - **Consistent**: All shortcuts follow logical patterns
 - **Documented**: Every shortcut has a description and symbol
 
@@ -103,38 +103,14 @@ These shortcuts work system-wide and don't conflict with common applications:
 - `⌘⌥⇧→` - Send Window to Next Display
 - `⌘⌥⇧←` - Send Window to Prev Display
 
+#### Space Navigation (ctrl)
+- `⌃←` - Previous Space
+- `⌃→` - Next Space
+
 #### Layout Modes (ctrl+shift)
 - `⌃⇧F` - Set Float Layout
 - `⌃⇧B` - Set BSP Layout
 - `⌃⇧S` - Set Stack Layout
-
-### fn Key Shortcuts
-
-The shortcuts module includes fn-key combinations (requires skhd configuration):
-
-#### Window Navigation (fn + vim keys)
-- `fn-h` - Focus Window West
-- `fn-j` - Focus Window South
-- `fn-k` - Focus Window North
-- `fn-l` - Focus Window East
-
-#### Space Navigation (fn + numbers)
-- `fn-1` to `fn-0` - Focus Spaces 1-10
-
-#### Space Movement (fn + shift + arrows)
-- `fn-⇧←` - Send Window to Prev Space
-- `fn-⇧→` - Send Window to Next Space
-
-#### Quick Actions (fn + key)
-- `fn-t` - Toggle Layout
-- `fn-f` - Toggle Fullscreen
-- `fn-r` - Rotate Layout
-- `fn-b` - Balance Windows
-- `fn-space` - Toggle Float
-
-#### Window Sizing (fn + arrows)
-- `fn-↑` - Maximize Window
-- `fn-↓` - Restore Window
 
 ### Generating skhd Configuration
 
@@ -224,8 +200,8 @@ end
 Icons and shortcuts are automatically integrated into menu items. Shortcuts are displayed next to menu items:
 
 ```
-Toggle Float        🌐␣
-Toggle Fullscreen   🌐F
+Toggle Cortex       ⌘⌥C
+Reload SketchyBar   ⌘⌥R
 Open Control Panel  ⌘⌥P
 ```
 
@@ -240,7 +216,7 @@ Open Control Panel  ⌘⌥P
 
 ### Shortcuts
 
-1. **Avoid conflicts**: Stick to cmd+alt and fn combinations for global shortcuts
+1. **Avoid conflicts**: Stick to cmd+alt and ctrl/ctrl+shift combinations for global shortcuts
 2. **Document everything**: Add descriptions and symbols to all shortcuts
 3. **Use logical groups**: Group related shortcuts (e.g., all display shortcuts use arrows)
 4. **Test thoroughly**: Ensure shortcuts don't conflict with your most-used apps

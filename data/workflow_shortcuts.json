@@ -17,22 +17,12 @@
     {
       "section": "Spaces",
       "items": [
-        { "keys": "🌐1-0", "description": "Focus space 1-10" },
-        { "keys": "⌃←/→", "description": "Prev/Next space" },
-        { "keys": "🌐⇧←/→", "description": "Send window to prev/next space" }
+        { "keys": "⌃←/→", "description": "Prev/Next space" }
       ]
     },
     {
       "section": "Window Management",
       "items": [
-        { "keys": "🌐H/J/K/L", "description": "Focus window west/south/north/east" },
-        { "keys": "🌐␣", "description": "Toggle float" },
-        { "keys": "🌐F", "description": "Toggle fullscreen" },
-        { "keys": "🌐T", "description": "Toggle BSP/float layout" },
-        { "keys": "🌐B", "description": "Balance layout" },
-        { "keys": "🌐R", "description": "Rotate layout" },
-        { "keys": "🌐M", "description": "Minimize window" },
-        { "keys": "🌐↑/↓", "description": "Maximize/restore window" },
         { "keys": "⌘⌥⇧←/→", "description": "Send window to prev/next display" }
       ]
     },

@@ -13,10 +13,40 @@
 #import "PerformanceTabViewController.h"
 #import "AdvancedTabViewController.h"
 #import "BaristaStyle.h"
+#import "BaristaPanelView.h"
 #import <Cocoa/Cocoa.h>
 
 @interface MainWindowController ()
 @property (assign) BOOL windowConfigured;
+@property (strong) BaristaPanelView *tabContainer;
+@end
+
+@interface BaristaSidebarRowView : NSTableRowView
+@end
+
+@implementation BaristaSidebarRowView
+
+- (void)drawBackgroundInRect:(NSRect)dirtyRect {
+  BaristaStyle *style = [BaristaStyle sharedStyle];
+  [style.sidebarColor setFill];
+  NSRectFill(dirtyRect);
+}
+
+- (void)drawSelectionInRect:(NSRect)dirtyRect {
+  if (!self.isSelected) {
+    return;
+  }
+  BaristaStyle *style = [BaristaStyle sharedStyle];
+  NSRect inset = NSInsetRect(self.bounds, 6.0, 2.0);
+  NSBezierPath *highlight = [NSBezierPath bezierPathWithRoundedRect:inset xRadius:4.0 yRadius:4.0];
+  [style.selectionColor setFill];
+  [highlight fill];
+
+  NSRect barRect = NSMakeRect(2.0, 3.0, 2.0, self.bounds.size.height - 6.0);
+  [[style.accentColor colorWithAlphaComponent:0.85] setFill];
+  NSRectFill(barRect);
+}
+
 @end
 
 @implementation MainWindowController
@@ -166,15 +196,28 @@
   self.tabItems = [tabItems copy];
   [self setupSidebarWithStyle:style];
   NSRect bounds = self.window.contentView.bounds;
-  self.tabView.frame = NSMakeRect(style.sidebarWidth, 0, bounds.size.width - style.sidebarWidth, bounds.size.height);
+  self.tabContainer = [[BaristaPanelView alloc] initWithFrame:NSMakeRect(style.sidebarWidth, 0, bounds.size.width - style.sidebarWidth, bounds.size.height)];
+  self.tabContainer.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+
+  CGFloat panelPadding = 14.0;
+  self.tabView.frame = NSInsetRect(self.tabContainer.bounds, panelPadding, panelPadding);
+  self.tabView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  [self.tabContainer addSubview:self.tabView];
 
   self.splitView = [[NSSplitView alloc] initWithFrame:self.window.contentView.bounds];
   self.splitView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   self.splitView.vertical = YES;
   self.splitView.dividerStyle = NSSplitViewDividerStyleThin;
   [self.splitView addSubview:self.sidebarView];
-  [self.splitView addSubview:self.tabView];
+  [self.splitView addSubview:self.tabContainer];
   [self.window setContentView:self.splitView];
+
+  for (NSTabViewItem *item in self.tabView.tabViewItems) {
+    NSViewController *controller = item.viewController;
+    if (controller) {
+      [style applyStyleToViewHierarchy:controller.view];
+    }
+  }
 
   [self.sidebarTable reloadData];
   if (self.tabItems.count > 0) {
@@ -205,30 +248,72 @@
   self.sidebarView.wantsLayer = YES;
   self.sidebarView.layer.backgroundColor = style.sidebarColor.CGColor;
 
-  CGFloat headerHeight = 64.0;
+  CGFloat headerHeight = 110.0;
   NSView *header = [[NSView alloc] initWithFrame:NSMakeRect(0, bounds.size.height - headerHeight, sidebarWidth, headerHeight)];
   header.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
   header.wantsLayer = YES;
   header.layer.backgroundColor = style.backgroundColor.CGColor;
   [self.sidebarView addSubview:header];
 
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(14, headerHeight - 28, sidebarWidth - 24, 18)];
-  title.stringValue = @"BARISTA CONFIG";
-  title.font = style.sectionFont;
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *themeName = style.themeName.length ? style.themeName : @"default";
+  NSString *configPath = [self shortPath:config.configPath];
+  NSString *codePath = [self shortPath:config.codePath];
+
+  CGFloat y = headerHeight - 28.0;
+  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(14, y, sidebarWidth - 24, 18)];
+  title.stringValue = @"BARISTA // CONTROL";
+  title.font = style.titleFont;
   title.textColor = style.textColor;
   title.bordered = NO;
   title.editable = NO;
   title.backgroundColor = [NSColor clearColor];
   [header addSubview:title];
 
-  NSTextField *subtitle = [[NSTextField alloc] initWithFrame:NSMakeRect(14, headerHeight - 46, sidebarWidth - 24, 16)];
-  subtitle.stringValue = @"system control + layout";
+  y -= 18.0;
+  NSTextField *subtitle = [[NSTextField alloc] initWithFrame:NSMakeRect(14, y, sidebarWidth - 24, 16)];
+  subtitle.stringValue = @"config + orchestration";
   subtitle.font = style.bodyFont;
   subtitle.textColor = style.mutedTextColor;
   subtitle.bordered = NO;
   subtitle.editable = NO;
   subtitle.backgroundColor = [NSColor clearColor];
   [header addSubview:subtitle];
+
+  y -= 18.0;
+  NSTextField *themeLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(14, y, sidebarWidth - 24, 14)];
+  themeLabel.stringValue = [NSString stringWithFormat:@"THEME  %@", [themeName uppercaseString]];
+  themeLabel.font = style.bodyFont;
+  themeLabel.textColor = style.accentColor;
+  themeLabel.bordered = NO;
+  themeLabel.editable = NO;
+  themeLabel.backgroundColor = [NSColor clearColor];
+  [header addSubview:themeLabel];
+
+  y -= 16.0;
+  NSTextField *pathLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(14, y, sidebarWidth - 24, 14)];
+  pathLabel.stringValue = [NSString stringWithFormat:@"CFG    %@", configPath ?: @"~/.config/sketchybar"];
+  pathLabel.font = style.bodyFont;
+  pathLabel.textColor = style.mutedTextColor;
+  pathLabel.bordered = NO;
+  pathLabel.editable = NO;
+  pathLabel.backgroundColor = [NSColor clearColor];
+  [header addSubview:pathLabel];
+
+  y -= 16.0;
+  NSTextField *codeLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(14, y, sidebarWidth - 24, 14)];
+  codeLabel.stringValue = [NSString stringWithFormat:@"CODE   %@", codePath ?: @"~/src"];
+  codeLabel.font = style.bodyFont;
+  codeLabel.textColor = style.mutedTextColor;
+  codeLabel.bordered = NO;
+  codeLabel.editable = NO;
+  codeLabel.backgroundColor = [NSColor clearColor];
+  [header addSubview:codeLabel];
+
+  NSView *headerDivider = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, sidebarWidth, 1.0)];
+  headerDivider.wantsLayer = YES;
+  headerDivider.layer.backgroundColor = style.dividerColor.CGColor;
+  [header addSubview:headerDivider];
 
   NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, sidebarWidth, bounds.size.height - headerHeight)];
   scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -241,10 +326,10 @@
   self.sidebarTable.dataSource = self;
   self.sidebarTable.delegate = self;
   self.sidebarTable.headerView = nil;
-  self.sidebarTable.rowHeight = 28.0;
+  self.sidebarTable.rowHeight = 24.0;
   self.sidebarTable.backgroundColor = style.sidebarColor;
   self.sidebarTable.focusRingType = NSFocusRingTypeNone;
-  self.sidebarTable.selectionHighlightStyle = NSTableViewSelectionHighlightStyleSourceList;
+  self.sidebarTable.selectionHighlightStyle = NSTableViewSelectionHighlightStyleNone;
 
   NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"label"];
   column.width = sidebarWidth - 20.0;
@@ -255,6 +340,10 @@
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
   return self.tabItems.count;
+}
+
+- (NSTableRowView *)tableView:(NSTableView *)tableView rowViewForRow:(NSInteger)row {
+  return [[BaristaSidebarRowView alloc] initWithFrame:NSZeroRect];
 }
 
 - (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
@@ -281,9 +370,11 @@
   if (![textField isKindOfClass:[NSTextField class]]) {
     textField = [cell.subviews firstObject];
   }
-  textField.stringValue = item[@"label"] ?: @"";
+  NSString *label = item[@"label"] ?: @"";
+  textField.stringValue = [label uppercaseString];
   textField.font = style.bodyFont;
-  textField.textColor = style.textColor;
+  BOOL isSelected = (row == self.sidebarTable.selectedRow);
+  textField.textColor = isSelected ? style.accentColor : style.textColor;
   return cell;
 }
 
@@ -292,6 +383,7 @@
   if (row >= 0 && row < (NSInteger)self.tabItems.count) {
     [self.tabView selectTabViewItemAtIndex:row];
   }
+  [self.sidebarTable reloadData];
 }
 
 - (BOOL)windowShouldClose:(NSWindow *)sender {
@@ -381,6 +473,17 @@
                                       NSWindowCollectionBehaviorMoveToActiveSpace)];
   self.windowConfigured = YES;
   NSLog(@"[barista] window configured");
+}
+
+- (NSString *)shortPath:(NSString *)path {
+  if (!path.length) {
+    return @"";
+  }
+  NSString *home = NSHomeDirectory();
+  if ([path hasPrefix:home]) {
+    return [@"~" stringByAppendingString:[path substringFromIndex:home.length]];
+  }
+  return path;
 }
 
 - (void)ensureWindowIsOnScreen {

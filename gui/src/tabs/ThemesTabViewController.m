@@ -1,3 +1,4 @@
+#import "BaristaStyle.h"
 #import "ConfigurationManager.h"
 #import <Cocoa/Cocoa.h>
 
@@ -19,6 +20,7 @@
 
   // Scan themes directory
   ConfigurationManager *config = [ConfigurationManager sharedManager];
+  BaristaStyle *style = [BaristaStyle sharedStyle];
   NSString *configDir = config.configPath ?: [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"];
   NSString *themesPath = [configDir stringByAppendingPathComponent:@"themes"];
   NSFileManager *fm = [NSFileManager defaultManager];
@@ -39,7 +41,7 @@
   // Title
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 400, 30)];
   title.stringValue = @"Theme Selection";
-  title.font = [NSFont systemFontOfSize:20 weight:NSFontWeightBold];
+  title.font = style.titleFont;
   title.bordered = NO;
   title.editable = NO;
   title.backgroundColor = [NSColor clearColor];
@@ -49,6 +51,7 @@
   // Theme Selector
   NSTextField *selectorLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 150, 20)];
   selectorLabel.stringValue = @"Current Theme:";
+  selectorLabel.font = style.bodyFont;
   selectorLabel.bordered = NO;
   selectorLabel.editable = NO;
   selectorLabel.backgroundColor = [NSColor clearColor];
@@ -74,7 +77,7 @@
   // Preview
   NSTextField *previewLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 150, 20)];
   previewLabel.stringValue = @"Theme Preview:";
-  previewLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightSemibold];
+  previewLabel.font = style.sectionFont;
   previewLabel.bordered = NO;
   previewLabel.editable = NO;
   previewLabel.backgroundColor = [NSColor clearColor];
@@ -83,16 +86,17 @@
 
   NSView *previewBox = [[NSView alloc] initWithFrame:NSMakeRect(leftMargin, y - 200, 600, 200)];
   previewBox.wantsLayer = YES;
-  previewBox.layer.backgroundColor = [[NSColor windowBackgroundColor] CGColor];
+  previewBox.layer.backgroundColor = style.panelColor.CGColor;
   previewBox.layer.cornerRadius = 8;
   [self.view addSubview:previewBox];
 
   self.themePreview = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 80, 560, 40)];
   self.themePreview.stringValue = @"Theme colors will be applied to the bar";
-  self.themePreview.font = [NSFont systemFontOfSize:14];
+  self.themePreview.font = style.sectionFont;
   self.themePreview.bordered = NO;
   self.themePreview.editable = NO;
   self.themePreview.alignment = NSTextAlignmentCenter;
+  self.themePreview.tag = 9901;
   [previewBox addSubview:self.themePreview];
   y -= 250;
 
@@ -129,15 +133,16 @@
 }
 
 - (void)updatePreview {
+  BaristaStyle *style = [BaristaStyle sharedStyle];
   NSString *themeName = self.themeSelector.selectedItem.title;
   if (themeName) {
     self.themePreview.stringValue = [NSString stringWithFormat:@"Selected: %@ theme", themeName];
+    self.themePreview.textColor = style.accentColor;
   }
 }
 
 - (void)applyTheme:(id)sender {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
-  NSString *configDir = config.configPath ?: [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"];
   NSString *themeName = self.themeSelector.selectedItem.title;
   
   if (!themeName) {
@@ -147,19 +152,10 @@
 
   // Save theme to state
   [config setValue:themeName forKeyPath:@"appearance.theme"];
-
-  // Update theme.lua file
-  NSString *themeLuaPath = [configDir stringByAppendingPathComponent:@"theme.lua"];
-  NSString *themeContent = [NSString stringWithFormat:@"local current_theme = \"%@\"\nlocal theme = require(\"themes.\" .. current_theme)\n\nreturn theme\n", themeName];
-  
-  NSError *error = nil;
-  if (![themeContent writeToFile:themeLuaPath atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
-    NSLog(@"Failed to write theme.lua: %@", error);
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Failed to Apply Theme";
-    alert.informativeText = [NSString stringWithFormat:@"Could not write theme.lua: %@", error.localizedDescription];
-    [alert runModal];
-    return;
+  [[BaristaStyle sharedStyle] refreshFromConfig];
+  NSString *themeBarHex = [BaristaStyle sharedStyle].themeBarHex;
+  if (themeBarHex.length) {
+    [config setValue:themeBarHex forKeyPath:@"appearance.bar_color"];
   }
 
   [config reloadSketchyBar];

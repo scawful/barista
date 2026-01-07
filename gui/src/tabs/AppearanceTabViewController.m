@@ -40,7 +40,7 @@
   CGFloat leftMargin = 50;
   CGFloat rightMargin = self.view.bounds.size.width - 50;
   CGFloat sliderWidth = 400;
-  CGFloat spacing = 70;
+  CGFloat spacing = 56;
 
   // Title
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 500, 28)];

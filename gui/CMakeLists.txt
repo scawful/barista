@@ -22,6 +22,8 @@ if(APPLE)
     src/core/ConfigurationManager.h
     src/core/BaristaStyle.m
     src/core/BaristaStyle.h
+    src/core/BaristaPanelView.m
+    src/core/BaristaPanelView.h
     src/core/AppDelegate.m
     src/core/AppDelegate.h
     src/core/MainWindowController.m

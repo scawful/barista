@@ -292,44 +292,51 @@ function menu.render_all_menus(ctx)
   ctx.subscribe_popup_autoclose("apple_menu")
   
   local system_items = {
-    { type = "header", name = "sys.header", label = "System" },
-    { type = "item", name = "sys.about", icon = "󰋗", label = "About This Mac", action = "open -a 'System Information'" },
-    { type = "item", name = "sys.settings", icon = "", label = "System Settings…", action = "open -a 'System Settings'", shortcut = "⌘," },
-    { type = "item", name = "sys.forcequit", icon = "󰜏", label = "Force Quit…", action = [[osascript -e 'tell application "System Events" to key code 53 using {command down, option down}']], shortcut = "⌘⌥⎋", label_color = theme.PEACH },
-    { type = "separator", name = "sys.sep1" },
-    { type = "item", name = "sys.sleep", icon = "󰒲", label = "Sleep Display", action = "pmset displaysleepnow" },
-    { type = "item", name = "sys.lock", icon = "󰷛", label = "Lock Screen", action = [[osascript -e 'tell application "System Events" to keystroke "q" using {control down, command down}']], shortcut = "⌃⌘Q", label_color = theme.YELLOW },
-    { type = "item", name = "sys.logout", icon = "󰍃", label = "Log Out...", action = "osascript -e 'tell application \"System Events\" to log out'", label_color = theme.RED },
-    { type = "header", name = "sys.quick", label = "Quick Actions" },
-    { type = "item", name = "sys.reload", icon = "󰑐", label = "Reload Bar", action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload", shortcut = "⌘⌥R", label_color = theme.SKY },
-    { type = "item", name = "sys.panel", icon = "󰒓", label = "Control Panel", action = ctx.call_script(ctx.paths.apple_launcher, "--panel"), shortcut = "⌘⌥P", label_color = theme.LAVENDER },
+    { type = "header", name = "menu.system.header", label = "System" },
+    { type = "item", name = "menu.system.about", icon = "󰋗", label = "About This Mac", action = "open -a 'System Information'" },
+    { type = "item", name = "menu.system.settings", icon = "", label = "System Settings…", action = "open -a 'System Settings'", shortcut = "⌘," },
+    { type = "item", name = "menu.system.forcequit", icon = "󰜏", label = "Force Quit…", action = [[osascript -e 'tell application "System Events" to key code 53 using {command down, option down}']], shortcut = "⌘⌥⎋", label_color = theme.PEACH },
   }
 
-  local workspace_items = {}
+  local tools_items = {}
   local afs_root = resolve_afs_root(ctx)
   local studio_root = resolve_afs_studio_root(ctx, afs_root)
   local stemforge_app = resolve_stemforge_app(ctx)
+  local code_dir = resolve_code_dir(ctx)
 
-  if afs_root or studio_root or stemforge_app then
-    table.insert(workspace_items, { type = "header", name = "sys.workspace", label = "Workspace" })
+  if ctx.integrations and ctx.integrations.cortex then
+    local status, cortex_icon, cortex_color = ctx.integrations.cortex.get_status()
+    local label = status == "running" and "Cortex (Running)" or "Cortex (Stopped)"
+    local action = ""
+    local cli_path = ctx.integrations.cortex.config and ctx.integrations.cortex.config.cli_path or ""
+    local bin_path = ctx.integrations.cortex.config and ctx.integrations.cortex.config.bin_path or ""
+    if cli_path ~= "" and path_exists(cli_path, false) then
+      action = string.format("%s toggle", shell_quote(cli_path))
+    elseif bin_path ~= "" and path_exists(bin_path, false) then
+      action = shell_quote(bin_path)
+    end
+    if action ~= "" then
+      table.insert(tools_items, {
+        type = "item",
+        name = "menu.tools.cortex",
+        icon = cortex_icon or "󰪴",
+        icon_color = cortex_color,
+        label = label,
+        action = action,
+        label_color = cortex_color,
+      })
+    end
   end
 
   if afs_root then
     local afs_tui = string.format("cd %s && python3 -m tui.app", shell_quote(afs_root))
-    table.insert(workspace_items, {
+    table.insert(tools_items, {
       type = "item",
-      name = "sys.afs.browser",
+      name = "menu.tools.afs.browser",
       icon = "󰈙",
       label = "AFS Browser",
       action = open_terminal(afs_tui),
       label_color = theme.SAPPHIRE,
-    })
-    table.insert(workspace_items, {
-      type = "item",
-      name = "sys.afs.repo",
-      icon = "󰈙",
-      label = "Open AFS Repo",
-      action = ctx.open_path(afs_root),
     })
   end
 
@@ -346,10 +353,9 @@ function menu.render_all_menus(ctx)
     else
       studio_action = open_terminal(string.format("cd %s && cmake --build build --target afs_studio && ./build/afs_studio", shell_quote(studio_root)))
     end
-
-    table.insert(workspace_items, {
+    table.insert(tools_items, {
       type = "item",
-      name = "sys.afs.studio",
+      name = "menu.tools.afs.studio",
       icon = "󰆍",
       label = "AFS Studio",
       action = studio_action,
@@ -373,9 +379,9 @@ function menu.render_all_menus(ctx)
         labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
       end
     end
-    table.insert(workspace_items, {
+    table.insert(tools_items, {
       type = "item",
-      name = "sys.afs.labeler",
+      name = "menu.tools.afs.labeler",
       icon = "󰓹",
       label = labeler_bin and "AFS Labeler" or "Build AFS Labeler",
       action = open_terminal(labeler_cmd),
@@ -384,9 +390,9 @@ function menu.render_all_menus(ctx)
   end
 
   if stemforge_app then
-    table.insert(workspace_items, {
+    table.insert(tools_items, {
       type = "item",
-      name = "sys.stemforge",
+      name = "menu.tools.stemforge",
       icon = "󰎈",
       label = "Stem Sampler",
       action = string.format("open %s", shell_quote(stemforge_app)),
@@ -394,48 +400,58 @@ function menu.render_all_menus(ctx)
     })
   end
 
-  append_items(system_items, workspace_items)
-  local agent_ops_items = {}
-  local function add_agent_item(item)
-    table.insert(agent_ops_items, item)
+  table.insert(tools_items, { type = "item", name = "menu.tools.terminal", icon = "", label = "Terminal", action = "open -a Terminal" })
+  table.insert(tools_items, { type = "item", name = "menu.tools.finder", icon = "", label = "Finder", action = "open -a Finder" })
+  if path_exists(code_dir, true) then
+    table.insert(tools_items, { type = "item", name = "menu.tools.workspace", icon = "󰈙", label = "Open Workspace", action = ctx.open_path(code_dir) })
   end
 
-  if ctx.integrations and ctx.integrations.cortex then
-    if ctx.paths and path_exists(ctx.paths.afs, true) then
-      local afs_cmd = string.format("cd %q && python3 -m tui.app", ctx.paths.afs)
-      add_agent_item({ type = "item", name = "sys.afs.tui", icon = "󰒓", label = "Launch AFS TUI", action = open_terminal(afs_cmd) })
-      add_agent_item({ type = "item", name = "sys.afs.repo", icon = "󰈙", label = "Open AFS Repo", action = ctx.open_path(ctx.paths.afs) })
-    end
-    if ctx.paths and path_exists(ctx.paths.cortex, true) then
-      add_agent_item({ type = "item", name = "sys.cortex.repo", icon = "󰈙", label = "Open Cortex Repo", action = ctx.open_path(ctx.paths.cortex) })
-    end
+  local sketchybar_tool_items = {
+    { type = "item", name = "menu.sketchybar.panel", icon = "󰒓", label = "Control Panel…", action = ctx.call_script(ctx.paths.apple_launcher, "--panel"), shortcut = "⌘⌥P" },
+    { type = "item", name = "menu.sketchybar.reload", icon = "󰑐", label = "Reload Bar", action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload", shortcut = "⌘⌥R" },
+    { type = "item", name = "menu.sketchybar.logs", icon = "󰍛", label = "Follow Logs (Terminal)", action = open_terminal(ctx.scripts.logs) },
+    { type = "item", name = "menu.sketchybar.shortcuts", icon = "󰌌", label = "Toggle Yabai Shortcuts", action = ctx.call_script(ctx.paths.config_dir .. "/scripts/toggle_shortcuts.sh", "toggle"), shortcut = "⌘⌥Y" },
+    { type = "item", name = "menu.sketchybar.accessibility", icon = "󰈈", label = "Repair Accessibility", action = ctx.call_script(ctx.scripts.accessibility) },
+  }
+
+  local yabai_control_items = {
+    { type = "item", name = "menu.yabai.toggle", icon = "󱂬", label = "Toggle Layout", action = ctx.call_script(ctx.scripts.yabai_control, "toggle-layout"), shortcut = "🌐T" },
+    { type = "item", name = "menu.yabai.balance", icon = "󰓅", label = "Balance Windows", action = ctx.call_script(ctx.scripts.yabai_control, "balance"), shortcut = "🌐B" },
+    { type = "item", name = "menu.yabai.restart", icon = "󰐥", label = "Restart Yabai", action = ctx.call_script(ctx.scripts.yabai_control, "restart") },
+    { type = "item", name = "menu.yabai.doctor", icon = "󰒓", label = "Run Diagnostics", action = ctx.call_script(ctx.scripts.yabai_control, "doctor") },
+  }
+
+  local window_action_items = {
+    { type = "item", name = "menu.window.float", icon = "󰒄", label = "Toggle Float", action = ctx.call_script(ctx.scripts.yabai_control, "window-toggle-float"), shortcut = "🌐␣" },
+    { type = "item", name = "menu.window.fullscreen", icon = "󰊓", label = "Toggle Fullscreen", action = ctx.call_script(ctx.scripts.yabai_control, "window-toggle-fullscreen"), shortcut = "🌐F" },
+    { type = "item", name = "menu.window.center", icon = "󰆾", label = "Center Window", action = ctx.call_script(ctx.scripts.yabai_control, "window-center") },
+    { type = "item", name = "menu.window.display.prev", icon = "󰍷", label = "Send to Prev Display", action = ctx.call_script(ctx.scripts.yabai_control, "window-display-prev"), shortcut = "⌘⌥⇧←" },
+    { type = "item", name = "menu.window.display.next", icon = "󰍹", label = "Send to Next Display", action = ctx.call_script(ctx.scripts.yabai_control, "window-display-next"), shortcut = "⌘⌥⇧→" },
+  }
+
+  local apple_menu_items = {}
+  append_items(apple_menu_items, system_items)
+
+  if #tools_items > 0 then
+    table.insert(apple_menu_items, { type = "header", name = "menu.tools.header", label = "Tools & Workspace" })
+    append_items(apple_menu_items, tools_items)
   end
 
-  if ctx.integrations and ctx.integrations.halext then
-    if ctx.paths and path_exists(ctx.paths.halext_org, true) then
-      add_agent_item({ type = "item", name = "sys.halext.repo", icon = "󰈙", label = "Open halext-org Repo", action = ctx.open_path(ctx.paths.halext_org) })
-    end
-    if ctx.paths and path_exists(ctx.paths.halext_windows, false) then
-      add_agent_item({ type = "item", name = "sys.win.doc", icon = "󰈙", label = "Windows Node Setup Doc", action = ctx.open_path(ctx.paths.halext_windows) })
-    end
+  table.insert(apple_menu_items, { type = "submenu", name = "menu.sketchybar.tools", icon = "󰒓", label = "SketchyBar Tools", items = sketchybar_tool_items })
+  table.insert(apple_menu_items, { type = "submenu", name = "menu.yabai.section", icon = "󱂬", label = "Yabai Controls", items = yabai_control_items })
+  table.insert(apple_menu_items, { type = "submenu", name = "menu.windows.section", icon = "󰍿", label = "Window Actions", items = window_action_items })
+
+  local help = help_items(ctx)
+  if help and #help > 0 then
+    table.insert(apple_menu_items, { type = "submenu", name = "menu.help.section", icon = "󰋖", label = "Help & Tips", items = help })
   end
 
-  if ctx.integrations and ctx.integrations.cortex and ctx.integrations.cortex.create_menu_items then
-    local cortex_items = ctx.integrations.cortex.create_menu_items(ctx)
-    if cortex_items and #cortex_items > 0 then
-      for _, item in ipairs(cortex_items) do
-        add_agent_item(item)
-      end
-    end
-  end
+  table.insert(apple_menu_items, { type = "header", name = "menu.power.header", label = "Sleep / Lock" })
+  table.insert(apple_menu_items, { type = "item", name = "menu.power.sleep", icon = "󰒲", label = "Sleep Display", action = "pmset displaysleepnow" })
+  table.insert(apple_menu_items, { type = "item", name = "menu.power.lock", icon = "󰷛", label = "Lock Screen", action = [[osascript -e 'tell application "System Events" to keystroke "q" using {control down, command down}']], shortcut = "⌃⌘Q", label_color = theme.YELLOW })
+  table.insert(apple_menu_items, { type = "item", name = "menu.power.logout", icon = "󰍃", label = "Log Out...", action = "osascript -e 'tell application \"System Events\" to log out'", label_color = theme.RED })
 
-  if #agent_ops_items > 0 then
-    table.insert(system_items, { type = "header", name = "sys.agents", label = "Agent Ops" })
-    for _, item in ipairs(agent_ops_items) do
-      table.insert(system_items, item)
-    end
-  end
-  render_menu_items("apple_menu", system_items)
+  render_menu_items("apple_menu", apple_menu_items)
 end
 
 menu.rom_hacking_items = rom_hacking_items

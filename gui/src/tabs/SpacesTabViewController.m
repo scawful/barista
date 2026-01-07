@@ -66,7 +66,7 @@
   // Icon Preview
   self.iconPreview = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 100, 80)];
   self.iconPreview.stringValue = @"󰝚";
-  self.iconPreview.font = [NSFont systemFontOfSize:64];
+  self.iconPreview.font = [self preferredIconFontWithSize:64];
   self.iconPreview.bordered = NO;
   self.iconPreview.editable = NO;
   self.iconPreview.backgroundColor = [NSColor clearColor];
@@ -83,6 +83,7 @@
 
   self.iconField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + 180, y + 28, 200, 24)];
   self.iconField.placeholderString = @"Enter Nerd Font glyph...";
+  self.iconField.font = [self preferredIconFontWithSize:16];
   self.iconField.target = self;
   self.iconField.action = @selector(iconChanged:);
   [self.view addSubview:self.iconField];
@@ -292,6 +293,24 @@
 
   [config reloadSketchyBar];
   [self loadSpaceSettings];
+}
+
+- (NSFont *)preferredIconFontWithSize:(CGFloat)size {
+  NSArray<NSString *> *candidates = @[
+    @"Hack Nerd Font",
+    @"JetBrainsMono Nerd Font",
+    @"FiraCode Nerd Font",
+    @"SFMono Nerd Font",
+    @"Symbols Nerd Font",
+    @"MesloLGS NF"
+  ];
+  for (NSString *name in candidates) {
+    NSFont *font = [NSFont fontWithName:name size:size];
+    if (font) {
+      return font;
+    }
+  }
+  return [NSFont systemFontOfSize:size];
 }
 
 @end

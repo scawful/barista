@@ -1,12 +1,13 @@
 #import "ConfigurationManager.h"
 #import <Cocoa/Cocoa.h>
 
-@interface HelpCenterController : NSObject <NSApplicationDelegate>
+@interface HelpCenterController : NSObject <NSApplicationDelegate, NSTableViewDataSource, NSTableViewDelegate>
 @property (strong) NSWindow *window;
 @property (strong) NSDictionary *workflowData;
 @property (copy) NSString *configPath;
 @property (copy) NSString *scriptsPath;
 @property (copy) NSString *codePath;
+@property (strong) NSArray<NSDictionary *> *keymapRows;
 @end
 
 @implementation HelpCenterController
@@ -17,6 +18,7 @@
   self.scriptsPath = config.scriptsPath;
   self.codePath = config.codePath;
   self.workflowData = [self loadWorkflowData];
+  self.keymapRows = [self buildKeymapRows];
   [self buildWindow];
   [NSApp activateIgnoringOtherApps:YES];
   [self.window makeKeyAndOrderFront:nil];
@@ -62,35 +64,27 @@
   [scroll setBorderType:NSNoBorder];
   [scroll setHasVerticalScroller:YES];
   [scroll setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-  NSSize contentSize = scroll.contentSize;
-  NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, contentSize.width, contentSize.height)];
-  textView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  textView.horizontallyResizable = YES;
-  textView.verticallyResizable = YES;
-  textView.textContainer.widthTracksTextView = YES;
-  textView.textContainer.containerSize = NSMakeSize(contentSize.width, CGFLOAT_MAX);
-  [textView setEditable:NO];
-  [textView setDrawsBackground:NO];
-  [textView setFont:[NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular]];
-  NSMutableString *buffer = [NSMutableString string];
-  NSArray *sections = [self workflowArrayForKey:@"keymap" fallback:nil];
-  for (NSDictionary *section in sections) {
-    NSString *title = section[@"section"] ?: @"Untitled";
-    [buffer appendFormat:@"%@\n", title];
-    NSArray *items = section[@"items"];
-    if (![items isKindOfClass:[NSArray class]]) continue;
-    for (NSDictionary *item in items) {
-      NSString *keys = item[@"keys"] ?: @"";
-      NSString *desc = item[@"description"] ?: @"";
-      [buffer appendFormat:@"  %-15s %@\n", [keys UTF8String], desc];
-    }
-    [buffer appendString:@"\n"];
-  }
-  if (buffer.length == 0) {
-    [buffer appendString:@"No shortcuts defined in workflow data."];
-  }
-  [textView setString:buffer];
-  [scroll setDocumentView:textView];
+
+  NSTableView *tableView = [[NSTableView alloc] initWithFrame:bounds];
+  tableView.dataSource = self;
+  tableView.delegate = self;
+  tableView.headerView = nil;
+  tableView.usesAlternatingRowBackgroundColors = YES;
+  tableView.selectionHighlightStyle = NSTableViewSelectionHighlightStyleNone;
+  tableView.columnAutoresizingStyle = NSTableViewLastColumnOnlyAutoresizingStyle;
+  tableView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+
+  NSTableColumn *keysColumn = [[NSTableColumn alloc] initWithIdentifier:@"keys"];
+  keysColumn.title = @"Shortcut";
+  keysColumn.width = 180;
+  [tableView addTableColumn:keysColumn];
+
+  NSTableColumn *descColumn = [[NSTableColumn alloc] initWithIdentifier:@"description"];
+  descColumn.title = @"Description";
+  descColumn.width = bounds.size.width - 200;
+  [tableView addTableColumn:descColumn];
+
+  scroll.documentView = tableView;
   return scroll;
 }
 
@@ -101,6 +95,7 @@
   [scroll setHasVerticalScroller:YES];
   [scroll setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
   CGFloat width = scroll.contentSize.width;
+  NSFont *buttonFont = [self preferredTextFontWithSize:12 weight:NSFontWeightRegular];
   NSArray *docs = [self workflowArrayForKey:@"docs" fallback:nil];
   NSArray *actions = [self workflowArrayForKey:@"actions" fallback:nil];
   NSInteger rows = MAX(1, docs.count);
@@ -120,6 +115,7 @@
     [button setTitle:title];
     [button setButtonType:NSButtonTypeMomentaryPushIn];
     [button setBezelStyle:NSBezelStyleRounded];
+    button.font = buttonFont;
     button.target = self;
     button.action = @selector(openDoc:);
     button.toolTip = doc[@"path"];
@@ -149,6 +145,7 @@
     [button setTitle:title];
     [button setButtonType:NSButtonTypeMomentaryPushIn];
     [button setBezelStyle:NSBezelStyleRounded];
+    button.font = buttonFont;
     button.target = self;
     button.action = selector;
     [container addSubview:button];
@@ -238,9 +235,114 @@
   [label setBezeled:NO];
   [label setEditable:NO];
   [label setDrawsBackground:NO];
-  [label setFont:[NSFont boldSystemFontOfSize:13]];
+  [label setFont:[self preferredTextFontWithSize:13 weight:NSFontWeightSemibold]];
   [label setStringValue:value];
   return label;
+}
+
+- (NSArray<NSDictionary *> *)buildKeymapRows {
+  NSMutableArray *rows = [NSMutableArray array];
+  NSArray *sections = [self workflowArrayForKey:@"keymap" fallback:nil];
+  for (NSDictionary *section in sections) {
+    NSString *title = section[@"section"] ?: @"Shortcuts";
+    [rows addObject:@{ @"type": @"section", @"title": title }];
+    NSArray *items = section[@"items"];
+    if (![items isKindOfClass:[NSArray class]]) continue;
+    for (NSDictionary *item in items) {
+      NSString *keys = item[@"keys"] ?: @"";
+      NSString *desc = item[@"description"] ?: @"";
+      [rows addObject:@{
+        @"type": @"item",
+        @"keys": keys,
+        @"description": desc
+      }];
+    }
+  }
+  if (rows.count == 0) {
+    [rows addObject:@{ @"type": @"section", @"title": @"Shortcuts" }];
+    [rows addObject:@{ @"type": @"item", @"keys": @"—", @"description": @"No shortcuts defined in workflow data." }];
+  }
+  return rows;
+}
+
+- (NSFont *)preferredTextFontWithSize:(CGFloat)size weight:(NSFontWeight)weight {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *fontName = [config valueForKeyPath:@"appearance.font_text" defaultValue:nil];
+  if ([fontName isKindOfClass:[NSString class]] && fontName.length > 0) {
+    NSFont *font = [NSFont fontWithName:fontName size:size];
+    if (font) {
+      return font;
+    }
+  }
+  return [NSFont systemFontOfSize:size weight:weight];
+}
+
+- (NSFont *)preferredMonoFontWithSize:(CGFloat)size weight:(NSFontWeight)weight {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *fontName = [config valueForKeyPath:@"appearance.font_numbers" defaultValue:nil];
+  if ([fontName isKindOfClass:[NSString class]] && fontName.length > 0) {
+    NSFont *font = [NSFont fontWithName:fontName size:size];
+    if (font) {
+      return font;
+    }
+  }
+  return [NSFont monospacedSystemFontOfSize:size weight:weight];
+}
+
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
+  return self.keymapRows.count;
+}
+
+- (BOOL)tableView:(NSTableView *)tableView isGroupRow:(NSInteger)row {
+  if (row < 0 || row >= self.keymapRows.count) {
+    return NO;
+  }
+  return [self.keymapRows[row][@"type"] isEqualToString:@"section"];
+}
+
+- (CGFloat)tableView:(NSTableView *)tableView heightOfRow:(NSInteger)row {
+  return [self tableView:tableView isGroupRow:row] ? 26.0 : 22.0;
+}
+
+- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
+  NSDictionary *entry = self.keymapRows[row];
+  NSString *type = entry[@"type"];
+  NSString *identifier = tableColumn.identifier ?: @"cell";
+
+  NSTableCellView *cell = [tableView makeViewWithIdentifier:identifier owner:self];
+  if (!cell) {
+    cell = [[NSTableCellView alloc] initWithFrame:NSMakeRect(0, 0, tableColumn.width, 20)];
+    cell.identifier = identifier;
+    NSTextField *textField = [[NSTextField alloc] initWithFrame:cell.bounds];
+    textField.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    textField.bordered = NO;
+    textField.editable = NO;
+    textField.backgroundColor = [NSColor clearColor];
+    cell.textField = textField;
+    [cell addSubview:textField];
+  }
+
+  NSTextField *textField = cell.textField;
+  if ([type isEqualToString:@"section"]) {
+    if ([identifier isEqualToString:@"keys"]) {
+      textField.stringValue = entry[@"title"] ?: @"Shortcuts";
+      textField.font = [self preferredTextFontWithSize:12.5 weight:NSFontWeightSemibold];
+      textField.textColor = [NSColor secondaryLabelColor];
+    } else {
+      textField.stringValue = @"";
+    }
+  } else {
+    if ([identifier isEqualToString:@"keys"]) {
+      textField.stringValue = entry[@"keys"] ?: @"";
+      textField.font = [self preferredMonoFontWithSize:12 weight:NSFontWeightRegular];
+      textField.textColor = [NSColor labelColor];
+    } else {
+      textField.stringValue = entry[@"description"] ?: @"";
+      textField.font = [self preferredTextFontWithSize:12 weight:NSFontWeightRegular];
+      textField.textColor = [NSColor labelColor];
+    }
+  }
+  return cell;
 }
 
 - (NSDictionary *)statusForRepo:(NSDictionary *)entry {
@@ -366,8 +468,15 @@
 }
 
 - (void)openControlPanel:(id)sender {
-  NSString *script = [self.configPath stringByAppendingPathComponent:@"bin/open_control_panel.sh"];
-  [self runScript:script arguments:@[]];
+  [self openControlPanelWithMode:nil];
+}
+
+- (void)openControlPanelNative:(id)sender {
+  [self openControlPanelWithMode:@"--native"];
+}
+
+- (void)openControlPanelImGui:(id)sender {
+  [self openControlPanelWithMode:@"--imgui"];
 }
 
 - (void)openIconBrowser:(id)sender {
@@ -379,6 +488,48 @@
     alert.messageText = @"Icon Browser Not Found";
     alert.informativeText = [NSString stringWithFormat:@"Build icon_browser first: cd %@/gui && make icon_browser", self.configPath];
     [alert runModal];
+  }
+}
+
+- (NSString *)resolveSysManualBinary {
+  NSString *codeDir = self.codePath ?: [NSHomeDirectory() stringByAppendingPathComponent:@"src"];
+  NSArray *candidates = @[
+    [codeDir stringByAppendingPathComponent:@"lab/sys_manual/build/sys_manual"],
+    [codeDir stringByAppendingPathComponent:@"sys_manual/build/sys_manual"],
+    @"/Applications/sys_manual.app/Contents/MacOS/sys_manual"
+  ];
+  for (NSString *candidate in candidates) {
+    if ([[NSFileManager defaultManager] isExecutableFileAtPath:candidate]) {
+      return candidate;
+    }
+  }
+  return nil;
+}
+
+- (void)openSysManual:(id)sender {
+  NSString *binary = [self resolveSysManualBinary];
+  if (binary) {
+    [self runCommand:binary arguments:@[]];
+    return;
+  }
+  NSString *fallbackPath = [self expandedWorkflowPath:@"%CODE%/lab/sys_manual/README.md"];
+  if (fallbackPath && [[NSFileManager defaultManager] fileExistsAtPath:fallbackPath]) {
+    NSURL *url = [NSURL fileURLWithPath:fallbackPath];
+    [[NSWorkspace sharedWorkspace] openURL:url];
+    return;
+  }
+  NSAlert *alert = [[NSAlert alloc] init];
+  alert.messageText = @"Sys Manual Not Found";
+  alert.informativeText = @"Build sys_manual first (~/src/lab/sys_manual/build/sys_manual) or install it in /Applications.";
+  [alert runModal];
+}
+
+- (void)openControlPanelWithMode:(NSString *)mode {
+  NSString *script = [self.configPath stringByAppendingPathComponent:@"bin/open_control_panel.sh"];
+  if (mode && mode.length > 0) {
+    [self runScript:script arguments:@[mode]];
+  } else {
+    [self runScript:script arguments:@[]];
   }
 }
 

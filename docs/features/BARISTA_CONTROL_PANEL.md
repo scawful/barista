@@ -45,11 +45,41 @@ Transform the former “SketchyBar control panel” into a Barista-branded contr
   2. `make -C gui all`
   3. `~/.config/sketchybar/scripts/launch_agents.sh reload sketchybar` (placeholder)
 - `bin/open_control_panel.sh`
-  - Launches `gui/bin/config_menu_enhanced` directly, ensuring Dock icon and logs land in `/tmp/barista_control_panel.log`.
+  - Launches the preferred control panel (native Cocoa by default).
+  - Routing is configured via `control_panel.preferred` in state.json or env vars (see below).
 - Future:
   - `bin/toggle_popups.sh`
   - `bin/launch_agent <label> <action>`
   - `skhd` bindings for rebuilding, opening panels, toggling debug overlays.
+
+## Control Panel Routing
+
+Barista supports multiple UIs without deleting legacy implementations.
+
+### Preferred panel (state.json)
+
+```
+control_panel.preferred = "native" | "imgui" | "custom"
+control_panel.command = "open -a MySwiftUIApp"
+```
+
+- `native`: Cocoa-based `config_menu` (default).
+- `imgui`: `barista_config` (ImGui) if present.
+- `custom`: run the command specified in `control_panel.command`.
+
+### Env overrides
+
+- `BARISTA_CONTROL_PANEL` or `BARISTA_CONTROL_PANEL_MODE`
+- `BARISTA_CONTROL_PANEL_CMD`
+- `BARISTA_IMGUI_BIN`
+
+### CLI flags
+
+```
+bin/open_control_panel.sh --native
+bin/open_control_panel.sh --imgui
+bin/open_control_panel.sh --custom --command "open -a MySwiftUIApp"
+```
 
 ## Barista Launch Agent (Concept)
 - Goal: single plist (e.g., `~/Library/LaunchAgents/dev.barista.control.plist`) that bootstraps:

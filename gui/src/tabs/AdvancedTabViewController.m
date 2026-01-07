@@ -1,7 +1,7 @@
 #import "ConfigurationManager.h"
 #import <Cocoa/Cocoa.h>
 
-@interface AdvancedTabViewController : NSViewController <NSTextViewDelegate>
+@interface AdvancedTabViewController : NSViewController <NSTextViewDelegate, NSTextFieldDelegate>
 @property (strong) NSTextView *jsonEditor;
 @property (strong) NSButton *saveButton;
 @property (strong) NSButton *reloadButton;
@@ -10,6 +10,8 @@
 @property (strong) NSTextField *scriptsResolvedLabel;
 @property (strong) NSTextField *codeField;
 @property (strong) NSTextField *codeResolvedLabel;
+@property (strong) NSPopUpButton *controlPanelModeSelector;
+@property (strong) NSTextField *controlPanelCommandField;
 @end
 
 @implementation AdvancedTabViewController
@@ -156,6 +158,43 @@
   [self.view addSubview:self.codeResolvedLabel];
 
   [self loadCodePath];
+
+  // Control Panel Routing
+  CGFloat controlTop = codeTop - 40;
+  NSTextField *controlLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, controlTop, 400, 20)];
+  controlLabel.stringValue = @"Control Panel Routing:";
+  controlLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
+  controlLabel.bordered = NO;
+  controlLabel.editable = NO;
+  controlLabel.backgroundColor = [NSColor clearColor];
+  [self.view addSubview:controlLabel];
+
+  self.controlPanelModeSelector = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(leftMargin, controlTop - 28, 220, 26)];
+  [self.controlPanelModeSelector addItemsWithTitles:@[
+    @"Native (Cocoa)",
+    @"ImGui (barista_config)",
+    @"Custom Command"
+  ]];
+  self.controlPanelModeSelector.target = self;
+  self.controlPanelModeSelector.action = @selector(controlPanelModeChanged:);
+  [self.view addSubview:self.controlPanelModeSelector];
+
+  NSButton *openPanelButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 240, controlTop - 30, 140, 28)];
+  [openPanelButton setButtonType:NSButtonTypeMomentaryPushIn];
+  [openPanelButton setBezelStyle:NSBezelStyleRounded];
+  openPanelButton.title = @"Open Panel";
+  openPanelButton.target = self;
+  openPanelButton.action = @selector(openControlPanelNow:);
+  [self.view addSubview:openPanelButton];
+
+  self.controlPanelCommandField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, controlTop - 56, 520, 24)];
+  self.controlPanelCommandField.placeholderString = @"Custom command (used when mode = Custom)";
+  self.controlPanelCommandField.delegate = self;
+  self.controlPanelCommandField.target = self;
+  self.controlPanelCommandField.action = @selector(controlPanelCommandChanged:);
+  [self.view addSubview:self.controlPanelCommandField];
+
+  [self loadControlPanelSettings];
 
   // Buttons
   self.saveButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin, 50, 120, 32)];
@@ -308,6 +347,79 @@
   ConfigurationManager *config = [ConfigurationManager sharedManager];
   NSString *path = [config.configPath stringByAppendingPathComponent:@"data"];
   [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
+}
+
+- (void)loadControlPanelSettings {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *preferred = [config valueForKeyPath:@"control_panel.preferred" defaultValue:@"native"];
+  NSString *command = [config valueForKeyPath:@"control_panel.command" defaultValue:@""];
+
+  NSInteger index = 0;
+  if ([preferred isEqualToString:@"imgui"]) {
+    index = 1;
+  } else if ([preferred isEqualToString:@"custom"]) {
+    index = 2;
+  }
+  [self.controlPanelModeSelector selectItemAtIndex:index];
+  self.controlPanelCommandField.stringValue = command ?: @"";
+  [self updateControlPanelCommandField];
+}
+
+- (void)updateControlPanelCommandField {
+  BOOL custom = self.controlPanelModeSelector.indexOfSelectedItem == 2;
+  self.controlPanelCommandField.enabled = custom;
+  self.controlPanelCommandField.textColor = custom ? [NSColor labelColor] : [NSColor secondaryLabelColor];
+}
+
+- (void)controlPanelModeChanged:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSInteger index = self.controlPanelModeSelector.indexOfSelectedItem;
+  NSString *value = @"native";
+  if (index == 1) {
+    value = @"imgui";
+  } else if (index == 2) {
+    value = @"custom";
+  }
+  [config setValue:value forKeyPath:@"control_panel.preferred"];
+  [self updateControlPanelCommandField];
+}
+
+- (void)controlPanelCommandChanged:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *command = self.controlPanelCommandField.stringValue ?: @"";
+  NSString *trimmed = [command stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if (trimmed.length == 0) {
+    [config removeValueForKeyPath:@"control_panel.command"];
+    return;
+  }
+  [config setValue:trimmed forKeyPath:@"control_panel.command"];
+}
+
+- (void)openControlPanelNow:(id)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *script = [config.configPath stringByAppendingPathComponent:@"bin/open_control_panel.sh"];
+  if (![[NSFileManager defaultManager] isExecutableFileAtPath:script]) {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Control Panel Script Missing";
+    alert.informativeText = [NSString stringWithFormat:@"Expected executable at: %@", script];
+    [alert runModal];
+    return;
+  }
+  NSTask *task = [[NSTask alloc] init];
+  task.launchPath = @"/bin/bash";
+  task.arguments = @[script];
+  @try {
+    [task launch];
+  } @catch (NSException *exception) {
+    NSLog(@"Failed to launch control panel: %@", exception);
+  }
+}
+
+- (void)controlTextDidEndEditing:(NSNotification *)notification {
+  NSTextField *field = notification.object;
+  if (field == self.controlPanelCommandField) {
+    [self controlPanelCommandChanged:field];
+  }
 }
 
 - (void)applyScriptsPath:(id)sender {

@@ -43,13 +43,18 @@
   "actions": [
     { "id": "reload_bar", "title": "Reload SketchyBar", "selector": "reloadBar:" },
     { "id": "open_control_panel", "title": "Open Control Panel", "selector": "openControlPanel:" },
+    { "id": "open_control_panel_native", "title": "Open Native Config", "selector": "openControlPanelNative:" },
+    { "id": "open_control_panel_imgui", "title": "Open ImGui Config", "selector": "openControlPanelImGui:" },
     { "id": "open_icon_browser", "title": "Open Icon Browser", "selector": "openIconBrowser:" },
+    { "id": "open_sys_manual", "title": "Open Sys Manual", "selector": "openSysManual:" },
     { "id": "launch_yaze", "title": "Launch Yaze", "selector": "launchYaze:" },
     { "id": "focus_emacs", "title": "Focus Emacs", "selector": "focusEmacsSpace:" }
   ],
   "docs": [
     { "id": "quick_start", "title": "Quick Start", "path": "%CONFIG%/docs/guides/QUICK_START.md" },
     { "id": "control_panel", "title": "Control Panel Guide", "path": "%CONFIG%/docs/features/CONTROL_PANEL_V2.md" },
+    { "id": "control_panel_roadmap", "title": "Control Panel Roadmap", "path": "%CONFIG%/docs/features/BARISTA_CONTROL_PANEL.md" },
+    { "id": "sys_manual", "title": "Sys Manual", "path": "%CODE%/lab/sys_manual/README.md" },
     { "id": "icons", "title": "Icon Reference", "path": "%CONFIG%/docs/features/ICON_REFERENCE.md" }
   ]
 }

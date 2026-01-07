@@ -14,6 +14,55 @@ APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_INFO="$APP_CONTENTS/Info.plist"
 APP_EXEC="config_menu"
+STATE_FILE="$CONFIG_DIR/state.json"
+
+CONTROL_PREF="${BARISTA_CONTROL_PANEL:-${BARISTA_CONTROL_PANEL_MODE:-}}"
+CUSTOM_COMMAND="${BARISTA_CONTROL_PANEL_CMD:-}"
+IMGUICLI_BIN="${BARISTA_IMGUI_BIN:-}"
+
+read_state_value() {
+  local query="$1"
+  if command -v jq >/dev/null 2>&1 && [[ -f "$STATE_FILE" ]]; then
+    jq -r "$query" "$STATE_FILE" 2>/dev/null
+  fi
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --native|--cocoa)
+      CONTROL_PREF="native"
+      ;;
+    --imgui)
+      CONTROL_PREF="imgui"
+      ;;
+    --custom)
+      CONTROL_PREF="custom"
+      ;;
+    --command)
+      shift
+      CUSTOM_COMMAND="${1:-}"
+      ;;
+    --panel)
+      ;;
+  esac
+  shift || true
+done
+
+if [[ -z "$CONTROL_PREF" ]]; then
+  CONTROL_PREF="$(read_state_value '.control_panel.preferred // empty')"
+fi
+if [[ -z "$CUSTOM_COMMAND" ]]; then
+  CUSTOM_COMMAND="$(read_state_value '.control_panel.command // empty')"
+fi
+
+if [[ "$CONTROL_PREF" == "null" ]]; then
+  CONTROL_PREF=""
+fi
+if [[ "$CUSTOM_COMMAND" == "null" ]]; then
+  CUSTOM_COMMAND=""
+fi
+
+CONTROL_PREF="${CONTROL_PREF:-native}"
 
 # Check if we're in the source directory (for development)
 SOURCE_DIR="${BARISTA_SOURCE_DIR:-$CODE_DIR/lab/barista}"
@@ -22,6 +71,67 @@ if [ "${BARISTA_USE_SOURCE_GUI:-0}" = "1" ] && [ -x "${SOURCE_DIR}/build/bin/con
   nohup "${SOURCE_DIR}/build/bin/config_menu" >"$LOG_FILE" 2>&1 &
   disown
   exit 0
+fi
+
+resolve_imgui_bin() {
+  if [[ -n "$IMGUICLI_BIN" && -x "$IMGUICLI_BIN" ]]; then
+    echo "$IMGUICLI_BIN"
+    return 0
+  fi
+  if command -v barista_config >/dev/null 2>&1; then
+    command -v barista_config
+    return 0
+  fi
+  local candidates=(
+    "$CODE_DIR/lab/barista_config/build/barista_config"
+    "$CODE_DIR/barista_config/build/barista_config"
+    "$HOME/.local/bin/barista_config"
+  )
+  for candidate in "${candidates[@]}"; do
+    if [[ -x "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+launch_custom_panel() {
+  if [[ -z "$CUSTOM_COMMAND" ]]; then
+    return 1
+  fi
+  echo "[barista] Launching custom control panel"
+  nohup bash -lc "$CUSTOM_COMMAND" >"$LOG_FILE" 2>&1 &
+  disown
+  return 0
+}
+
+launch_imgui_panel() {
+  local bin
+  bin="$(resolve_imgui_bin || true)"
+  if [[ -z "$bin" ]]; then
+    return 1
+  fi
+  echo "[barista] Launching ImGui control panel ($bin)"
+  nohup "$bin" >"$LOG_FILE" 2>&1 &
+  disown
+  return 0
+}
+
+if [[ "$CONTROL_PREF" == "custom" ]]; then
+  if launch_custom_panel; then
+    exit 0
+  fi
+  echo "[barista] Custom control panel command missing; falling back to native" >&2
+  CONTROL_PREF="native"
+fi
+
+if [[ "$CONTROL_PREF" == "imgui" ]]; then
+  if launch_imgui_panel; then
+    exit 0
+  fi
+  echo "[barista] ImGui control panel not found; falling back to native" >&2
+  CONTROL_PREF="native"
 fi
 
 # Use installed binary

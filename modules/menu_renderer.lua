@@ -114,8 +114,13 @@ function menu_renderer.create(ctx)
     }
 
     -- Allow overriding colors
-    if entry.color then
+    if entry.label_color then
+      item_config["label.color"] = entry.label_color
+    elseif entry.color then
       item_config["label.color"] = entry.color
+    end
+    if entry.icon_color then
+      item_config["icon.color"] = entry.icon_color
     end
 
     sbar.add("item", entry.name, item_config)

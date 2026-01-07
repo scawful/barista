@@ -42,6 +42,74 @@ local function open_terminal(command)
   return string.format("osascript -e 'tell application \"Terminal\" to do script %q'", command)
 end
 
+local function shell_quote(value)
+  return string.format("%q", tostring(value))
+end
+
+local function resolve_code_dir(ctx)
+  return (ctx.paths and ctx.paths.code_dir) or (os.getenv("BARISTA_CODE_DIR") or (os.getenv("HOME") .. "/src"))
+end
+
+local function resolve_path(ctx, candidates, want_dir)
+  for _, candidate in ipairs(candidates or {}) do
+    if candidate and candidate ~= "" and path_exists(candidate, want_dir) then
+      return candidate
+    end
+  end
+  return nil
+end
+
+local function resolve_afs_root(ctx)
+  local code_dir = resolve_code_dir(ctx)
+  return resolve_path(ctx, {
+    ctx.paths and ctx.paths.afs or nil,
+    os.getenv("AFS_ROOT"),
+    code_dir .. "/lab/afs",
+    code_dir .. "/afs",
+  }, true)
+end
+
+local function resolve_afs_studio_root(ctx, afs_root)
+  local code_dir = resolve_code_dir(ctx)
+  return resolve_path(ctx, {
+    ctx.paths and ctx.paths.afs_studio or nil,
+    os.getenv("AFS_STUDIO_ROOT"),
+    afs_root and (afs_root .. "/apps/studio") or nil,
+    code_dir .. "/lab/afs/apps/studio",
+    code_dir .. "/lab/afs_studio",
+    code_dir .. "/afs/apps/studio",
+    code_dir .. "/afs_studio",
+  }, true)
+end
+
+local function resolve_stemforge_app(ctx)
+  local code_dir = resolve_code_dir(ctx)
+  return resolve_path(ctx, {
+    ctx.paths and ctx.paths.stemforge_app or nil,
+    code_dir .. "/tools/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app",
+    code_dir .. "/tools/stemforge/build/StemForge_artefacts/Debug/Standalone/StemForge.app",
+    code_dir .. "/lab/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app",
+    code_dir .. "/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app",
+  }, true)
+end
+
+local function afs_cli(afs_root, args)
+  local pythonpath = afs_root .. "/src"
+  return string.format(
+    "cd %s && AFS_ROOT=%s PYTHONPATH=%s python3 -m afs %s",
+    shell_quote(afs_root),
+    shell_quote(afs_root),
+    shell_quote(pythonpath),
+    args or ""
+  )
+end
+
+local function append_items(target, items)
+  for _, item in ipairs(items or {}) do
+    table.insert(target, item)
+  end
+end
+
 local function menu_entry_from_data(ctx, entry, prefix)
   if type(entry) ~= "table" then
     return nil
@@ -226,14 +294,107 @@ function menu.render_all_menus(ctx)
   local system_items = {
     { type = "header", name = "sys.header", label = "System" },
     { type = "item", name = "sys.about", icon = "󰋗", label = "About This Mac", action = "open -a 'System Information'" },
-    { type = "item", name = "sys.settings", icon = "", label = "System Settings…", action = "open -a 'System Settings'" },
+    { type = "item", name = "sys.settings", icon = "", label = "System Settings…", action = "open -a 'System Settings'", shortcut = "⌘," },
+    { type = "item", name = "sys.forcequit", icon = "󰜏", label = "Force Quit…", action = [[osascript -e 'tell application "System Events" to key code 53 using {command down, option down}']], shortcut = "⌘⌥⎋", label_color = theme.PEACH },
     { type = "separator", name = "sys.sep1" },
-    { type = "item", name = "sys.lock", icon = "󰷛", label = "Lock Screen", action = "pmset displaysleepnow" },
-    { type = "item", name = "sys.logout", icon = "󰍃", label = "Log Out...", action = "osascript -e 'tell application \"System Events\" to log out'" },
+    { type = "item", name = "sys.sleep", icon = "󰒲", label = "Sleep Display", action = "pmset displaysleepnow" },
+    { type = "item", name = "sys.lock", icon = "󰷛", label = "Lock Screen", action = [[osascript -e 'tell application "System Events" to keystroke "q" using {control down, command down}']], shortcut = "⌃⌘Q", label_color = theme.YELLOW },
+    { type = "item", name = "sys.logout", icon = "󰍃", label = "Log Out...", action = "osascript -e 'tell application \"System Events\" to log out'", label_color = theme.RED },
     { type = "header", name = "sys.quick", label = "Quick Actions" },
-    { type = "item", name = "sys.reload", icon = "󰑐", label = "Reload Bar", action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload" },
-    { type = "item", name = "sys.panel", icon = "󰒓", label = "Control Panel", action = ctx.call_script(ctx.paths.apple_launcher, "--panel") },
+    { type = "item", name = "sys.reload", icon = "󰑐", label = "Reload Bar", action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload", shortcut = "⌘⌥R", label_color = theme.SKY },
+    { type = "item", name = "sys.panel", icon = "󰒓", label = "Control Panel", action = ctx.call_script(ctx.paths.apple_launcher, "--panel"), shortcut = "⌘⌥P", label_color = theme.LAVENDER },
   }
+
+  local workspace_items = {}
+  local afs_root = resolve_afs_root(ctx)
+  local studio_root = resolve_afs_studio_root(ctx, afs_root)
+  local stemforge_app = resolve_stemforge_app(ctx)
+
+  if afs_root or studio_root or stemforge_app then
+    table.insert(workspace_items, { type = "header", name = "sys.workspace", label = "Workspace" })
+  end
+
+  if afs_root then
+    local afs_tui = string.format("cd %s && python3 -m tui.app", shell_quote(afs_root))
+    table.insert(workspace_items, {
+      type = "item",
+      name = "sys.afs.browser",
+      icon = "󰈙",
+      label = "AFS Browser",
+      action = open_terminal(afs_tui),
+      label_color = theme.SAPPHIRE,
+    })
+    table.insert(workspace_items, {
+      type = "item",
+      name = "sys.afs.repo",
+      icon = "󰈙",
+      label = "Open AFS Repo",
+      action = ctx.open_path(afs_root),
+    })
+  end
+
+  if studio_root then
+    local studio_bin = resolve_path(ctx, {
+      studio_root .. "/build/afs_studio",
+      studio_root .. "/build/bin/afs_studio",
+    }, false)
+    local studio_action
+    if studio_bin then
+      studio_action = open_terminal(shell_quote(studio_bin))
+    elseif afs_root then
+      studio_action = open_terminal(afs_cli(afs_root, "studio run --build"))
+    else
+      studio_action = open_terminal(string.format("cd %s && cmake --build build --target afs_studio && ./build/afs_studio", shell_quote(studio_root)))
+    end
+
+    table.insert(workspace_items, {
+      type = "item",
+      name = "sys.afs.studio",
+      icon = "󰆍",
+      label = "AFS Studio",
+      action = studio_action,
+      label_color = theme.BLUE,
+    })
+
+    local labeler_bin = resolve_path(ctx, {
+      studio_root .. "/build/afs_labeler",
+      studio_root .. "/build/bin/afs_labeler",
+    }, false)
+    local labeler_csv = os.getenv("AFS_LABELER_CSV")
+    local labeler_cmd
+    if labeler_bin then
+      labeler_cmd = shell_quote(labeler_bin)
+      if labeler_csv and labeler_csv ~= "" then
+        labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
+      end
+    else
+      labeler_cmd = string.format("cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler", shell_quote(studio_root))
+      if labeler_csv and labeler_csv ~= "" then
+        labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
+      end
+    end
+    table.insert(workspace_items, {
+      type = "item",
+      name = "sys.afs.labeler",
+      icon = "󰓹",
+      label = labeler_bin and "AFS Labeler" or "Build AFS Labeler",
+      action = open_terminal(labeler_cmd),
+      label_color = theme.TEAL,
+    })
+  end
+
+  if stemforge_app then
+    table.insert(workspace_items, {
+      type = "item",
+      name = "sys.stemforge",
+      icon = "󰎈",
+      label = "Stem Sampler",
+      action = string.format("open %s", shell_quote(stemforge_app)),
+      label_color = theme.PEACH,
+    })
+  end
+
+  append_items(system_items, workspace_items)
   local agent_ops_items = {}
   local function add_agent_item(item)
     table.insert(agent_ops_items, item)

@@ -20,6 +20,8 @@ if(APPLE)
     src/main.m
     src/core/ConfigurationManager.m
     src/core/ConfigurationManager.h
+    src/core/BaristaStyle.m
+    src/core/BaristaStyle.h
     src/core/AppDelegate.m
     src/core/AppDelegate.h
     src/core/MainWindowController.m

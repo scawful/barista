@@ -13,8 +13,12 @@
 @class PerformanceTabViewController;
 @class AdvancedTabViewController;
 
-@interface MainWindowController : NSWindowController <NSWindowDelegate, NSTabViewDelegate>
+@interface MainWindowController : NSWindowController <NSWindowDelegate, NSTabViewDelegate, NSTableViewDataSource, NSTableViewDelegate>
 @property (strong) NSTabView *tabView;
+@property (strong) NSSplitView *splitView;
+@property (strong) NSTableView *sidebarTable;
+@property (strong) NSView *sidebarView;
+@property (strong) NSArray<NSDictionary *> *tabItems;
 @property (strong) AppearanceTabViewController *appearanceTab;
 @property (strong) WidgetsTabViewController *widgetsTab;
 @property (strong) SpacesTabViewController *spacesTab;

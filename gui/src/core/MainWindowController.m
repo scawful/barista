@@ -12,6 +12,7 @@
 #import "DebugTabViewController.h"
 #import "PerformanceTabViewController.h"
 #import "AdvancedTabViewController.h"
+#import "BaristaStyle.h"
 #import <Cocoa/Cocoa.h>
 
 @interface MainWindowController ()
@@ -55,106 +56,242 @@
   self.tabView = [[NSTabView alloc] initWithFrame:self.window.contentView.bounds];
   self.tabView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   self.tabView.delegate = self;
-  [self.tabView setTabViewType:NSTopTabsBezelBorder];
+  [self.tabView setTabViewType:NSTabViewTypeNoTabsNoBorder];
+  self.tabView.drawsBackground = NO;
+
+  BaristaStyle *style = [BaristaStyle sharedStyle];
+  self.tabView.wantsLayer = YES;
+  self.tabView.layer.backgroundColor = style.panelColor.CGColor;
+  self.tabView.layer.borderColor = style.dividerColor.CGColor;
+  self.tabView.layer.borderWidth = 1.0;
+
+  NSMutableArray<NSDictionary *> *tabItems = [NSMutableArray array];
 
   // Appearance Tab
   NSLog(@"[barista] setupTabView appearance");
   self.appearanceTab = [[AppearanceTabViewController alloc] init];
-  NSTabViewItem *appearanceItem = [[NSTabViewItem alloc] initWithIdentifier:@"appearance"];
-  appearanceItem.label = @"Appearance";
-  appearanceItem.viewController = self.appearanceTab;
-  [self.tabView addTabViewItem:appearanceItem];
+  [self addTabWithIdentifier:@"appearance"
+                       label:@"Appearance"
+                   controller:self.appearanceTab
+                        store:tabItems];
 
   // Widgets Tab
   NSLog(@"[barista] setupTabView widgets");
   self.widgetsTab = [[WidgetsTabViewController alloc] init];
-  NSTabViewItem *widgetsItem = [[NSTabViewItem alloc] initWithIdentifier:@"widgets"];
-  widgetsItem.label = @"Widgets";
-  widgetsItem.viewController = self.widgetsTab;
-  [self.tabView addTabViewItem:widgetsItem];
+  [self addTabWithIdentifier:@"widgets"
+                       label:@"Widgets"
+                   controller:self.widgetsTab
+                        store:tabItems];
 
   // Spaces Tab
   NSLog(@"[barista] setupTabView spaces");
   self.spacesTab = [[SpacesTabViewController alloc] init];
-  NSTabViewItem *spacesItem = [[NSTabViewItem alloc] initWithIdentifier:@"spaces"];
-  spacesItem.label = @"Spaces";
-  spacesItem.viewController = self.spacesTab;
-  [self.tabView addTabViewItem:spacesItem];
+  [self addTabWithIdentifier:@"spaces"
+                       label:@"Spaces"
+                   controller:self.spacesTab
+                        store:tabItems];
 
   // Icons Tab
   NSLog(@"[barista] setupTabView icons");
   self.iconsTab = [[IconsTabViewController alloc] init];
-  NSTabViewItem *iconsItem = [[NSTabViewItem alloc] initWithIdentifier:@"icons"];
-  iconsItem.label = @"Icons";
-  iconsItem.viewController = self.iconsTab;
-  [self.tabView addTabViewItem:iconsItem];
+  [self addTabWithIdentifier:@"icons"
+                       label:@"Icons"
+                   controller:self.iconsTab
+                        store:tabItems];
 
   // Menu Tab
   NSLog(@"[barista] setupTabView menu");
   self.menuTab = [[MenuTabViewController alloc] init];
-  NSTabViewItem *menuItem = [[NSTabViewItem alloc] initWithIdentifier:@"menu"];
-  menuItem.label = @"Menu";
-  menuItem.viewController = self.menuTab;
-  [self.tabView addTabViewItem:menuItem];
+  [self addTabWithIdentifier:@"menu"
+                       label:@"Menu"
+                   controller:self.menuTab
+                        store:tabItems];
 
   // Themes Tab
   NSLog(@"[barista] setupTabView themes");
   self.themesTab = [[ThemesTabViewController alloc] init];
-  NSTabViewItem *themesItem = [[NSTabViewItem alloc] initWithIdentifier:@"themes"];
-  themesItem.label = @"Themes";
-  themesItem.viewController = self.themesTab;
-  [self.tabView addTabViewItem:themesItem];
+  [self addTabWithIdentifier:@"themes"
+                       label:@"Themes"
+                   controller:self.themesTab
+                        store:tabItems];
 
   // Shortcuts Tab
   NSLog(@"[barista] setupTabView shortcuts");
   self.shortcutsTab = [[ShortcutsTabViewController alloc] init];
-  NSTabViewItem *shortcutsItem = [[NSTabViewItem alloc] initWithIdentifier:@"shortcuts"];
-  shortcutsItem.label = @"Shortcuts";
-  shortcutsItem.viewController = self.shortcutsTab;
-  [self.tabView addTabViewItem:shortcutsItem];
+  [self addTabWithIdentifier:@"shortcuts"
+                       label:@"Shortcuts"
+                   controller:self.shortcutsTab
+                        store:tabItems];
 
   // Integrations Tab
   NSLog(@"[barista] setupTabView integrations");
   self.integrationsTab = [[IntegrationsTabViewController alloc] init];
-  NSTabViewItem *integrationsItem = [[NSTabViewItem alloc] initWithIdentifier:@"integrations"];
-  integrationsItem.label = @"Integrations";
-  integrationsItem.viewController = self.integrationsTab;
-  [self.tabView addTabViewItem:integrationsItem];
+  [self addTabWithIdentifier:@"integrations"
+                       label:@"Integrations"
+                   controller:self.integrationsTab
+                        store:tabItems];
 
   // Launch Agents Tab
   NSLog(@"[barista] setupTabView launchagents");
   self.launchAgentsTab = [[LaunchAgentsTabViewController alloc] init];
-  NSTabViewItem *launchAgentsItem = [[NSTabViewItem alloc] initWithIdentifier:@"launchAgents"];
-  launchAgentsItem.label = @"Launch Agents";
-  launchAgentsItem.viewController = self.launchAgentsTab;
-  [self.tabView addTabViewItem:launchAgentsItem];
+  [self addTabWithIdentifier:@"launchAgents"
+                       label:@"Launch Agents"
+                   controller:self.launchAgentsTab
+                        store:tabItems];
 
   // Debug Tab
   NSLog(@"[barista] setupTabView debug");
   self.debugTab = [[DebugTabViewController alloc] init];
-  NSTabViewItem *debugItem = [[NSTabViewItem alloc] initWithIdentifier:@"debug"];
-  debugItem.label = @"Debug";
-  debugItem.viewController = self.debugTab;
-  [self.tabView addTabViewItem:debugItem];
+  [self addTabWithIdentifier:@"debug"
+                       label:@"Debug"
+                   controller:self.debugTab
+                        store:tabItems];
 
   // Performance Tab
   NSLog(@"[barista] setupTabView performance");
   self.performanceTab = [[PerformanceTabViewController alloc] init];
-  NSTabViewItem *performanceItem = [[NSTabViewItem alloc] initWithIdentifier:@"performance"];
-  performanceItem.label = @"Performance";
-  performanceItem.viewController = self.performanceTab;
-  [self.tabView addTabViewItem:performanceItem];
+  [self addTabWithIdentifier:@"performance"
+                       label:@"Performance"
+                   controller:self.performanceTab
+                        store:tabItems];
 
   // Advanced Tab
   NSLog(@"[barista] setupTabView advanced");
   self.advancedTab = [[AdvancedTabViewController alloc] init];
-  NSTabViewItem *advancedItem = [[NSTabViewItem alloc] initWithIdentifier:@"advanced"];
-  advancedItem.label = @"Advanced";
-  advancedItem.viewController = self.advancedTab;
-  [self.tabView addTabViewItem:advancedItem];
+  [self addTabWithIdentifier:@"advanced"
+                       label:@"Advanced"
+                   controller:self.advancedTab
+                        store:tabItems];
 
-  [self.window.contentView addSubview:self.tabView];
+  self.tabItems = [tabItems copy];
+  [self setupSidebarWithStyle:style];
+  NSRect bounds = self.window.contentView.bounds;
+  self.tabView.frame = NSMakeRect(style.sidebarWidth, 0, bounds.size.width - style.sidebarWidth, bounds.size.height);
+
+  self.splitView = [[NSSplitView alloc] initWithFrame:self.window.contentView.bounds];
+  self.splitView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  self.splitView.vertical = YES;
+  self.splitView.dividerStyle = NSSplitViewDividerStyleThin;
+  [self.splitView addSubview:self.sidebarView];
+  [self.splitView addSubview:self.tabView];
+  [self.window setContentView:self.splitView];
+
+  [self.sidebarTable reloadData];
+  if (self.tabItems.count > 0) {
+    [self.sidebarTable selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+  }
   NSLog(@"[barista] setupTabView done");
+}
+
+- (void)addTabWithIdentifier:(NSString *)identifier
+                       label:(NSString *)label
+                   controller:(NSViewController *)controller
+                        store:(NSMutableArray<NSDictionary *> *)store {
+  if (!identifier || !label || !controller) {
+    return;
+  }
+  NSTabViewItem *item = [[NSTabViewItem alloc] initWithIdentifier:identifier];
+  item.label = label;
+  item.viewController = controller;
+  [self.tabView addTabViewItem:item];
+  [store addObject:@{@"id": identifier, @"label": label}];
+}
+
+- (void)setupSidebarWithStyle:(BaristaStyle *)style {
+  CGFloat sidebarWidth = style.sidebarWidth;
+  NSRect bounds = self.window.contentView.bounds;
+  self.sidebarView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, sidebarWidth, bounds.size.height)];
+  self.sidebarView.autoresizingMask = NSViewHeightSizable;
+  self.sidebarView.wantsLayer = YES;
+  self.sidebarView.layer.backgroundColor = style.sidebarColor.CGColor;
+
+  CGFloat headerHeight = 64.0;
+  NSView *header = [[NSView alloc] initWithFrame:NSMakeRect(0, bounds.size.height - headerHeight, sidebarWidth, headerHeight)];
+  header.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
+  header.wantsLayer = YES;
+  header.layer.backgroundColor = style.backgroundColor.CGColor;
+  [self.sidebarView addSubview:header];
+
+  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(14, headerHeight - 28, sidebarWidth - 24, 18)];
+  title.stringValue = @"BARISTA CONFIG";
+  title.font = style.sectionFont;
+  title.textColor = style.textColor;
+  title.bordered = NO;
+  title.editable = NO;
+  title.backgroundColor = [NSColor clearColor];
+  [header addSubview:title];
+
+  NSTextField *subtitle = [[NSTextField alloc] initWithFrame:NSMakeRect(14, headerHeight - 46, sidebarWidth - 24, 16)];
+  subtitle.stringValue = @"system control + layout";
+  subtitle.font = style.bodyFont;
+  subtitle.textColor = style.mutedTextColor;
+  subtitle.bordered = NO;
+  subtitle.editable = NO;
+  subtitle.backgroundColor = [NSColor clearColor];
+  [header addSubview:subtitle];
+
+  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, sidebarWidth, bounds.size.height - headerHeight)];
+  scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  scrollView.hasVerticalScroller = YES;
+  scrollView.autohidesScrollers = YES;
+  scrollView.borderType = NSNoBorder;
+  scrollView.drawsBackground = NO;
+
+  self.sidebarTable = [[NSTableView alloc] initWithFrame:scrollView.bounds];
+  self.sidebarTable.dataSource = self;
+  self.sidebarTable.delegate = self;
+  self.sidebarTable.headerView = nil;
+  self.sidebarTable.rowHeight = 28.0;
+  self.sidebarTable.backgroundColor = style.sidebarColor;
+  self.sidebarTable.focusRingType = NSFocusRingTypeNone;
+  self.sidebarTable.selectionHighlightStyle = NSTableViewSelectionHighlightStyleSourceList;
+
+  NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"label"];
+  column.width = sidebarWidth - 20.0;
+  [self.sidebarTable addTableColumn:column];
+  scrollView.documentView = self.sidebarTable;
+  [self.sidebarView addSubview:scrollView];
+}
+
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
+  return self.tabItems.count;
+}
+
+- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
+  NSDictionary *item = (row >= 0 && row < (NSInteger)self.tabItems.count) ? self.tabItems[row] : nil;
+  if (!item) {
+    return nil;
+  }
+
+  BaristaStyle *style = [BaristaStyle sharedStyle];
+  NSTableCellView *cell = [tableView makeViewWithIdentifier:@"BaristaTabCell" owner:self];
+  if (!cell) {
+    cell = [[NSTableCellView alloc] initWithFrame:NSMakeRect(0, 0, tableColumn.width, 24)];
+    NSTextField *textField = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 2, tableColumn.width - 12, 20)];
+    textField.bordered = NO;
+    textField.editable = NO;
+    textField.backgroundColor = [NSColor clearColor];
+    textField.autoresizingMask = NSViewWidthSizable;
+    textField.tag = 1001;
+    [cell addSubview:textField];
+    cell.textField = textField;
+    cell.identifier = @"BaristaTabCell";
+  }
+  NSTextField *textField = [cell viewWithTag:1001];
+  if (![textField isKindOfClass:[NSTextField class]]) {
+    textField = [cell.subviews firstObject];
+  }
+  textField.stringValue = item[@"label"] ?: @"";
+  textField.font = style.bodyFont;
+  textField.textColor = style.textColor;
+  return cell;
+}
+
+- (void)tableViewSelectionDidChange:(NSNotification *)notification {
+  NSInteger row = self.sidebarTable.selectedRow;
+  if (row >= 0 && row < (NSInteger)self.tabItems.count) {
+    [self.tabView selectTabViewItemAtIndex:row];
+  }
 }
 
 - (BOOL)windowShouldClose:(NSWindow *)sender {
@@ -225,6 +362,7 @@
 
   self.window.title = @"Barista Configuration";
   self.window.delegate = self;
+  [[BaristaStyle sharedStyle] applyWindowStyle:self.window];
   NSScreen *screen = [self activeScreenForPoint:[NSEvent mouseLocation]];
   NSSize preferred = [self preferredWindowSizeForScreen:screen];
   [self.window setContentSize:preferred];

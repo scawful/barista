@@ -151,7 +151,7 @@ df -h ~ | tail -1
 ```bash
 # Enable C++ development tools
 # Configure SSH connections
-# Add Google-specific integrations
+# Add custom integrations
 ```
 
 **Phase 3: Customization (Week 1)**
@@ -233,8 +233,7 @@ sketchybar --reload && echo "✅ Reload successful"
 # Check SSH connections
 cat ~/.ssh/config | grep "^Host " | head -5
 
-# Test Google integrations
-# Open menu: Apple Menu > Google C++
+# Test integrations from the Apple menu
 ```
 
 ## Common Issues & Solutions
@@ -303,15 +302,7 @@ ls -la ~/.ssh/config
 
 **If using VPN:**
 - May need to configure SSH connections through VPN
-- GCP console may require VPN
-- CodeSearch/Gerrit may require VPN
-
-**Test:**
-```bash
-# Test internal tools
-curl -I https://critique.corp.google.com 2>&1 | head -3
-curl -I https://cs.corp.google.com 2>&1 | head -3
-```
+- Internal services may require VPN
 
 ### 2. Firewall Rules
 
@@ -378,7 +369,6 @@ Before considering setup complete:
 - [ ] Menu items work
 - [ ] C++ build status widget works
 - [ ] SSH connections load correctly
-- [ ] Google integrations accessible
 - [ ] No conflicts with existing tools
 - [ ] Permissions granted correctly
 - [ ] Updates work (test with `barista-update`)
@@ -398,7 +388,6 @@ Before considering setup complete:
 3. **Add one integration at a time**
    - Start with C++ dev
    - Then SSH
-   - Then Google C++
 
 4. **Customize gradually**
    - Don't change everything at once
@@ -411,7 +400,6 @@ Before considering setup complete:
 
 ## Support Resources
 
-- **Documentation:** `docs/GOOGLE_CPP_WORKFLOWS.md`
 - **Installation Guide:** `docs/INSTALLATION_GUIDE.md`
 - **Troubleshooting:** Check logs in `~/Library/Logs/sketchybar/`
 - **GitHub Issues:** For bugs or questions
@@ -427,4 +415,3 @@ Before considering setup complete:
 ---
 
 **Ready to install?** Follow the installation guide and use this checklist to verify each step!
-

@@ -158,27 +158,8 @@ function ssh_cloud.get_menu_items(ctx)
     end
   end
   
-  -- Google Cloud Platform
-  if ssh_cloud.config.gcp_enabled then
-    table.insert(items, { type = "separator", name = "menu.ssh.sep2" })
-    table.insert(items, {
-      type = "item",
-      name = "menu.cloud.gcp_console",
-      icon = "󰨞",
-      label = "GCP Console",
-      action = "open -a 'Google Chrome' 'https://console.cloud.google.com'",
-    })
-    table.insert(items, {
-      type = "item",
-      name = "menu.cloud.gcp_shell",
-      icon = "󰆍",
-      label = "GCP Cloud Shell",
-      action = "open -a 'Google Chrome' 'https://shell.cloud.google.com'",
-    })
-  end
-  
   -- Remote file operations
-  table.insert(items, { type = "separator", name = "menu.ssh.sep3" })
+  table.insert(items, { type = "separator", name = "menu.ssh.sep2" })
   table.insert(items, {
     type = "item",
     name = "menu.ssh.sync_up",
@@ -223,4 +204,3 @@ function ssh_cloud.create_connection_widget(sbar, factory, theme, state_data)
 end
 
 return ssh_cloud
-

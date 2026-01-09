@@ -7,7 +7,7 @@ This document summarizes the portability improvements made to enable easy sharin
 ### 1. ✅ Multi-User Support
 - **Chris (girlfriend)**: Can use minimal profile, no personal integrations
 - **Personal (scawful)**: Full ROM hacking + Emacs setup
-- **Work (Google)**: Emacs + halext-org, no ROM hacking
+- **Work**: Emacs + halext-org, no ROM hacking
 - **Anyone**: Can create custom profiles from templates
 
 ### 2. ✅ Multi-Machine Support
@@ -36,7 +36,7 @@ This document summarizes the portability improvements made to enable easy sharin
 profiles/
 ├── minimal.lua      # Template - Clean, no integrations
 ├── personal.lua     # scawful personal - ROM hacking + Emacs
-└── work.lua         # Google work - Emacs + halext-org
+└── work.lua         # Work - Emacs + halext-org
 ```
 
 ### How It Works

@@ -2,13 +2,13 @@
 
 ## Executive Summary
 
-This document outlines a comprehensive strategy for releasing Barista for use on work computers (specifically Google) with support for:
+This document outlines a comprehensive strategy for releasing Barista for use on work computers with support for:
 - Homebrew installation (primary method)
 - Git clone installation (fallback)
 - Safe update mechanism that preserves customizations
 - macOS system permissions setup
 - Launch agent orchestration
-- Google-specific customizations (Emacs, custom programs)
+- Work-specific customizations (Emacs, custom programs)
 
 ## Table of Contents
 
@@ -633,164 +633,68 @@ echo "  ~/.config/sketchybar/launch_agents/barista-launch.sh {start|stop|restart
 
 ## Customization Strategy
 
-### Google-Specific Customizations
+### Work Profile Customizations
 
 #### 1. Work Profile Enhancement
 
-**File:** `profiles/work.lua` (already exists, enhance it)
+**File:** `profiles/work.lua` (already exists, customize it)
 
 ```lua
--- Work Profile (Google)
--- Enhanced with Google-specific integrations
+-- Work Profile (Generic)
+-- Emacs + halext-org + C++/SSH workflows
 
 local profile = {}
 
 profile.name = "work"
-profile.description = "Work setup for Google with Emacs integration"
+profile.description = "Work setup with Emacs and productivity integrations"
 
--- Google-specific paths
 profile.paths = {
   work_docs = os.getenv("HOME") .. "/work/docs",
-  google_tools = os.getenv("HOME") .. "/google/tools",
-  -- Add Google-specific program paths
+  code = os.getenv("HOME") .. "/src",
 }
 
--- Google-specific integrations
 profile.integrations = {
   yaze = false,
   emacs = true,
   halext = true,
-  google = true,  -- Enable Google integrations
-}
-
--- Custom menu items for Google tools
-profile.custom_menus = {
-  {
-    type = "item",
-    name = "menu.google.gmail",
-    icon = "󰬦",
-    label = "Gmail",
-    action = "open -a 'Google Chrome' 'https://mail.google.com'",
-  },
-  {
-    type = "item",
-    name = "menu.google.calendar",
-    icon = "󰃭",
-    label = "Calendar",
-    action = "open -a 'Google Chrome' 'https://calendar.google.com'",
-  },
-  -- Add custom Google programs
-  {
-    type = "item",
-    name = "menu.google.custom_tool",
-    icon = "󰨞",
-    label = "Custom Tool",
-    action = os.getenv("HOME") .. "/google/tools/custom_tool",
-  },
+  cpp_dev = true,
+  ssh_cloud = true,
 }
 
 return profile
 ```
 
-#### 2. Custom Integration Module
+#### 2. Custom Integration Modules
 
-**File:** `modules/integrations/google.lua`
+**File:** `modules/integrations/<name>.lua`
+
+Add a module that exposes `init()` and `get_menu_items()` to extend menus and widgets.
 
 ```lua
--- Google-specific integrations for Barista
+local custom = {}
+custom.enabled = false
+custom.config = {}
 
-local google = {}
-
-google.enabled = false
-google.config = {}
-
-function google.init(sbar, config)
-  if not config.integrations.google or not config.integrations.google.enabled then
-    return
-  end
-  
-  google.enabled = true
-  google.config = config.integrations.google
-  
-  -- Setup Google-specific widgets/menus
-  print("Google integration enabled")
+function custom.init(sbar, config)
+  local cfg = config.integrations and config.integrations.custom or nil
+  if not cfg or not cfg.enabled then return end
+  custom.enabled = true
+  custom.config = cfg
 end
 
-function google.setup_menu_items(menu_items)
-  if not google.enabled then
-    return menu_items
-  end
-  
-  -- Add Google menu items
-  table.insert(menu_items, {
-    type = "item",
-    name = "menu.google.gmail",
-    icon = "󰬦",
-    label = "Gmail",
-    action = "open -a 'Google Chrome' 'https://mail.google.com'",
-  })
-  
-  return menu_items
+function custom.get_menu_items(ctx)
+  if not custom.enabled then return {} end
+  return {
+    { type = "item", name = "menu.custom.action", icon = "󰈙", label = "Custom Action", action = "open ~/work/docs" },
+  }
 end
 
-return google
+return custom
 ```
 
 #### 3. Emacs Integration Enhancement
 
-The existing `.emacs-integration.el` is good. Add Google-specific functions:
-
-```elisp
-;; Google-specific Emacs functions
-(defun barista-open-google-docs ()
-  "Open Google Docs"
-  (interactive)
-  (browse-url "https://docs.google.com"))
-
-(defun barista-open-google-drive ()
-  "Open Google Drive"
-  (interactive)
-  (browse-url "https://drive.google.com"))
-```
-
-#### 4. Custom Programs Integration
-
-**File:** `helpers/google_programs.lua`
-
-```lua
--- Integration for Google-specific programs
-
-local google_programs = {
-  -- Define custom programs
-  programs = {
-    {
-      name = "custom_tool",
-      path = os.getenv("HOME") .. "/google/tools/custom_tool",
-      icon = "󰨞",
-      label = "Custom Tool",
-    },
-    -- Add more programs as needed
-  },
-}
-
-function google_programs.get_menu_items()
-  local items = {}
-  for _, program in ipairs(google_programs.programs) do
-    if os.execute("test -f " .. program.path) == 0 then
-      table.insert(items, {
-        type = "item",
-        name = "menu.google." .. program.name,
-        icon = program.icon,
-        label = program.label,
-        action = program.path,
-      })
-    end
-  end
-  return items
-end
-
-return google_programs
-```
+The existing `.emacs-integration.el` is a good base. Add optional helpers for your own docs and workflows.
 
 ### Customization Preservation
 
@@ -837,8 +741,8 @@ return google_programs
 
 ### Phase 4: Customization (Week 3)
 
-- [ ] Enhance work profile with Google integrations
-- [ ] Create Google integration module
+- [ ] Enhance work profile template
+- [ ] Create example integration module
 - [ ] Document customization process
 - [ ] Create customization templates
 
@@ -881,7 +785,7 @@ return google_programs
 
 ### Customization Testing
 
-- [ ] Work profile with Google integrations
+- [ ] Work profile customizations
 - [ ] Custom programs integration
 - [ ] Emacs integration
 - [ ] Custom themes preservation
@@ -916,7 +820,6 @@ This strategy provides:
 2. **Flexible Installation:** Git clone fallback for full control
 3. **Safe Updates:** Preserves all user customizations
 4. **System Integration:** Proper macOS permissions and launch agents
-5. **Customization Support:** Easy to add Google-specific features
+5. **Customization Support:** Easy to add custom features
 
 The implementation can be done incrementally, starting with Homebrew formula and basic update mechanism, then adding customization features.
-

@@ -549,7 +549,6 @@ local scripts = {
   open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh",
   halext_menu        = CONFIG_DIR .. "/plugins/halext_menu.sh",
   ssh_sync           = CONFIG_DIR .. "/helpers/ssh_sync.sh",
-  ci_status          = CONFIG_DIR .. "/helpers/ci_status.sh",
   cpp_project_switch = CONFIG_DIR .. "/helpers/cpp_project_switch.sh",
 }
 

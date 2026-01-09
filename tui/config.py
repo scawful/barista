@@ -97,18 +97,12 @@ class HalextIntegration(IntegrationConfig):
     show_suggestions: bool = True
 
 
-class GoogleIntegration(IntegrationConfig):
-    """Google workspace integration."""
-    enabled: bool = False
-
-
 class IntegrationsConfig(BaseModel):
     """All integration settings."""
     yaze: YazeIntegration = Field(default_factory=YazeIntegration)
     emacs: EmacsIntegration = Field(default_factory=EmacsIntegration)
     cortex: CortexIntegration = Field(default_factory=CortexIntegration)
     halext: HalextIntegration = Field(default_factory=HalextIntegration)
-    google: GoogleIntegration = Field(default_factory=GoogleIntegration)
 
 
 class BaristaConfig(BaseModel):

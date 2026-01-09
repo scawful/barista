@@ -149,7 +149,7 @@ function cpp_dev.get_menu_items(ctx)
     action = "osascript -e 'tell application \"System Events\" to keystroke \"d\" using {command down, shift down}'",
   })
   
-  -- Google-specific: Bazel
+  -- Bazel extras
   if build_system == "bazel" then
     table.insert(items, { type = "separator", name = "menu.cpp.sep3" })
     table.insert(items, {

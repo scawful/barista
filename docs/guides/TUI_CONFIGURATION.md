@@ -111,7 +111,6 @@ Toggle integrations with external tools:
 - **Yaze**: ROM hacking editor
 - **Emacs**: Org-mode integration
 - **Halext**: Task management
-- **Google**: Google Workspace
 
 Also configure custom paths for your machine.
 
@@ -153,7 +152,7 @@ For managed machines where you can't compile binaries:
 export BARISTA_LUA_ONLY=1
 
 # Configure paths if different
-export BARISTA_CODE_DIR=~/google3
+export BARISTA_CODE_DIR=~/src
 ```
 
 ## Troubleshooting

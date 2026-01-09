@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document summarizes the release strategy for Barista, enabling safe installation and updates on work computers (specifically Google) with support for customizations.
+This document summarizes the release strategy for Barista, enabling safe installation and updates on work computers with support for customizations.
 
 ## Key Components
 
@@ -62,24 +62,6 @@ This document summarizes the release strategy for Barista, enabling safe install
 - Centralized logging
 - Health checks (future)
 
-### 5. Google-Specific Customizations
-
-**Work Profile:** `profiles/work.lua`
-- Pre-configured for Google environment
-- Emacs integration
-- halext-org integration
-- Google Workspace shortcuts
-
-**Google Integration Module:** `modules/integrations/google.lua`
-- Gmail, Calendar, Drive, Docs shortcuts
-- Custom program integration
-- Extensible for additional tools
-
-**Custom Programs:**
-- Add to `profiles/work.lua` → `profile.paths`
-- Add menu items → `profile.custom_menu_items`
-- Configure in `state.json` → `integrations.google.custom_programs`
-
 ## Quick Start for Work Computer
 
 ```bash
@@ -93,7 +75,6 @@ brew install barista
 # 3. Configure work profile
 # Edit ~/.config/sketchybar/state.json:
 #   Set "profile": "work"
-#   Enable Google integration
 
 # 4. Add custom programs (optional)
 # Edit ~/.config/sketchybar/profiles/work.lua
@@ -136,13 +117,10 @@ git pull origin main
 ~/.config/sketchybar/
 ├── state.json              # User configuration (PRESERVED)
 ├── profiles/
-│   ├── work.lua           # Work profile with Google integrations
+│   ├── work.lua           # Work profile template
 │   └── *.lua              # Custom profiles (PRESERVED)
 ├── themes/
 │   └── *.lua             # Custom themes (PRESERVED)
-├── modules/
-│   └── integrations/
-│       └── google.lua    # Google integration module
 ├── helpers/
 │   ├── setup_permissions.sh  # Permission setup
 │   ├── post_update.sh        # Post-update hook
@@ -163,30 +141,24 @@ git pull origin main
 
 ## Customization Points
 
-### For Google Work Environment
-
 1. **Work Profile** (`profiles/work.lua`)
-   - Pre-configured Google integrations
    - Emacs workspace
    - halext-org task management
+   - C++ dev + SSH workflows
 
 2. **State Configuration** (`state.json`)
    ```json
    {
      "profile": "work",
      "integrations": {
-       "google": {
-         "enabled": true,
-         "custom_programs": [...]
-       }
+       "cpp_dev": { "enabled": true },
+       "ssh_cloud": { "enabled": true }
      }
    }
    ```
 
-3. **Custom Programs**
+3. **Custom Paths**
    - Add to `profile.paths` in work.lua
-   - Add menu items to `profile.custom_menu_items`
-   - Or configure in `state.json`
 
 ## Implementation Status
 
@@ -197,8 +169,7 @@ git pull origin main
 - Update scripts (Homebrew & Git)
 - Migration system
 - Launch agent installer
-- Google integration module
-- Enhanced work profile
+- Work profile template
 - Installation guide
 
 📋 **Next Steps:**
@@ -228,4 +199,3 @@ For issues or questions:
 
 **Last Updated:** 2024
 **Version:** 2.0.0
-

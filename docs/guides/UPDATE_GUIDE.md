@@ -6,6 +6,7 @@ Keep Barista current with safe backups and minimal downtime. Choose the path tha
 - Homebrew: `brew upgrade barista && ~/.config/sketchybar/helpers/post_update.sh && ~/.config/sketchybar/launch_agents/barista-launch.sh restart`
 - Git clone: `~/.config/sketchybar/bin/barista-update`
 - Skip restarts (corporate): `BARISTA_SKIP_RESTART=1 ~/.config/sketchybar/bin/barista-update`
+- Repo deploy: `./scripts/update_repo.sh`
 
 ## What `barista-update` Does (Git installs)
 - Backs up `state.json`, `profiles/`, and `themes/` to `~/.config/sketchybar.backup.<timestamp>`
@@ -31,6 +32,7 @@ Keep Barista current with safe backups and minimal downtime. Choose the path tha
 If you keep Barista in a repo (for example in `~/src/lab/barista`) and deploy into `~/.config/sketchybar`:
 
 1) Deploy:
+   - `./scripts/update_repo.sh`
    - `./scripts/deploy.sh`
    - Optional: `./scripts/deploy.sh --note "Space fixes + menu updates"`
    - Overrides: `BARISTA_SOURCE_DIR=/path/to/repo BARISTA_CONFIG_DIR=~/.config/sketchybar`
@@ -43,6 +45,6 @@ If you keep Barista in a repo (for example in `~/src/lab/barista`) and deploy in
 - Backups live at `~/.config/sketchybar.backup.<timestamp>`
 - Restore example: `cp -r ~/.config/sketchybar.backup.20250101_120000/* ~/.config/sketchybar/`
 
-## Work Laptop Notes (Google)
+## Managed Laptop Notes
 - Run behind VPN/proxy if needed; the updater only hits Git remotes and Homebrew
 - If IT tools manage services, set `BARISTA_SKIP_RESTART=1` and restart via company tooling after the update

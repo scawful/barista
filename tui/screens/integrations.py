@@ -101,7 +101,6 @@ class IntegrationsTab(Vertical):
         "emacs": ("Emacs", "Emacs org-mode integration"),
         "cortex": ("Cortex", "AFS + training dashboard integration"),
         "halext": ("Halext", "halext-org task management"),
-        "google": ("Google", "Google Workspace integration"),
     }
     
     DEFAULT_PATHS = {

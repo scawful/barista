@@ -34,6 +34,7 @@ BARISTA_SKIP_RESTART=1 ~/.config/sketchybar/bin/barista-update
 
 ### Repo Deploy (Separate Source Repo)
 ```bash
+./scripts/update_repo.sh                 # Update repo + deploy
 ./scripts/deploy.sh --note "yabai space fixes"
 ./scripts/deploy_info.sh
 ```
@@ -67,35 +68,29 @@ BARISTA_LUA_ONLY=1 sketchybar --reload            # Lua-only mode (no compiled h
 ~/.config/sketchybar/launch_agents/barista-launch.sh {start|stop|restart|status}
 ```
 
-## Work Profile (Google)
+## Profiles
 
-### Enable
+### Enable a Profile
 Edit `~/.config/sketchybar/state.json`:
 ```json
 {
-  "profile": "work",
-  "integrations": {
-    "google": {"enabled": true}
-  }
+  "profile": "work"
 }
 ```
 
-### Add Custom Programs
-Edit `~/.config/sketchybar/profiles/work.lua`:
+### Customize Work Profile
+Edit `~/.config/sketchybar/profiles/work.lua` to update integrations and paths:
 ```lua
-profile.paths = {
-  custom_tool = "/path/to/tool",
+profile.integrations = {
+  emacs = true,
+  halext = true,
+  cpp_dev = true,
+  ssh_cloud = true,
 }
 
-profile.custom_menu_items = {
-  {
-    type = "item",
-    name = "menu.google.custom_tool",
-    icon = "󰨞",
-    label = "Custom Tool",
-    action = profile.paths.custom_tool,
-    section = "menu.google.section",
-  },
+profile.paths = {
+  work_docs = "/path/to/work/docs",
+  code = "/path/to/src",
 }
 ```
 
@@ -144,7 +139,5 @@ cp -r ~/.config/sketchybar.backup.YYYYMMDD_HHMMSS/* ~/.config/sketchybar/
 ## Documentation
 
 - [Pre-Setup Checklist](docs/PRE_SETUP_CHECKLIST.md) ⭐ **Read this first!**
-- [Work MacBook Setup](docs/WORK_MACBOOK_SETUP.md) ⭐ **For corporate environments**
-- [Google C++ Workflows](docs/GOOGLE_CPP_WORKFLOWS.md)
 - [Release Strategy](docs/RELEASE_STRATEGY.md)
 - [Installation Guide](docs/INSTALLATION_GUIDE.md)

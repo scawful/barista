@@ -129,7 +129,7 @@ Edit `~/.config/sketchybar/state.json`:
 Available profiles:
 - **minimal**: Clean, basic setup (recommended for new users)
 - **personal**: Full-featured with integrations
-- **work**: Work-focused with Emacs, halext-org, Google integrations
+- **work**: Work-focused with Emacs and productivity integrations
 
 ### Step 5: Start Services
 
@@ -174,55 +174,28 @@ The launch agent will:
    - Shift + Click the Apple menu icon
    - Or: `~/.config/sketchybar/bin/config_menu_v2`
 
-## Customization for Work (Google)
+## Customization for Work
 
-### Enable Work Profile
+Edit `~/.config/sketchybar/profiles/work.lua` to update integrations and paths:
 
-Edit `~/.config/sketchybar/state.json`:
+```lua
+profile.integrations = {
+  emacs = true,
+  halext = true,
+  cpp_dev = true,
+  ssh_cloud = true,
+}
 
-```json
-{
-  "profile": "work",
-  "integrations": {
-    "google": {
-      "enabled": true,
-      "custom_programs": [
-        {
-          "name": "custom_tool",
-          "path": "/path/to/your/tool",
-          "icon": "󰨞",
-          "label": "Custom Tool"
-        }
-      ]
-    }
-  }
+profile.paths = {
+  work_docs = "/path/to/work/docs",
+  code = "/path/to/src",
 }
 ```
 
-### Add Custom Google Programs
-
-1. Edit `~/.config/sketchybar/profiles/work.lua`:
-   ```lua
-   profile.paths = {
-     custom_tool = "/path/to/your/tool",
-   }
-   
-   profile.custom_menu_items = {
-     {
-       type = "item",
-       name = "menu.google.custom_tool",
-       icon = "󰨞",
-       label = "Custom Tool",
-       action = profile.paths.custom_tool,
-       section = "menu.google.section",
-     },
-   }
-   ```
-
-2. Reload SketchyBar:
-   ```bash
-   sketchybar --reload
-   ```
+Then reload SketchyBar:
+```bash
+sketchybar --reload
+```
 
 ## Updates
 
@@ -357,4 +330,3 @@ rm -rf ~/.config/sketchybar
 - Explore [Themes](THEMES.md)
 - Check [Icons & Shortcuts](ICONS_AND_SHORTCUTS.md)
 - See [Troubleshooting Guide](../troubleshooting/)
-

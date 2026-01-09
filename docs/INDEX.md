@@ -24,7 +24,6 @@ User-facing setup and usage guides.
 | [QUICK_REBUILD.md](guides/QUICK_REBUILD.md) | Rebuild commands reference |
 | [QUICK_REFERENCE.md](guides/QUICK_REFERENCE.md) | Command cheat sheet |
 | [PRE_SETUP_CHECKLIST.md](guides/PRE_SETUP_CHECKLIST.md) | Prerequisites checklist |
-| [WORK_MACBOOK_SETUP.md](guides/WORK_MACBOOK_SETUP.md) | Work machine configuration |
 | [HANDOFF.md](guides/HANDOFF.md) | System overview and handoff notes |
 | [CONTRIBUTING.md](guides/CONTRIBUTING.md) | Contribution guidelines |
 | [GITHUB_SETUP.md](guides/GITHUB_SETUP.md) | GitHub distribution setup |
@@ -51,7 +50,6 @@ Implementation notes and engineering details.
 | [CMake_MIGRATION.md](dev/CMake_MIGRATION.md) | CMake migration notes |
 | [DEBUGGING_ANALYSIS.md](dev/DEBUGGING_ANALYSIS.md) | Debugging notes |
 | [FIXES_SUMMARY.md](dev/FIXES_SUMMARY.md) | Bug fixes summary |
-| [GOOGLE_CPP_WORKFLOWS.md](dev/GOOGLE_CPP_WORKFLOWS.md) | Google C++ workflows |
 | [IMPLEMENTATION_SUMMARY.md](dev/IMPLEMENTATION_SUMMARY.md) | Implementation notes |
 | [IMPROVEMENTS.md](dev/IMPROVEMENTS.md) | Planned improvements |
 | [SHARING.md](dev/SHARING.md) | Sharing/export notes |

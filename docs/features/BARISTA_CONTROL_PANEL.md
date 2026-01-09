@@ -65,6 +65,7 @@ control_panel.command = "open -a MySwiftUIApp"
 
 - `native`: Cocoa-based `config_menu` (default).
 - `imgui`: `barista_config` (ImGui) if present.
+- `tui`: Python TUI (`bin/barista`) when native GUI isn’t available.
 - `custom`: run the command specified in `control_panel.command`.
 
 ### Env overrides
@@ -72,12 +73,14 @@ control_panel.command = "open -a MySwiftUIApp"
 - `BARISTA_CONTROL_PANEL` or `BARISTA_CONTROL_PANEL_MODE`
 - `BARISTA_CONTROL_PANEL_CMD`
 - `BARISTA_IMGUI_BIN`
+- `BARISTA_TUI_ONLY` (force TUI fallback)
 
 ### CLI flags
 
 ```
 bin/open_control_panel.sh --native
 bin/open_control_panel.sh --imgui
+bin/open_control_panel.sh --tui
 bin/open_control_panel.sh --custom --command "open -a MySwiftUIApp"
 ```
 

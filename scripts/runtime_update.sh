@@ -17,7 +17,8 @@ if [[ -z "$command" ]]; then
   exit 1
 fi
 
-python3 - "$STATE_FILE" "$command" "$@" <<'PY'
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$STATE_FILE" "$command" "$@" <<'PY'
 import json
 import os
 import sys
@@ -112,6 +113,12 @@ with open(tmp_file, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
 os.replace(tmp_file, state_file)
 PY
+elif command -v lua >/dev/null 2>&1; then
+  lua "$CONFIG_DIR/scripts/runtime_update.lua" "$command" "$@"
+else
+  echo "runtime_update: python3 or lua is required" >&2
+  exit 1
+fi
 
 if command -v sketchybar >/dev/null 2>&1; then
   sketchybar --reload >/dev/null 2>&1 || true

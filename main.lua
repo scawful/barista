@@ -134,6 +134,22 @@ local function compiled_script(binary_name, fallback)
   return fallback
 end
 
+local function resolve_menu_action_script()
+  local candidates = {
+    CONFIG_DIR .. "/bin/menu_action",
+    CONFIG_DIR .. "/helpers/menu_action",
+    PLUGIN_DIR .. "/menu_action.sh",
+  }
+  for _, candidate in ipairs(candidates) do
+    local file = io.open(candidate, "r")
+    if file then
+      file:close()
+      return candidate
+    end
+  end
+  return ""
+end
+
 local HOVER_SCRIPT = compiled_script("popup_hover", PLUGIN_DIR .. "/popup_hover.sh")
 local POPUP_ANCHOR_SCRIPT = compiled_script("popup_anchor", PLUGIN_DIR .. "/popup_anchor.sh")
 local SUBMENU_HOVER_SCRIPT = compiled_script("submenu_hover", PLUGIN_DIR .. "/submenu_hover.sh")
@@ -524,7 +540,7 @@ if profile_paths then
 end
 
 local scripts = {
-  menu_action        = CONFIG_DIR .. "/helpers/menu_action",
+  menu_action        = resolve_menu_action_script(),
   set_appearance     = SCRIPTS_DIR .. "/set_appearance.sh",
   space_mode         = PLUGIN_DIR .. "/space_mode.sh",
   logs               = CONFIG_DIR .. "/plugins/bar_logs.sh",

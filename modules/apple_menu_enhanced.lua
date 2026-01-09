@@ -223,6 +223,7 @@ local function resolve_afs_studio_root(ctx, afs_root)
     ctx.paths and ctx.paths.afs_studio or nil,
     os.getenv("AFS_STUDIO_ROOT"),
     afs_root and (afs_root .. "/apps/studio") or nil,
+    code_dir .. "/lab/afs_suite",
     code_dir .. "/lab/afs/apps/studio",
     code_dir .. "/lab/afs_studio",
     code_dir .. "/afs/apps/studio",
@@ -248,6 +249,7 @@ local function resolve_stemforge_app(ctx)
     ctx.paths and ctx.paths.stemforge_app or nil,
     os.getenv("STEMFORGE_APP"),
     code_dir .. "/tools/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app",
+    code_dir .. "/tools/stemforge/build_ai/StemForge_artefacts/Release/Standalone/StemForge.app",
     code_dir .. "/tools/stemforge/build/StemForge_artefacts/Debug/Standalone/StemForge.app",
     code_dir .. "/lab/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app",
     code_dir .. "/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app",
@@ -261,6 +263,7 @@ local function resolve_stem_sampler_app(ctx)
   return resolve_path(ctx, {
     ctx.paths and ctx.paths.stem_sampler_app or nil,
     os.getenv("STEM_SAMPLER_APP"),
+    code_dir .. "/tools/stem-sampler/StemSampler.app",
     code_dir .. "/tools/stemsampler/StemSampler.app",
     code_dir .. "/tools/stem_sampler/StemSampler.app",
     os.getenv("HOME") .. "/Applications/StemSampler.app",
@@ -271,7 +274,11 @@ end
 local function resolve_yaze_app(ctx)
   local code_dir = resolve_code_dir(ctx)
   return resolve_path(ctx, {
+    ctx.paths and ctx.paths.yaze and (ctx.paths.yaze .. "/build/bin/Release/yaze.app") or nil,
+    ctx.paths and ctx.paths.yaze and (ctx.paths.yaze .. "/build_ai/bin/yaze.app") or nil,
     ctx.paths and ctx.paths.yaze and (ctx.paths.yaze .. "/build/bin/yaze.app") or nil,
+    code_dir .. "/hobby/yaze/build/bin/Release/yaze.app",
+    code_dir .. "/hobby/yaze/build_ai/bin/yaze.app",
     code_dir .. "/hobby/yaze/build/bin/yaze.app",
     code_dir .. "/yaze/build/bin/yaze.app",
   }, true)
@@ -319,13 +326,33 @@ local function afs_cli(afs_root, args)
   )
 end
 
+local function resolve_menu_action(ctx, config_dir)
+  local candidates = {
+    ctx.menu_action,
+    config_dir and (config_dir .. "/bin/menu_action") or nil,
+    config_dir and (config_dir .. "/helpers/menu_action") or nil,
+    config_dir and (config_dir .. "/plugins/menu_action.sh") or nil,
+  }
+  for _, candidate in ipairs(candidates) do
+    if candidate and candidate ~= "" and path_is_executable(candidate) then
+      return candidate
+    end
+  end
+  for _, candidate in ipairs(candidates) do
+    if candidate and candidate ~= "" and path_exists(candidate, false) then
+      return string.format("bash %s", shell_quote(candidate))
+    end
+  end
+  return nil
+end
+
 local function wrap_action(ctx, popup_name, entry_name, action)
   if not action or action == "" then
     return ""
   end
   local config_dir = resolve_config_dir(ctx)
-  local menu_action = ctx.menu_action or (config_dir .. "/helpers/menu_action")
-  if menu_action ~= "" then
+  local menu_action = resolve_menu_action(ctx, config_dir)
+  if menu_action and menu_action ~= "" then
     return string.format(
       "MENU_ACTION_CMD=%q %s %q %q",
       action,
@@ -617,19 +644,25 @@ function apple_menu.setup(ctx)
 
   local afs_action = afs_browser_app and string.format("open %s", shell_quote(afs_browser_app)) or ""
   local studio_bin, studio_bin_ok = resolve_path(ctx, {
-    studio_root and (studio_root .. "/build/afs_studio") or nil,
-    studio_root and (studio_root .. "/build/bin/afs_studio") or nil,
+    studio_root and (studio_root .. "/build_ai/apps/studio/afs-studio.app") or nil,
+    studio_root and (studio_root .. "/build_ai/apps/studio/afs-studio") or nil,
+    studio_root and (studio_root .. "/build/apps/studio/afs-studio.app") or nil,
+    studio_root and (studio_root .. "/build/apps/studio/afs-studio") or nil,
   }, false)
   local studio_action
   local studio_cmd
   if studio_bin_ok and studio_bin then
-    studio_action = shell_quote(studio_bin)
+    if studio_bin:match("%.app/?$") then
+      studio_action = string.format("open %s", shell_quote(studio_bin))
+    else
+      studio_action = shell_quote(studio_bin)
+    end
   else
     if afs_root then
       studio_cmd = afs_cli(afs_root, "studio run --build")
     elseif studio_root then
       studio_cmd = string.format(
-        "cd %s && cmake --build build --target afs_studio && ./build/afs_studio",
+        "cd %s && cmake --build build_ai --target afs-studio && ./build_ai/apps/studio/afs-studio",
         shell_quote(studio_root)
       )
     end
@@ -639,8 +672,10 @@ function apple_menu.setup(ctx)
   local studio_blocked = studio_ok and studio_cmd ~= nil and studio_action == nil
 
   local labeler_bin, labeler_bin_ok = resolve_path(ctx, {
-    studio_root and (studio_root .. "/build/afs_labeler") or nil,
-    studio_root and (studio_root .. "/build/bin/afs_labeler") or nil,
+    studio_root and (studio_root .. "/build_ai/apps/studio/afs-labeler.app") or nil,
+    studio_root and (studio_root .. "/build_ai/apps/studio/afs-labeler") or nil,
+    studio_root and (studio_root .. "/build/apps/studio/afs-labeler.app") or nil,
+    studio_root and (studio_root .. "/build/apps/studio/afs-labeler") or nil,
   }, false)
   local labeler_csv = os.getenv("AFS_LABELER_CSV")
   local labeler_cmd
@@ -652,7 +687,7 @@ function apple_menu.setup(ctx)
     end
     labeler_action = labeler_cmd
   elseif studio_root then
-    labeler_cmd = string.format("cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler", shell_quote(studio_root))
+    labeler_cmd = string.format("cd %s && cmake --build build_ai --target afs-labeler && ./build_ai/apps/studio/afs-labeler", shell_quote(studio_root))
     if labeler_csv and labeler_csv ~= "" then
       labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
     end

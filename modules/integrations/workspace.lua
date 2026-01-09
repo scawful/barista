@@ -16,6 +16,30 @@ local CACHE_TTL = 300 -- 5 minutes
 os.execute("mkdir -p " .. WS_CACHE_DIR)
 os.execute("mkdir -p " .. BARISTA_CACHE)
 
+local function shell_quote(value)
+  return string.format("%q", tostring(value))
+end
+
+local function open_terminal(command)
+  if not command or command == "" then
+    return ""
+  end
+  return string.format("osascript -e 'tell application \"Terminal\" to do script %q'", command)
+end
+
+local function command_exists(command)
+  if not command or command == "" then
+    return false
+  end
+  local handle = io.popen(string.format("command -v %q >/dev/null 2>&1 && printf 1 || printf 0", command))
+  if not handle then
+    return false
+  end
+  local result = handle:read("*a")
+  handle:close()
+  return result and result:match("1") ~= nil
+end
+
 -- Utility: Check if cache is valid
 local function is_cache_valid(cache_file, ttl)
   local file = io.open(cache_file, "r")
@@ -127,7 +151,7 @@ function workspace.get_summary(config, force_refresh)
   if not force_refresh then
     local ws_check = exec("command -v ws >/dev/null 2>&1 && echo 'yes'")
     if ws_check and ws_check:match("yes") then
-      local ws_status = exec("ws status --json 2>/dev/null")
+      local ws_status = exec("ws status --format json --fast 2>/dev/null")
       if ws_status and ws_status ~= "" then
         local ok, data = pcall(json.decode, ws_status)
         if ok and type(data) == "table" then
@@ -166,6 +190,28 @@ end
 -- Format projects for menu display
 function workspace.format_for_menu(summary)
   local items = {}
+  local syshelp_available = command_exists("syshelp")
+  local ws_available = command_exists("ws")
+
+  local function status_action()
+    if syshelp_available then
+      return "syshelp workspace"
+    end
+    if ws_available then
+      return "ws status --format json --fast"
+    end
+    return open_terminal(string.format("cd %s && git status -sb", shell_quote(WS_ROOT)))
+  end
+
+  local function refresh_action()
+    if syshelp_available then
+      return "syshelp wsrefresh"
+    end
+    if ws_available then
+      return "ws status --format json --fast"
+    end
+    return open_terminal(string.format("cd %s", shell_quote(WS_ROOT)))
+  end
 
   -- Header
   table.insert(items, {
@@ -182,12 +228,13 @@ function workspace.format_for_menu(summary)
       label = label .. string.format(" +%d", proj.dirty)
     end
 
+    local project_root = string.format("%s/%s", WS_ROOT, proj.path)
     table.insert(items, {
       type = "item",
       name = "ws.project." .. proj.name,
       icon = icon,
       label = label,
-      action = string.format("cd '%s/%s' && $TERMINAL", WS_ROOT, proj.path),
+      action = open_terminal(string.format("cd %s", shell_quote(project_root))),
     })
   end
 
@@ -195,34 +242,34 @@ function workspace.format_for_menu(summary)
   local dirty_count = summary.dirty_count or 0
   if dirty_count > 0 then
     table.insert(items, {
-      type = "divider",
+      type = "separator",
     })
     table.insert(items, {
       type = "item",
       name = "ws.dirty_summary",
       icon = "",
       label = string.format("%d dirty repos", dirty_count),
-      action = "syshelp wstatus",
+      action = status_action(),
     })
   end
 
   -- Quick actions
   table.insert(items, {
-    type = "divider",
+    type = "separator",
   })
   table.insert(items, {
     type = "item",
     name = "ws.action.status",
     icon = "",
     label = "Full Status",
-    action = "syshelp workspace",
+    action = status_action(),
   })
   table.insert(items, {
     type = "item",
     name = "ws.action.refresh",
     icon = "",
     label = "Refresh",
-    action = "syshelp wsrefresh",
+    action = refresh_action(),
   })
 
   return items
@@ -263,7 +310,15 @@ end
 
 -- Open workspace overview
 function workspace.open_overview()
-  os.execute("syshelp workspace &")
+  if command_exists("syshelp") then
+    os.execute("syshelp workspace &")
+    return
+  end
+  if command_exists("ws") then
+    os.execute("ws status --format json --fast &")
+    return
+  end
+  os.execute(open_terminal(string.format("cd %s", shell_quote(WS_ROOT))) .. " &")
 end
 
 -- Jump to project
@@ -281,7 +336,11 @@ end
 function workspace.clear_cache()
   os.execute("rm -f " .. DIRTY_CACHE)
   os.execute("rm -f " .. PROJECTS_CACHE)
-  os.execute("syshelp wsrefresh")
+  if command_exists("syshelp") then
+    os.execute("syshelp wsrefresh")
+  elseif command_exists("ws") then
+    os.execute("ws status --format json --fast")
+  end
   return true
 end
 

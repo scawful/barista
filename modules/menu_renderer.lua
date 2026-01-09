@@ -25,6 +25,46 @@ function menu_renderer.create(ctx)
   local widget_height = ctx.widget_height
   local attach_hover = ctx.attach_hover
   local shell_exec = ctx.shell_exec
+  local config_dir = ctx.paths and ctx.paths.config_dir or nil
+
+  local function is_executable(path)
+    if not path or path == "" then
+      return false
+    end
+    local handle = io.popen(string.format("test -x %q && printf 1 || printf 0", path))
+    if not handle then
+      return false
+    end
+    local result = handle:read("*a")
+    handle:close()
+    return result and result:match("1") ~= nil
+  end
+
+  local function resolve_menu_action_command()
+    local candidates = {
+      ctx.scripts and ctx.scripts.menu_action or nil,
+      config_dir and (config_dir .. "/bin/menu_action") or nil,
+      config_dir and (config_dir .. "/helpers/menu_action") or nil,
+      config_dir and (config_dir .. "/plugins/menu_action.sh") or nil,
+    }
+    for _, candidate in ipairs(candidates) do
+      if candidate and candidate ~= "" and is_executable(candidate) then
+        return candidate
+      end
+    end
+    for _, candidate in ipairs(candidates) do
+      if candidate and candidate ~= "" then
+        local file = io.open(candidate, "r")
+        if file then
+          file:close()
+          return string.format("bash %q", candidate)
+        end
+      end
+    end
+    return nil
+  end
+
+  local menu_action_cmd = resolve_menu_action_command()
 
   local function appearance_action(color, blur)
     local args = {}
@@ -77,12 +117,12 @@ function menu_renderer.create(ctx)
     if not action or action == "" then
       return ""
     end
-    if ctx.scripts and ctx.scripts.menu_action then
+    if menu_action_cmd then
       local target_popup = popup_name
       return string.format(
         "MENU_ACTION_CMD=%q %s %q %q",
         action,
-        ctx.scripts.menu_action,
+        menu_action_cmd,
         entry.name or "",
         target_popup or ""
       )

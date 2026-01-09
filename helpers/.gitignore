@@ -1,4 +1,17 @@
 bin
+clock_widget
+system_info_widget
+space_manager
+submenu_hover
+popup_anchor
+popup_hover
+popup_manager
+popup_guard
+menu_action
+icon_manager
+state_manager
+widget_manager
+menu_renderer
 
 # v2.0 Refactor - Temporary and backup files
 fix_icons.lua

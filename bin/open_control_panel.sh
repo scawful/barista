@@ -15,6 +15,7 @@ APP_MACOS="$APP_CONTENTS/MacOS"
 APP_INFO="$APP_CONTENTS/Info.plist"
 APP_EXEC="config_menu"
 STATE_FILE="$CONFIG_DIR/state.json"
+DOC_FALLBACK="$CONFIG_DIR/docs/guides/TUI_CONFIGURATION.md"
 
 CONTROL_PREF="${BARISTA_CONTROL_PANEL:-${BARISTA_CONTROL_PANEL_MODE:-}}"
 CUSTOM_COMMAND="${BARISTA_CONTROL_PANEL_CMD:-}"
@@ -34,6 +35,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --imgui)
       CONTROL_PREF="imgui"
+      ;;
+    --tui|--cli)
+      CONTROL_PREF="tui"
       ;;
     --custom)
       CONTROL_PREF="custom"
@@ -118,6 +122,41 @@ launch_imgui_panel() {
   return 0
 }
 
+launch_tui_panel() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 1
+  fi
+
+  local tui_cmd=""
+  if command -v barista >/dev/null 2>&1; then
+    tui_cmd="$(command -v barista)"
+  elif [[ -x "$CONFIG_DIR/bin/barista" ]]; then
+    tui_cmd="$CONFIG_DIR/bin/barista"
+  elif [[ -x "$SOURCE_DIR/bin/barista" ]]; then
+    tui_cmd="$SOURCE_DIR/bin/barista"
+  fi
+
+  if [[ -z "$tui_cmd" ]]; then
+    return 1
+  fi
+
+  echo "[barista] Launching TUI control panel ($tui_cmd)"
+  nohup "$tui_cmd" >"$LOG_FILE" 2>&1 &
+  disown
+  return 0
+}
+
+launch_manual_fallback() {
+  echo "[barista] Falling back to manual config edit" >&2
+  if command -v open >/dev/null 2>&1; then
+    [[ -f "$STATE_FILE" ]] && open "$STATE_FILE" >/dev/null 2>&1 || true
+    [[ -f "$DOC_FALLBACK" ]] && open "$DOC_FALLBACK" >/dev/null 2>&1 || true
+  else
+    echo "Edit state.json: $STATE_FILE" >&2
+    echo "Docs: $DOC_FALLBACK" >&2
+  fi
+}
+
 if [[ "$CONTROL_PREF" == "custom" ]]; then
   if launch_custom_panel; then
     exit 0
@@ -132,6 +171,21 @@ if [[ "$CONTROL_PREF" == "imgui" ]]; then
   fi
   echo "[barista] ImGui control panel not found; falling back to native" >&2
   CONTROL_PREF="native"
+fi
+
+if [[ "$CONTROL_PREF" == "tui" ]]; then
+  if launch_tui_panel; then
+    exit 0
+  fi
+  echo "[barista] TUI control panel unavailable; falling back to native" >&2
+  CONTROL_PREF="native"
+fi
+
+# Prefer TUI on systems without build tooling or when explicitly requested.
+if [[ "${BARISTA_TUI_ONLY:-0}" == "1" || "${BARISTA_LUA_ONLY:-0}" == "1" || "${BARISTA_NO_CMAKE:-0}" == "1" ]]; then
+  if launch_tui_panel; then
+    exit 0
+  fi
 fi
 
 # Use installed binary
@@ -153,10 +207,18 @@ if [[ ! -x "$PANEL_BIN" ]]; then
       ./rebuild_gui.sh 2>&1 | tail -5
     else
       echo "[barista] CMake not found. Install with: brew install cmake" >&2
+      if launch_tui_panel; then
+        exit 0
+      fi
+      launch_manual_fallback
       exit 1
     fi
   else
     echo "[barista] GUI sources not found at $GUI_DIR" >&2
+    if launch_tui_panel; then
+      exit 0
+    fi
+    launch_manual_fallback
     exit 1
   fi
 fi

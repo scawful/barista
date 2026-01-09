@@ -13,6 +13,38 @@ cd ~/src/lab/barista
 barista
 ```
 
+## CLI Fallbacks (No GUI Build)
+
+If you can’t build the native GUI on a machine, you can still update `state.json` using the TUI or the CLI scripts.
+
+### TUI (preferred)
+
+```bash
+bin/open_control_panel.sh --tui
+# Or force the fallback:
+export BARISTA_TUI_ONLY=1
+```
+
+### CLI scripts (Python/Lua)
+
+`scripts/runtime_update.sh` uses Python when available and falls back to Lua.
+
+```bash
+./scripts/runtime_update.sh bar-color "0xC021162F" 45
+./scripts/runtime_update.sh widget-toggle battery off
+
+# Lua directly (if you prefer)
+lua ./scripts/runtime_update.lua bar-height 32
+```
+
+### Manual edit
+
+Open `~/.config/sketchybar/state.json` in any editor and reload:
+
+```bash
+sketchybar --reload
+```
+
 ## Requirements
 
 - Python 3.9+

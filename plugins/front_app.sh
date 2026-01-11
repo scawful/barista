@@ -2,11 +2,12 @@
 # OPTIMIZED: Avoid expensive osascript, use yabai if available
 # Updated: Show app name only (icon shown in space widget instead)
 
+PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
 export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 export LANG="${LANG:-en_US.UTF-8}"
 
 SPACE_SCRIPT="$HOME/.config/sketchybar/plugins/space.sh"
-APP_NAME="$INFO"
+APP_NAME="${INFO:-}"
 
 # Barista's own binaries to filter out
 BARISTA_APPS="config_menu_v2|help_center|icon_browser|sketchybar"
@@ -17,7 +18,7 @@ if [ "${SENDER:-}" = "mouse.exited.global" ]; then
 fi
 
 # OPTIMIZED: Use yabai (faster) instead of osascript when INFO not available
-if [ -z "$APP_NAME" ] && [ "$SENDER" != "front_app_switched" ]; then
+if [ -z "$APP_NAME" ]; then
   if command -v yabai >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     APP_NAME=$(yabai -m query --windows --window 2>/dev/null | jq -r '.app // empty' 2>/dev/null)
   fi
@@ -40,7 +41,7 @@ esac
 
 # Show app name only - icon is shown in the space widget
 sketchybar --set "$NAME" icon.drawing=off label="$APP_NAME"
-sketchybar --set front_app.menu.header label="App Controls · $APP_NAME" >/dev/null 2>&1 || true
+sketchybar --set front_app.header label="App Controls · $APP_NAME" >/dev/null 2>&1 || true
 
 # Trigger space update so it shows the app icon
 sketchybar --trigger space_change >/dev/null 2>&1 || true

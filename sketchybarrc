@@ -2,7 +2,7 @@
 
 -- Ensure we can resolve modules when launched by launchd (cwd may not be CONFIG_DIR)
 local HOME = os.getenv("HOME")
-local CONFIG_DIR = HOME .. "/.config/sketchybar"
+local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
 local lua_cpath = os.getenv("SKETCHYBAR_LUA_CPATH") or (HOME .. "/.local/share/sketchybar_lua/?.so")
 
 package.cpath = package.cpath .. ";" .. lua_cpath

@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
+
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
 STATE_FILE="$CONFIG_DIR/state.json"
 SCRIPTS_DIR="${SCRIPTS_DIR:-${BARISTA_SCRIPTS_DIR:-}}"
@@ -65,5 +67,12 @@ fi
 "$CONFIG_DIR/plugins/simple_spaces.sh"
 
 if [ -x "$SCRIPTS_DIR/update_external_bar.sh" ]; then
-  "$SCRIPTS_DIR/update_external_bar.sh" "${1:-}"
+  bar_height="${1:-}"
+  if [ -z "$bar_height" ] && command -v jq >/dev/null 2>&1 && [ -f "$STATE_FILE" ]; then
+    bar_height=$(jq -r '.appearance.bar_height // empty' "$STATE_FILE" 2>/dev/null || true)
+  fi
+  if [ -z "$bar_height" ] || [ "$bar_height" = "null" ]; then
+    bar_height=28
+  fi
+  "$SCRIPTS_DIR/update_external_bar.sh" "$bar_height"
 fi

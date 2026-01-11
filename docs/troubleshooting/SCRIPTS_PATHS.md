@@ -46,3 +46,29 @@
 - Use Control Panel → Debug to run Yabai Doctor or restart shortcuts.
 - skhd requires `.load "/Users/<user>/.config/skhd/barista_shortcuts.conf"` with double quotes.
 - skhd parse errors are logged in `/tmp/skhd_<user>.err.log`.
+
+## Dotfiles Wrapper Pattern (Recommended)
+
+Symlinking `~/.skhdrc` or `~/.yabairc` to dotfiles paths is brittle when repo paths move.
+Use a local wrapper file that `.load`s or `source`s your dotfiles instead.
+
+### skhd wrapper
+
+```
+# ~/.config/skhd/skhdrc
+.load "/Users/<user>/.config/skhd/barista_shortcuts.conf"
+.load "/Users/<user>/src/config/dotfiles/.config/skhd/skhdrc"
+```
+
+### yabai wrapper
+
+```
+# ~/.config/yabai/yabairc
+#!/usr/bin/env sh
+DOTFILES="$HOME/src/config/dotfiles/.config/yabai/yabairc"
+if [ -f "$DOTFILES" ]; then
+  . "$DOTFILES"
+fi
+```
+
+Keep `~/.skhdrc` and `~/.yabairc` as symlinks to the local wrapper files, not to dotfiles.

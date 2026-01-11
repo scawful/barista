@@ -40,6 +40,12 @@ if ! command -v yabai >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
+space_item_exists() {
+  local space="${1:-}"
+  [ -n "$space" ] || return 1
+  sketchybar --query "space.$space" >/dev/null 2>&1
+}
+
 windows_json="$(yabai -m query --windows 2>/dev/null || echo "")"
 if [ -z "$windows_json" ]; then
   exit 0
@@ -68,6 +74,8 @@ printf '%s' "$windows_json" | jq -r '
   fi
   if [ -n "$icon" ]; then
     printf '%s' "$icon" > "$ICON_CACHE_DIR/$space" 2>/dev/null || true
-    sketchybar --set "space.$space" icon="$icon" >/dev/null 2>&1 || true
+    if space_item_exists "$space"; then
+      sketchybar --set "space.$space" icon="$icon" >/dev/null 2>&1 || true
+    fi
   fi
 done

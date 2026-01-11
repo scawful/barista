@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -93,10 +96,22 @@ install_config() {
   mkdir -p "$INSTALL_DIR"
 
   # Clone or copy files
-  if [ -d "$(dirname "$0")" ] && [ -f "$(dirname "$0")/main.lua" ]; then
+  local source_dir=""
+  if [ -f "$ROOT_DIR/main.lua" ]; then
+    source_dir="$ROOT_DIR"
+  elif [ -f "$(dirname "$0")/main.lua" ]; then
+    source_dir="$(dirname "$0")"
+  fi
+
+  if [ -n "$source_dir" ]; then
     # Installing from local directory
     echo_info "Copying files from local directory..."
-    cp -R "$(dirname "$0")"/* "$INSTALL_DIR/"
+    rsync -a \
+      --exclude ".git" \
+      --exclude "build" \
+      --exclude "cache" \
+      --exclude ".DS_Store" \
+      "$source_dir/" "$INSTALL_DIR/"
   else
     # Clone from GitHub
     echo_info "Cloning from GitHub..."

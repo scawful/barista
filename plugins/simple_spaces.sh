@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
+
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
 FOCUS_SCRIPT="$CONFIG_DIR/plugins/focus_space.sh"
 ICON_CACHE_DIR="$CONFIG_DIR/cache/space_icons"

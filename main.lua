@@ -229,8 +229,45 @@ local function font_string(family, style, size)
   return string.format("%s:%s:%0.1f", family, style, size)
 end
 
+local function resolve_sketchybar_bin()
+  local env_bin = os.getenv("SKETCHYBAR_BIN")
+  if env_bin and env_bin ~= "" then
+    return env_bin
+  end
+  local handle = io.popen("command -v sketchybar 2>/dev/null")
+  if handle then
+    local result = handle:read("*a") or ""
+    handle:close()
+    result = result:gsub("%s+$", "")
+    if result ~= "" then
+      return result
+    end
+  end
+  local candidates = {
+    "/opt/homebrew/opt/sketchybar/bin/sketchybar",
+    "/opt/homebrew/bin/sketchybar",
+    "/usr/local/opt/sketchybar/bin/sketchybar",
+    "/usr/local/bin/sketchybar",
+  }
+  for _, candidate in ipairs(candidates) do
+    local file = io.open(candidate, "r")
+    if file then
+      file:close()
+      return candidate
+    end
+  end
+  return "sketchybar"
+end
+
+local SKETCHYBAR_BIN = resolve_sketchybar_bin()
+
 local function shell_exec(cmd)
-  sbar.exec(string.format("bash -lc %q", cmd))
+  local base_path = "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin"
+  local env_path = os.getenv("PATH")
+  if env_path and env_path ~= "" then
+    base_path = base_path .. ":" .. env_path
+  end
+  sbar.exec(string.format("env PATH=%q bash -lc %q", base_path, cmd))
 end
 
 local function open_path(path)
@@ -419,7 +456,7 @@ end
 
 local function watch_spaces()
   local refresh_action = string.format("CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR)
-  local change_action = "sketchybar --trigger space_change; sketchybar --trigger space_mode_refresh"
+  local change_action = string.format("%s --trigger space_change; %s --trigger space_mode_refresh", SKETCHYBAR_BIN, SKETCHYBAR_BIN)
   
   -- Batch signal removal commands
   local remove_cmds = {

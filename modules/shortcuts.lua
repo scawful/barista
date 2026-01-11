@@ -590,13 +590,6 @@ shortcuts.global = {
   },
   {
     mods = {"cmd", "alt"},
-    key = "l",
-    action = "launch_afs_labeler",
-    desc = "Launch AFS Labeler",
-    symbol = "⌘⌥L"
-  },
-  {
-    mods = {"cmd", "alt"},
     key = "f",
     action = "launch_stemforge",
     desc = "Launch StemForge",
@@ -711,8 +704,8 @@ shortcuts.actions = {
   window_display_prev = SCRIPTS_DIR .. "/yabai_control.sh window-display-prev",
 
   -- Space Navigation
-  space_prev = SCRIPTS_DIR .. "/yabai_control.sh space-prev",
-  space_next = SCRIPTS_DIR .. "/yabai_control.sh space-next",
+  space_prev = SCRIPTS_DIR .. "/yabai_control.sh space-focus-prev-wrap",
+  space_next = SCRIPTS_DIR .. "/yabai_control.sh space-focus-next-wrap",
   space_recent = SCRIPTS_DIR .. "/yabai_control.sh space-recent",
 
   -- Space Movement

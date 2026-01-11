@@ -17,8 +17,7 @@
       "section": "AFS Tools",
       "items": [
         { "keys": "⌘⌥B", "description": "Launch AFS Browser" },
-        { "keys": "⌘⌥S", "description": "Launch AFS Studio" },
-        { "keys": "⌘⌥L", "description": "Launch AFS Labeler" }
+        { "keys": "⌘⌥S", "description": "Launch AFS Studio" }
       ]
     },
     {

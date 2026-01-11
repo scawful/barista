@@ -12,10 +12,15 @@ APP_NAME="${INFO:-}"
 # Barista's own binaries to filter out
 BARISTA_APPS="config_menu_v2|help_center|icon_browser|sketchybar"
 
-if [ "${SENDER:-}" = "mouse.exited.global" ]; then
-  sketchybar --set "$NAME" popup.drawing=off
-  exit 0
-fi
+case "${SENDER:-}" in
+  mouse.exited.global)
+    sketchybar --set "$NAME" popup.drawing=off
+    exit 0
+    ;;
+  mouse.entered|mouse.exited)
+    exit 0
+    ;;
+esac
 
 # OPTIMIZED: Use yabai (faster) instead of osascript when INFO not available
 if [ -z "$APP_NAME" ]; then

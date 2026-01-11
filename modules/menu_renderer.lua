@@ -25,6 +25,8 @@ function menu_renderer.create(ctx)
   local widget_height = ctx.widget_height
   local attach_hover = ctx.attach_hover
   local shell_exec = ctx.shell_exec
+  local sketchybar_bin = ctx.sketchybar_bin or "sketchybar"
+  local post_config_delay = ctx.post_config_delay or 1.0
   local config_dir = ctx.paths and ctx.paths.config_dir or nil
 
   local function is_executable(path)
@@ -270,7 +272,7 @@ function menu_renderer.create(ctx)
         }
       }
     })
-    shell_exec(string.format("sketchybar --subscribe %s mouse.entered mouse.exited mouse.exited.global", parent))
+    shell_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited mouse.exited.global", post_config_delay, sketchybar_bin, parent))
     renderer(parent, entry.items or {})
   end
 

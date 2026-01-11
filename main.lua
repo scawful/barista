@@ -260,6 +260,7 @@ local function resolve_sketchybar_bin()
 end
 
 local SKETCHYBAR_BIN = resolve_sketchybar_bin()
+local POST_CONFIG_DELAY = 1.0
 
 local function resolve_yabai_bin()
   local env_bin = os.getenv("YABAI_BIN")
@@ -291,13 +292,24 @@ end
 
 local YABAI_BIN = resolve_yabai_bin()
 
+local function shell_quote(value)
+  return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
+end
+
 local function shell_exec(cmd)
   local base_path = "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin"
   local env_path = os.getenv("PATH")
   if env_path and env_path ~= "" then
     base_path = base_path .. ":" .. env_path
   end
-  sbar.exec(string.format("env PATH=%q bash -lc %q", base_path, cmd))
+  sbar.exec(string.format("env PATH=%s bash -lc %s", shell_quote(base_path), shell_quote(cmd)))
+end
+
+local function sketchybar_cli(cmd)
+  if not cmd or cmd == "" then
+    return
+  end
+  shell_exec(string.format("%s %s", SKETCHYBAR_BIN, cmd))
 end
 
 local function open_path(path)
@@ -387,13 +399,13 @@ end
 
 local function attach_hover(name)
   -- Hover script is now integrated into the widgets' own scripts for better performance
-  -- Small delay avoids "item not found" when subscribing right after creation
-  shell_exec(string.format("sleep 0.1; sketchybar --subscribe %s mouse.entered mouse.exited", name))
+  -- Delay avoids "item not found" during initial config batch
+  shell_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name))
 end
 
 local function subscribe_popup_autoclose(name)
-  -- OPTIMIZED: Reduced delay from 0.4s to 0.1s (item creation is fast)
-  local cmd = string.format("sleep 0.1; sketchybar --subscribe %s mouse.entered mouse.exited mouse.exited.global", name)
+  -- Delay avoids "item not found" during initial config batch
+  local cmd = string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited mouse.exited.global", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name)
   shell_exec(cmd)
 end
 
@@ -641,6 +653,8 @@ local menu_context = {
   open_url = open_url,
   icon_for = icon_for,
   associated_displays = associated_displays,
+  sketchybar_bin = SKETCHYBAR_BIN,
+  post_config_delay = POST_CONFIG_DELAY,
   paths = paths,
   scripts = scripts,
   helpers = helpers,
@@ -652,8 +666,8 @@ local menu_context = {
 
 -- Begin configuration
 sbar.begin_config()
-sbar.exec("sketchybar --add event space_change >/dev/null 2>&1 || true")
-sbar.exec("sketchybar --add event space_mode_refresh >/dev/null 2>&1 || true")
+sketchybar_cli("--add event space_change >/dev/null 2>&1 || true")
+sketchybar_cli("--add event space_mode_refresh >/dev/null 2>&1 || true")
 
 -- Global popup manager (invisible item that handles popup dismissal)
 sbar.add("item", "popup_manager", {
@@ -662,7 +676,7 @@ sbar.add("item", "popup_manager", {
   script = POPUP_MANAGER_SCRIPT,
 })
 -- OPTIMIZED: Reduced delay from 0.3s; small delay avoids startup "item not found" noise
-sbar.exec("sleep 0.2; sketchybar --subscribe popup_manager space_change display_changed display_added display_removed system_woke front_app_switched")
+shell_exec(string.format("sleep %.1f; %s --subscribe popup_manager space_change display_changed display_added display_removed system_woke front_app_switched", POST_CONFIG_DELAY, SKETCHYBAR_BIN))
 
 -- Bar configuration
 sbar.bar({
@@ -716,18 +730,16 @@ local function init_spaces()
   -- OPTIMIZED: Reduced wait loop iterations and delay (was 20 x 0.5s = 10s max, now 10 x 0.2s = 2s max)
   -- Also removed debug logging to /tmp
   local yabai_bin = YABAI_BIN or "yabai"
-  local wait_cmd = string.format([[
-    path_to_yabai=%q
-    sketchybar_bin=%q
-    i=0
-    while [ $i -lt 10 ]; do
-      "$path_to_yabai" -m query --spaces >/dev/null 2>&1 && break
-      sleep 0.2
-      i=$((i+1))
-    done
-    "$sketchybar_bin" --trigger space_change
-    "$sketchybar_bin" --trigger space_mode_refresh
-  ]], yabai_bin, SKETCHYBAR_BIN)
+  local wait_cmd = string.format(
+    "path_to_yabai=%q; sketchybar_bin=%q; i=0; while [ $i -lt 10 ]; do " ..
+      "\"$path_to_yabai\" -m query --spaces >/dev/null 2>&1 && break; " ..
+      "sleep 0.2; i=$((i+1)); " ..
+    "done; " ..
+    "\"$sketchybar_bin\" --trigger space_change; " ..
+    "\"$sketchybar_bin\" --trigger space_mode_refresh",
+    yabai_bin,
+    SKETCHYBAR_BIN
+  )
 
   shell_exec(wait_cmd)
 
@@ -765,10 +777,10 @@ sbar.add("item", "front_app", {
   }
 })
 -- OPTIMIZED: Reduced delay from 0.3s to 0.1s
-sbar.exec("sleep 0.2; sketchybar --subscribe front_app front_app_switched")
+shell_exec(string.format("sleep %.1f; %s --subscribe front_app front_app_switched", POST_CONFIG_DELAY, SKETCHYBAR_BIN))
 subscribe_popup_autoclose("front_app")
 attach_hover("front_app")
-sbar.exec("sleep 0.1; sketchybar --set front_app associated_display=active associated_space=all")
+shell_exec(string.format("sleep %.1f; %s --set front_app associated_display=active associated_space=all", POST_CONFIG_DELAY, SKETCHYBAR_BIN))
 
 local function add_front_app_popup_item(id, props)
   local defaults = {
@@ -886,8 +898,8 @@ refresh_spaces()
 if yabai_available() then
   watch_spaces()
 end
-shell_exec("sketchybar --trigger space_change")
-shell_exec("sketchybar --trigger space_mode_refresh")
+shell_exec(string.format("%s --trigger space_change", SKETCHYBAR_BIN))
+shell_exec(string.format("%s --trigger space_mode_refresh", SKETCHYBAR_BIN))
 shell_exec(string.format("sleep 1.2; CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR))
 
 -- Create widget factory
@@ -912,7 +924,7 @@ if control_center_module then
   sbar.add("item", control_center_item_name, cc_widget)
 
   -- Position before front_app (delay to ensure front_app exists)
-  sbar.exec("sleep 0.3; sketchybar --move control_center before front_app 2>/dev/null || true")
+  shell_exec(string.format("sleep %.1f; %s --move control_center before front_app 2>/dev/null || true", POST_CONFIG_DELAY, SKETCHYBAR_BIN))
 
   -- Prime the widget immediately
   if cc_widget.script and cc_widget.script ~= "" then
@@ -928,10 +940,10 @@ if control_center_module then
   end
 
   -- Subscribe to relevant events (includes space_mode_refresh for layout changes)
-  sbar.exec("sleep 0.1; sketchybar --subscribe control_center mouse.entered mouse.exited space_change space_mode_refresh system_woke")
+  shell_exec(string.format("sleep %.1f; %s --subscribe control_center mouse.entered mouse.exited space_change space_mode_refresh system_woke", POST_CONFIG_DELAY, SKETCHYBAR_BIN))
   subscribe_popup_autoclose("control_center")
   attach_hover("control_center")
-  sbar.exec("sleep 0.1; sketchybar --set control_center associated_display=active associated_space=all")
+  shell_exec(string.format("sleep %.1f; %s --set control_center associated_display=active associated_space=all", POST_CONFIG_DELAY, SKETCHYBAR_BIN))
 
   -- Visual grouping: Control Center & Front App on left
   sbar.add("bracket", { "control_center", "front_app" }, {
@@ -1145,7 +1157,7 @@ widget_factory.create_volume({
     }
   }
 })
-sbar.exec("sleep 0.1; sketchybar --subscribe volume volume_change")
+shell_exec(string.format("sleep %.1f; %s --subscribe volume volume_change", POST_CONFIG_DELAY, SKETCHYBAR_BIN))
 subscribe_popup_autoclose("volume")
 attach_hover("volume")
 
@@ -1200,7 +1212,7 @@ widget_factory.create_battery({
   script = battery_env .. PLUGIN_DIR .. "/battery.sh '" .. theme.GREEN .. "' '" .. theme.YELLOW .. "' '" .. theme.RED .. "' '" .. theme.BLUE .. "'",
   update_freq = 120,
 })
-sbar.exec("sketchybar --subscribe battery system_woke power_source_change")
+shell_exec(string.format("sleep %.1f; %s --subscribe battery system_woke power_source_change", POST_CONFIG_DELAY, SKETCHYBAR_BIN))
 attach_hover("battery")
 
 -- Visual grouping: Volume & Battery
@@ -1215,7 +1227,7 @@ sbar.add("bracket", { "volume", "battery" }, {
 })
 
 -- Trigger initial updates for reactive widgets (batched for performance)
-sbar.exec("sketchybar --trigger volume_change && sketchybar --update volume && sketchybar --update battery")
+shell_exec(string.format("%s --trigger volume_change && %s --update volume && %s --update battery", SKETCHYBAR_BIN, SKETCHYBAR_BIN, SKETCHYBAR_BIN))
 
 -- End configuration
 sbar.end_config()

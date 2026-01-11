@@ -261,6 +261,36 @@ end
 
 local SKETCHYBAR_BIN = resolve_sketchybar_bin()
 
+local function resolve_yabai_bin()
+  local env_bin = os.getenv("YABAI_BIN")
+  if env_bin and env_bin ~= "" then
+    return env_bin
+  end
+  local handle = io.popen("command -v yabai 2>/dev/null")
+  if handle then
+    local result = handle:read("*a") or ""
+    handle:close()
+    result = result:gsub("%s+$", "")
+    if result ~= "" then
+      return result
+    end
+  end
+  local candidates = {
+    "/opt/homebrew/bin/yabai",
+    "/usr/local/bin/yabai",
+  }
+  for _, candidate in ipairs(candidates) do
+    local file = io.open(candidate, "r")
+    if file then
+      file:close()
+      return candidate
+    end
+  end
+  return nil
+end
+
+local YABAI_BIN = resolve_yabai_bin()
+
 local function shell_exec(cmd)
   local base_path = "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin"
   local env_path = os.getenv("PATH")
@@ -298,14 +328,10 @@ end
 local yabai_available_cache = nil
 local function yabai_available()
   if yabai_available_cache == nil then
-    local handle = io.popen("command -v yabai >/dev/null 2>&1 && echo 1 || echo 0")
-    if not handle then 
-      yabai_available_cache = false
-      return false 
+    if not YABAI_BIN or YABAI_BIN == "" then
+      YABAI_BIN = resolve_yabai_bin()
     end
-    local result = handle:read("*a")
-    handle:close()
-    yabai_available_cache = result and result:match("1")
+    yabai_available_cache = (YABAI_BIN ~= nil and YABAI_BIN ~= "")
   end
   return yabai_available_cache
 end
@@ -419,13 +445,13 @@ local function get_associated_displays()
     return table.concat(targets, ",")
   end
 
-  local list = read_display_list([[sketchybar --query displays 2>/dev/null | jq -r '.[]."arrangement-id"']])
+  local list = read_display_list(string.format([[ %s --query displays 2>/dev/null | jq -r '.[]."arrangement-id"' ]], SKETCHYBAR_BIN))
   if list then
     return list
   end
 
-  if yabai_available() then
-    list = read_display_list([[yabai -m query --displays 2>/dev/null | jq -r '.[].index']])
+  if yabai_available() and YABAI_BIN then
+    list = read_display_list(string.format([[ %s -m query --displays 2>/dev/null | jq -r '.[].index' ]], YABAI_BIN))
     if list then
       return list
     end
@@ -689,19 +715,21 @@ menu_module.render_all_menus(menu_context)
 local function init_spaces()
   -- OPTIMIZED: Reduced wait loop iterations and delay (was 20 x 0.5s = 10s max, now 10 x 0.2s = 2s max)
   -- Also removed debug logging to /tmp
-  local wait_cmd = [[
-    path_to_yabai=$(which yabai)
+  local yabai_bin = YABAI_BIN or "yabai"
+  local wait_cmd = string.format([[
+    path_to_yabai=%q
+    sketchybar_bin=%q
     i=0
     while [ $i -lt 10 ]; do
       "$path_to_yabai" -m query --spaces >/dev/null 2>&1 && break
       sleep 0.2
       i=$((i+1))
     done
-    sketchybar --trigger space_change
-    sketchybar --trigger space_mode_refresh
-  ]]
+    "$sketchybar_bin" --trigger space_change
+    "$sketchybar_bin" --trigger space_mode_refresh
+  ]], yabai_bin, SKETCHYBAR_BIN)
 
-  sbar.exec(wait_cmd)
+  shell_exec(wait_cmd)
 
   -- Setup signals (these don't need to wait, they just listen)
   if yabai_available() then

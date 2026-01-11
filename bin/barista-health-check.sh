@@ -89,6 +89,29 @@ echo "3. Checking launch agent plist..."
 PLIST="$HOME/Library/LaunchAgents/${SKETCHYBAR_LABEL}.plist"
 if [ -f "$PLIST" ]; then
     print_status "OK" "Plist exists: $PLIST"
+    WRAPPER_PATH="$CONFIG_DIR/bin/sketchybar_wrapper.sh"
+    if [ -x "$WRAPPER_PATH" ]; then
+        PLIST_BUDDY="/usr/libexec/PlistBuddy"
+        if [ -x "$PLIST_BUDDY" ]; then
+            PROGRAM_ARG="$($PLIST_BUDDY -c 'Print :ProgramArguments:0' "$PLIST" 2>/dev/null || true)"
+            if [ -n "$PROGRAM_ARG" ]; then
+                if [ "$PROGRAM_ARG" = "$WRAPPER_PATH" ]; then
+                    print_status "OK" "Launch agent uses Barista wrapper"
+                else
+                    print_status "WARN" "Launch agent not using wrapper: $PROGRAM_ARG"
+                    echo "   Fix: $CONFIG_DIR/bin/fix_sketchybar_agent.sh"
+                fi
+            else
+                print_status "WARN" "Launch agent ProgramArguments missing"
+                echo "   Fix: $CONFIG_DIR/bin/fix_sketchybar_agent.sh"
+            fi
+        else
+            print_status "WARN" "PlistBuddy not available; cannot verify ProgramArguments"
+        fi
+    else
+        print_status "WARN" "Wrapper missing or not executable: $WRAPPER_PATH"
+        echo "   Fix: ./scripts/deploy.sh"
+    fi
 else
     print_status "WARN" "Plist not found: $PLIST"
     echo "   SketchyBar may be managed by Homebrew services instead"

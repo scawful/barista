@@ -1,0 +1,95 @@
+# =============================================================================
+# skhd configuration - scawful
+# =============================================================================
+# Keybinding reference:
+#   Ctrl + Arrow        = Focus space (wraps within display)
+#   Ctrl + Shift + Arrow = Move window to space (wraps)
+#   Ctrl + Alt + Arrow  = Focus display
+#   Ctrl + Alt + Shift + Arrow = Move window to display
+#   Alt + HJKL          = Focus window (vim-style)
+#   Alt + Shift + HJKL  = Swap window (vim-style)
+#   Ctrl + Alt + B/F/S  = Set layout (bsp/float/stack)
+#   Ctrl + Alt + T      = Toggle always-on-top
+#   Cmd + `             = New iTerm window
+#   Alt + Space         = Enter leader mode
+# =============================================================================
+
+# --- Quick Terminal (Cmd + `) ---
+cmd - 0x32 : open -a iTerm
+
+# --- Space Navigation (wraps within display) ---
+ctrl - left  : ~/.config/sketchybar/scripts/yabai_control.sh space-focus-prev-wrap
+ctrl - right : ~/.config/sketchybar/scripts/yabai_control.sh space-focus-next-wrap
+
+# --- Move Window to Space (wraps within display) ---
+ctrl + shift - left  : ~/.config/sketchybar/scripts/yabai_control.sh window-space-prev-wrap
+ctrl + shift - right : ~/.config/sketchybar/scripts/yabai_control.sh window-space-next-wrap
+
+# --- Display Navigation ---
+ctrl + alt - left  : yabai -m display --focus prev || yabai -m display --focus last
+ctrl + alt - right : yabai -m display --focus next || yabai -m display --focus first
+
+# --- Move Window to Display ---
+ctrl + alt + shift - left  : ~/.config/sketchybar/scripts/yabai_control.sh window-display-prev
+ctrl + alt + shift - right : ~/.config/sketchybar/scripts/yabai_control.sh window-display-next
+
+# --- Window Focus (vim-style) ---
+alt - h : yabai -m window --focus west  || yabai -m display --focus west
+alt - j : yabai -m window --focus south || yabai -m display --focus south
+alt - k : yabai -m window --focus north || yabai -m display --focus north
+alt - l : yabai -m window --focus east  || yabai -m display --focus east
+
+# --- Window Swap (vim-style) ---
+alt + shift - h : yabai -m window --swap west
+alt + shift - j : yabai -m window --swap south
+alt + shift - k : yabai -m window --swap north
+alt + shift - l : yabai -m window --swap east
+
+# --- Layout Switching ---
+ctrl + alt - b : ~/.config/sketchybar/scripts/yabai_control.sh space-layout bsp
+ctrl + alt - f : ~/.config/sketchybar/scripts/yabai_control.sh space-layout float
+ctrl + alt - s : ~/.config/sketchybar/scripts/yabai_control.sh space-layout stack
+
+# --- Window Management ---
+ctrl + alt - t : ~/.config/sketchybar/scripts/yabai_control.sh window-toggle-topmost
+ctrl + alt - return : ~/.config/sketchybar/scripts/yabai_control.sh window-toggle-fullscreen
+
+# --- SketchyBar ---
+ctrl + alt - r : sketchybar --reload
+
+# =============================================================================
+# Leader Mode (Alt + Space)
+# =============================================================================
+# Press Alt+Space to enter leader mode, then press a key for an action.
+# Press Escape to cancel without action.
+
+# Mode declaration with visual indicator
+:: leader @ : sketchybar --set space_mode label="LEADER" label.color=0xfff38ba8
+
+# Default mode - reset indicator when returning
+:: default : sketchybar --set space_mode label="" 2>/dev/null || true
+
+# Enter leader mode
+alt - space ; leader
+
+# Exit leader mode
+leader < escape ; default
+
+# --- Leader: Window Management ---
+leader < b : yabai -m space --balance ; skhd -k "escape"
+leader < r : yabai -m space --rotate 90 ; skhd -k "escape"
+leader < f : yabai -m window --toggle float ; skhd -k "escape"
+leader < m : yabai -m window --toggle zoom-fullscreen ; skhd -k "escape"
+leader < g : yabai -m space --toggle padding ; yabai -m space --toggle gap ; skhd -k "escape"
+leader < t : ~/.config/sketchybar/scripts/yabai_control.sh window-toggle-topmost ; skhd -k "escape"
+
+# --- Leader: System ---
+leader < q : ~/.config/sketchybar/scripts/yabai_control.sh restart ; skhd -k "escape"
+leader < return : open -a iTerm ; skhd -k "escape"
+leader < l : open -na iTerm --args -e "lazygit" ; skhd -k "escape"
+
+# --- Leader: Layout ---
+leader < 1 : ~/.config/sketchybar/scripts/yabai_control.sh space-layout bsp ; skhd -k "escape"
+leader < 2 : ~/.config/sketchybar/scripts/yabai_control.sh space-layout stack ; skhd -k "escape"
+leader < 3 : ~/.config/sketchybar/scripts/yabai_control.sh space-layout float ; skhd -k "escape"
+ctrl + alt - h : open -a Cortex

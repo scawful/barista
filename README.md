@@ -1,46 +1,81 @@
-# barista
+# Barista ☕️
 
-Local SketchyBar configuration plus helper tooling for a macOS menu bar setup. Experimental and workspace-specific.
+**The Cozy macOS Status Bar.**
 
-## Status
+Barista is a curated configuration for [SketchyBar](https://github.com/FelixKratz/SketchyBar) that balances aesthetics with power-user features. It is designed to be shared, easy to install, and configurable for different environments (Work vs. Home).
 
-- Experimental (hybrid C/Lua helpers + Lua config)
-- Not packaged for public distribution; use locally
+![Barista Preview](docs/assets/preview.png)
 
-## What Lives Here
+## Features
 
-- **Lua config:** `main.lua`, `modules/`, `profiles/`, `themes/`
-- **Helpers:** `scripts/` (deploy, rebuild, toggles)
-- **Optional C helpers:** build via CMake (`CMakeLists.txt`)
-- **TUI:** `tui/` configuration and helpers
+- **Dynamic Island**: Context-aware popups for volume, brightness, and music.
+- **Profiles**: Switch between "Work", "Personal", and "Cozy" modes instantly.
+- **Integrations**: Optional support for Yabai (tiling) and Skhd (hotkeys).
+- **Extensible**: Lua-based configuration system.
 
-## Quick Start (Local)
+## Quick Install
 
-```bash
-# Sync repo to ~/.config/sketchybar
-./scripts/deploy.sh
-
-# Rebuild optional helpers
-./scripts/rebuild.sh
-```
-
-For a fresh install on a new machine, see `docs/guides/INSTALLATION_GUIDE.md`.
-`./scripts/install.sh` is available but still references the GitHub repo; use it only if that flow is intentional.
-
-## Build (Optional Helpers)
+To install Barista and its dependencies:
 
 ```bash
-cmake -B build -S .
-cmake --build build
+# Clone the repo
+git clone https://github.com/scawful/barista.git ~/.local/share/barista
+
+# Run the installer
+~/.local/share/barista/scripts/install.sh
 ```
 
-## Docs
+The installer will guide you through:
+1. Installing dependencies (SketchyBar, Lua, Fonts).
+2. Choosing a **Profile** (see below).
+3. Configuring **Yabai/Skhd** (optional).
 
-- `docs/INDEX.md` - Documentation map
-- `docs/BUILD.md` - Build details
-- `docs/guides/QUICK_START.md` - Quick start walkthrough
-- `docs/guides/UPDATE_GUIDE.md` - Update procedures
+## Profiles
 
-## License
+| Profile | Description | Yabai | Vibe |
+| :--- | :--- | :--- | :--- |
+| **Minimal** | Clean, distraction-free. Good for new users. | Optional | ⚪️ Clean |
+| **Girlfriend** | Warm colors, larger text, simplified metrics. No scary tiling. | **Disabled** | 🧸 Cozy |
+| **Work** | High info density, meeting indicators, calendar integration. | Required | 💼 Pro |
+| **Personal** | The default dev setup. Code, media, and tiling. | Required | ⚡️ Fast |
 
-MIT (see `LICENSE`)
+## Window Management (Yabai)
+
+Barista includes optimized configurations for **Yabai** (window manager) and **Skhd** (hotkeys).
+The installer can automatically set these up for you.
+
+- **Enable**: Run installer and select "Window Manager Mode: Required".
+- **Disable**: Run `./scripts/set_mode.sh <profile> disabled`.
+
+## Customization
+
+### Switching Profiles
+```bash
+# Switch to Cozy mode
+./scripts/set_mode.sh girlfriend disabled
+
+# Switch to Work mode
+./scripts/set_mode.sh work required
+```
+
+### Configuration
+Edit `~/.config/sketchybar/state.json` to toggle specific widgets or change colors without touching Lua code.
+
+```json
+{
+  "profile": "minimal",
+  "widgets": {
+    "battery": true,
+    "wifi": false
+  }
+}
+```
+
+## Troubleshooting
+
+- **Bar not showing?** Run `sketchybar --reload`.
+- **Icons missing?** Ensure you installed the Nerd Fonts prompted by the installer.
+- **Yabai acting weird?** Check `System Settings > Privacy & Security > Accessibility`.
+
+---
+*Maintained by Scawful. Part of the Halext ecosystem.*

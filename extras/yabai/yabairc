@@ -1,0 +1,104 @@
+#!/usr/bin/env sh
+
+# Try to load scripting addition (requires sudoers NOPASSWD config for yabai)
+# Register Dock restart hook even if the initial load fails (Dock might not be ready yet).
+yabai -m signal --add label=load-sa event=dock_did_restart action="sudo /opt/homebrew/bin/yabai --load-sa" 2>/dev/null
+if sudo -n /opt/homebrew/bin/yabai --load-sa >/dev/null 2>&1; then
+  true
+else
+  echo "yabai: scripting addition failed to load (check sudoers)" >&2
+fi
+
+yabai -m config window_animation_duration 0.0
+yabai -m config window_animation_easing   ease_out_quint
+yabai -m config layout                    bsp
+yabai -m config auto_balance              off
+# window_topmost was removed in yabai 7.x; use window_shadow instead to keep floats unobtrusive
+yabai -m config window_shadow             off
+
+# --- Padding and Gaps (razor thin for maximum screen use) ---
+yabai -m config top_padding               2
+yabai -m config bottom_padding            2
+yabai -m config left_padding              2
+yabai -m config right_padding             2
+yabai -m config window_gap                2
+
+# --- Mouse Support ---
+yabai -m config mouse_modifier            fn
+yabai -m config mouse_action1             move
+yabai -m config mouse_action2             resize
+yabai -m config mouse_drop_action         swap
+
+# --- Split Behavior ---
+yabai -m config split_type                auto
+yabai -m config split_ratio               0.50
+
+# Reserve space for sketchybar (28px height matches bar_height in state.json)
+yabai -m config external_bar all:28:0
+
+# --- Tiling Rules ---
+# Manage (Tile) these apps explicitly if needed, but default is to tile everything unless excluded.
+# yabai -m rule --add app="^Code$" manage=on
+# yabai -m rule --add app="^Terminal$" manage=on
+
+# --- Floating Rules (manage=off) ---
+# System / Utilities
+yabai -m rule --add app="^(System Settings|System Information|Activity Monitor|Calculator|Dictionary|Software Update|Archive Utility)$" manage=off
+yabai -m rule --add app="^(Photo Booth|QuickTime Player|VLC)$" manage=off
+yabai -m rule --add app="^Finder$" manage=off
+yabai -m rule --add label="About This Mac" app="System Information" title="About This Mac" manage=off
+
+# Apps that behave better floating
+yabai -m rule --add app="^(Mesen|Mesen2.*)$" manage=off
+# yaze: manage=off to float, but NO sub-layer=above (was blocking other windows)
+yabai -m rule --add app="^Yaze$" manage=off
+yabai -m rule --add app="^oracle_manager_gui$" manage=off
+yabai -m rule --add app="^Alfred$" manage=off
+yabai -m rule --add app="^Raycast$" manage=off
+yabai -m rule --add app="^Taskwarrior$" manage=off
+yabai -m rule --add app="^Lazygit$" manage=off grid=10:10:1:1:8:8 title="lazygit"
+
+# Halext ImGui Tools (always float)
+yabai -m rule --add app="^barista_config$" manage=off
+yabai -m rule --add app="^Barista Config$" manage=off
+yabai -m rule --add app="^afs_studio$" manage=off
+yabai -m rule --add app="^AFS Studio$" manage=off
+yabai -m rule --add app="^afs-browser$" manage=off
+yabai -m rule --add app="^AFS Browser$" manage=off
+yabai -m rule --add app="^cortex$" manage=off
+yabai -m rule --add app="^Cortex$" manage=off
+yabai -m rule --add app="^sys_manual$" manage=off
+yabai -m rule --add app="^System Manual$" manage=off
+yabai -m rule --add app="^Picture View$" manage=off
+
+# Browser Popups
+yabai -m rule --add app="^Safari$" title="^(General|Tabs|Passwords|Preferences)$" manage=off
+yabai -m rule --add app="^Chrome$" title="^(Settings|Preferences)$" manage=off
+
+# Unmanaged Helper
+UNMANAGED_APPS_CONF="$HOME/.config/sketchybar/unmanaged_apps.conf"
+UNMANAGED_APPS_SCRIPT="$HOME/.config/scripts/update_unmanaged_apps.sh"
+
+# Apply additional unmanaged app rules from the config app if provided
+if [ -x "$UNMANAGED_APPS_SCRIPT" ]; then
+  "$UNMANAGED_APPS_SCRIPT" --from-yabairc >/dev/null 2>&1 &
+elif [ -r "$UNMANAGED_APPS_CONF" ]; then
+  while IFS= read -r unmanaged_app; do
+    unmanaged_app="${unmanaged_app#"${unmanaged_app%%[![:space:]]*}"}"
+    unmanaged_app="${unmanaged_app%"${unmanaged_app##*[![:space:]]}"}"
+    [ -z "$unmanaged_app" ] && continue
+    case "$unmanaged_app" in \#*) continue ;; esac
+    # ... (Keep existing parsing logic if simpler, or just rely on above rules) ...
+    label="${unmanaged_app//[^A-Za-z0-9]/_}"
+    [ -z "$label" ] && label="app"
+    # yabai -m rule --add label="unmanaged-${label}" app="^${escaped}$" manage=off
+  done < "$UNMANAGED_APPS_CONF"
+fi
+
+# --- Ensure BSP on all spaces ---
+# Set all 7 spaces to bsp layout on startup (adjust if you have more/fewer spaces)
+for sid in 1 2 3 4 5 6 7; do
+  yabai -m space "$sid" --layout bsp 2>/dev/null || true
+done
+
+echo "yabai: configuration loaded successfully"

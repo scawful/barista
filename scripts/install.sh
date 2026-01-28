@@ -162,42 +162,128 @@ build_components() {
 # Setup profile
 setup_profile() {
   echo ""
-  echo "Available profiles:"
-  echo "  1) minimal  - Clean, basic setup (recommended for new users)"
-  echo "  2) personal - Full featured with integrations"
-  echo "  3) work     - Work-focused setup"
-  echo "  4) custom   - Create your own from template"
-  echo ""
+  local profile_env="${BARISTA_PROFILE:-${BARISTA_INSTALL_PROFILE:-}}"
+  if [ -n "$profile_env" ]; then
+    SELECTED_PROFILE="$profile_env"
+    echo_info "Using profile from BARISTA_PROFILE: $SELECTED_PROFILE"
+  else
+    echo "Available profiles:"
+    echo "  1) minimal  - Clean, basic setup (recommended for new users)"
+    echo "  2) personal - Full featured with integrations"
+    echo "  3) work     - Work-focused setup"
+    echo "  4) girlfriend - Warm, cozy setup (friendlier defaults)"
+    echo "  5) custom   - Create your own from template"
+    echo ""
 
-  read -p "Select profile [1]: " profile_choice
-  profile_choice=${profile_choice:-1}
+    read -p "Select profile [1]: " profile_choice
+    profile_choice=${profile_choice:-1}
 
-  case $profile_choice in
-    1)
-      SELECTED_PROFILE="minimal"
-      ;;
-    2)
-      SELECTED_PROFILE="personal"
-      ;;
-    3)
-      SELECTED_PROFILE="work"
-      ;;
-    4)
-      read -p "Enter custom profile name: " custom_name
-      SELECTED_PROFILE="$custom_name"
+    case $profile_choice in
+      1)
+        SELECTED_PROFILE="minimal"
+        ;;
+      2)
+        SELECTED_PROFILE="personal"
+        ;;
+      3)
+        SELECTED_PROFILE="work"
+        ;;
+      4)
+        SELECTED_PROFILE="girlfriend"
+        ;;
+      5)
+        read -p "Enter custom profile name: " custom_name
+        SELECTED_PROFILE="$custom_name"
 
-      # Create from template
-      if [ ! -f "$INSTALL_DIR/profiles/$SELECTED_PROFILE.lua" ]; then
-        echo_info "Creating profile from minimal template..."
-        cp "$INSTALL_DIR/profiles/minimal.lua" "$INSTALL_DIR/profiles/$SELECTED_PROFILE.lua"
-        echo_info "Edit your profile at: $INSTALL_DIR/profiles/$SELECTED_PROFILE.lua"
+        # Create from template
+        if [ ! -f "$INSTALL_DIR/profiles/$SELECTED_PROFILE.lua" ]; then
+          echo_info "Creating profile from minimal template..."
+          cp "$INSTALL_DIR/profiles/minimal.lua" "$INSTALL_DIR/profiles/$SELECTED_PROFILE.lua"
+          echo_info "Edit your profile at: $INSTALL_DIR/profiles/$SELECTED_PROFILE.lua"
+        fi
+        ;;
+      *)
+        echo_warning "Invalid choice, using minimal profile"
+        SELECTED_PROFILE="minimal"
+        ;;
+    esac
+  fi
+
+  BAR_HEIGHT=32
+  CORNER_RADIUS=9
+  BAR_COLOR="0xC021162F"
+  BLUR_RADIUS=30
+  WIDGET_SCALE=1.0
+  POPUP_PADDING=8
+  POPUP_CORNER_RADIUS=6
+  POPUP_BORDER_WIDTH=2
+  POPUP_BORDER_COLOR="0x60cdd6f4"
+  HOVER_COLOR="0x40f5c2e7"
+  INTEGRATION_YAZE=false
+  INTEGRATION_EMACS=false
+  INTEGRATION_HALEXT=false
+
+  if [ "$SELECTED_PROFILE" = "girlfriend" ]; then
+    BAR_HEIGHT=32
+    CORNER_RADIUS=12
+    BAR_COLOR="0xE04A3426"
+    BLUR_RADIUS=26
+    WIDGET_SCALE=1.05
+    POPUP_PADDING=10
+    POPUP_CORNER_RADIUS=10
+    POPUP_BORDER_WIDTH=1
+    POPUP_BORDER_COLOR="0x40F5E6D3"
+    HOVER_COLOR="0x50F5E6D3"
+  fi
+
+  if [ "$SELECTED_PROFILE" = "personal" ]; then
+    INTEGRATION_YAZE=true
+    INTEGRATION_EMACS=true
+    INTEGRATION_HALEXT=false
+  elif [ "$SELECTED_PROFILE" = "work" ]; then
+    INTEGRATION_YAZE=false
+    INTEGRATION_EMACS=true
+    INTEGRATION_HALEXT=true
+  fi
+
+  local window_manager_mode="${BARISTA_WINDOW_MANAGER_MODE:-}"
+  if [ -z "$window_manager_mode" ]; then
+    case "$SELECTED_PROFILE" in
+      girlfriend)
+        window_manager_mode="disabled"
+        ;;
+      minimal)
+        window_manager_mode="optional"
+        ;;
+      personal|work)
+        window_manager_mode="required"
+        ;;
+      *)
+        window_manager_mode="auto"
+        ;;
+    esac
+
+    if [ -z "${BARISTA_INSTALL_NONINTERACTIVE:-}" ]; then
+      echo ""
+      echo "Window manager modes:"
+      echo "  auto     - Enable when yabai is installed"
+      echo "  optional - Only show when yabai is running"
+      echo "  required - Expect yabai/skhd to be configured"
+      echo "  disabled - Hide yabai/skhd features"
+      echo ""
+      read -p "Select window manager mode [$window_manager_mode]: " wm_choice
+      if [ -n "$wm_choice" ]; then
+        window_manager_mode="$wm_choice"
       fi
-      ;;
-    *)
-      echo_warning "Invalid choice, using minimal profile"
-      SELECTED_PROFILE="minimal"
-      ;;
-  esac
+    fi
+  fi
+
+  YABAI_STATUS=true
+  YABAI_SHORTCUTS=true
+  if [ "$window_manager_mode" = "disabled" ]; then
+    YABAI_STATUS=false
+    YABAI_SHORTCUTS=false
+  fi
 
   # Create state.json with selected profile
   echo_info "Creating initial state.json with profile: $SELECTED_PROFILE"
@@ -205,30 +291,41 @@ setup_profile() {
   cat > "$INSTALL_DIR/state.json" <<EOF
 {
   "profile": "$SELECTED_PROFILE",
+  "modes": {
+    "window_manager": "$window_manager_mode"
+  },
   "widgets": {
     "clock": true,
     "battery": true,
     "network": true,
     "system_info": true,
     "volume": true,
-    "yabai_status": true
+    "yabai_status": ${YABAI_STATUS}
+  },
+  "toggles": {
+    "yabai_shortcuts": ${YABAI_SHORTCUTS}
   },
   "appearance": {
-    "bar_height": 32,
-    "corner_radius": 9,
-    "bar_color": "0xC021162F",
-    "blur_radius": 30,
-    "widget_scale": 1.0
+    "bar_height": ${BAR_HEIGHT},
+    "corner_radius": ${CORNER_RADIUS},
+    "bar_color": "${BAR_COLOR}",
+    "blur_radius": ${BLUR_RADIUS},
+    "widget_scale": ${WIDGET_SCALE},
+    "popup_padding": ${POPUP_PADDING},
+    "popup_corner_radius": ${POPUP_CORNER_RADIUS},
+    "popup_border_width": ${POPUP_BORDER_WIDTH},
+    "popup_border_color": "${POPUP_BORDER_COLOR}",
+    "hover_color": "${HOVER_COLOR}"
   },
   "integrations": {
     "yaze": {
-      "enabled": false
+      "enabled": ${INTEGRATION_YAZE}
     },
     "emacs": {
-      "enabled": false
+      "enabled": ${INTEGRATION_EMACS}
     },
     "halext": {
-      "enabled": false,
+      "enabled": ${INTEGRATION_HALEXT},
       "server_url": "",
       "api_key": "",
       "sync_interval": 300
@@ -238,6 +335,64 @@ setup_profile() {
 EOF
 
   echo_success "Profile configured: $SELECTED_PROFILE"
+}
+
+# Setup Window Manager (Yabai/Skhd)
+setup_window_manager() {
+  if [ "$window_manager_mode" = "disabled" ]; then
+    return
+  fi
+
+  echo ""
+  echo "Window Manager Configuration (Yabai + Skhd)"
+  echo "-------------------------------------------"
+  echo "This can install Scawful's default configurations for:"
+  echo "  - Yabai (Tiling Window Manager)"
+  echo "  - Skhd (Hotkeys)"
+  echo ""
+  
+  if [ -z "${BARISTA_INSTALL_NONINTERACTIVE:-}" ]; then
+    read -p "Install bundled Yabai/Skhd configs? [y/N]: " install_wm
+  else
+    install_wm="n"
+  fi
+
+  if [[ "$install_wm" =~ ^[Yy]$ ]]; then
+    echo_info "Installing Window Manager configs..."
+    
+    # Yabai
+    if [ -d "$INSTALL_DIR/extras/yabai" ]; then
+      mkdir -p "$HOME/.config/yabai"
+      if [ -f "$HOME/.config/yabai/yabairc" ]; then
+        cp "$HOME/.config/yabai/yabairc" "$HOME/.config/yabai/yabairc.backup.$(date +%s)"
+        echo_warning "Backed up existing yabairc"
+      fi
+      cp "$INSTALL_DIR/extras/yabai/yabairc" "$HOME/.config/yabai/yabairc"
+      chmod +x "$HOME/.config/yabai/yabairc"
+      echo_success "Installed yabairc"
+      
+      # Restart Yabai
+      if command -v yabai &> /dev/null; then
+        yabai --restart-service || brew services restart yabai
+      fi
+    fi
+
+    # Skhd
+    if [ -d "$INSTALL_DIR/extras/skhd" ]; then
+      mkdir -p "$HOME/.config/skhd"
+      if [ -f "$HOME/.config/skhd/skhdrc" ]; then
+        cp "$HOME/.config/skhd/skhdrc" "$HOME/.config/skhd/skhdrc.backup.$(date +%s)"
+        echo_warning "Backed up existing skhdrc"
+      fi
+      cp "$INSTALL_DIR/extras/skhd/skhdrc" "$HOME/.config/skhd/skhdrc"
+      echo_success "Installed skhdrc"
+      
+      # Restart Skhd
+      if command -v skhd &> /dev/null; then
+        skhd --restart-service || brew services restart skhd
+      fi
+    fi
+  fi
 }
 
 # Configure SketchyBar to use this config
@@ -316,6 +471,7 @@ main() {
   install_config
   build_components
   setup_profile
+  setup_window_manager
   configure_sketchybar
   start_sketchybar
   print_next_steps

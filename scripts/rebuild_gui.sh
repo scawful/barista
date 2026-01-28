@@ -50,6 +50,10 @@ The script will:
   3. Show build status
 
 Built binaries will be in: build/bin/
+
+Sync behavior:
+  - Set BARISTA_SYNC_GUI_BIN=1 to copy build/bin outputs into gui/bin/.
+  - By default, rebuilds do not modify gui/bin (avoids dirtying the repo).
 EOF
 }
 
@@ -96,9 +100,13 @@ build_gui() {
         echo ""
         print_info "Built components:"
         ls -lh build/bin/config_menu build/bin/icon_browser build/bin/help_center 2>/dev/null | awk '{print "  - " $9 " (" $5 ")"}'
-        mkdir -p gui/bin
-        cp -f build/bin/config_menu build/bin/icon_browser build/bin/help_center gui/bin/
-        print_info "Synced GUI binaries to gui/bin/"
+        if [[ "${BARISTA_SYNC_GUI_BIN:-0}" == "1" ]]; then
+          mkdir -p gui/bin
+          cp -f build/bin/config_menu build/bin/icon_browser build/bin/help_center gui/bin/
+          print_info "Synced GUI binaries to gui/bin/"
+        else
+          print_warn "Skipping gui/bin sync (set BARISTA_SYNC_GUI_BIN=1 to copy)."
+        fi
     else
         print_error "Build failed! Check /tmp/barista_gui_build.log for details"
         exit 1

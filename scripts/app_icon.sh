@@ -20,38 +20,38 @@ fi
 # Case-insensitive matching with Nerd Font glyphs
 case "$APP_NAME" in
   # Terminals
-  "Terminal"|"终端") echo "" ;;
-  "iTerm"|"iTerm2") echo "" ;;
-  "Alacritty") echo "" ;;
+  "Terminal"|"终端") echo "" ;;
+  "iTerm"|"iTerm2") echo "" ;;
+  "Alacritty") echo "󰄛" ;;
   "kitty") echo "󰄛" ;;
   "Warp") echo "󱓞" ;;
-  "WezTerm") echo "" ;;
-  "Hyper") echo "" ;;
+  "WezTerm") echo "" ;;
+  "Hyper") echo "󰆍" ;;
   "Ghostty") echo "󰊠" ;;
   
   # Editors & IDEs
   "Code"|"Visual Studio Code"|"VSCode") echo "󰨞" ;;
   "Cursor") echo "󰨞" ;;
-  "Xcode") echo "" ;;
-  "Emacs") echo "" ;;
-  "Vim"|"MacVim"|"Neovim"|"nvim") echo "" ;;
-  "Neovide") echo "" ;;
-  "Sublime Text") echo "" ;;
-  "Atom") echo "" ;;
-  "IntelliJ IDEA"|"IntelliJ") echo "" ;;
-  "PyCharm") echo "" ;;
+  "Xcode") echo "" ;;
+  "Emacs") echo "" ;;
+  "Vim"|"MacVim") echo "" ;;
+  "Neovim"|"nvim"|"Neovide") echo "" ;;
+  "Sublime Text") echo "" ;;
+  "Atom") echo "" ;;
+  "IntelliJ IDEA"|"IntelliJ") echo "" ;;
+  "PyCharm") echo "" ;;
   "WebStorm") echo "󰜈" ;;
-  "GoLand") echo "" ;;
+  "GoLand") echo "" ;;
   "Rider") echo "󱘗" ;;
-  "Android Studio") echo "" ;;
-  "Zed") echo "" ;;
+  "Android Studio") echo "" ;;
+  "Zed") echo "󰛡" ;;
   
   # Browsers
-  "Safari"|"Safari Technology Preview") echo "" ;;
-  "Google Chrome"|"Chrome"|"Chromium") echo "" ;;
-  "Firefox"|"Firefox Developer Edition") echo "" ;;
+  "Safari"|"Safari Technology Preview") echo "󰀹" ;;
+  "Google Chrome"|"Chrome"|"Chromium") echo "" ;;
+  "Firefox"|"Firefox Developer Edition") echo "" ;;
   "Arc") echo "󰞍" ;;
-  "Brave Browser") echo "󰖟" ;;
+  "Brave Browser") echo "󰊯" ;;
   "Microsoft Edge") echo "󰇩" ;;
   "Vivaldi") echo "󰖟" ;;
   "Orion"|"Orion RC") echo "󰖟" ;;
@@ -61,53 +61,53 @@ case "$APP_NAME" in
   "Slack") echo "󰒱" ;;
   "Microsoft Teams"|"Teams") echo "󰊻" ;;
   "Messages"|"信息") echo "󰍦" ;;
-  "Telegram") echo "" ;;
+  "Telegram") echo "󰍦" ;;
   "WhatsApp"|"‎WhatsApp") echo "󰖣" ;;
   "Signal") echo "󰭹" ;;
   "Messenger") echo "󰈎" ;;
   "Zoom"|"zoom.us") echo "󰕧" ;;
-  "FaceTime") echo "" ;;
+  "FaceTime") echo "󰕧" ;;
   "Skype") echo "󰒯" ;;
   
   # Productivity
   "Finder"|"访达") echo "󰀶" ;;
-  "Notes"|"备忘录") echo "" ;;
+  "Notes"|"备忘录") echo "󰎚" ;;
   "Reminders"|"提醒事项") echo "󰃮" ;;
-  "Calendar"|"日历"|"Fantastical") echo "" ;;
+  "Calendar"|"日历"|"Fantastical") echo "" ;;
   "Mail"|"邮件") echo "󰇮" ;;
-  "Preview"|"预览") echo "" ;;
-  "System Settings"|"System Preferences"|"系统设置") echo "" ;;
-  "App Store") echo "" ;;
+  "Preview"|"预览") echo "󰈙" ;;
+  "System Settings"|"System Preferences"|"系统设置") echo "" ;;
+  "App Store") echo "󰓇" ;;
   
   # Creative
-  "Figma") echo "" ;;
-  "Sketch") echo "" ;;
-  "Photoshop"|"Adobe Photoshop") echo "" ;;
+  "Figma") echo "" ;;
+  "Sketch") echo "󰁿" ;;
+  "Photoshop"|"Adobe Photoshop") echo "" ;;
   "Affinity Photo"|"Affinity Photo 2") echo "" ;;
   "Affinity Designer"|"Affinity Designer 2") echo "󰃣" ;;
   "Blender") echo "󰂫" ;;
-  "Final Cut Pro") echo "" ;;
+  "Final Cut Pro") echo "󰕼" ;;
   
   # Media
-  "Music"|"音乐"|"Apple Music") echo "" ;;
-  "Spotify") echo "" ;;
+  "Music"|"音乐"|"Apple Music") echo "󰎈" ;;
+  "Spotify") echo "" ;;
   "VLC") echo "󰕼" ;;
-  "Podcasts"|"播客") echo "" ;;
+  "Podcasts"|"播客") echo "󰎈" ;;
   "TIDAL") echo "󰓃" ;;
   
   # Development Tools
-  "Docker"|"Docker Desktop") echo "" ;;
-  "GitHub Desktop") echo "" ;;
-  "Tower") echo "" ;;
-  "Insomnia") echo "" ;;
-  "Postman") echo "" ;;
+  "Docker"|"Docker Desktop") echo "" ;;
+  "GitHub Desktop") echo "" ;;
+  "Tower") echo "" ;;
+  "Insomnia") echo "󰘯" ;;
+  "Postman") echo "󰘯" ;;
   
   # Notes & Writing
   "Obsidian") echo "󰎚" ;;
   "Notion") echo "󰈙" ;;
   "Bear") echo "󰏪" ;;
   "Logseq") echo "󱓧" ;;
-  "Typora") echo "" ;;
+  "Typora") echo "󰈙" ;;
   
   # Password & Security
   "1Password") echo "󰢁" ;;
@@ -115,13 +115,13 @@ case "$APP_NAME" in
   "KeePassXC") echo "󰌆" ;;
   
   # Utilities
-  "Alfred") echo "" ;;
-  "Spotlight") echo "" ;;
-  "Activity Monitor") echo "󱕍" ;;
+  "Alfred") echo "󰌑" ;;
+  "Spotlight") echo "󰍉" ;;
+  "Activity Monitor") echo "󰨇" ;;
   "Raycast") echo "󰑓" ;;
   
   # Games
-  "Steam") echo "" ;;
+  "Steam") echo "" ;;
   
   # Default fallback
   *) echo "󰣆" ;;

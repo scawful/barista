@@ -338,32 +338,54 @@ EOF
 }
 
 setup_fonts_panel_and_work_apps() {
-  local extras_script="$INSTALL_DIR/scripts/install_missing_fonts_and_panel.sh"
-  local work_apps_script="$INSTALL_DIR/scripts/configure_work_google_apps.sh"
-
-  if [ -x "$extras_script" ]; then
-    local install_extras="${BARISTA_INSTALL_EXTRAS:-}"
-    if [ -z "$install_extras" ] && [ -z "${BARISTA_INSTALL_NONINTERACTIVE:-}" ]; then
-      echo ""
-      read -p "Install missing fonts + configure alternative control panel (TUI)? [Y/n]: " install_extras
-    fi
-    if [ -z "$install_extras" ] || [[ "$install_extras" =~ ^[Yy]$ ]]; then
-      "$extras_script" --yes --panel-mode "${BARISTA_ALT_PANEL_MODE:-tui}" --state "$INSTALL_DIR/state.json" --no-reload || true
-    fi
+  local setup_script="$INSTALL_DIR/scripts/setup_machine.sh"
+  if [ ! -x "$setup_script" ]; then
+    return
   fi
 
-  if [ "$SELECTED_PROFILE" = "work" ] && [ -x "$work_apps_script" ]; then
-    local domain="${BARISTA_WORK_GOOGLE_DOMAIN:-}"
+  local enable_extras=0
+  local install_extras="${BARISTA_INSTALL_EXTRAS:-}"
+  if [ -z "$install_extras" ] && [ -z "${BARISTA_INSTALL_NONINTERACTIVE:-}" ]; then
+    echo ""
+    read -p "Install missing fonts + configure alternative control panel (TUI)? [Y/n]: " install_extras
+  fi
+  if [ -z "$install_extras" ] || [[ "$install_extras" =~ ^[Yy]$ ]]; then
+    enable_extras=1
+  fi
+
+  local enable_work_apps=0
+  local domain="${BARISTA_WORK_GOOGLE_DOMAIN:-}"
+  if [ "$SELECTED_PROFILE" = "work" ]; then
+    enable_work_apps=1
     if [ -z "$domain" ] && [ -z "${BARISTA_INSTALL_NONINTERACTIVE:-}" ]; then
       echo ""
       read -p "Workspace domain for Google apps (optional, e.g. company.com): " domain
     fi
+  fi
+
+  if [ "$enable_extras" -eq 0 ] && [ "$enable_work_apps" -eq 0 ]; then
+    return
+  fi
+
+  local args=(
+    --state "$INSTALL_DIR/state.json"
+    --panel-mode "${BARISTA_ALT_PANEL_MODE:-tui}"
+    --yes
+    --no-reload
+  )
+
+  if [ "$enable_extras" -eq 0 ]; then
+    args+=(--skip-fonts --skip-panel)
+  fi
+
+  if [ "$enable_work_apps" -eq 1 ]; then
+    args+=(--work-apps --replace-work-apps)
     if [ -n "$domain" ]; then
-      "$work_apps_script" --state "$INSTALL_DIR/state.json" --domain "$domain" --replace --no-reload || true
-    else
-      "$work_apps_script" --state "$INSTALL_DIR/state.json" --replace --no-reload || true
+      args+=(--domain "$domain")
     fi
   fi
+
+  "$setup_script" "${args[@]}" || true
 }
 
 # Setup Window Manager (Yabai/Skhd)

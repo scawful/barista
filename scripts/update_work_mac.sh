@@ -101,14 +101,28 @@ fi
 echo "[remote] updating to $BARISTA_TARGET_REF"
 BARISTA_SKIP_RESTART="$BARISTA_SKIP_RESTART" ./bin/barista-update --yes --target "$BARISTA_TARGET_REF"
 
-if [ "${BARISTA_INSTALL_EXTRAS:-1}" = "1" ] && [ -x "./scripts/install_missing_fonts_and_panel.sh" ]; then
-  echo "[remote] installing fonts and panel mode"
-  ./scripts/install_missing_fonts_and_panel.sh --yes --panel-mode "$BARISTA_PANEL_MODE" --state "$repo_dir/state.json" --no-reload
-fi
+if [ -x "./scripts/setup_machine.sh" ]; then
+  if [ "${BARISTA_INSTALL_EXTRAS:-1}" = "1" ] || [ -n "${BARISTA_WORK_DOMAIN:-}" ]; then
+    setup_args=(--state "$repo_dir/state.json" --panel-mode "$BARISTA_PANEL_MODE" --yes --no-reload)
+    if [ "${BARISTA_INSTALL_EXTRAS:-1}" != "1" ]; then
+      setup_args+=(--skip-fonts --skip-panel)
+    fi
+    if [ -n "${BARISTA_WORK_DOMAIN:-}" ]; then
+      setup_args+=(--work-apps --replace-work-apps --domain "$BARISTA_WORK_DOMAIN")
+    fi
+    echo "[remote] applying machine setup options"
+    ./scripts/setup_machine.sh "${setup_args[@]}"
+  fi
+else
+  if [ "${BARISTA_INSTALL_EXTRAS:-1}" = "1" ] && [ -x "./scripts/install_missing_fonts_and_panel.sh" ]; then
+    echo "[remote] installing fonts and panel mode"
+    ./scripts/install_missing_fonts_and_panel.sh --yes --panel-mode "$BARISTA_PANEL_MODE" --state "$repo_dir/state.json" --no-reload
+  fi
 
-if [ -n "${BARISTA_WORK_DOMAIN:-}" ] && [ -x "./scripts/configure_work_google_apps.sh" ]; then
-  echo "[remote] applying work Google apps for domain ${BARISTA_WORK_DOMAIN}"
-  ./scripts/configure_work_google_apps.sh --state "$repo_dir/state.json" --domain "$BARISTA_WORK_DOMAIN" --replace --no-reload
+  if [ -n "${BARISTA_WORK_DOMAIN:-}" ] && [ -x "./scripts/configure_work_google_apps.sh" ]; then
+    echo "[remote] applying work Google apps for domain ${BARISTA_WORK_DOMAIN}"
+    ./scripts/configure_work_google_apps.sh --state "$repo_dir/state.json" --domain "$BARISTA_WORK_DOMAIN" --replace --no-reload
+  fi
 fi
 
 if command -v sketchybar >/dev/null 2>&1; then

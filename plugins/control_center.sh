@@ -5,16 +5,30 @@
 set -euo pipefail
 
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
+_d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
 NAME="${NAME:-control_center}"
+
+case "${SENDER:-}" in
+  "mouse.entered")
+    animate_set "$NAME" background.drawing=on background.color="$HIGHLIGHT"
+    exit 0
+    ;;
+  "mouse.exited")
+    animate_set "$NAME" background.drawing=off
+    exit 0
+    ;;
+esac
 
 # Check if yabai is running and get layout
 get_layout() {
-  if ! command -v yabai >/dev/null 2>&1; then
+  if ! command -v yabai >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
     echo "N/A"
     return
   fi
   local layout
-  layout=$(yabai -m query --spaces --space 2>/dev/null | jq -r '.type // "unknown"' 2>/dev/null) || layout="unknown"
+  if ! layout=$(run_with_timeout 1 yabai -m query --spaces --space 2>/dev/null | jq -r '.type // "unknown"' 2>/dev/null); then
+    layout="unknown"
+  fi
   case "$layout" in
     bsp) echo "BSP" ;;
     stack) echo "STK" ;;

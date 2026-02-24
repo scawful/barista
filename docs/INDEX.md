@@ -28,6 +28,7 @@ User-facing setup and usage guides.
 | [CONTRIBUTING.md](guides/CONTRIBUTING.md) | Contribution guidelines |
 | [GITHUB_SETUP.md](guides/GITHUB_SETUP.md) | GitHub distribution setup |
 | [TUI_CONFIGURATION.md](guides/TUI_CONFIGURATION.md) | TUI setup and config |
+| [CONFIG_OVERRIDES.md](guides/CONFIG_OVERRIDES.md) | Programmatic configuration overrides |
 
 ### architecture/
 System design and technical documentation.
@@ -35,6 +36,7 @@ System design and technical documentation.
 | Document | Description |
 |----------|-------------|
 | [README.md](architecture/README.md) | Architecture overview |
+| [SKETCHYBAR_LAYOUT.md](architecture/SKETCHYBAR_LAYOUT.md) | Bar layout map: which file defines each item, plugin script, and events |
 | [ANALYSIS.md](architecture/ANALYSIS.md) | System analysis and notes |
 | [DIAGRAMS.md](architecture/DIAGRAMS.md) | Visual diagrams |
 | [CODE_ANALYSIS.md](architecture/CODE_ANALYSIS.md) | Codebase metrics and analysis |
@@ -47,9 +49,6 @@ Implementation notes and engineering details.
 | Document | Description |
 |----------|-------------|
 | [CLAUDE.md](dev/CLAUDE.md) | AI assistant context |
-| [CMake_MIGRATION.md](dev/CMake_MIGRATION.md) | CMake migration notes |
-| [DEBUGGING_ANALYSIS.md](dev/DEBUGGING_ANALYSIS.md) | Debugging notes |
-| [FIXES_SUMMARY.md](dev/FIXES_SUMMARY.md) | Bug fixes summary |
 | [IMPLEMENTATION_SUMMARY.md](dev/IMPLEMENTATION_SUMMARY.md) | Implementation notes |
 | [IMPROVEMENTS.md](dev/IMPROVEMENTS.md) | Planned improvements |
 | [SHARING.md](dev/SHARING.md) | Sharing/export notes |
@@ -66,8 +65,6 @@ Feature documentation and specifications.
 | [THEMES.md](features/THEMES.md) | Theme system and customization |
 | [ICONS_AND_SHORTCUTS.md](features/ICONS_AND_SHORTCUTS.md) | Icon system and keyboard shortcuts |
 | [ICON_REFERENCE.md](features/ICON_REFERENCE.md) | Icon library reference |
-| [WHICHKEY_PLAN.md](features/WHICHKEY_PLAN.md) | Which-key implementation plan |
-| [MENU_REDESIGN_PROPOSAL.md](features/MENU_REDESIGN_PROPOSAL.md) | Menu system redesign |
 | [APPLE_MENU_TOOLS.md](features/APPLE_MENU_TOOLS.md) | Apple menu tools configuration |
 
 ### troubleshooting/
@@ -75,14 +72,13 @@ Issue resolution and fixes.
 
 | Document | Description |
 |----------|-------------|
-| [ICON_FIXES_SUMMARY.md](troubleshooting/ICON_FIXES_SUMMARY.md) | Icon display fixes |
 | [ICON_SYSTEM_DOCS.md](troubleshooting/ICON_SYSTEM_DOCS.md) | Icon system documentation |
-| [QUICK_ICON_FIX.md](troubleshooting/QUICK_ICON_FIX.md) | Quick icon repairs |
 | [FINAL_ICON_STATUS.md](troubleshooting/FINAL_ICON_STATUS.md) | Current icon status |
 | [WIDGET_FIXES.md](troubleshooting/WIDGET_FIXES.md) | Widget troubleshooting |
 | [YABAI_SCRIPTING_ADDITION.md](troubleshooting/YABAI_SCRIPTING_ADDITION.md) | Yabai scripting setup |
 | [DISPLAYLINK_SPACES_FLAKE.md](troubleshooting/DISPLAYLINK_SPACES_FLAKE.md) | DisplayLink spaces flake notes |
 | [SCRIPTS_PATHS.md](troubleshooting/SCRIPTS_PATHS.md) | Script path reference |
+| [COMMON_PITFALLS.md](troubleshooting/COMMON_PITFALLS.md) | Technical pitfalls and solutions |
 
 ### release/
 Release and distribution documentation.

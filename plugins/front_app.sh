@@ -6,6 +6,8 @@ PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:
 export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 export LANG="${LANG:-en_US.UTF-8}"
 
+_d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
+
 SPACE_SCRIPT="$HOME/.config/sketchybar/plugins/space.sh"
 APP_NAME="${INFO:-}"
 
@@ -15,9 +17,15 @@ BARISTA_APPS="config_menu_v2|help_center|icon_browser|sketchybar"
 case "${SENDER:-}" in
   mouse.exited.global)
     sketchybar --set "$NAME" popup.drawing=off
+    animate_set "$NAME" background.drawing=off
     exit 0
     ;;
-  mouse.entered|mouse.exited)
+  mouse.entered)
+    animate_set "$NAME" background.drawing=on background.color="$HIGHLIGHT"
+    exit 0
+    ;;
+  mouse.exited)
+    animate_set "$NAME" background.drawing=off
     exit 0
     ;;
 esac
@@ -47,6 +55,3 @@ esac
 # Show app name only - icon is shown in the space widget
 sketchybar --set "$NAME" icon.drawing=off label="$APP_NAME"
 sketchybar --set front_app.header label="App Controls · $APP_NAME" >/dev/null 2>&1 || true
-
-# Trigger space update so it shows the app icon
-sketchybar --trigger space_change >/dev/null 2>&1 || true

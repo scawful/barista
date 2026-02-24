@@ -2,9 +2,11 @@
 
 # Submenu Hover - One submenu at a time with visual feedback
 
-# Hover colors - visible highlight
-HOVER_BG="0x80cba6f7"  # Mauve with 50% opacity
-IDLE_BG="0x00000000"   # Transparent
+_d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
+
+# Hover colors - visible highlight (HIGHLIGHT/ANIMATION_* from common.sh, from SUBMENU_* when set by main.lua)
+HOVER_BG="${SUBMENU_HOVER_BG:-0x80cba6f7}"
+IDLE_BG="${SUBMENU_IDLE_BG:-0x00000000}"
 
 # List of all submenu items
 # Updated to include all sections from menu.lua
@@ -64,7 +66,7 @@ schedule_close() {
     sleep "$CLOSE_DELAY"
     local active="$(current_active)"
     if [ -z "$active" ] || [ "$active" != "$target" ]; then
-      sketchybar --set "$target" \
+      animate_set "$target" \
         popup.drawing=off \
         background.drawing=off \
         background.color="$IDLE_BG"
@@ -80,7 +82,7 @@ case "${SENDER:-}" in
     record_active "$NAME"
 
     # Open this popup with highlight
-    sketchybar --set "$NAME" \
+    animate_set "$NAME" \
       popup.drawing=on \
       background.drawing=on \
       background.color="$HOVER_BG" \
@@ -94,7 +96,7 @@ case "${SENDER:-}" in
   "mouse.exited.global")
     # Close when mouse leaves the entire menu area
     clear_active
-    sketchybar --set "$NAME" \
+    animate_set "$NAME" \
       popup.drawing=off \
       background.drawing=off \
       background.color="$IDLE_BG"

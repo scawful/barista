@@ -3,7 +3,7 @@
 -- Optional override file: ~/.config/sketchybar/themes/theme.local.lua
 
 local HOME = os.getenv("HOME")
-local CONFIG_DIR = HOME .. "/.config/sketchybar"
+local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
 local DEFAULT_THEME = "default"
 
 -- Make sure we can load the bundled JSON helper before main.lua adjusts package.path

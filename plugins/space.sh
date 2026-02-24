@@ -7,41 +7,14 @@ PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:
 export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 export LANG="${LANG:-en_US.UTF-8}"
 
-CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
-STATE_FILE="$CONFIG_DIR/state.json"
+_d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
+
 JQ_BIN="$(command -v jq 2>/dev/null || true)"
 YABAI_BIN="$(command -v yabai 2>/dev/null || true)"
-SCRIPTS_DIR="${BARISTA_SCRIPTS_DIR:-}"
-
-expand_path() {
-  case "$1" in
-    "~/"*) printf '%s' "$HOME/${1#~/}" ;;
-    *) printf '%s' "$1" ;;
-  esac
-}
-
-if [ -z "$SCRIPTS_DIR" ] && [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ]; then
-  SCRIPTS_DIR=$(jq -r '.paths.scripts_dir // .paths.scripts // empty' "$STATE_FILE" 2>/dev/null || true)
-  if [ "$SCRIPTS_DIR" = "null" ]; then
-    SCRIPTS_DIR=""
-  fi
-fi
-
-if [ -n "$SCRIPTS_DIR" ]; then
-  SCRIPTS_DIR="$(expand_path "$SCRIPTS_DIR")"
-fi
-
-if [ -z "$SCRIPTS_DIR" ]; then
-  SCRIPTS_DIR="$CONFIG_DIR/scripts"
-fi
-
-if [ ! -d "$SCRIPTS_DIR" ]; then
-  SCRIPTS_DIR="$HOME/.config/scripts"
-fi
 
 ICON_SCRIPT="$SCRIPTS_DIR/app_icon.sh"
 SPACE_INDEX="${NAME#space.}"
-ICON_CACHE_DIR="$HOME/.config/sketchybar/cache/space_icons"
+ICON_CACHE_DIR="$CONFIG_DIR/cache/space_icons"
 ICON_CACHE_FILE="$ICON_CACHE_DIR/$SPACE_INDEX"
 SELECTED_STATE="${SELECTED:-}"
 
@@ -75,7 +48,7 @@ get_space_data() {
     return 0
   fi
   [ -n "$YABAI_BIN" ] || return 1
-  SPACE_DATA_CACHE=$("$YABAI_BIN" -m query --spaces --space "$SPACE_INDEX" 2>/dev/null) || return 1
+  SPACE_DATA_CACHE=$(run_with_timeout 1 "$YABAI_BIN" -m query --spaces --space "$SPACE_INDEX" 2>/dev/null) || return 1
   printf '%s' "$SPACE_DATA_CACHE"
 }
 
@@ -130,7 +103,7 @@ get_active_app() {
     return
   fi
   local data
-  data=$(yabai -m query --windows --space "$SPACE_INDEX" 2>/dev/null) || return
+  data=$(run_with_timeout 1 yabai -m query --windows --space "$SPACE_INDEX" 2>/dev/null) || return
   if [ -z "$data" ]; then
     return
   fi

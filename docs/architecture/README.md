@@ -2,6 +2,8 @@
 
 This directory contains comprehensive architectural documentation for the SketchyBar status bar configuration system.
 
+For **plugin script environment and shell contract** (env vars, shared lib, interpreter), see [../../plugins/README.md](../../plugins/README.md). For an **alternative declarative component approach** (not wired into the live bar), see [../../components/README.md](../../components/README.md).
+
 ## Documentation Files
 
 ### 1. **ARCHITECTURE_SUMMARY.txt** (355 lines)

@@ -47,6 +47,24 @@ The installer can automatically set these up for you.
 - **Enable**: Run installer and select "Window Manager Mode: Required".
 - **Disable**: Run `./scripts/set_mode.sh <profile> disabled`.
 
+## Source universe: runtime and overlay
+
+**Recommended:** Make the SketchyBar runtime a symlink to the Barista repo so edits are live:
+
+```bash
+# If ~/.config/sketchybar already exists, back it up first
+mv ~/.config/sketchybar ~/.config/sketchybar.bak
+ln -s ~/src/lab/barista ~/.config/sketchybar
+```
+
+**Personal overlay:** For per-machine additions (e.g. Oracle of Secrets integration, workflow shortcuts), use the overlay in `~/src/config/dotfiles/sketchybar-overlay/`. Apply it with:
+`~/src/config/dotfiles/scripts/apply_sketchybar_overlay.sh`
+Optionally pass the target dir (default: `~/.config/sketchybar`). If the runtime is a symlink to lab/barista, the overlay is written into the repo. See `config/dotfiles/sketchybar-overlay/README.md`.
+
+**Skhd and yabai_control:** Space/layout keybindings in skhd call `yabai_control.sh`. To support both "Barista deploy" and "dotfiles-only" setups, use the wrapper: `~/.local/bin/yabai_control_wrapper.sh` (from `config/dotfiles/bin/yabai_control_wrapper.sh`). Ensure that wrapper is on your PATH and installed (e.g. dotfiles link `bin/` to `~/.local/bin`).
+
+**LaunchAgents:** The single place to edit the Barista orchestrator (SketchyBar + yabai + skhd at login) is `lab/barista/launch_agents/`. See [launch_agents/README.md](launch_agents/README.md). Recommended: use either this LaunchAgent or `brew services` for the three daemons, not both.
+
 ## Customization
 
 ### Switching Profiles
@@ -59,7 +77,7 @@ The installer can automatically set these up for you.
 ```
 
 ### Configuration
-Edit `~/.config/sketchybar/state.json` to toggle specific widgets or change colors without touching Lua code.
+Edit `~/.config/sketchybar/state.json` to toggle specific widgets or change colors without touching Lua code. To find which file defines each bar item and which plugin script runs it, see [docs/architecture/SKETCHYBAR_LAYOUT.md](docs/architecture/SKETCHYBAR_LAYOUT.md).
 
 ```json
 {
@@ -70,6 +88,44 @@ Edit `~/.config/sketchybar/state.json` to toggle specific widgets or change colo
   }
 }
 ```
+
+### Work Google Apps Menu
+Populate customizable Work Google app entries in the Apple menu:
+
+```bash
+# Use defaults
+./scripts/configure_work_google_apps.sh --replace
+
+# Use workspace domain routes
+./scripts/configure_work_google_apps.sh --domain yourcompany.com --replace
+
+# Use custom app list
+./scripts/configure_work_google_apps.sh --from-file ./data/work_google_apps.example.json --replace
+```
+
+### Fonts + Alternate Panel
+Install missing fonts and set a preferred alternate control panel mode:
+
+```bash
+./scripts/install_missing_fonts_and_panel.sh --yes --panel-mode tui
+```
+
+### Update Another Mac
+Push the latest repo changes to a remote Mac and apply work profile extras:
+
+```bash
+./scripts/update_work_mac.sh \
+  --host user@work-mac.local \
+  --target origin/main \
+  --work-domain yourcompany.com \
+  --panel-mode tui
+```
+
+## Performance
+
+- **Hover animation:** In `state.json` or in `modules/state.lua` defaults, `hover_animation_duration` (default 8) and `hover_animation_curve` (default `sin`) control popup hover speed. Lower duration (e.g. 6) for even snappier feel.
+- **Heavy menus:** If a menu is slow to open, check the integration module (e.g. `modules/integrations/*.lua`) and any scripts run on open; add caching or lazy loading. Prefer C/Lua for hot paths; avoid long shell commands on every bar update.
+- **Tuning:** See `docs/workflow/HANDOFF_SOURCE_UNIVERSE_CLI_AGENT.md` for a stability/performance checklist and where to look (menu_renderer, popup_hover, state.lua).
 
 ## Troubleshooting
 

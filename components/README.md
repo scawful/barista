@@ -1,5 +1,7 @@
 # Components (Experimental)
 
+**Not used by main.lua.** These are reference/experimental; the live bar is built in main.lua (and, after refactor, in `modules/items_left.lua` / `modules/items_right.lua`).
+
 This directory contains an experimental modular component architecture from the `fusion/restore-ui` branch (November 2025).
 
 ## Status: Experimental / Reference

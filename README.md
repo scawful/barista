@@ -4,8 +4,6 @@
 
 Barista is a curated configuration for [SketchyBar](https://github.com/FelixKratz/SketchyBar) that balances aesthetics with power-user features. It is designed to be shared, easy to install, and configurable for different environments (Work vs. Home).
 
-![Barista Preview](docs/assets/preview.png)
-
 ## Features
 
 - **Dynamic Island**: Context-aware popups for volume, brightness, and music.

@@ -8,7 +8,7 @@ Ways to tailor the bar without editing core Lua.
 |------|--------|
 | Toggle widgets, change colors/fonts | [state.json](#statejson) or [barista_config.lua](CONFIG_OVERRIDES.md) |
 | Change profile (Work / Personal / Minimal / Girlfriend) | `./scripts/set_mode.sh <profile> [required\|disabled]` |
-| Change theme (colors) | `state.json` → `appearance.theme` or [themes](features/THEMES.md) |
+| Change theme (colors) | `state.json` → `appearance.theme` or [themes](../features/THEMES.md) |
 | Add or edit bar items / popups | [SKETCHYBAR_LAYOUT](../architecture/SKETCHYBAR_LAYOUT.md) → then edit the listed Lua/plugin file |
 | Persist overrides that survive GUI/TUI | [barista_config.lua](CONFIG_OVERRIDES.md) |
 
@@ -39,7 +39,7 @@ Profiles (Work, Personal, Minimal, Girlfriend) live in `profiles/*.lua` and chan
 
 ## Themes
 
-`appearance.theme` in state (or `BARISTA_THEME` env) selects a theme from `themes/*.lua`. Optional override: `themes/theme.local.lua`. See [THEMES.md](features/THEMES.md).
+`appearance.theme` in state (or `BARISTA_THEME` env) selects a theme from `themes/*.lua`. Optional override: `themes/theme.local.lua`. See [THEMES.md](../features/THEMES.md).
 
 ## Where to edit the bar layout
 

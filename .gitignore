@@ -48,6 +48,7 @@ themes/theme.local.lua
 # Cache
 cache/
 .spaces_cache*
+.spaces_signatures*
 *.spaces
 
 # Links (generated)

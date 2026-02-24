@@ -21,7 +21,7 @@ normalize_creator_mode() {
       printf '%s' "$1"
       ;;
     *)
-      printf '%s' "primary"
+      printf '%s' "active"
       ;;
   esac
 }
@@ -31,7 +31,7 @@ resolve_creator_mode() {
   if command -v jq >/dev/null 2>&1 && [ -f "$STATE_FILE" ]; then
     mode=$(jq -r '.spaces.creator_mode // empty' "$STATE_FILE" 2>/dev/null || true)
   fi
-  normalize_creator_mode "${mode:-primary}"
+  normalize_creator_mode "${mode:-active}"
 }
 
 space_click_action() {

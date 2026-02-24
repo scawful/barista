@@ -9,6 +9,7 @@ YABAI_BIN="${YABAI_BIN:-$(command -v yabai || true)}"
 JQ_BIN="${JQ_BIN:-$(command -v jq || true)}"
 SPACE_MANAGER_BIN="${SPACE_MANAGER_BIN:-$CONFIG_DIR/bin/space_manager}"
 SPACE_CLOSE_CONFIRM_TTL_SEC="${SPACE_CLOSE_CONFIRM_TTL_SEC:-2}"
+SPACE_SWAP_ARM_TTL_SEC="${SPACE_SWAP_ARM_TTL_SEC:-10}"
 
 run_with_timeout() {
   local timeout_s="$1"
@@ -59,6 +60,52 @@ right_click_close_mode() {
   normalize_close_mode "$mode"
 }
 
+normalize_bool() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on)
+      printf '%s' "true"
+      ;;
+    *)
+      printf '%s' "false"
+      ;;
+  esac
+}
+
+normalize_reorder_mode() {
+  local mode
+  mode="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$mode" in
+    off|modifiers|menu|swap_mode)
+      printf '%s' "$mode"
+      ;;
+    *)
+      printf '%s' "menu"
+      ;;
+  esac
+}
+
+reorder_mode() {
+  local mode
+  mode=$(state_value '.spaces.reorder_mode' 'menu')
+  normalize_reorder_mode "$mode"
+}
+
+modifier_reorder_enabled() {
+  local explicit
+  explicit=$(state_value '.spaces.modifier_reorder_enabled' '')
+  if [ -n "$explicit" ]; then
+    [ "$(normalize_bool "$explicit")" = "true" ]
+    return
+  fi
+  [ "$(reorder_mode)" = "modifiers" ]
+}
+
+context_menu_on_right_click() {
+  local enabled
+  enabled=$(state_value '.spaces.context_menu_on_right_click' 'true')
+  [ "$(normalize_bool "$enabled")" = "true" ]
+}
+
 modifier_has() {
   local needle="$1"
   local raw="${MODIFIER:-${modifiers:-}}"
@@ -100,6 +147,73 @@ mark_confirm() {
     rm -f \"$file\" 2>/dev/null || true
     sketchybar --trigger space_change >/dev/null 2>&1 || true
   " >/dev/null 2>&1 &
+}
+
+swap_state_file() {
+  printf '/tmp/barista_space_swap_state_%s' "$UID"
+}
+
+read_swap_source() {
+  local file
+  file=$(swap_state_file)
+  [ -f "$file" ] || return 1
+
+  local source_idx armed_at now
+  source_idx=$(awk '{print $1}' "$file" 2>/dev/null || true)
+  armed_at=$(awk '{print $2}' "$file" 2>/dev/null || true)
+  case "$source_idx" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  case "$armed_at" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+
+  now=$(date +%s)
+  if [ $(( now - armed_at )) -gt "$SPACE_SWAP_ARM_TTL_SEC" ]; then
+    rm -f "$file" 2>/dev/null || true
+    sketchybar --trigger space_change >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  printf '%s' "$source_idx"
+}
+
+clear_swap_state() {
+  local file
+  file=$(swap_state_file)
+  rm -f "$file" 2>/dev/null || true
+  sketchybar --trigger space_change >/dev/null 2>&1 || true
+}
+
+arm_swap_state() {
+  local space_idx="$1"
+  local file
+  file=$(swap_state_file)
+  printf '%s %s\n' "$space_idx" "$(date +%s)" > "$file" 2>/dev/null || true
+
+  sketchybar --set "space.$space_idx" \
+    icon="󰚗" \
+    icon.color=0xfff9e2af \
+    background.drawing=on \
+    background.color=0x60f9e2af >/dev/null 2>&1 || true
+
+  nohup sh -c "
+    sleep \"$SPACE_SWAP_ARM_TTL_SEC\"
+    if [ -f \"$file\" ]; then
+      rm -f \"$file\" 2>/dev/null || true
+      sketchybar --trigger space_change >/dev/null 2>&1 || true
+    fi
+  " >/dev/null 2>&1 &
+}
+
+toggle_space_menu() {
+  local space_idx="$1"
+  sketchybar --set "space.$space_idx" popup.drawing=toggle >/dev/null 2>&1 || true
+}
+
+hide_space_menu() {
+  local space_idx="$1"
+  sketchybar --set "space.$space_idx" popup.drawing=off >/dev/null 2>&1 || true
 }
 
 refresh_space_items() {
@@ -204,6 +318,21 @@ move_space() {
   refresh_space_items
 }
 
+swap_spaces() {
+  local from_idx="$1"
+  local to_idx="$2"
+  [ -n "$YABAI_BIN" ] || return 1
+  if [ "$from_idx" = "$to_idx" ]; then
+    return 0
+  fi
+  if [ -x "$SPACE_MANAGER_BIN" ]; then
+    "$SPACE_MANAGER_BIN" swap "$from_idx" "$to_idx" >/dev/null 2>&1 || true
+  else
+    run_with_timeout 1 "$YABAI_BIN" -m space "$from_idx" --swap "$to_idx" >/dev/null 2>&1 || true
+  fi
+  refresh_space_items
+}
+
 reorder_space_relative() {
   local space_idx="$1"
   local direction="$2"
@@ -283,42 +412,68 @@ is_right_click() {
   return 1
 }
 
+handle_close_request() {
+  local space_idx="$1"
+  local source="${2:-right_click}"
+  local mode
+  mode=$(right_click_close_mode)
+  case "$mode" in
+    off)
+      if [ "$source" = "menu" ]; then
+        destroy_space "$space_idx"
+      else
+        focus_space "$space_idx"
+      fi
+      ;;
+    direct)
+      destroy_space "$space_idx"
+      ;;
+    confirm)
+      local confirm_file
+      confirm_file=$(confirm_file_for_space "$space_idx")
+      if confirm_recent "$confirm_file"; then
+        rm -f "$confirm_file" 2>/dev/null || true
+        destroy_space "$space_idx"
+      else
+        mark_confirm "$space_idx" "$confirm_file"
+      fi
+      ;;
+  esac
+}
+
 handle_space_click() {
   local space_idx="$1"
 
-  # Reorder shortcuts:
-  # - shift + click: move left on current display
-  # - cmd + shift + click: move right on current display
-  if modifier_has "shift"; then
+  if is_right_click; then
+    if context_menu_on_right_click; then
+      toggle_space_menu "$space_idx"
+    else
+      handle_close_request "$space_idx" "right_click"
+    fi
+    return 0
+  fi
+
+  if modifier_reorder_enabled && modifier_has "shift"; then
     if modifier_has "cmd" || modifier_has "command"; then
       reorder_space_relative "$space_idx" "right"
     else
       reorder_space_relative "$space_idx" "left"
     fi
+    hide_space_menu "$space_idx"
     return 0
   fi
 
-  if is_right_click; then
-    local mode
-    mode=$(right_click_close_mode)
-    case "$mode" in
-      off)
-        focus_space "$space_idx"
-        ;;
-      direct)
-        destroy_space "$space_idx"
-        ;;
-      confirm)
-        local confirm_file
-        confirm_file=$(confirm_file_for_space "$space_idx")
-        if confirm_recent "$confirm_file"; then
-          rm -f "$confirm_file" 2>/dev/null || true
-          destroy_space "$space_idx"
-        else
-          mark_confirm "$space_idx" "$confirm_file"
-        fi
-        ;;
-    esac
+  local armed_space
+  armed_space=$(read_swap_source || true)
+  if [ -n "$armed_space" ]; then
+    if [ "$armed_space" = "$space_idx" ]; then
+      clear_swap_state
+      hide_space_menu "$space_idx"
+      return 0
+    fi
+    swap_spaces "$armed_space" "$space_idx"
+    clear_swap_state
+    hide_space_menu "$space_idx"
     return 0
   fi
 
@@ -334,6 +489,12 @@ Commands:
   click --space <index>
   focus --space <index>
   destroy --space <index>
+  menu --space <index>
+  menu-close --space <index>
+  move-left --space <index>
+  move-right --space <index>
+  swap-arm --space <index>
+  swap-cancel
 USAGE
 }
 
@@ -391,6 +552,57 @@ case "$command" in
       exit 1
     fi
     destroy_space "$space_idx"
+    ;;
+  menu)
+    space_idx=$(parse_space_arg "$@")
+    if [ -z "$space_idx" ]; then
+      usage
+      exit 1
+    fi
+    toggle_space_menu "$space_idx"
+    ;;
+  menu-close)
+    space_idx=$(parse_space_arg "$@")
+    if [ -z "$space_idx" ]; then
+      usage
+      exit 1
+    fi
+    handle_close_request "$space_idx" "menu"
+    hide_space_menu "$space_idx"
+    ;;
+  move-left)
+    space_idx=$(parse_space_arg "$@")
+    if [ -z "$space_idx" ]; then
+      usage
+      exit 1
+    fi
+    reorder_space_relative "$space_idx" "left"
+    hide_space_menu "$space_idx"
+    ;;
+  move-right)
+    space_idx=$(parse_space_arg "$@")
+    if [ -z "$space_idx" ]; then
+      usage
+      exit 1
+    fi
+    reorder_space_relative "$space_idx" "right"
+    hide_space_menu "$space_idx"
+    ;;
+  swap-arm)
+    space_idx=$(parse_space_arg "$@")
+    if [ -z "$space_idx" ]; then
+      usage
+      exit 1
+    fi
+    arm_swap_state "$space_idx"
+    hide_space_menu "$space_idx"
+    ;;
+  swap-cancel)
+    space_idx=$(parse_space_arg "$@")
+    clear_swap_state
+    if [ -n "$space_idx" ]; then
+      hide_space_menu "$space_idx"
+    fi
     ;;
   *)
     usage

@@ -8,6 +8,7 @@ CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
 FOCUS_SCRIPT="$CONFIG_DIR/plugins/focus_space.sh"
 ICON_CACHE_DIR="$CONFIG_DIR/cache/space_icons"
 RETRY_FILE="$CONFIG_DIR/.spaces_retry"
+SIG_CACHE_FILE="$CONFIG_DIR/.spaces_signatures"
 STATE_FILE="$CONFIG_DIR/state.json"
 SPACE_ACTION_SCRIPT="$CONFIG_DIR/scripts/space_action.sh"
 SPACE_MANAGER_BIN="$CONFIG_DIR/bin/space_manager"
@@ -34,6 +35,25 @@ resolve_creator_mode() {
   normalize_creator_mode "${mode:-per_display}"
 }
 
+normalize_bool() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on)
+      printf '%s' "true"
+      ;;
+    *)
+      printf '%s' "false"
+      ;;
+  esac
+}
+
+resolve_diff_updates_enabled() {
+  local enabled="true"
+  if command -v jq >/dev/null 2>&1 && [ -f "$STATE_FILE" ]; then
+    enabled=$(jq -r '.spaces.experimental_diff_updates // empty' "$STATE_FILE" 2>/dev/null || true)
+  fi
+  [ "$(normalize_bool "${enabled:-true}")" = "true" ]
+}
+
 space_click_action() {
   local space_index="${1:-}"
   if [ -x "$SPACE_ACTION_SCRIPT" ]; then
@@ -54,6 +74,23 @@ creator_click_action() {
     return 0
   fi
   printf '%s' 'yabai -m space --create'
+}
+
+space_menu_action() {
+  local action="${1:-}"
+  local space_index="${2:-}"
+  if [ -x "$SPACE_ACTION_SCRIPT" ]; then
+    printf '%s %s --space %s' "$SPACE_ACTION_SCRIPT" "$action" "$space_index"
+    return 0
+  fi
+  case "$action" in
+    menu-close)
+      printf '%s %s' "$FOCUS_SCRIPT" "$space_index"
+      ;;
+    move-left|move-right|swap-arm|swap-cancel)
+      printf '%s' ''
+      ;;
+  esac
 }
 
 item_exists() {
@@ -219,6 +256,47 @@ visible_space_for_display() {
   return 1
 }
 
+join_lines_with_comma() {
+  local line
+  local out=""
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    if [ -n "$out" ]; then
+      out="$out,$line"
+    else
+      out="$line"
+    fi
+  done
+  printf '%s' "$out"
+}
+
+topology_signature() {
+  printf '%s\n' "${SPACE_LINES[@]-}" | join_lines_with_comma
+}
+
+visible_signature() {
+  printf '%s\n' "${VISIBLE_SPACE_LINES[@]-}" | join_lines_with_comma
+}
+
+creator_targets_signature() {
+  printf '%s\n' "${CREATOR_TARGETS[@]-}" | join_lines_with_comma
+}
+
+load_signature() {
+  local key="$1"
+  [ -f "$SIG_CACHE_FILE" ] || return 1
+  awk -F= -v key="$key" '$1 == key {print substr($0, index($0, "=")+1)}' "$SIG_CACHE_FILE" 2>/dev/null | tail -n 1
+}
+
+write_signatures() {
+  local topology="$1"
+  local visible="$2"
+  {
+    printf 'topology=%s\n' "$topology"
+    printf 'visible=%s\n' "$visible"
+  } > "$SIG_CACHE_FILE" 2>/dev/null || true
+}
+
 if [ -d "$ICON_CACHE_DIR" ]; then
   ACTIVE_SPACES=" "
   for entry in "${SPACE_LINES[@]}"; do
@@ -239,12 +317,6 @@ fi
 
 # Prepare batch command
 declare -a SB_ARGS=()
-
-# Remove existing spaces first
-sketchybar --remove '/space\..*/' >/dev/null 2>&1 || true
-sketchybar --remove '/spaces\..*/' >/dev/null 2>&1 || true
-sketchybar --remove '/space_creator\..*/' >/dev/null 2>&1 || true
-sketchybar --remove space_creator >/dev/null 2>&1 || true
 
 anchor_item="front_app"
 needs_front_app_reorder=0
@@ -299,6 +371,57 @@ for entry in "${SPACE_LINES[@]}"; do
                           script="$CONFIG_DIR/plugins/space.sh" \
                           click_script="$click_action")
   SB_ARGS+=(--subscribe "$item" mouse.entered mouse.exited space_change space_mode_refresh)
+
+  if [ -x "$SPACE_ACTION_SCRIPT" ]; then
+    menu_prefix="$item.menu"
+    menu_close_action="$(space_menu_action "menu-close" "$space_index")"
+    menu_move_left_action="$(space_menu_action "move-left" "$space_index")"
+    menu_move_right_action="$(space_menu_action "move-right" "$space_index")"
+    menu_swap_action="$(space_menu_action "swap-arm" "$space_index")"
+    menu_swap_cancel_action="$(space_menu_action "swap-cancel" "$space_index")"
+
+    SB_ARGS+=(--add item "$menu_prefix.close" "popup.$item")
+    SB_ARGS+=(--set "$menu_prefix.close" \
+                    icon="󰅖" \
+                    icon.color="0xfff38ba8" \
+                    label="Close Space" \
+                    label.color="0xfff2cdcd" \
+                    script="$CONFIG_DIR/plugins/popup_hover.sh" \
+                    click_script="$menu_close_action")
+
+    SB_ARGS+=(--add item "$menu_prefix.left" "popup.$item")
+    SB_ARGS+=(--set "$menu_prefix.left" \
+                    icon="󰁍" \
+                    icon.color="0xffa6e3a1" \
+                    label="Move Left" \
+                    script="$CONFIG_DIR/plugins/popup_hover.sh" \
+                    click_script="$menu_move_left_action")
+
+    SB_ARGS+=(--add item "$menu_prefix.right" "popup.$item")
+    SB_ARGS+=(--set "$menu_prefix.right" \
+                    icon="󰁔" \
+                    icon.color="0xffa6e3a1" \
+                    label="Move Right" \
+                    script="$CONFIG_DIR/plugins/popup_hover.sh" \
+                    click_script="$menu_move_right_action")
+
+    SB_ARGS+=(--add item "$menu_prefix.swap" "popup.$item")
+    SB_ARGS+=(--set "$menu_prefix.swap" \
+                    icon="󰚗" \
+                    icon.color="0xfff9e2af" \
+                    label="Swap: Select Target" \
+                    script="$CONFIG_DIR/plugins/popup_hover.sh" \
+                    click_script="$menu_swap_action")
+
+    SB_ARGS+=(--add item "$menu_prefix.swap_cancel" "popup.$item")
+    SB_ARGS+=(--set "$menu_prefix.swap_cancel" \
+                    icon="󰜺" \
+                    icon.color="0xffa6adc8" \
+                    label="Cancel Swap" \
+                    script="$CONFIG_DIR/plugins/popup_hover.sh" \
+                    click_script="$menu_swap_cancel_action")
+  fi
+
   if [ -n "$last_item" ]; then
     SB_ARGS+=(--move "$item" after "$last_item")
   fi
@@ -336,6 +459,97 @@ esac
 
 if [ ${#CREATOR_TARGETS[@]} -eq 0 ]; then
   CREATOR_TARGETS=("active")
+fi
+
+DIFF_UPDATES_ENABLED=0
+if resolve_diff_updates_enabled; then
+  DIFF_UPDATES_ENABLED=1
+fi
+
+TOPOLOGY_SIG="$(topology_signature)|creator_mode=$CREATOR_MODE|creator_targets=$(creator_targets_signature)"
+VISIBLE_SIG="$(visible_signature)"
+
+if [ "$DIFF_UPDATES_ENABLED" -eq 1 ]; then
+  cached_topology="$(load_signature topology || true)"
+  if [ -n "$cached_topology" ] && [ "$cached_topology" = "$TOPOLOGY_SIG" ]; then
+    fast_path_ok=1
+    for entry in "${SPACE_LINES[@]-}"; do
+      space_index="${entry##* }"
+      if ! item_exists "space.$space_index"; then
+        fast_path_ok=0
+        break
+      fi
+      if [ -x "$SPACE_ACTION_SCRIPT" ]; then
+        for menu_item in \
+          "space.$space_index.menu.close" \
+          "space.$space_index.menu.left" \
+          "space.$space_index.menu.right" \
+          "space.$space_index.menu.swap" \
+          "space.$space_index.menu.swap_cancel"; do
+          if ! item_exists "$menu_item"; then
+            fast_path_ok=0
+            break
+          fi
+        done
+      fi
+      if [ "$fast_path_ok" -eq 0 ]; then
+        break
+      fi
+    done
+    if [ "$fast_path_ok" -eq 1 ]; then
+      for creator_target in "${CREATOR_TARGETS[@]-}"; do
+        creator_item="space_creator"
+        if [ "$CREATOR_MODE" = "per_display" ] && [ "$creator_target" != "active" ]; then
+          creator_item="space_creator.$creator_target"
+        fi
+        if ! item_exists "$creator_item"; then
+          fast_path_ok=0
+          break
+        fi
+      done
+    fi
+
+    if [ "$fast_path_ok" -eq 1 ]; then
+      for entry in "${SPACE_LINES[@]-}"; do
+        space_index="${entry##* }"
+        click_action="$(space_click_action "$space_index")"
+        sketchybar --set "space.$space_index" click_script="$click_action" >/dev/null 2>&1 || true
+      done
+
+      for creator_target in "${CREATOR_TARGETS[@]-}"; do
+        creator_item="space_creator"
+        if [ "$CREATOR_MODE" = "per_display" ] && [ "$creator_target" != "active" ]; then
+          creator_item="space_creator.$creator_target"
+        fi
+        creator_cmd="$(creator_click_action "$creator_target")"
+        creator_space=""
+        creator_ignore_association="on"
+        if [ "$creator_target" != "active" ]; then
+          creator_space="$(visible_space_for_display "$creator_target" || true)"
+          if [ -n "$creator_space" ]; then
+            creator_ignore_association="off"
+          fi
+        fi
+        if [ -n "$creator_space" ]; then
+          sketchybar --set "$creator_item" \
+            display="$creator_target" \
+            ignore_association="$creator_ignore_association" \
+            space="$creator_space" \
+            click_script="$creator_cmd" >/dev/null 2>&1 || true
+        else
+          sketchybar --set "$creator_item" \
+            display="$creator_target" \
+            ignore_association="$creator_ignore_association" \
+            click_script="$creator_cmd" >/dev/null 2>&1 || true
+        fi
+      done
+
+      write_signatures "$TOPOLOGY_SIG" "$VISIBLE_SIG"
+      sketchybar --trigger space_change >/dev/null 2>&1 || true
+      sketchybar --trigger space_mode_refresh >/dev/null 2>&1 || true
+      exit 0
+    fi
+  fi
 fi
 
 declare -a CREATOR_ITEMS=()
@@ -381,8 +595,15 @@ for creator_target in "${CREATOR_TARGETS[@]-}"; do
   CREATOR_ITEMS+=("$creator_item")
 done
 
+# Remove existing spaces only for full rebuild path
+sketchybar --remove '/space\..*/' >/dev/null 2>&1 || true
+sketchybar --remove '/spaces\..*/' >/dev/null 2>&1 || true
+sketchybar --remove '/space_creator\..*/' >/dev/null 2>&1 || true
+sketchybar --remove space_creator >/dev/null 2>&1 || true
+
 # Execute all commands in one single call
 sketchybar "${SB_ARGS[@]}"
+write_signatures "$TOPOLOGY_SIG" "$VISIBLE_SIG"
 
 
 # If front_app wasn't ready yet, reorder spaces once it appears.

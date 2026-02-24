@@ -149,12 +149,53 @@ local function load_state(config_dir)
   return data
 end
 
+local function resolve_menu_data_path(config_dir, raw_path)
+  if type(raw_path) ~= "string" or raw_path == "" then
+    return nil
+  end
+  local expanded = expand_path(raw_path)
+  if expanded and expanded:match("^/") then
+    return expanded
+  end
+  return string.format("%s/%s", config_dir, raw_path)
+end
+
+local function load_json_array_file(path)
+  if not path then
+    return nil
+  end
+  local ok_json, json = pcall(require, "json")
+  if not ok_json then
+    return nil
+  end
+  local file = io.open(path, "r")
+  if not file then
+    return nil
+  end
+  local contents = file:read("*a")
+  file:close()
+  local ok_decode, data = pcall(json.decode, contents)
+  if not ok_decode or type(data) ~= "table" then
+    return nil
+  end
+  return data
+end
+
 local function read_menu_config(config_dir)
   local state = load_state(config_dir)
   local menu_state = state and state.menus and state.menus.apple or {}
+  local work_state = state and state.menus and state.menus.work or {}
   local items = type(menu_state.items) == "table" and menu_state.items or {}
   local custom = type(menu_state.custom) == "table" and menu_state.custom or {}
   local hover = type(menu_state.hover) == "table" and menu_state.hover or {}
+  local sections = type(menu_state.sections) == "table" and menu_state.sections or {}
+  local work_google_apps = type(work_state.google_apps) == "table" and work_state.google_apps or {}
+  local work_apps_file = work_state.apps_file or menu_state.work_apps_file
+  local resolved_work_apps_file = resolve_menu_data_path(config_dir, work_apps_file)
+  local file_work_apps = load_json_array_file(resolved_work_apps_file)
+  if type(file_work_apps) == "table" and #file_work_apps > 0 then
+    work_google_apps = file_work_apps
+  end
   return {
     show_missing = menu_state.show_missing,
     terminal = menu_state.terminal,
@@ -162,6 +203,10 @@ local function read_menu_config(config_dir)
     items = items,
     custom = custom,
     hover = hover,
+    sections = sections,
+    work_apps_file = work_apps_file,
+    workspace_domain = work_state.workspace_domain,
+    work_google_apps = work_google_apps,
   }
 end
 
@@ -236,8 +281,8 @@ local function resolve_afs_browser_app(ctx)
   return resolve_path(ctx, {
     ctx.paths and ctx.paths.afs_browser_app or nil,
     os.getenv("AFS_BROWSER_APP"),
-    code_dir .. "/lab/afs_suite/build/apps/browser/afs-browser.app",
     code_dir .. "/lab/afs_suite/build_ai/apps/browser/afs-browser.app",
+    code_dir .. "/lab/afs_suite/build/apps/browser/afs-browser.app",
     code_dir .. "/lab/afs_suite/build/apps/browser/Debug/afs-browser.app",
     code_dir .. "/lab/afs_suite/build/apps/browser/Release/afs-browser.app",
   }, true)
@@ -273,23 +318,86 @@ end
 
 local function resolve_yaze_app(ctx)
   local code_dir = resolve_code_dir(ctx)
+  local yaze_dir = os.getenv("BARISTA_YAZE_DIR")
+    or (ctx.paths and ctx.paths.yaze)
+    or (code_dir .. "/yaze")
+  local nightly_prefix = os.getenv("BARISTA_YAZE_NIGHTLY_PREFIX")
+    or os.getenv("YAZE_NIGHTLY_PREFIX")
+    or ((os.getenv("HOME") or "") .. "/.local/yaze/nightly")
   return resolve_path(ctx, {
-    ctx.paths and ctx.paths.yaze and (ctx.paths.yaze .. "/build/bin/Release/yaze.app") or nil,
-    ctx.paths and ctx.paths.yaze and (ctx.paths.yaze .. "/build_ai/bin/yaze.app") or nil,
-    ctx.paths and ctx.paths.yaze and (ctx.paths.yaze .. "/build/bin/yaze.app") or nil,
-    code_dir .. "/hobby/yaze/build/bin/Release/yaze.app",
+    ctx.paths and ctx.paths.yaze_app or nil,
+    os.getenv("BARISTA_YAZE_APP") or os.getenv("YAZE_APP"),
+    nightly_prefix .. "/current/yaze.app",
+    nightly_prefix .. "/yaze.app",
+    (os.getenv("HOME") or "") .. "/Applications/Yaze Nightly.app",
+    (os.getenv("HOME") or "") .. "/Applications/yaze nightly.app",
+    (os.getenv("HOME") or "") .. "/applications/Yaze Nightly.app",
+    (os.getenv("HOME") or "") .. "/applications/yaze nightly.app",
+    "/Applications/Yaze Nightly.app",
+    "/Applications/yaze nightly.app",
+    -- AI builds (Stable/Preferred) - Debug/Release variants for Multi-Config
+    yaze_dir and (yaze_dir .. "/build_ai/bin/Debug/yaze.app") or nil,
+    yaze_dir and (yaze_dir .. "/build_ai/bin/Release/yaze.app") or nil,
+    code_dir .. "/hobby/yaze/build_ai/bin/Debug/yaze.app",
+    code_dir .. "/hobby/yaze/build_ai/bin/Release/yaze.app",
+    code_dir .. "/yaze/build_ai/bin/Debug/yaze.app",
+    code_dir .. "/yaze/build_ai/bin/Release/yaze.app",
+
+    -- Fallbacks
+    yaze_dir and (yaze_dir .. "/build_ai/bin/yaze.app") or nil,
     code_dir .. "/hobby/yaze/build_ai/bin/yaze.app",
+    code_dir .. "/yaze/build_ai/bin/yaze.app",
+    
+    -- Legacy/Standard builds
+    yaze_dir and (yaze_dir .. "/build/bin/Release/yaze.app") or nil,
+    yaze_dir and (yaze_dir .. "/build/bin/yaze.app") or nil,
+    code_dir .. "/hobby/yaze/build/bin/Release/yaze.app",
     code_dir .. "/hobby/yaze/build/bin/yaze.app",
     code_dir .. "/yaze/build/bin/yaze.app",
   }, true)
 end
 
+local function resolve_yaze_launcher()
+  local override = os.getenv("BARISTA_YAZE_LAUNCHER") or os.getenv("YAZE_LAUNCHER")
+  if override and override ~= "" then
+    override = expand_path(override)
+    if path_is_executable(override) then
+      return override, true
+    end
+    local resolved = command_path(override)
+    if resolved then
+      return resolved, true
+    end
+  end
+
+  local resolved = command_path("yaze-nightly")
+  if resolved then
+    return resolved, true
+  end
+
+  return nil, false
+end
 local function resolve_sys_manual_binary(ctx)
   local code_dir = resolve_code_dir(ctx)
   return resolve_executable_path({
     code_dir .. "/lab/sys_manual/build/sys_manual",
     code_dir .. "/sys_manual/build/sys_manual",
     "/Applications/sys_manual.app/Contents/MacOS/sys_manual",
+  })
+end
+
+local function resolve_mesen_run(ctx)
+  return resolve_executable_path({
+    (os.getenv("HOME") or "") .. "/bin/mesen-run",
+    (os.getenv("HOME") or "") .. "/.local/bin/mesen-run",
+  })
+end
+
+local function resolve_oracle_agent_manager(ctx)
+  local code_dir = resolve_code_dir(ctx)
+  return resolve_executable_path({
+    code_dir .. "/hobby/oracle-agent-manager/mesen2ctl",
+    code_dir .. "/hobby/oracle-agent-manager/build/mesen2ctl",
   })
 end
 
@@ -370,15 +478,47 @@ function apple_menu.setup(ctx)
   local settings = ctx.settings
   local widget_height = ctx.widget_height
   local associated_displays = ctx.associated_displays or "all"
-  local font_small = font_string(ctx, settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
-  local font_bold = font_string(ctx, settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small)
   local config_dir = resolve_config_dir(ctx)
   local menu_config = read_menu_config(config_dir)
+
+  local function resolved_style(style_name, fallback)
+    local raw = tostring(style_name or fallback or "Regular")
+    local normalized = raw:sub(1, 1):upper() .. raw:sub(2):lower()
+    if settings.font.style_map[normalized] then
+      return settings.font.style_map[normalized]
+    end
+    if settings.font.style_map[fallback] then
+      return settings.font.style_map[fallback]
+    end
+    return settings.font.style_map["Regular"] or "Regular"
+  end
+
+  local menu_font_size_offset = tonumber((ctx.appearance and ctx.appearance.menu_font_size_offset) or 1) or 1
+  local menu_font_size = math.max((settings.font.sizes.small or 12) + menu_font_size_offset, 10)
+  local menu_font_style = resolved_style((ctx.appearance and ctx.appearance.menu_font_style) or "Bold", "Semibold")
+  local menu_header_style = resolved_style((ctx.appearance and ctx.appearance.menu_header_font_style) or "Bold", "Bold")
+  local font_small = font_string(ctx, settings.font.text, menu_font_style, menu_font_size)
+  local font_bold = font_string(ctx, settings.font.text, menu_header_style, menu_font_size)
 
   local popup_border_width = (ctx.appearance and ctx.appearance.popup_border_width) or 2
   local popup_corner_radius = (ctx.appearance and ctx.appearance.popup_corner_radius) or 8
   local popup_border_color = (ctx.appearance and ctx.appearance.popup_border_color) or theme.WHITE
-  local popup_bg_color = (ctx.appearance and ctx.appearance.popup_bg_color) or theme.BG_PRI_COLR or theme.bar.bg
+  local popup_bg_color = (ctx.appearance and (ctx.appearance.menu_popup_bg_color or ctx.appearance.popup_bg_color)) or theme.BG_PRI_COLR or theme.bar.bg
+  local popup_padding = (ctx.appearance and ctx.appearance.popup_padding) or 8
+  local popup_item_height = tonumber((ctx.appearance and ctx.appearance.popup_item_height) or 0) or 0
+  if popup_item_height <= 0 then
+    popup_item_height = math.max(widget_height - 6, 20)
+  end
+  local popup_item_corner_radius = tonumber((ctx.appearance and ctx.appearance.popup_item_corner_radius) or 6) or 6
+  local function popup_toggle(item_name)
+    if type(ctx.popup_toggle_action) == "function" then
+      return ctx.popup_toggle_action(item_name)
+    end
+    if item_name and item_name ~= "" then
+      return string.format("sketchybar -m --set %s popup.drawing=toggle", item_name)
+    end
+    return "sketchybar -m --set $NAME popup.drawing=toggle"
+  end
 
   sbar.add("item", "apple_menu", {
     position = "left",
@@ -393,15 +533,15 @@ function apple_menu.setup(ctx)
       padding_left = 4,
       padding_right = 4,
     },
-    click_script = "sketchybar -m --set $NAME popup.drawing=toggle",
+    click_script = popup_toggle(),
     popup = {
       background = {
         border_width = popup_border_width,
         corner_radius = popup_corner_radius,
         border_color = popup_border_color,
         color = popup_bg_color,
-        padding_left = 8,
-        padding_right = 8,
+        padding_left = popup_padding,
+        padding_right = popup_padding,
       },
     },
   })
@@ -411,7 +551,7 @@ function apple_menu.setup(ctx)
     subscribe_popup("apple_menu")
   end
 
-  local item_height = math.max(widget_height - 6, 20)
+  local item_height = popup_item_height
 
   local hover_script = ctx.HOVER_SCRIPT
   if not hover_script and config_dir then
@@ -430,6 +570,8 @@ function apple_menu.setup(ctx)
     or (ctx.appearance and ctx.appearance.hover_border_color)
   local hover_border_width = (menu_config.hover and menu_config.hover.border_width)
     or (ctx.appearance and ctx.appearance.hover_border_width)
+  local hover_curve = (ctx.appearance and ctx.appearance.hover_animation_curve)
+  local hover_duration = (ctx.appearance and ctx.appearance.hover_animation_duration)
   if hover_color then
     hover_env.POPUP_HOVER_COLOR = tostring(hover_color)
   end
@@ -439,18 +581,21 @@ function apple_menu.setup(ctx)
   if hover_border_width then
     hover_env.POPUP_HOVER_BORDER_WIDTH = tostring(hover_border_width)
   end
+  if hover_curve then
+    hover_env.POPUP_HOVER_ANIMATION_CURVE = tostring(hover_curve)
+  end
+  if hover_duration then
+    hover_env.POPUP_HOVER_ANIMATION_DURATION = tostring(hover_duration)
+  end
   local hover_script_cmd = hover_script
   if hover_script and next(hover_env) then
     hover_script_cmd = env_prefix(hover_env) .. hover_script
   end
 
   local code_dir = resolve_code_dir(ctx)
-  local has_lab = code_dir and path_exists(code_dir .. "/lab", true)
   local show_missing = os.getenv("BARISTA_SHOW_MISSING_TOOLS") == "1"
   if type(menu_config.show_missing) == "boolean" then
     show_missing = menu_config.show_missing
-  elseif show_missing == false and has_lab then
-    show_missing = true
   end
 
   local function normalize_bool(value)
@@ -535,7 +680,6 @@ function apple_menu.setup(ctx)
 
   local function add_header(meta, index)
     local label = meta.label or ""
-    label = label:upper()
     sbar.add("item", string.format("menu.tools.header.%s.%d", meta.id or "section", index), {
       position = "popup.apple_menu",
       icon = { drawing = false },
@@ -545,7 +689,7 @@ function apple_menu.setup(ctx)
       background = {
         drawing = true,
         color = meta.bg_color or theme.BG_SEC_COLR or theme.bar.bg,
-        corner_radius = 6,
+        corner_radius = popup_item_corner_radius,
         height = item_height,
       },
     })
@@ -559,7 +703,9 @@ function apple_menu.setup(ctx)
     end
     local label = menu_label(entry.label, shortcut)
     local icon_color = entry.icon_color or (muted and theme.DARK_WHITE or theme.WHITE)
-    local label_color = entry.label_color or theme.WHITE
+    local label_color = entry.label_color
+      or (ctx.appearance and ctx.appearance.menu_label_color)
+      or theme.WHITE
     local action = entry.action
     if entry.missing then
       local launcher = config_dir .. "/bin/open_control_panel.sh"
@@ -582,7 +728,7 @@ function apple_menu.setup(ctx)
       ["label.padding_right"] = 8,
       background = {
         drawing = false,
-        corner_radius = 6,
+        corner_radius = popup_item_corner_radius,
         height = item_height,
       },
     })
@@ -597,6 +743,12 @@ function apple_menu.setup(ctx)
   local stemforge_app, stemforge_ok = resolve_stemforge_app(ctx)
   local stem_sampler_app, stem_sampler_ok = resolve_stem_sampler_app(ctx)
   local yaze_app, yaze_ok = resolve_yaze_app(ctx)
+  local yaze_launcher, yaze_launcher_ok = resolve_yaze_launcher()
+  local yaze_available = yaze_ok or yaze_launcher_ok
+  local yaze_enabled = (ctx.integrations and ctx.integrations.yaze ~= nil)
+  if ctx.integration_flags and ctx.integration_flags.yaze == false then
+    yaze_enabled = false
+  end
   local cortex_cli, cortex_cli_ok = resolve_cortex_cli(ctx)
   local help_center_bin, help_center_ok = resolve_executable_path({
     ctx.helpers and ctx.helpers.help_center or nil,
@@ -609,8 +761,14 @@ function apple_menu.setup(ctx)
   }, false)
   local help_center_action = ""
   local help_center_available = false
+  local code_dir = resolve_code_dir(ctx)
+  local env_prefix = string.format(
+    "BARISTA_CONFIG_DIR=%s BARISTA_CODE_DIR=%s",
+    shell_quote(config_dir),
+    shell_quote(code_dir)
+  )
   if help_center_ok and help_center_bin then
-    help_center_action = shell_quote(help_center_bin)
+    help_center_action = string.format("%s %s", env_prefix, shell_quote(help_center_bin))
     help_center_available = true
   elseif help_center_doc then
     help_center_action = string.format("open %s", shell_quote(help_center_doc))
@@ -627,11 +785,21 @@ function apple_menu.setup(ctx)
   local icon_browser_action = ""
   local icon_browser_available = false
   if icon_browser_ok and icon_browser_bin then
-    icon_browser_action = shell_quote(icon_browser_bin)
+    icon_browser_action = string.format("%s %s", env_prefix, shell_quote(icon_browser_bin))
     icon_browser_available = true
   elseif icon_browser_doc then
     icon_browser_action = string.format("open %s", shell_quote(icon_browser_doc))
     icon_browser_available = icon_browser_doc_ok
+  end
+
+  local keyboard_overlay_bin, keyboard_overlay_ok = resolve_executable_path({
+    config_dir .. "/scripts/open_keyboard_overlay.sh",
+  })
+  local keyboard_overlay_action = ""
+  local keyboard_overlay_available = false
+  if keyboard_overlay_ok and keyboard_overlay_bin then
+    keyboard_overlay_action = shell_quote(keyboard_overlay_bin)
+    keyboard_overlay_available = true
   end
 
   local sys_manual_bin, sys_manual_ok = resolve_sys_manual_binary(ctx)
@@ -640,6 +808,18 @@ function apple_menu.setup(ctx)
   if sys_manual_ok and sys_manual_bin then
     sys_manual_action = shell_quote(sys_manual_bin)
     sys_manual_available = true
+  end
+
+  local mesen_run_bin, mesen_run_ok = resolve_mesen_run(ctx)
+  local mesen_run_action = ""
+  if mesen_run_ok and mesen_run_bin then
+    mesen_run_action = shell_quote(mesen_run_bin)
+  end
+
+  local oam_bin, oam_ok = resolve_oracle_agent_manager(ctx)
+  local oam_action = ""
+  if oam_ok and oam_bin then
+    oam_action = terminal_action("oracle.agent_manager", shell_quote(oam_bin))
   end
 
   local afs_action = afs_browser_app and string.format("open %s", shell_quote(afs_browser_app)) or ""
@@ -703,7 +883,7 @@ function apple_menu.setup(ctx)
       label = "AFS Browser",
       icon = "󰈙",
       icon_color = theme.SAPPHIRE,
-      section = "afs",
+      section = "core",
       action = afs_action or "",
       shortcut_action = "launch_afs_browser",
       available = afs_browser_ok,
@@ -719,7 +899,7 @@ function apple_menu.setup(ctx)
       shortcut_action = "launch_afs_studio",
       available = studio_available,
       blocked = studio_blocked,
-      default_enabled = true,
+      default_enabled = false,
     },
     {
       id = "afs_labeler",
@@ -731,7 +911,7 @@ function apple_menu.setup(ctx)
       shortcut_action = "launch_afs_labeler",
       available = studio_ok and labeler_cmd ~= nil,
       blocked = studio_ok and labeler_cmd ~= nil and labeler_action == nil,
-      default_enabled = true,
+      default_enabled = false,
     },
     {
       id = "stemforge",
@@ -742,7 +922,7 @@ function apple_menu.setup(ctx)
       action = stemforge_app and string.format("open %s", shell_quote(stemforge_app)) or "",
       shortcut_action = "launch_stemforge",
       available = stemforge_ok,
-      default_enabled = true,
+      default_enabled = false,
     },
     {
       id = "stem_sampler",
@@ -753,17 +933,51 @@ function apple_menu.setup(ctx)
       action = stem_sampler_app and string.format("open %s", shell_quote(stem_sampler_app)) or "",
       shortcut_action = "launch_stem_sampler",
       available = stem_sampler_ok,
-      default_enabled = true,
+      default_enabled = false,
     },
     {
       id = "yaze",
       label = "Yaze",
       icon = "󰯙",
-      icon_color = theme.GREEN,
-      section = "apps",
-      action = yaze_app and string.format("open %s", shell_quote(yaze_app)) or "",
-      shortcut_action = "launch_yaze",
-      available = yaze_ok,
+      icon_color = theme.YELLOW,
+      section = "core",
+      action = yaze_launcher_ok and shell_quote(yaze_launcher) or (yaze_app and string.format("open %s", shell_quote(yaze_app)) or ""),
+      -- Default to enabled if we found it
+      available = yaze_available,
+      default_enabled = true,
+      submenu = yaze_enabled and {
+        {
+          name = "yaze.repo",
+          label = "Open Repo",
+          icon = "󰋜",
+          action = ctx.open_path(yaze_dir),
+        },
+        {
+          name = "yaze.docs",
+          label = "Workflow Docs",
+          icon = "󰊕",
+          action = ctx.open_path(ctx.paths and ctx.paths.rom_doc or (code_dir .. "/docs/workflow/rom-hacking.org")),
+        }
+      } or nil
+    },
+    {
+      id = "mesen_oos",
+      label = "Mesen2 OoS",
+      icon = "󰁆",
+      icon_color = theme.RED,
+      section = "core",
+      action = mesen_run_action,
+      available = mesen_run_ok,
+      default_enabled = true,
+    },
+    {
+      id = "oracle_agent_manager",
+      label = "Agent Manager",
+      icon = "󰒋",
+      icon_color = theme.MAGENTA,
+      section = "core",
+      action = oam_action,
+      available = oam_ok,
       default_enabled = true,
     },
     {
@@ -771,7 +985,7 @@ function apple_menu.setup(ctx)
       label = "Cortex Dashboard",
       icon = "󰕮",
       icon_color = theme.MAUVE,
-      section = "cortex",
+      section = "controls",
       action = cortex_toggle,
       shortcut_action = "toggle_cortex",
       available = cortex_cli_ok,
@@ -782,17 +996,17 @@ function apple_menu.setup(ctx)
       label = "Cortex Hub",
       icon = "󰣖",
       icon_color = theme.SKY,
-      section = "cortex",
+      section = "controls",
       action = cortex_hub,
       available = cortex_cli_ok,
-      default_enabled = true,
+      default_enabled = false,
     },
     {
       id = "help_center",
       label = "Help Center",
       icon = "󰘥",
       icon_color = theme.BLUE,
-      section = "barista",
+      section = "support",
       action = help_center_action,
       shortcut_action = "open_help_center",
       available = help_center_available,
@@ -803,29 +1017,40 @@ function apple_menu.setup(ctx)
       label = "Sys Manual",
       icon = "󰋜",
       icon_color = theme.BLUE,
-      section = "barista",
+      section = "support",
       action = sys_manual_action,
       shortcut_action = "open_sys_manual",
       available = sys_manual_available,
-      default_enabled = true,
+      default_enabled = false,
     },
     {
       id = "icon_browser",
       label = "Icon Browser",
       icon = "󰈙",
       icon_color = theme.SKY,
-      section = "barista",
+      section = "support",
       action = icon_browser_action,
       shortcut_action = "open_icon_browser",
       available = icon_browser_available,
-      default_enabled = true,
+      default_enabled = false,
+    },
+    {
+      id = "keyboard_overlay",
+      label = "Keyboard Overlay",
+      icon = "󰌌",
+      icon_color = theme.SKY,
+      section = "support",
+      action = keyboard_overlay_action,
+      shortcut_action = "toggle_keyboard_overlay",
+      available = keyboard_overlay_available,
+      default_enabled = false,
     },
     {
       id = "barista_config",
       label = "Barista Config",
       icon = "󰒓",
       icon_color = theme.SKY,
-      section = "barista",
+      section = "controls",
       action = ctx.call_script(config_dir .. "/bin/open_control_panel.sh", "--panel"),
       shortcut_action = "open_control_panel",
       available = true,
@@ -836,7 +1061,7 @@ function apple_menu.setup(ctx)
       label = "Reload SketchyBar",
       icon = "󰑐",
       icon_color = theme.YELLOW,
-      section = "barista",
+      section = "controls",
       action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload",
       shortcut_action = "reload_sketchybar",
       available = true,
@@ -845,13 +1070,34 @@ function apple_menu.setup(ctx)
   }
 
   local sections = {
-    afs = { id = "afs", label = "AFS Tools", icon = "󰈙", color = theme.SAPPHIRE, order = 1 },
-    audio = { id = "audio", label = "Audio", icon = "󰎈", color = theme.PEACH, order = 2 },
-    apps = { id = "apps", label = "Apps", icon = "󰯙", color = theme.GREEN, order = 3 },
-    cortex = { id = "cortex", label = "Cortex", icon = "󰕮", color = theme.MAUVE, order = 4 },
-    barista = { id = "barista", label = "Barista", icon = "󰒓", color = theme.SKY, order = 5 },
-    custom = { id = "custom", label = "Custom", icon = "󰘥", color = theme.LAVENDER, order = 6 },
+    core = { id = "core", label = "Core Tools", icon = "󰯙", color = theme.GREEN, order = 1 },
+    controls = { id = "controls", label = "Controls", icon = "󰒓", color = theme.SKY, order = 2 },
+    work = { id = "work", label = "Work Apps", icon = "󰖟", color = theme.BLUE, order = 3 },
+    support = { id = "support", label = "Support", icon = "󰘥", color = theme.LAVENDER, order = 4 },
+    afs = { id = "afs", label = "AFS Tools", icon = "󰈙", color = theme.SAPPHIRE, order = 5 },
+    audio = { id = "audio", label = "Audio", icon = "󰎈", color = theme.PEACH, order = 6 },
+    custom = { id = "custom", label = "Custom", icon = "󰘥", color = theme.LAVENDER, order = 7 },
   }
+
+  for section_id, override in pairs(menu_config.sections or {}) do
+    if type(override) == "table" then
+      local section = sections[section_id] or { id = section_id, label = section_id, order = 99 }
+      if override.label and override.label ~= "" then
+        section.label = override.label
+      end
+      if override.icon and override.icon ~= "" then
+        section.icon = override.icon
+      end
+      if override.color and override.color ~= "" then
+        section.color = override.color
+      end
+      local order = normalize_order(override.order)
+      if order ~= nil then
+        section.order = order
+      end
+      sections[section_id] = section
+    end
+  end
 
   local rendered = {}
   for index, item in ipairs(base_items) do
@@ -893,7 +1139,7 @@ function apple_menu.setup(ctx)
         missing = missing,
         order = order,
         default_index = index,
-        section = item.section or "barista",
+        section = override.section or item.section or "controls",
       })
     end
   end
@@ -918,6 +1164,36 @@ function apple_menu.setup(ctx)
             order = normalize_order(custom.order) or (2000 + index),
             default_index = 1000 + index,
             section = custom.section or "custom",
+          })
+        end
+      end
+    end
+  end
+
+  for index, app in ipairs(menu_config.work_google_apps or {}) do
+    if type(app) == "table" then
+      local enabled = normalize_bool(app.enabled)
+      if enabled ~= false then
+        local label = app.label or app.title or app.name or ("Work App " .. index)
+        local action = app.command or app.action or ""
+        local url = app.url
+        if (not action or action == "") and type(url) == "string" and url ~= "" then
+          action = string.format("open %s", shell_quote(url))
+        end
+        if label ~= "" and action ~= "" then
+          table.insert(rendered, {
+            id = app.id or ("work_google_" .. index),
+            name = "menu.tools.work." .. index,
+            label = label,
+            icon = app.icon or "󰊯",
+            icon_color = app.icon_color or app.color or theme.BLUE,
+            label_color = app.label_color,
+            action = action,
+            shortcut = app.shortcut,
+            missing = false,
+            order = normalize_order(app.order) or (1500 + index),
+            default_index = 1200 + index,
+            section = app.section or "work",
           })
         end
       end

@@ -24,6 +24,12 @@ class AppearanceConfig(BaseModel):
     font_icon: str = "Hack Nerd Font"
     font_text: str = "Source Code Pro"
     font_numbers: str = "SF Mono"
+    popup_bg_color: str = "0xC021162F"
+    popup_border_color: str = "0x60cdd6f4"
+    menu_popup_bg_color: str = "0xE021162F"
+    menu_font_style: str = "Bold"
+    menu_header_font_style: str = "Bold"
+    menu_font_size_offset: int = Field(default=1, ge=-2, le=6)
 
 
 class WidgetsConfig(BaseModel):
@@ -114,9 +120,33 @@ class BaristaConfig(BaseModel):
     system_info_items: SystemInfoItemsConfig = Field(default_factory=SystemInfoItemsConfig)
     toggles: TogglesConfig = Field(default_factory=TogglesConfig)
     integrations: IntegrationsConfig = Field(default_factory=IntegrationsConfig)
-    widget_colors: list = Field(default_factory=list)
+    widget_colors: dict[str, str] = Field(default_factory=dict)
     space_icons: dict[str, str] = Field(default_factory=dict)
     space_modes: dict[str, str] = Field(default_factory=dict)
+    spaces: dict[str, object] = Field(default_factory=lambda: {
+        "creator_mode": "per_display",
+        "right_click_close": "confirm",
+        "reorder_mode": "menu",
+        "modifier_reorder_enabled": True,
+        "context_menu_on_right_click": True,
+        "swap_indicator": True,
+        "experimental_diff_updates": True,
+    })
+    menus: dict[str, object] = Field(default_factory=lambda: {
+        "apple": {
+            "show_missing": False,
+            "items": {},
+            "custom": {},
+            "sections": {},
+            "hover": {},
+        },
+        "work": {
+            "google_apps": [],
+            "apps_file": "data/work_apps.local.json",
+            "workspace_domain": "",
+        },
+    })
+    modes: dict[str, object] = Field(default_factory=lambda: {"window_manager": "auto"})
     
     # Custom paths (machine-specific)
     paths: dict[str, str] = Field(default_factory=dict)

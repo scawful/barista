@@ -7,6 +7,10 @@
 @property (strong) NSView *contentView;
 @property (strong) NSButton *showMissingToggle;
 @property (strong) NSButton *allowTerminalToggle;
+@property (strong) NSTextField *workDomainField;
+@property (strong) NSTextField *workAppsFileField;
+@property (strong) NSButton *applyWorkAppsButton;
+@property (strong) NSButton *openWorkAppsFileButton;
 @end
 
 @implementation MenuTabViewController
@@ -18,119 +22,184 @@
 - (void)viewDidLoad {
   [super viewDidLoad];
 
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  BOOL yazeDefaultEnabled = [[config valueForKeyPath:@"integrations.yaze.enabled" defaultValue:@NO] boolValue];
+
   self.tools = @[
     @{@"key": @"afs_browser", @"label": @"AFS Browser", @"icon": @"󰈙", @"default_enabled": @YES},
     @{@"key": @"afs_studio", @"label": @"AFS Studio", @"icon": @"󰆍", @"default_enabled": @YES},
     @{@"key": @"afs_labeler", @"label": @"AFS Labeler", @"icon": @"󰓹", @"default_enabled": @YES},
     @{@"key": @"stemforge", @"label": @"StemForge", @"icon": @"󰎈", @"default_enabled": @YES},
     @{@"key": @"stem_sampler", @"label": @"StemSampler", @"icon": @"󰎈", @"default_enabled": @YES},
-    @{@"key": @"yaze", @"label": @"Yaze", @"icon": @"󰯙", @"default_enabled": @YES},
+    @{@"key": @"yaze", @"label": @"Yaze", @"icon": @"󰯙", @"default_enabled": @(yazeDefaultEnabled)},
     @{@"key": @"cortex_toggle", @"label": @"Cortex Dashboard", @"icon": @"󰕮", @"default_enabled": @YES},
     @{@"key": @"cortex_hub", @"label": @"Cortex Hub", @"icon": @"󰣖", @"default_enabled": @YES},
     @{@"key": @"help_center", @"label": @"Help Center", @"icon": @"󰘥", @"default_enabled": @YES},
     @{@"key": @"sys_manual", @"label": @"Sys Manual", @"icon": @"󰋜", @"default_enabled": @YES},
     @{@"key": @"icon_browser", @"label": @"Icon Browser", @"icon": @"󰈙", @"default_enabled": @YES},
+    @{@"key": @"keyboard_overlay", @"label": @"Keyboard Overlay", @"icon": @"󰌌", @"default_enabled": @YES},
     @{@"key": @"barista_config", @"label": @"Barista Config", @"icon": @"󰒓", @"default_enabled": @YES},
     @{@"key": @"reload_bar", @"label": @"Reload SketchyBar", @"icon": @"󰑐", @"default_enabled": @YES}
   ];
 
-  CGFloat contentHeight = MAX(560.0, 240.0 + self.tools.count * 40.0);
   self.scrollView = [[NSScrollView alloc] initWithFrame:self.view.bounds];
   self.scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   self.scrollView.hasVerticalScroller = YES;
   self.scrollView.autohidesScrollers = YES;
-
-  self.contentView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, self.view.bounds.size.width, contentHeight)];
-  self.contentView.autoresizingMask = NSViewWidthSizable;
-  self.scrollView.documentView = self.contentView;
+  self.scrollView.borderType = NSNoBorder;
+  self.scrollView.drawsBackground = NO;
   [self.view addSubview:self.scrollView];
 
-  CGFloat y = self.contentView.bounds.size.height - 40;
-  CGFloat leftMargin = 40;
+  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  rootStack.alignment = NSLayoutAttributeLeading;
+  rootStack.spacing = 24;
+  rootStack.edgeInsets = NSEdgeInsetsMake(30, 40, 40, 40);
+  self.scrollView.documentView = rootStack;
+  [rootStack.widthAnchor constraintEqualToAnchor:self.scrollView.widthAnchor].active = YES;
 
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 400, 30)];
+  // Title
+  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
   title.stringValue = @"Apple Menu Tools";
-  title.font = [NSFont systemFontOfSize:20 weight:NSFontWeightBold];
+  title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
   title.bordered = NO;
   title.editable = NO;
   title.backgroundColor = [NSColor clearColor];
-  [self.contentView addSubview:title];
-  y -= 36;
+  [rootStack addView:title inGravity:NSStackViewGravityTop];
 
-  NSTextField *hint = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 740, 20)];
+  NSTextField *hint = [[NSTextField alloc] initWithFrame:NSZeroRect];
   hint.stringValue = @"Toggle items, edit labels/icons, and set order (lower numbers appear first).";
-  hint.font = [NSFont systemFontOfSize:12];
+  hint.font = [NSFont systemFontOfSize:13];
   hint.textColor = [NSColor secondaryLabelColor];
   hint.bordered = NO;
   hint.editable = NO;
   hint.backgroundColor = [NSColor clearColor];
-  [self.contentView addSubview:hint];
-  y -= 34;
+  [rootStack addView:hint inGravity:NSStackViewGravityTop];
 
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  // Options row
+  NSStackView *optionsRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  optionsRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  optionsRow.spacing = 20;
+  [rootStack addView:optionsRow inGravity:NSStackViewGravityTop];
+
   BOOL showMissing = [[config valueForKeyPath:@"menus.apple.show_missing" defaultValue:@NO] boolValue];
-  self.showMissingToggle = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin, y, 260, 20)];
+  self.showMissingToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.showMissingToggle setButtonType:NSButtonTypeSwitch];
   self.showMissingToggle.title = @"Show missing tools";
   self.showMissingToggle.target = self;
   self.showMissingToggle.action = @selector(toggleShowMissing:);
   self.showMissingToggle.state = showMissing ? NSControlStateValueOn : NSControlStateValueOff;
-  [self.contentView addSubview:self.showMissingToggle];
-  y -= 26;
+  [optionsRow addView:self.showMissingToggle inGravity:NSStackViewGravityLeading];
 
   BOOL allowTerminal = [[config valueForKeyPath:@"menus.apple.terminal" defaultValue:@NO] boolValue];
-  self.allowTerminalToggle = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin, y, 320, 20)];
+  self.allowTerminalToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.allowTerminalToggle setButtonType:NSButtonTypeSwitch];
   self.allowTerminalToggle.title = @"Allow terminal-only tools";
   self.allowTerminalToggle.target = self;
   self.allowTerminalToggle.action = @selector(toggleAllowTerminal:);
   self.allowTerminalToggle.state = allowTerminal ? NSControlStateValueOn : NSControlStateValueOff;
-  [self.contentView addSubview:self.allowTerminalToggle];
-  y -= 36;
+  [optionsRow addView:self.allowTerminalToggle inGravity:NSStackViewGravityLeading];
 
-  CGFloat iconX = leftMargin;
-  CGFloat labelX = leftMargin + 40;
-  CGFloat enabledX = leftMargin + 310;
-  CGFloat colorX = leftMargin + 400;
-  CGFloat orderX = leftMargin + 490;
-  CGFloat rowHeight = 36;
+  [rootStack setCustomSpacing:30 afterView:optionsRow];
 
-  NSTextField *labelHeader = [[NSTextField alloc] initWithFrame:NSMakeRect(labelX, y, 200, 18)];
-  labelHeader.stringValue = @"Label";
-  labelHeader.font = [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold];
-  labelHeader.textColor = [NSColor secondaryLabelColor];
-  labelHeader.bordered = NO;
-  labelHeader.editable = NO;
-  labelHeader.backgroundColor = [NSColor clearColor];
-  [self.contentView addSubview:labelHeader];
+  // Work apps controls
+  NSStackView *workAppsSection = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  workAppsSection.orientation = NSUserInterfaceLayoutOrientationVertical;
+  workAppsSection.spacing = 10;
+  [rootStack addView:workAppsSection inGravity:NSStackViewGravityTop];
 
-  NSTextField *enabledHeader = [[NSTextField alloc] initWithFrame:NSMakeRect(enabledX, y, 80, 18)];
-  enabledHeader.stringValue = @"Enabled";
-  enabledHeader.font = [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold];
-  enabledHeader.textColor = [NSColor secondaryLabelColor];
-  enabledHeader.bordered = NO;
-  enabledHeader.editable = NO;
-  enabledHeader.backgroundColor = [NSColor clearColor];
-  [self.contentView addSubview:enabledHeader];
+  NSTextField *workAppsTitle = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  workAppsTitle.stringValue = @"Work Google Apps";
+  workAppsTitle.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
+  workAppsTitle.bordered = NO;
+  workAppsTitle.editable = NO;
+  workAppsTitle.backgroundColor = [NSColor clearColor];
+  [workAppsSection addView:workAppsTitle inGravity:NSStackViewGravityTop];
 
-  NSTextField *colorHeader = [[NSTextField alloc] initWithFrame:NSMakeRect(colorX, y, 80, 18)];
-  colorHeader.stringValue = @"Color";
-  colorHeader.font = [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold];
-  colorHeader.textColor = [NSColor secondaryLabelColor];
-  colorHeader.bordered = NO;
-  colorHeader.editable = NO;
-  colorHeader.backgroundColor = [NSColor clearColor];
-  [self.contentView addSubview:colorHeader];
+  NSTextField *workAppsHint = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  workAppsHint.stringValue = @"Set workspace domain + data file path, then apply and open the JSON file to customize links.";
+  workAppsHint.font = [NSFont systemFontOfSize:12];
+  workAppsHint.textColor = [NSColor secondaryLabelColor];
+  workAppsHint.bordered = NO;
+  workAppsHint.editable = NO;
+  workAppsHint.backgroundColor = [NSColor clearColor];
+  [workAppsSection addView:workAppsHint inGravity:NSStackViewGravityTop];
 
-  NSTextField *orderHeader = [[NSTextField alloc] initWithFrame:NSMakeRect(orderX, y, 100, 18)];
-  orderHeader.stringValue = @"Order";
-  orderHeader.font = [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold];
-  orderHeader.textColor = [NSColor secondaryLabelColor];
-  orderHeader.bordered = NO;
-  orderHeader.editable = NO;
-  orderHeader.backgroundColor = [NSColor clearColor];
-  [self.contentView addSubview:orderHeader];
-  y -= 26;
+  NSStackView *domainRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  domainRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  domainRow.spacing = 10;
+  [workAppsSection addView:domainRow inGravity:NSStackViewGravityTop];
+
+  NSTextField *domainLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  domainLabel.stringValue = @"Workspace Domain";
+  domainLabel.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
+  domainLabel.bordered = NO;
+  domainLabel.editable = NO;
+  domainLabel.backgroundColor = [NSColor clearColor];
+  [domainLabel.widthAnchor constraintEqualToConstant:130].active = YES;
+  [domainRow addView:domainLabel inGravity:NSStackViewGravityLeading];
+
+  self.workDomainField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  self.workDomainField.placeholderString = @"company.com";
+  self.workDomainField.stringValue = [config valueForKeyPath:@"menus.work.workspace_domain" defaultValue:@""] ?: @"";
+  [self.workDomainField.widthAnchor constraintEqualToConstant:220].active = YES;
+  [domainRow addView:self.workDomainField inGravity:NSStackViewGravityLeading];
+
+  NSStackView *appsFileRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  appsFileRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  appsFileRow.spacing = 10;
+  [workAppsSection addView:appsFileRow inGravity:NSStackViewGravityTop];
+
+  NSTextField *appsFileLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  appsFileLabel.stringValue = @"Apps Data File";
+  appsFileLabel.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
+  appsFileLabel.bordered = NO;
+  appsFileLabel.editable = NO;
+  appsFileLabel.backgroundColor = [NSColor clearColor];
+  [appsFileLabel.widthAnchor constraintEqualToConstant:130].active = YES;
+  [appsFileRow addView:appsFileLabel inGravity:NSStackViewGravityLeading];
+
+  self.workAppsFileField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  self.workAppsFileField.placeholderString = @"data/work_apps.local.json";
+  self.workAppsFileField.stringValue = [config valueForKeyPath:@"menus.work.apps_file" defaultValue:@"data/work_apps.local.json"] ?: @"data/work_apps.local.json";
+  [self.workAppsFileField.widthAnchor constraintEqualToConstant:320].active = YES;
+  [appsFileRow addView:self.workAppsFileField inGravity:NSStackViewGravityLeading];
+
+  NSStackView *workActionsRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  workActionsRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  workActionsRow.spacing = 10;
+  [workAppsSection addView:workActionsRow inGravity:NSStackViewGravityTop];
+
+  self.applyWorkAppsButton = [[NSButton alloc] initWithFrame:NSZeroRect];
+  self.applyWorkAppsButton.title = @"Apply Work Apps";
+  self.applyWorkAppsButton.target = self;
+  self.applyWorkAppsButton.action = @selector(applyWorkApps:);
+  [workActionsRow addView:self.applyWorkAppsButton inGravity:NSStackViewGravityLeading];
+
+  self.openWorkAppsFileButton = [[NSButton alloc] initWithFrame:NSZeroRect];
+  self.openWorkAppsFileButton.title = @"Open JSON";
+  self.openWorkAppsFileButton.target = self;
+  self.openWorkAppsFileButton.action = @selector(openWorkAppsFile:);
+  [workActionsRow addView:self.openWorkAppsFileButton inGravity:NSStackViewGravityLeading];
+
+  [rootStack setCustomSpacing:24 afterView:workAppsSection];
+
+  // Tools Grid
+  NSGridView *grid = [[NSGridView alloc] initWithFrame:NSZeroRect];
+  grid.rowSpacing = 12;
+  grid.columnSpacing = 16;
+  grid.xPlacement = NSGridCellPlacementLeading;
+  grid.yPlacement = NSGridCellPlacementCenter;
+  [rootStack addView:grid inGravity:NSStackViewGravityTop];
+
+  // Header
+  [grid addRowWithViews:@[
+    [self headerLabel:@"ICON"],
+    [self headerLabel:@"LABEL"],
+    [self headerLabel:@"ENABLED"],
+    [self headerLabel:@"COLOR"],
+    [self headerLabel:@"ORDER"]
+  ]];
 
   for (NSInteger index = 0; index < self.tools.count; index++) {
     NSDictionary *tool = self.tools[index];
@@ -144,28 +213,24 @@
     NSString *orderKeyPath = [NSString stringWithFormat:@"menus.apple.items.%@.order", key];
     NSString *enabledKeyPath = [NSString stringWithFormat:@"menus.apple.items.%@.enabled", key];
 
-    NSTextField *iconField = [[NSTextField alloc] initWithFrame:NSMakeRect(iconX, y - 2, 28, 24)];
+    NSTextField *iconField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    [iconField.widthAnchor constraintEqualToConstant:40].active = YES;
     iconField.stringValue = [config valueForKeyPath:iconKeyPath defaultValue:baseIcon] ?: baseIcon;
-    iconField.font = [self preferredIconFontWithSize:16];
-    iconField.bordered = YES;
-    iconField.editable = YES;
-    iconField.backgroundColor = [NSColor clearColor];
+    iconField.font = [self preferredIconFontWithSize:18];
     iconField.alignment = NSTextAlignmentCenter;
     iconField.tag = index;
     iconField.identifier = @"icon";
     iconField.delegate = self;
-    [self.contentView addSubview:iconField];
 
-    NSTextField *labelField = [[NSTextField alloc] initWithFrame:NSMakeRect(labelX, y - 2, 200, 24)];
+    NSTextField *labelField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    [labelField.widthAnchor constraintEqualToConstant:220].active = YES;
     labelField.stringValue = [config valueForKeyPath:labelKeyPath defaultValue:baseLabel] ?: baseLabel;
-    labelField.bordered = YES;
-    labelField.editable = YES;
+    labelField.font = [NSFont systemFontOfSize:14];
     labelField.tag = index;
     labelField.identifier = @"label";
     labelField.delegate = self;
-    [self.contentView addSubview:labelField];
 
-    NSButton *toggle = [[NSButton alloc] initWithFrame:NSMakeRect(enabledX, y - 2, 60, 24)];
+    NSButton *toggle = [[NSButton alloc] initWithFrame:NSZeroRect];
     [toggle setButtonType:NSButtonTypeSwitch];
     toggle.title = @"";
     toggle.tag = index;
@@ -174,39 +239,115 @@
     id enabledValue = [config valueForKeyPath:enabledKeyPath defaultValue:nil];
     BOOL enabled = enabledValue ? [enabledValue boolValue] : [tool[@"default_enabled"] boolValue];
     toggle.state = enabled ? NSControlStateValueOn : NSControlStateValueOff;
-    [self.contentView addSubview:toggle];
 
-    NSColorWell *colorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(colorX, y - 4, 60, 24)];
+    NSColorWell *colorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(0, 0, 50, 28)];
     colorWell.tag = index;
     colorWell.target = self;
     colorWell.action = @selector(iconColorChanged:);
     NSString *hexColor = [config valueForKeyPath:colorKeyPath defaultValue:nil];
     if ([hexColor isKindOfClass:[NSString class]] && [hexColor length] > 0) {
       NSColor *color = [self colorFromHexString:hexColor];
-      if (color) {
-        colorWell.color = color;
-      }
+      if (color) colorWell.color = color;
     }
-    [self.contentView addSubview:colorWell];
 
-    NSTextField *orderField = [[NSTextField alloc] initWithFrame:NSMakeRect(orderX, y - 2, 60, 24)];
+    NSTextField *orderField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    [orderField.widthAnchor constraintEqualToConstant:60].active = YES;
     id orderValue = [config valueForKeyPath:orderKeyPath defaultValue:nil];
-    if ([orderValue isKindOfClass:[NSNumber class]]) {
-      orderField.stringValue = [(NSNumber *)orderValue stringValue];
-    } else if ([orderValue isKindOfClass:[NSString class]]) {
-      orderField.stringValue = (NSString *)orderValue;
-    } else {
-      orderField.placeholderString = @"Auto";
-    }
-    orderField.bordered = YES;
-    orderField.editable = YES;
+    if ([orderValue isKindOfClass:[NSNumber class]]) orderField.stringValue = [(NSNumber *)orderValue stringValue];
+    else if ([orderValue isKindOfClass:[NSString class]]) orderField.stringValue = (NSString *)orderValue;
+    else orderField.placeholderString = @"Auto";
     orderField.tag = index;
     orderField.identifier = @"order";
     orderField.delegate = self;
-    [self.contentView addSubview:orderField];
 
-    y -= rowHeight;
+    [grid addRowWithViews:@[iconField, labelField, toggle, colorWell, orderField]];
   }
+}
+
+- (NSTextField *)headerLabel:(NSString *)text {
+  NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  label.stringValue = text;
+  label.font = [NSFont systemFontOfSize:11 weight:NSFontWeightBold];
+  label.textColor = [NSColor secondaryLabelColor];
+  label.bordered = NO;
+  label.editable = NO;
+  label.backgroundColor = [NSColor clearColor];
+  return label;
+}
+
+- (NSString *)trimmedString:(NSString *)value {
+  return [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
+
+- (NSString *)resolveWorkAppsPath:(NSString *)rawPath config:(ConfigurationManager *)config {
+  NSString *trimmed = [self trimmedString:rawPath ?: @""];
+  if (trimmed.length == 0) {
+    return nil;
+  }
+  if ([trimmed hasPrefix:@"~/"]) {
+    return [NSHomeDirectory() stringByAppendingPathComponent:[trimmed substringFromIndex:2]];
+  }
+  if ([trimmed hasPrefix:@"/"]) {
+    return trimmed;
+  }
+  return [config.configPath stringByAppendingPathComponent:trimmed];
+}
+
+- (void)applyWorkApps:(NSButton *)sender {
+  (void)sender;
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *domain = [self trimmedString:self.workDomainField.stringValue ?: @""];
+  NSString *appsFile = [self trimmedString:self.workAppsFileField.stringValue ?: @""];
+  if (appsFile.length == 0) {
+    appsFile = @"data/work_apps.local.json";
+    self.workAppsFileField.stringValue = appsFile;
+  }
+
+  [config setValue:appsFile forKeyPath:@"menus.work.apps_file"];
+  [config setValue:domain forKeyPath:@"menus.work.workspace_domain"];
+
+  NSMutableArray *args = [NSMutableArray arrayWithArray:@[
+    @"--apps-only",
+    @"--replace",
+    @"--state", config.statePath,
+    @"--work-apps-out-file", appsFile,
+    @"--yes",
+    @"--no-reload"
+  ]];
+  if (domain.length > 0) {
+    [args addObjectsFromArray:@[@"--domain", domain]];
+  }
+
+  [config runScript:@"setup_machine.sh" arguments:args];
+  [config reloadSketchyBar];
+}
+
+- (void)openWorkAppsFile:(NSButton *)sender {
+  (void)sender;
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *appsFile = [self trimmedString:self.workAppsFileField.stringValue ?: @""];
+  if (appsFile.length == 0) {
+    appsFile = @"data/work_apps.local.json";
+  }
+  NSString *resolvedPath = [self resolveWorkAppsPath:appsFile config:config];
+  if (!resolvedPath.length) {
+    return;
+  }
+
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *dir = [resolvedPath stringByDeletingLastPathComponent];
+  [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+  if (![fm fileExistsAtPath:resolvedPath]) {
+    NSString *templatePath = [config.configPath stringByAppendingPathComponent:@"data/work_apps.work.json"];
+    if ([fm fileExistsAtPath:templatePath]) {
+      [fm copyItemAtPath:templatePath toPath:resolvedPath error:nil];
+    } else {
+      [@"[]\n" writeToFile:resolvedPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    }
+  }
+
+  NSURL *fileURL = [NSURL fileURLWithPath:resolvedPath];
+  [[NSWorkspace sharedWorkspace] openURL:fileURL];
 }
 
 - (void)toggleShowMissing:(NSButton *)sender {

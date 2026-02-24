@@ -79,6 +79,10 @@ class AdvancedTab(Vertical):
     
     def compose(self) -> ComposeResult:
         appearance = self.config.appearance
+        menus = self.config.menus if isinstance(self.config.menus, dict) else {}
+        work_menu = menus.get("work", {}) if isinstance(menus, dict) else {}
+        work_domain = work_menu.get("workspace_domain", "")
+        work_apps_file = work_menu.get("apps_file", "data/work_apps.local.json")
         
         yield Static("Font Configuration", classes="section-header")
         yield Static(
@@ -91,6 +95,17 @@ class AdvancedTab(Vertical):
         yield FontInput("Text Font", appearance.font_text, "font_text")
         yield FontInput("Numbers Font", appearance.font_numbers, "font_numbers")
         yield FontInput("Clock Style", appearance.clock_font_style, "clock_font_style")
+
+        yield Static("Menu Readability", classes="section-header")
+        yield FontInput("Menu Font Style", appearance.menu_font_style, "menu_font_style")
+        yield FontInput("Header Font Style", appearance.menu_header_font_style, "menu_header_font_style")
+        yield FontInput("Font Size Offset", str(appearance.menu_font_size_offset), "menu_font_size_offset")
+        yield FontInput("Popup BG Color", appearance.menu_popup_bg_color, "menu_popup_bg_color")
+        yield FontInput("Border Color", appearance.popup_border_color, "popup_border_color")
+
+        yield Static("Work Apps Data", classes="section-header")
+        yield FontInput("Workspace Domain", str(work_domain), "work_workspace_domain")
+        yield FontInput("Apps Data File", str(work_apps_file), "work_apps_file")
         
         yield Static("Feature Toggles", classes="section-header")
         
@@ -115,16 +130,44 @@ class AdvancedTab(Vertical):
         """Get current advanced settings values."""
         values = {
             "appearance": {},
-            "toggles": {}
+            "toggles": {},
+            "menus": {},
         }
         
         # Fonts
-        for font_key in ["font_icon", "font_text", "font_numbers", "clock_font_style"]:
+        for font_key in [
+            "font_icon",
+            "font_text",
+            "font_numbers",
+            "clock_font_style",
+            "menu_font_style",
+            "menu_header_font_style",
+            "menu_popup_bg_color",
+            "popup_border_color",
+        ]:
             try:
                 inp = self.query_one(f"#{font_key}", Input)
                 values["appearance"][font_key] = inp.value
             except Exception:
                 pass
+
+        try:
+            menu_size_offset = self.query_one("#menu_font_size_offset", Input).value
+            values["appearance"]["menu_font_size_offset"] = int(menu_size_offset)
+        except Exception:
+            pass
+
+        work_menu_updates = {}
+        try:
+            work_menu_updates["workspace_domain"] = self.query_one("#work_workspace_domain", Input).value
+        except Exception:
+            pass
+        try:
+            work_menu_updates["apps_file"] = self.query_one("#work_apps_file", Input).value
+        except Exception:
+            pass
+        if work_menu_updates:
+            values["menus"]["work"] = work_menu_updates
         
         # Toggles
         try:

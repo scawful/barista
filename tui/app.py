@@ -1,6 +1,7 @@
 """Main Barista TUI application."""
 
 import json
+import subprocess
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -155,6 +156,8 @@ class BaristaApp(App):
                 values["appearance"].update(adv_values["appearance"])
             if "toggles" in adv_values:
                 values["toggles"] = adv_values["toggles"]
+            if "menus" in adv_values:
+                values["menus"] = adv_values["menus"]
         except Exception:
             pass
         
@@ -212,6 +215,51 @@ class BaristaApp(App):
             for key, val in values["toggles"].items():
                 if hasattr(self.config.toggles, key):
                     setattr(self.config.toggles, key, val)
+
+        # Menus (work apps path/domain, etc.)
+        if "menus" in values and isinstance(values["menus"], dict):
+            existing_menus = self.config.menus if isinstance(self.config.menus, dict) else {}
+            for menu_key, menu_vals in values["menus"].items():
+                if not isinstance(menu_vals, dict):
+                    continue
+                current = existing_menus.get(menu_key, {})
+                if not isinstance(current, dict):
+                    current = {}
+                current.update(menu_vals)
+                existing_menus[menu_key] = current
+            self.config.menus = existing_menus
+
+    def _sync_work_apps_data(self) -> None:
+        """Sync work app menu data to per-machine JSON/state using setup_machine."""
+        menus = self.config.menus if isinstance(self.config.menus, dict) else {}
+        work_menu = menus.get("work", {}) if isinstance(menus, dict) else {}
+        if not isinstance(work_menu, dict):
+            return
+
+        apps_file = str(work_menu.get("apps_file", "") or "").strip()
+        if not apps_file:
+            return
+        workspace_domain = str(work_menu.get("workspace_domain", "") or "").strip()
+
+        state_file = get_state_file()
+        setup_script = state_file.parent / "scripts" / "setup_machine.sh"
+        if not setup_script.exists():
+            return
+
+        cmd = [
+            str(setup_script),
+            "--apps-only",
+            "--replace",
+            "--state",
+            str(state_file),
+            "--work-apps-out-file",
+            apps_file,
+            "--yes",
+            "--no-reload",
+        ]
+        if workspace_domain:
+            cmd.extend(["--domain", workspace_domain])
+        subprocess.run(cmd, check=False, capture_output=True, text=True)
     
     def action_save(self) -> None:
         """Save configuration."""
@@ -221,6 +269,7 @@ class BaristaApp(App):
         try:
             save_config(self.config)
             save_local_config(self.local_config)
+            self._sync_work_apps_data()
             self.notify("Configuration saved!", severity="information")
             self.dirty = False
         except Exception as e:

@@ -45,6 +45,117 @@
   return [NSHomeDirectory() stringByAppendingPathComponent:@"src"];
 }
 
+- (NSString *)envValue:(NSString *)key {
+  return [[[NSProcessInfo processInfo] environment] objectForKey:key];
+}
+
+- (NSString *)yazeDir {
+  NSString *override = [self envValue:@"BARISTA_YAZE_DIR"];
+  if (override.length) {
+    return [override stringByExpandingTildeInPath];
+  }
+  return [[self codeDir] stringByAppendingPathComponent:@"yaze"];
+}
+
+- (NSString *)yazeNightlyPrefix {
+  NSString *prefix = [self envValue:@"BARISTA_YAZE_NIGHTLY_PREFIX"];
+  if (!prefix.length) {
+    prefix = [self envValue:@"YAZE_NIGHTLY_PREFIX"];
+  }
+  if (!prefix.length) {
+    prefix = [NSHomeDirectory() stringByAppendingPathComponent:@".local/yaze/nightly"];
+  }
+  return [prefix stringByExpandingTildeInPath];
+}
+
+- (NSString *)resolveCommandPath:(NSString *)command {
+  if (![command isKindOfClass:[NSString class]] || command.length == 0) {
+    return nil;
+  }
+  NSTask *task = [[NSTask alloc] init];
+  task.launchPath = @"/usr/bin/which";
+  task.arguments = @[command];
+  NSPipe *pipe = [NSPipe pipe];
+  task.standardOutput = pipe;
+  task.standardError = [NSPipe pipe];
+  @try {
+    [task launch];
+    [task waitUntilExit];
+  } @catch (NSException *exception) {
+    return nil;
+  }
+  if (task.terminationStatus != 0) {
+    return nil;
+  }
+  NSData *data = [[pipe fileHandleForReading] readDataToEndOfFile];
+  NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+  NSString *trimmed = [output stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  return trimmed.length ? trimmed : nil;
+}
+
+- (NSString *)resolveYazeLauncher {
+  NSString *override = [self envValue:@"BARISTA_YAZE_LAUNCHER"];
+  if (!override.length) {
+    override = [self envValue:@"YAZE_LAUNCHER"];
+  }
+  if (override.length) {
+    NSString *expanded = [override stringByExpandingTildeInPath];
+    if ([[NSFileManager defaultManager] isExecutableFileAtPath:expanded]) {
+      return expanded;
+    }
+    NSString *resolved = [self resolveCommandPath:override];
+    if (resolved.length) {
+      return resolved;
+    }
+  }
+  return [self resolveCommandPath:@"yaze-nightly"];
+}
+
+- (NSString *)resolveYazeApp {
+  NSString *yazeDir = [self yazeDir];
+  NSString *nightlyPrefix = [self yazeNightlyPrefix];
+  NSString *explicitApp = [self envValue:@"BARISTA_YAZE_APP"];
+  if (!explicitApp.length) {
+    explicitApp = [self envValue:@"YAZE_APP"];
+  }
+  NSArray<NSString *> *candidates = @[
+    explicitApp ?: @"",
+    [nightlyPrefix stringByAppendingPathComponent:@"current/yaze.app"],
+    [nightlyPrefix stringByAppendingPathComponent:@"yaze.app"],
+    [NSHomeDirectory() stringByAppendingPathComponent:@"Applications/Yaze Nightly.app"],
+    [NSHomeDirectory() stringByAppendingPathComponent:@"Applications/yaze nightly.app"],
+    [NSHomeDirectory() stringByAppendingPathComponent:@"applications/Yaze Nightly.app"],
+    [NSHomeDirectory() stringByAppendingPathComponent:@"applications/yaze nightly.app"],
+    @"/Applications/Yaze Nightly.app",
+    @"/Applications/yaze nightly.app",
+    [yazeDir stringByAppendingPathComponent:@"build_ai/bin/Debug/yaze.app"],
+    [yazeDir stringByAppendingPathComponent:@"build_ai/bin/Release/yaze.app"],
+    [yazeDir stringByAppendingPathComponent:@"build_ai/bin/yaze.app"],
+    [yazeDir stringByAppendingPathComponent:@"build/bin/Release/yaze.app"],
+    [yazeDir stringByAppendingPathComponent:@"build/bin/Debug/yaze.app"],
+    [yazeDir stringByAppendingPathComponent:@"build/bin/yaze.app"],
+    [[self codeDir] stringByAppendingPathComponent:@"hobby/yaze/build_ai/bin/Debug/yaze.app"],
+    [[self codeDir] stringByAppendingPathComponent:@"hobby/yaze/build_ai/bin/Release/yaze.app"],
+    [[self codeDir] stringByAppendingPathComponent:@"hobby/yaze/build_ai/bin/yaze.app"],
+    [[self codeDir] stringByAppendingPathComponent:@"hobby/yaze/build/bin/Release/yaze.app"],
+    [[self codeDir] stringByAppendingPathComponent:@"hobby/yaze/build/bin/Debug/yaze.app"],
+    [[self codeDir] stringByAppendingPathComponent:@"hobby/yaze/build/bin/yaze.app"]
+  ];
+
+  NSFileManager *fm = [NSFileManager defaultManager];
+  for (NSString *candidate in candidates) {
+    if (![candidate isKindOfClass:[NSString class]] || candidate.length == 0) {
+      continue;
+    }
+    NSString *expanded = [candidate stringByExpandingTildeInPath];
+    NSString *binary = [expanded stringByAppendingPathComponent:@"Contents/MacOS/yaze"];
+    if ([fm isExecutableFileAtPath:binary]) {
+      return expanded;
+    }
+  }
+  return nil;
+}
+
 - (void)loadView {
   self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
 }
@@ -53,477 +164,324 @@
   [super viewDidLoad];
 
   ConfigurationManager *config = [ConfigurationManager sharedManager];
-  CGFloat contentHeight = 1400;
+
   self.scrollView = [[NSScrollView alloc] initWithFrame:self.view.bounds];
   self.scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   self.scrollView.hasVerticalScroller = YES;
   self.scrollView.autohidesScrollers = YES;
-
-  self.contentView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, self.view.bounds.size.width, contentHeight)];
-  self.contentView.autoresizingMask = NSViewWidthSizable;
-  self.scrollView.documentView = self.contentView;
+  self.scrollView.borderType = NSNoBorder;
+  self.scrollView.drawsBackground = NO;
   [self.view addSubview:self.scrollView];
 
-  CGFloat y = self.contentView.bounds.size.height - 40;
-  CGFloat leftMargin = 40;
-  CGFloat sectionSpacing = 80;
+  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  rootStack.alignment = NSLayoutAttributeLeading;
+  rootStack.spacing = 30;
+  rootStack.edgeInsets = NSEdgeInsetsMake(30, 40, 40, 40);
+  self.scrollView.documentView = rootStack;
+  [rootStack.widthAnchor constraintEqualToAnchor:self.scrollView.widthAnchor].active = YES;
 
   // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 400, 30)];
+  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
   title.stringValue = @"External Integrations";
-  title.font = [NSFont systemFontOfSize:20 weight:NSFontWeightBold];
+  title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
   title.bordered = NO;
   title.editable = NO;
   title.backgroundColor = [NSColor clearColor];
-  [self.contentView addSubview:title];
-  y -= 60;
+  [rootStack addView:title inGravity:NSStackViewGravityTop];
 
   // MARK: Yaze Integration
-  NSBox *yazeBox = [[NSBox alloc] initWithFrame:NSMakeRect(leftMargin, y - 130, 700, 130)];
+  NSBox *yazeBox = [[NSBox alloc] initWithFrame:NSZeroRect];
   yazeBox.title = @"Yaze (ROM Hacking Tool)";
   yazeBox.titlePosition = NSAtTop;
+  [rootStack addView:yazeBox inGravity:NSStackViewGravityTop];
+  [yazeBox.widthAnchor constraintEqualToConstant:700].active = YES;
 
-  self.yazeToggle = [[NSButton alloc] initWithFrame:NSMakeRect(20, 80, 200, 20)];
+  NSStackView *yazeStack = [[NSStackView alloc] initWithFrame:NSInsetRect(yazeBox.bounds, 20, 20)];
+  yazeStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  yazeStack.alignment = NSLayoutAttributeLeading;
+  yazeStack.spacing = 12;
+  yazeBox.contentView = yazeStack;
+
+  self.yazeToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.yazeToggle setButtonType:NSButtonTypeSwitch];
   self.yazeToggle.title = @"Enable Yaze Integration";
   self.yazeToggle.target = self;
   self.yazeToggle.action = @selector(yazeToggled:);
   BOOL yazeEnabled = [[config valueForKeyPath:@"integrations.yaze.enabled" defaultValue:@NO] boolValue];
   self.yazeToggle.state = yazeEnabled ? NSControlStateValueOn : NSControlStateValueOff;
-  [yazeBox addSubview:self.yazeToggle];
+  [yazeStack addView:self.yazeToggle inGravity:NSStackViewGravityTop];
 
-  self.yazeStatus = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 50, 300, 20)];
+  self.yazeStatus = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.yazeStatus.stringValue = @"Status: Checking...";
   self.yazeStatus.bordered = NO;
   self.yazeStatus.editable = NO;
   self.yazeStatus.backgroundColor = [NSColor clearColor];
-  self.yazeStatus.font = [NSFont systemFontOfSize:12];
-  [yazeBox addSubview:self.yazeStatus];
+  self.yazeStatus.font = [NSFont systemFontOfSize:13];
+  [yazeStack addView:self.yazeStatus inGravity:NSStackViewGravityTop];
 
-  self.yazeLaunch = [[NSButton alloc] initWithFrame:NSMakeRect(20, 15, 120, 28)];
+  NSStackView *yazeButtons = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  yazeButtons.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  yazeButtons.spacing = 12;
+  [yazeStack addView:yazeButtons inGravity:NSStackViewGravityTop];
+
+  self.yazeLaunch = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.yazeLaunch setButtonType:NSButtonTypeMomentaryPushIn];
   [self.yazeLaunch setBezelStyle:NSBezelStyleRounded];
   self.yazeLaunch.title = @"Launch Yaze";
   self.yazeLaunch.target = self;
   self.yazeLaunch.action = @selector(launchYaze:);
-  [yazeBox addSubview:self.yazeLaunch];
+  [yazeButtons addView:self.yazeLaunch inGravity:NSStackViewGravityLeading];
 
-  NSButton *yazeRepoButton = [[NSButton alloc] initWithFrame:NSMakeRect(150, 15, 120, 28)];
+  NSButton *yazeRepoButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [yazeRepoButton setButtonType:NSButtonTypeMomentaryPushIn];
   [yazeRepoButton setBezelStyle:NSBezelStyleRounded];
   yazeRepoButton.title = @"Open Repo";
   yazeRepoButton.target = self;
   yazeRepoButton.action = @selector(openYazeRepo:);
-  [yazeBox addSubview:yazeRepoButton];
+  [yazeButtons addView:yazeRepoButton inGravity:NSStackViewGravityLeading];
 
-  [self.contentView addSubview:yazeBox];
   [self updateYazeStatus];
-  y -= 150;
 
   // MARK: Emacs Integration
-  NSBox *emacsBox = [[NSBox alloc] initWithFrame:NSMakeRect(leftMargin, y - 130, 700, 130)];
+  NSBox *emacsBox = [[NSBox alloc] initWithFrame:NSZeroRect];
   emacsBox.title = @"Emacs";
   emacsBox.titlePosition = NSAtTop;
+  [rootStack addView:emacsBox inGravity:NSStackViewGravityTop];
+  [emacsBox.widthAnchor constraintEqualToConstant:700].active = YES;
 
-  self.emacsToggle = [[NSButton alloc] initWithFrame:NSMakeRect(20, 80, 200, 20)];
+  NSStackView *emacsStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  emacsStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  emacsStack.alignment = NSLayoutAttributeLeading;
+  emacsStack.spacing = 12;
+  emacsStack.edgeInsets = NSEdgeInsetsMake(15, 20, 15, 20);
+  emacsBox.contentView = emacsStack;
+
+  self.emacsToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.emacsToggle setButtonType:NSButtonTypeSwitch];
   self.emacsToggle.title = @"Enable Emacs Integration";
   self.emacsToggle.target = self;
   self.emacsToggle.action = @selector(emacsToggled:);
   BOOL emacsEnabled = [[config valueForKeyPath:@"integrations.emacs.enabled" defaultValue:@NO] boolValue];
   self.emacsToggle.state = emacsEnabled ? NSControlStateValueOn : NSControlStateValueOff;
-  [emacsBox addSubview:self.emacsToggle];
+  [emacsStack addView:self.emacsToggle inGravity:NSStackViewGravityTop];
 
-  self.emacsStatus = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 50, 300, 20)];
+  self.emacsStatus = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.emacsStatus.stringValue = @"Status: Checking...";
   self.emacsStatus.bordered = NO;
   self.emacsStatus.editable = NO;
   self.emacsStatus.backgroundColor = [NSColor clearColor];
-  self.emacsStatus.font = [NSFont systemFontOfSize:12];
-  [emacsBox addSubview:self.emacsStatus];
+  self.emacsStatus.font = [NSFont systemFontOfSize:13];
+  [emacsStack addView:self.emacsStatus inGravity:NSStackViewGravityTop];
 
-  self.emacsLaunch = [[NSButton alloc] initWithFrame:NSMakeRect(20, 15, 120, 28)];
+  self.emacsLaunch = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.emacsLaunch setButtonType:NSButtonTypeMomentaryPushIn];
   [self.emacsLaunch setBezelStyle:NSBezelStyleRounded];
   self.emacsLaunch.title = @"Launch Emacs";
   self.emacsLaunch.target = self;
   self.emacsLaunch.action = @selector(launchEmacs:);
-  [emacsBox addSubview:self.emacsLaunch];
+  [emacsStack addView:self.emacsLaunch inGravity:NSStackViewGravityTop];
 
-  [self.contentView addSubview:emacsBox];
   [self updateEmacsStatus];
-  y -= 150;
 
   // MARK: Cortex Integration
-  NSBox *cortexBox = [[NSBox alloc] initWithFrame:NSMakeRect(leftMargin, y - 160, 700, 160)];
+  NSBox *cortexBox = [[NSBox alloc] initWithFrame:NSZeroRect];
   cortexBox.title = @"Cortex (AFS / Training)";
   cortexBox.titlePosition = NSAtTop;
+  [rootStack addView:cortexBox inGravity:NSStackViewGravityTop];
+  [cortexBox.widthAnchor constraintEqualToConstant:700].active = YES;
 
-  self.cortexToggle = [[NSButton alloc] initWithFrame:NSMakeRect(20, 120, 260, 20)];
+  NSStackView *cortexStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  cortexStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  cortexStack.alignment = NSLayoutAttributeLeading;
+  cortexStack.spacing = 16;
+  cortexStack.edgeInsets = NSEdgeInsetsMake(15, 20, 15, 20);
+  cortexBox.contentView = cortexStack;
+
+  self.cortexToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.cortexToggle setButtonType:NSButtonTypeSwitch];
   self.cortexToggle.title = @"Enable Cortex Integration";
   self.cortexToggle.target = self;
   self.cortexToggle.action = @selector(cortexToggled:);
   BOOL cortexEnabled = [[config valueForKeyPath:@"integrations.cortex.enabled" defaultValue:@NO] boolValue];
   self.cortexToggle.state = cortexEnabled ? NSControlStateValueOn : NSControlStateValueOff;
-  [cortexBox addSubview:self.cortexToggle];
+  [cortexStack addView:self.cortexToggle inGravity:NSStackViewGravityTop];
 
-  self.cortexWidgetToggle = [[NSButton alloc] initWithFrame:NSMakeRect(20, 95, 260, 20)];
+  self.cortexWidgetToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.cortexWidgetToggle setButtonType:NSButtonTypeSwitch];
   self.cortexWidgetToggle.title = @"Show Cortex Widget";
   self.cortexWidgetToggle.target = self;
   self.cortexWidgetToggle.action = @selector(cortexWidgetToggled:);
   BOOL cortexWidgetEnabled = [[config valueForKeyPath:@"integrations.cortex.widget.enabled" defaultValue:@YES] boolValue];
   self.cortexWidgetToggle.state = cortexWidgetEnabled ? NSControlStateValueOn : NSControlStateValueOff;
-  [cortexBox addSubview:self.cortexWidgetToggle];
+  [cortexStack addView:self.cortexWidgetToggle inGravity:NSStackViewGravityTop];
 
-  NSTextField *modeLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 66, 120, 20)];
-  modeLabel.stringValue = @"Label Mode:";
-  modeLabel.bordered = NO;
-  modeLabel.editable = NO;
-  modeLabel.backgroundColor = [NSColor clearColor];
-  [cortexBox addSubview:modeLabel];
+  NSGridView *cortexGrid = [[NSGridView alloc] initWithFrame:NSZeroRect];
+  cortexGrid.rowSpacing = 10;
+  cortexGrid.columnSpacing = 12;
+  [cortexStack addView:cortexGrid inGravity:NSStackViewGravityTop];
 
-  self.cortexLabelModeMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(140, 62, 180, 26)];
+  NSTextField *modeLabel = [self label:@"Label Mode:"];
+  self.cortexLabelModeMenu = [[NSPopUpButton alloc] initWithFrame:NSZeroRect];
   [self.cortexLabelModeMenu addItemsWithTitles:@[@"Training", @"AFS", @"Status", @"None"]];
   self.cortexLabelModeMenu.target = self;
   self.cortexLabelModeMenu.action = @selector(cortexLabelModeChanged:);
+  [self.cortexLabelModeMenu.widthAnchor constraintEqualToConstant:180].active = YES;
   NSString *labelMode = [config valueForKeyPath:@"integrations.cortex.widget.label_mode" defaultValue:@"training"];
-  if ([labelMode isEqualToString:@"afs"]) {
-    [self.cortexLabelModeMenu selectItemAtIndex:1];
-  } else if ([labelMode isEqualToString:@"status"]) {
-    [self.cortexLabelModeMenu selectItemAtIndex:2];
-  } else if ([labelMode isEqualToString:@"none"]) {
-    [self.cortexLabelModeMenu selectItemAtIndex:3];
-  } else {
-    [self.cortexLabelModeMenu selectItemAtIndex:0];
-  }
-  [cortexBox addSubview:self.cortexLabelModeMenu];
+  [self.cortexLabelModeMenu selectItemAtIndex:([labelMode isEqualToString:@"afs"] ? 1 : ([labelMode isEqualToString:@"status"] ? 2 : ([labelMode isEqualToString:@"none"] ? 3 : 0)))];
+  [cortexGrid addRowWithViews:@[modeLabel, self.cortexLabelModeMenu]];
 
-  NSTextField *prefixLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(340, 66, 80, 20)];
-  prefixLabel.stringValue = @"Prefix:";
-  prefixLabel.bordered = NO;
-  prefixLabel.editable = NO;
-  prefixLabel.backgroundColor = [NSColor clearColor];
-  [cortexBox addSubview:prefixLabel];
-
-  self.cortexLabelPrefixField = [[NSTextField alloc] initWithFrame:NSMakeRect(410, 62, 200, 24)];
+  NSTextField *prefixLabel = [self label:@"Prefix:"];
+  self.cortexLabelPrefixField = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.cortexLabelPrefixField.placeholderString = @"AFS";
   self.cortexLabelPrefixField.target = self;
   self.cortexLabelPrefixField.action = @selector(cortexFieldChanged:);
-  NSString *prefix = [config valueForKeyPath:@"integrations.cortex.widget.label_prefix" defaultValue:@"AFS"];
-  self.cortexLabelPrefixField.stringValue = prefix ?: @"";
-  [cortexBox addSubview:self.cortexLabelPrefixField];
+  [self.cortexLabelPrefixField.widthAnchor constraintEqualToConstant:180].active = YES;
+  self.cortexLabelPrefixField.stringValue = [config valueForKeyPath:@"integrations.cortex.widget.label_prefix" defaultValue:@"AFS"] ?: @"";
+  [cortexGrid addRowWithViews:@[prefixLabel, self.cortexLabelPrefixField]];
 
-  NSTextField *freqLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 34, 120, 20)];
-  freqLabel.stringValue = @"Update (sec):";
-  freqLabel.bordered = NO;
-  freqLabel.editable = NO;
-  freqLabel.backgroundColor = [NSColor clearColor];
-  [cortexBox addSubview:freqLabel];
-
-  self.cortexUpdateFreqField = [[NSTextField alloc] initWithFrame:NSMakeRect(140, 30, 80, 24)];
+  NSTextField *freqLabel = [self label:@"Update (sec):"];
+  self.cortexUpdateFreqField = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.cortexUpdateFreqField.target = self;
   self.cortexUpdateFreqField.action = @selector(cortexFieldChanged:);
-  NSNumber *updateFreq = [config valueForKeyPath:@"integrations.cortex.widget.update_freq" defaultValue:@180];
-  self.cortexUpdateFreqField.stringValue = [NSString stringWithFormat:@"%@", updateFreq];
-  [cortexBox addSubview:self.cortexUpdateFreqField];
+  [self.cortexUpdateFreqField.widthAnchor constraintEqualToConstant:80].active = YES;
+  self.cortexUpdateFreqField.stringValue = [NSString stringWithFormat:@"%@", [config valueForKeyPath:@"integrations.cortex.widget.update_freq" defaultValue:@180]];
+  [cortexGrid addRowWithViews:@[freqLabel, self.cortexUpdateFreqField]];
 
-  NSTextField *cacheLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(240, 34, 120, 20)];
-  cacheLabel.stringValue = @"Cache TTL:";
-  cacheLabel.bordered = NO;
-  cacheLabel.editable = NO;
-  cacheLabel.backgroundColor = [NSColor clearColor];
-  [cortexBox addSubview:cacheLabel];
-
-  self.cortexCacheTtlField = [[NSTextField alloc] initWithFrame:NSMakeRect(330, 30, 80, 24)];
+  NSTextField *cacheLabel = [self label:@"Cache TTL:"];
+  self.cortexCacheTtlField = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.cortexCacheTtlField.target = self;
   self.cortexCacheTtlField.action = @selector(cortexFieldChanged:);
-  NSNumber *cacheTtl = [config valueForKeyPath:@"integrations.cortex.widget.cache_ttl" defaultValue:@180];
-  self.cortexCacheTtlField.stringValue = [NSString stringWithFormat:@"%@", cacheTtl];
-  [cortexBox addSubview:self.cortexCacheTtlField];
-
-  [self.contentView addSubview:cortexBox];
-  y -= 180;
-
-  // MARK: Cortex Widget Style
-  NSBox *cortexStyleBox = [[NSBox alloc] initWithFrame:NSMakeRect(leftMargin, y - 200, 700, 200)];
-  cortexStyleBox.title = @"Cortex Widget Style";
-  cortexStyleBox.titlePosition = NSAtTop;
-
-  NSTextField *positionLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 162, 120, 20)];
-  positionLabel.stringValue = @"Position:";
-  positionLabel.bordered = NO;
-  positionLabel.editable = NO;
-  positionLabel.backgroundColor = [NSColor clearColor];
-  [cortexStyleBox addSubview:positionLabel];
-
-  self.cortexPositionMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(140, 158, 110, 26)];
-  [self.cortexPositionMenu addItemsWithTitles:@[@"Left", @"Right"]];
-  self.cortexPositionMenu.target = self;
-  self.cortexPositionMenu.action = @selector(cortexPositionChanged:);
-  NSString *position = [config valueForKeyPath:@"integrations.cortex.widget.position" defaultValue:@"right"];
-  if ([position isEqualToString:@"left"]) {
-    [self.cortexPositionMenu selectItemAtIndex:0];
-  } else {
-    [self.cortexPositionMenu selectItemAtIndex:1];
-  }
-  [cortexStyleBox addSubview:self.cortexPositionMenu];
-
-  NSTextField *templateLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(270, 162, 110, 20)];
-  templateLabel.stringValue = @"Label Template:";
-  templateLabel.bordered = NO;
-  templateLabel.editable = NO;
-  templateLabel.backgroundColor = [NSColor clearColor];
-  [cortexStyleBox addSubview:templateLabel];
-
-  self.cortexLabelTemplateField = [[NSTextField alloc] initWithFrame:NSMakeRect(380, 158, 290, 24)];
-  self.cortexLabelTemplateField.placeholderString = @"%prefix% %datasets% • %samples%";
-  self.cortexLabelTemplateField.target = self;
-  self.cortexLabelTemplateField.action = @selector(cortexStyleFieldChanged:);
-  self.cortexLabelTemplateField.delegate = self;
-  NSString *labelTemplate = [config valueForKeyPath:@"integrations.cortex.widget.label_template" defaultValue:@""];
-  self.cortexLabelTemplateField.stringValue = labelTemplate ?: @"";
-  [cortexStyleBox addSubview:self.cortexLabelTemplateField];
-
-  NSTextField *activeIconLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 128, 90, 20)];
-  activeIconLabel.stringValue = @"Active Icon:";
-  activeIconLabel.bordered = NO;
-  activeIconLabel.editable = NO;
-  activeIconLabel.backgroundColor = [NSColor clearColor];
-  [cortexStyleBox addSubview:activeIconLabel];
-
-  self.cortexActiveIconField = [[NSTextField alloc] initWithFrame:NSMakeRect(110, 124, 60, 24)];
-  self.cortexActiveIconField.placeholderString = @"Glyph";
-  self.cortexActiveIconField.target = self;
-  self.cortexActiveIconField.action = @selector(cortexStyleFieldChanged:);
-  self.cortexActiveIconField.delegate = self;
-  NSString *activeIcon = [config valueForKeyPath:@"integrations.cortex.widget.icon_active" defaultValue:@"󰪴"];
-  self.cortexActiveIconField.stringValue = activeIcon ?: @"";
-  [cortexStyleBox addSubview:self.cortexActiveIconField];
-
-  self.cortexActiveIconPreview = [[NSTextField alloc] initWithFrame:NSMakeRect(175, 118, 36, 28)];
-  self.cortexActiveIconPreview.bordered = NO;
-  self.cortexActiveIconPreview.editable = NO;
-  self.cortexActiveIconPreview.backgroundColor = [NSColor clearColor];
-  self.cortexActiveIconPreview.alignment = NSTextAlignmentCenter;
-  self.cortexActiveIconPreview.font = [self preferredIconFontWithSize:18];
-  self.cortexActiveIconPreview.stringValue = self.cortexActiveIconField.stringValue;
-  [cortexStyleBox addSubview:self.cortexActiveIconPreview];
-
-  NSTextField *inactiveIconLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(230, 128, 100, 20)];
-  inactiveIconLabel.stringValue = @"Inactive Icon:";
-  inactiveIconLabel.bordered = NO;
-  inactiveIconLabel.editable = NO;
-  inactiveIconLabel.backgroundColor = [NSColor clearColor];
-  [cortexStyleBox addSubview:inactiveIconLabel];
-
-  self.cortexInactiveIconField = [[NSTextField alloc] initWithFrame:NSMakeRect(330, 124, 60, 24)];
-  self.cortexInactiveIconField.placeholderString = @"Glyph";
-  self.cortexInactiveIconField.target = self;
-  self.cortexInactiveIconField.action = @selector(cortexStyleFieldChanged:);
-  self.cortexInactiveIconField.delegate = self;
-  NSString *inactiveIcon = [config valueForKeyPath:@"integrations.cortex.widget.icon_inactive" defaultValue:@"󰪵"];
-  self.cortexInactiveIconField.stringValue = inactiveIcon ?: @"";
-  [cortexStyleBox addSubview:self.cortexInactiveIconField];
-
-  self.cortexInactiveIconPreview = [[NSTextField alloc] initWithFrame:NSMakeRect(395, 118, 36, 28)];
-  self.cortexInactiveIconPreview.bordered = NO;
-  self.cortexInactiveIconPreview.editable = NO;
-  self.cortexInactiveIconPreview.backgroundColor = [NSColor clearColor];
-  self.cortexInactiveIconPreview.alignment = NSTextAlignmentCenter;
-  self.cortexInactiveIconPreview.font = [self preferredIconFontWithSize:18];
-  self.cortexInactiveIconPreview.stringValue = self.cortexInactiveIconField.stringValue;
-  [cortexStyleBox addSubview:self.cortexInactiveIconPreview];
-
-  NSTextField *activeColorLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 92, 90, 20)];
-  activeColorLabel.stringValue = @"Active Color:";
-  activeColorLabel.bordered = NO;
-  activeColorLabel.editable = NO;
-  activeColorLabel.backgroundColor = [NSColor clearColor];
-  [cortexStyleBox addSubview:activeColorLabel];
-
-  self.cortexActiveColorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(110, 88, 40, 24)];
-  self.cortexActiveColorWell.target = self;
-  self.cortexActiveColorWell.action = @selector(cortexColorChanged:);
-  [cortexStyleBox addSubview:self.cortexActiveColorWell];
-
-  self.cortexActiveColorHexField = [[NSTextField alloc] initWithFrame:NSMakeRect(160, 88, 90, 24)];
-  self.cortexActiveColorHexField.placeholderString = @"0xAARRGGBB";
-  self.cortexActiveColorHexField.delegate = self;
-  [cortexStyleBox addSubview:self.cortexActiveColorHexField];
-
-  NSTextField *inactiveColorLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(270, 92, 100, 20)];
-  inactiveColorLabel.stringValue = @"Inactive Color:";
-  inactiveColorLabel.bordered = NO;
-  inactiveColorLabel.editable = NO;
-  inactiveColorLabel.backgroundColor = [NSColor clearColor];
-  [cortexStyleBox addSubview:inactiveColorLabel];
-
-  self.cortexInactiveColorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(380, 88, 40, 24)];
-  self.cortexInactiveColorWell.target = self;
-  self.cortexInactiveColorWell.action = @selector(cortexColorChanged:);
-  [cortexStyleBox addSubview:self.cortexInactiveColorWell];
-
-  self.cortexInactiveColorHexField = [[NSTextField alloc] initWithFrame:NSMakeRect(430, 88, 90, 24)];
-  self.cortexInactiveColorHexField.placeholderString = @"0xAARRGGBB";
-  self.cortexInactiveColorHexField.delegate = self;
-  [cortexStyleBox addSubview:self.cortexInactiveColorHexField];
-
-  NSTextField *labelColorLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 56, 90, 20)];
-  labelColorLabel.stringValue = @"Label Color:";
-  labelColorLabel.bordered = NO;
-  labelColorLabel.editable = NO;
-  labelColorLabel.backgroundColor = [NSColor clearColor];
-  [cortexStyleBox addSubview:labelColorLabel];
-
-  self.cortexLabelColorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(110, 52, 40, 24)];
-  self.cortexLabelColorWell.target = self;
-  self.cortexLabelColorWell.action = @selector(cortexColorChanged:);
-  [cortexStyleBox addSubview:self.cortexLabelColorWell];
-
-  self.cortexLabelColorHexField = [[NSTextField alloc] initWithFrame:NSMakeRect(160, 52, 90, 24)];
-  self.cortexLabelColorHexField.placeholderString = @"0xAARRGGBB";
-  self.cortexLabelColorHexField.delegate = self;
-  [cortexStyleBox addSubview:self.cortexLabelColorHexField];
-
-  NSString *activeColor = [config valueForKeyPath:@"integrations.cortex.widget.color_active" defaultValue:@"0xffa6e3a1"];
-  NSString *inactiveColor = [config valueForKeyPath:@"integrations.cortex.widget.color_inactive" defaultValue:@"0xff6c7086"];
-  NSString *labelColor = [config valueForKeyPath:@"integrations.cortex.widget.label_color" defaultValue:@"0xffcdd6f4"];
-
-  NSColor *activeWellColor = [self colorFromHexString:activeColor];
-  NSColor *inactiveWellColor = [self colorFromHexString:inactiveColor];
-  NSColor *labelWellColor = [self colorFromHexString:labelColor];
-  if (activeWellColor) {
-    self.cortexActiveColorWell.color = activeWellColor;
-    self.cortexActiveColorHexField.stringValue = [self hexStringFromColor:activeWellColor];
-  }
-  if (inactiveWellColor) {
-    self.cortexInactiveColorWell.color = inactiveWellColor;
-    self.cortexInactiveColorHexField.stringValue = [self hexStringFromColor:inactiveWellColor];
-  }
-  if (labelWellColor) {
-    self.cortexLabelColorWell.color = labelWellColor;
-    self.cortexLabelColorHexField.stringValue = [self hexStringFromColor:labelWellColor];
-  }
-
-  [self.contentView addSubview:cortexStyleBox];
-  y -= 220;
+  [self.cortexCacheTtlField.widthAnchor constraintEqualToConstant:80].active = YES;
+  self.cortexCacheTtlField.stringValue = [NSString stringWithFormat:@"%@", [config valueForKeyPath:@"integrations.cortex.widget.cache_ttl" defaultValue:@180]];
+  [cortexGrid addRowWithViews:@[cacheLabel, self.cortexCacheTtlField]];
 
   // MARK: halext-org Integration
-  NSBox *halextBox = [[NSBox alloc] initWithFrame:NSMakeRect(leftMargin, y - 180, 700, 180)];
+  NSBox *halextBox = [[NSBox alloc] initWithFrame:NSZeroRect];
   halextBox.title = @"halext-org Server (Tasks, Calendar, LLM)";
   halextBox.titlePosition = NSAtTop;
+  [rootStack addView:halextBox inGravity:NSStackViewGravityTop];
+  [halextBox.widthAnchor constraintEqualToConstant:700].active = YES;
 
-  self.halextToggle = [[NSButton alloc] initWithFrame:NSMakeRect(20, 130, 250, 20)];
+  NSStackView *halextStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  halextStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  halextStack.alignment = NSLayoutAttributeLeading;
+  halextStack.spacing = 12;
+  halextStack.edgeInsets = NSEdgeInsetsMake(15, 20, 15, 20);
+  halextBox.contentView = halextStack;
+
+  self.halextToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.halextToggle setButtonType:NSButtonTypeSwitch];
   self.halextToggle.title = @"Enable halext-org Integration";
   self.halextToggle.target = self;
   self.halextToggle.action = @selector(halextToggled:);
   BOOL halextEnabled = [[config valueForKeyPath:@"integrations.halext.enabled" defaultValue:@NO] boolValue];
   self.halextToggle.state = halextEnabled ? NSControlStateValueOn : NSControlStateValueOff;
-  [halextBox addSubview:self.halextToggle];
+  [halextStack addView:self.halextToggle inGravity:NSStackViewGravityTop];
 
-  NSTextField *serverLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 100, 100, 20)];
-  serverLabel.stringValue = @"Server URL:";
-  serverLabel.bordered = NO;
-  serverLabel.editable = NO;
-  serverLabel.backgroundColor = [NSColor clearColor];
-  [halextBox addSubview:serverLabel];
+  NSGridView *halextGrid = [[NSGridView alloc] initWithFrame:NSZeroRect];
+  halextGrid.rowSpacing = 8;
+  halextGrid.columnSpacing = 12;
+  [halextStack addView:halextGrid inGravity:NSStackViewGravityTop];
 
-  self.halextServerField = [[NSTextField alloc] initWithFrame:NSMakeRect(120, 98, 400, 24)];
-  self.halextServerField.placeholderString = @"https://halext.yourdomain.com";
-  NSString *serverUrl = [config valueForKeyPath:@"integrations.halext.server_url" defaultValue:@""];
-  self.halextServerField.stringValue = serverUrl;
-  [halextBox addSubview:self.halextServerField];
+  NSTextField *serverLabel = [self label:@"Server URL:"];
+  self.halextServerField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  [self.halextServerField.widthAnchor constraintEqualToConstant:400].active = YES;
+  self.halextServerField.stringValue = [config valueForKeyPath:@"integrations.halext.server_url" defaultValue:@""];
+  [halextGrid addRowWithViews:@[serverLabel, self.halextServerField]];
 
-  NSTextField *apiKeyLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 70, 100, 20)];
-  apiKeyLabel.stringValue = @"API Key:";
-  apiKeyLabel.bordered = NO;
-  apiKeyLabel.editable = NO;
-  apiKeyLabel.backgroundColor = [NSColor clearColor];
-  [halextBox addSubview:apiKeyLabel];
+  NSTextField *apiKeyLabel = [self label:@"API Key:"];
+  self.halextApiKeyField = [[NSSecureTextField alloc] initWithFrame:NSZeroRect];
+  [self.halextApiKeyField.widthAnchor constraintEqualToConstant:400].active = YES;
+  [halextGrid addRowWithViews:@[apiKeyLabel, self.halextApiKeyField]];
 
-  self.halextApiKeyField = [[NSSecureTextField alloc] initWithFrame:NSMakeRect(120, 68, 400, 24)];
-  self.halextApiKeyField.placeholderString = @"Enter API key...";
-  [halextBox addSubview:self.halextApiKeyField];
-
-  self.halextStatus = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 40, 500, 20)];
+  self.halextStatus = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.halextStatus.stringValue = @"Status: Not configured";
   self.halextStatus.bordered = NO;
   self.halextStatus.editable = NO;
   self.halextStatus.backgroundColor = [NSColor clearColor];
   self.halextStatus.font = [NSFont systemFontOfSize:12];
   self.halextStatus.textColor = [NSColor secondaryLabelColor];
-  [halextBox addSubview:self.halextStatus];
+  [halextStack addView:self.halextStatus inGravity:NSStackViewGravityTop];
 
-  self.halextTestButton = [[NSButton alloc] initWithFrame:NSMakeRect(20, 5, 140, 28)];
+  NSStackView *halextButtons = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  halextButtons.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  halextButtons.spacing = 12;
+  [halextStack addView:halextButtons inGravity:NSStackViewGravityTop];
+
+  self.halextTestButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.halextTestButton setButtonType:NSButtonTypeMomentaryPushIn];
   [self.halextTestButton setBezelStyle:NSBezelStyleRounded];
   self.halextTestButton.title = @"Test Connection";
   self.halextTestButton.target = self;
   self.halextTestButton.action = @selector(testHalextConnection:);
-  [halextBox addSubview:self.halextTestButton];
+  [halextButtons addView:self.halextTestButton inGravity:NSStackViewGravityLeading];
 
-  NSButton *halextSaveButton = [[NSButton alloc] initWithFrame:NSMakeRect(170, 5, 100, 28)];
+  NSButton *halextSaveButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [halextSaveButton setButtonType:NSButtonTypeMomentaryPushIn];
   [halextSaveButton setBezelStyle:NSBezelStyleRounded];
-  halextSaveButton.title = @"Save";
+  halextSaveButton.title = @"Save Configuration";
   halextSaveButton.target = self;
   halextSaveButton.action = @selector(saveHalextSettings:);
-  [halextBox addSubview:halextSaveButton];
+  [halextButtons addView:halextSaveButton inGravity:NSStackViewGravityLeading];
 
-  [self.contentView addSubview:halextBox];
-  y -= 200;
+  // MARK: Quick Actions
+  NSBox *quickBox = [[NSBox alloc] initWithFrame:NSZeroRect];
+  quickBox.title = @"Developer Quick Actions";
+  quickBox.titlePosition = NSAtTop;
+  [rootStack addView:quickBox inGravity:NSStackViewGravityTop];
+  [quickBox.widthAnchor constraintEqualToConstant:700].active = YES;
 
-  // MARK: AFS / Cortex / Halext Quick Actions
-  NSBox *afsBox = [[NSBox alloc] initWithFrame:NSMakeRect(leftMargin, y - 160, 700, 160)];
-  afsBox.title = @"AFS + Cortex + Halext (Quick Actions)";
-  afsBox.titlePosition = NSAtTop;
+  NSStackView *quickStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  quickStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  quickStack.alignment = NSLayoutAttributeLeading;
+  quickStack.spacing = 16;
+  quickStack.edgeInsets = NSEdgeInsetsMake(15, 20, 15, 20);
+  quickBox.contentView = quickStack;
 
-  NSButton *openHafsButton = [[NSButton alloc] initWithFrame:NSMakeRect(20, 110, 160, 28)];
-  [openHafsButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [openHafsButton setBezelStyle:NSBezelStyleRounded];
-  openHafsButton.title = @"Open AFS Repo";
-  openHafsButton.target = self;
-  openHafsButton.action = @selector(openHafsRepo:);
-  [afsBox addSubview:openHafsButton];
+  NSStackView *row1 = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  row1.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  row1.spacing = 12;
+  [quickStack addView:row1 inGravity:NSStackViewGravityTop];
 
-  NSButton *openHafsTuiButton = [[NSButton alloc] initWithFrame:NSMakeRect(190, 110, 180, 28)];
-  [openHafsTuiButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [openHafsTuiButton setBezelStyle:NSBezelStyleRounded];
-  openHafsTuiButton.title = @"Launch AFS TUI";
-  openHafsTuiButton.target = self;
-  openHafsTuiButton.action = @selector(openHafsTui:);
-  [afsBox addSubview:openHafsTuiButton];
+  for (NSString *title in @[@"Open AFS Repo", @"Launch AFS TUI", @"Open Cortex Repo"]) {
+    NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
+    [btn setButtonType:NSButtonTypeMomentaryPushIn];
+    [btn setBezelStyle:NSBezelStyleRounded];
+    btn.title = title;
+    btn.target = self;
+    if ([title containsString:@"AFS Repo"]) btn.action = @selector(openHafsRepo:);
+    else if ([title containsString:@"TUI"]) btn.action = @selector(openHafsTui:);
+    else btn.action = @selector(openCortexRepo:);
+    [row1 addView:btn inGravity:NSStackViewGravityLeading];
+  }
 
-  NSButton *openCortexRepoButton = [[NSButton alloc] initWithFrame:NSMakeRect(380, 110, 160, 28)];
-  [openCortexRepoButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [openCortexRepoButton setBezelStyle:NSBezelStyleRounded];
-  openCortexRepoButton.title = @"Open Cortex Repo";
-  openCortexRepoButton.target = self;
-  openCortexRepoButton.action = @selector(openCortexRepo:);
-  [afsBox addSubview:openCortexRepoButton];
+  NSStackView *row2 = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  row2.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  row2.spacing = 12;
+  [quickStack addView:row2 inGravity:NSStackViewGravityTop];
 
-  NSButton *openHalextRepoButton = [[NSButton alloc] initWithFrame:NSMakeRect(20, 70, 180, 28)];
-  [openHalextRepoButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [openHalextRepoButton setBezelStyle:NSBezelStyleRounded];
-  openHalextRepoButton.title = @"Open halext-org Repo";
-  openHalextRepoButton.target = self;
-  openHalextRepoButton.action = @selector(openHalextRepo:);
-  [afsBox addSubview:openHalextRepoButton];
+  for (NSString *title in @[@"Open halext-org Repo", @"Open Cortex App"]) {
+    NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
+    [btn setButtonType:NSButtonTypeMomentaryPushIn];
+    [btn setBezelStyle:NSBezelStyleRounded];
+    btn.title = title;
+    btn.target = self;
+    if ([title containsString:@"halext"]) btn.action = @selector(openHalextRepo:);
+    else btn.action = @selector(openCortexApp:);
+    [row2 addView:btn inGravity:NSStackViewGravityLeading];
+  }
+}
 
-  NSButton *openCortexAppButton = [[NSButton alloc] initWithFrame:NSMakeRect(210, 70, 160, 28)];
-  [openCortexAppButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [openCortexAppButton setBezelStyle:NSBezelStyleRounded];
-  openCortexAppButton.title = @"Open Cortex App";
-  openCortexAppButton.target = self;
-  openCortexAppButton.action = @selector(openCortexApp:);
-  [afsBox addSubview:openCortexAppButton];
-
-  [self.contentView addSubview:afsBox];
-  y -= 190;
-
+- (NSTextField *)label:(NSString *)text {
+  NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  label.stringValue = text;
+  label.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+  label.bordered = NO;
+  label.editable = NO;
+  label.backgroundColor = [NSColor clearColor];
+  label.alignment = NSTextAlignmentRight;
+  return label;
 }
 
 - (void)yazeToggled:(NSButton *)sender {
@@ -733,13 +691,14 @@
 }
 
 - (void)updateYazeStatus {
-  NSString *yazePath = [[self codeDir] stringByAppendingPathComponent:@"yaze"];
-  NSString *buildBinary = [yazePath stringByAppendingPathComponent:@"build/bin/yaze"];
+  NSString *yazeDir = [self yazeDir];
+  NSString *launcher = [self resolveYazeLauncher];
+  NSString *appPath = [self resolveYazeApp];
 
-  if ([[NSFileManager defaultManager] fileExistsAtPath:buildBinary]) {
+  if (launcher.length || appPath.length) {
     self.yazeStatus.stringValue = @"Status: ✓ Installed and built";
     self.yazeStatus.textColor = [NSColor systemGreenColor];
-  } else if ([[NSFileManager defaultManager] fileExistsAtPath:yazePath]) {
+  } else if ([[NSFileManager defaultManager] fileExistsAtPath:yazeDir]) {
     self.yazeStatus.stringValue = @"Status: ⚠ Installed but not built";
     self.yazeStatus.textColor = [NSColor systemOrangeColor];
   } else {
@@ -782,20 +741,36 @@
 }
 
 - (void)launchYaze:(id)sender {
-  NSString *yazePath = [[[self codeDir] stringByAppendingPathComponent:@"yaze"] stringByAppendingPathComponent:@"build/bin/yaze"];
-  if ([[NSFileManager defaultManager] fileExistsAtPath:yazePath]) {
-    [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:yazePath]];
+  NSString *launcher = [self resolveYazeLauncher];
+  if (launcher.length) {
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = launcher;
+    task.arguments = @[];
+    @try {
+      [task launch];
+    } @catch (NSException *exception) {
+      NSAlert *alert = [[NSAlert alloc] init];
+      alert.messageText = @"Yaze Launch Failed";
+      alert.informativeText = @"Failed to launch Yaze via the configured launcher.";
+      [alert runModal];
+    }
+    return;
+  }
+
+  NSString *appPath = [self resolveYazeApp];
+  if (appPath.length) {
+    [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:appPath]];
   } else {
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:@"Yaze Not Found"];
-    NSString *message = [NSString stringWithFormat:@"Build Yaze first: cd %@/yaze && make", [self codeDir]];
+    NSString *message = [NSString stringWithFormat:@"Build Yaze first: cd %@ && make", [self yazeDir]];
     [alert setInformativeText:message];
     [alert runModal];
   }
 }
 
 - (void)openYazeRepo:(id)sender {
-  NSString *yazePath = [[self codeDir] stringByAppendingPathComponent:@"yaze"];
+  NSString *yazePath = [self yazeDir];
   [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:yazePath]];
 }
 

@@ -26,6 +26,16 @@ local function apply_menu_template(value, ctx)
   return expanded
 end
 
+local function expand_path(path)
+  if type(path) ~= "string" or path == "" then
+    return nil
+  end
+  if path:sub(1, 2) == "~/" then
+    return (os.getenv("HOME") or "") .. path:sub(2)
+  end
+  return path
+end
+
 local function path_exists(path, want_dir)
   if not path or path == "" then
     return false
@@ -33,6 +43,31 @@ local function path_exists(path, want_dir)
   local flag = want_dir and "-d" or "-e"
   local ok = os.execute(string.format("test %s %q", flag, path))
   return ok == true or ok == 0
+end
+
+local function path_is_executable(path)
+  if not path or path == "" then
+    return false
+  end
+  local ok = os.execute(string.format("test -x %q", path))
+  return ok == true or ok == 0
+end
+
+local function command_path(command)
+  if not command or command == "" then
+    return nil
+  end
+  local handle = io.popen(string.format("command -v %q 2>/dev/null", command))
+  if not handle then
+    return nil
+  end
+  local result = handle:read("*a") or ""
+  handle:close()
+  result = result:gsub("%s+$", "")
+  if result == "" then
+    return nil
+  end
+  return result
 end
 
 local function open_terminal(command)
@@ -111,11 +146,57 @@ end
 
 local function resolve_yaze_app(ctx)
   local code_dir = resolve_code_dir(ctx)
+  local yaze_dir = os.getenv("BARISTA_YAZE_DIR")
+    or (ctx.paths and ctx.paths.yaze)
+    or (code_dir .. "/yaze")
+  local nightly_prefix = os.getenv("BARISTA_YAZE_NIGHTLY_PREFIX")
+    or os.getenv("YAZE_NIGHTLY_PREFIX")
+    or ((os.getenv("HOME") or "") .. "/.local/yaze/nightly")
   return resolve_path(ctx, {
-    ctx.paths and ctx.paths.yaze and (ctx.paths.yaze .. "/build/bin/yaze.app") or nil,
+    ctx.paths and ctx.paths.yaze_app or nil,
+    os.getenv("BARISTA_YAZE_APP") or os.getenv("YAZE_APP"),
+    nightly_prefix .. "/current/yaze.app",
+    nightly_prefix .. "/yaze.app",
+    os.getenv("HOME") .. "/Applications/Yaze Nightly.app",
+    os.getenv("HOME") .. "/Applications/yaze nightly.app",
+    os.getenv("HOME") .. "/applications/Yaze Nightly.app",
+    os.getenv("HOME") .. "/applications/yaze nightly.app",
+    "/Applications/Yaze Nightly.app",
+    "/Applications/yaze nightly.app",
+    yaze_dir and (yaze_dir .. "/build_ai/bin/Debug/yaze.app") or nil,
+    yaze_dir and (yaze_dir .. "/build_ai/bin/Release/yaze.app") or nil,
+    yaze_dir and (yaze_dir .. "/build_ai/bin/yaze.app") or nil,
+    yaze_dir and (yaze_dir .. "/build/bin/Release/yaze.app") or nil,
+    yaze_dir and (yaze_dir .. "/build/bin/Debug/yaze.app") or nil,
+    yaze_dir and (yaze_dir .. "/build/bin/yaze.app") or nil,
+    code_dir .. "/hobby/yaze/build_ai/bin/Debug/yaze.app",
+    code_dir .. "/hobby/yaze/build_ai/bin/Release/yaze.app",
+    code_dir .. "/hobby/yaze/build_ai/bin/yaze.app",
+    code_dir .. "/hobby/yaze/build/bin/Release/yaze.app",
+    code_dir .. "/hobby/yaze/build/bin/Debug/yaze.app",
     code_dir .. "/hobby/yaze/build/bin/yaze.app",
-    code_dir .. "/yaze/build/bin/yaze.app",
   }, true)
+end
+
+local function resolve_yaze_launcher()
+  local override = os.getenv("BARISTA_YAZE_LAUNCHER") or os.getenv("YAZE_LAUNCHER")
+  if override and override ~= "" then
+    local expanded = expand_path(override)
+    if expanded and path_is_executable(expanded) then
+      return expanded
+    end
+    local resolved = command_path(override)
+    if resolved then
+      return resolved
+    end
+  end
+
+  local resolved = command_path("yaze-nightly")
+  if resolved then
+    return resolved
+  end
+
+  return nil
 end
 
 local function afs_cli(afs_root, args)
@@ -170,10 +251,6 @@ local function focus_emacs_action(ctx)
   end
 end
 
--- ... [Keep existing helper functions: rom_hacking_items, emacs_items, oracle_items, halext_items, help_items] ...
--- I will inline them for brevity in this write, but in a real scenario I'd keep them.
--- Since I'm overwriting the file, I must include them.
-
 local function rom_hacking_items(ctx)
   if ctx.integration_flags and ctx.integration_flags.yaze == false then
     return {{ type = "item", name = "menu.rom.customize", icon = "󰈙", label = "Customize Workflow", action = ctx.open_path(ctx.paths.whichkey_plan) }}
@@ -181,17 +258,31 @@ local function rom_hacking_items(ctx)
   if ctx.integrations and ctx.integrations.yaze then
     return ctx.integrations.yaze.create_menu_items(ctx)
   end
-  local yaze_repo = ctx.paths.yaze
-  if not path_exists(yaze_repo, true) then
+  local yaze_repo = (ctx.paths and ctx.paths.yaze)
+    or os.getenv("BARISTA_YAZE_DIR")
+    or (resolve_code_dir(ctx) .. "/yaze")
+  local repo_ok = path_exists(yaze_repo, true)
+  local yaze_app = resolve_yaze_app(ctx)
+  local yaze_launcher = resolve_yaze_launcher()
+  local yaze_action = yaze_launcher and shell_quote(yaze_launcher)
+    or (yaze_app and string.format("open %s", shell_quote(yaze_app)) or nil)
+
+  if not repo_ok and not yaze_action then
     return {{ type = "item", name = "menu.rom.missing", icon = "⚠️", label = "Yaze Repo Missing", action = ctx.open_path(ctx.paths.whichkey_plan) }}
   end
-  local yaze_binary = string.format("open -a %q", yaze_repo .. "/build/bin/yaze.app/Contents/MacOS/yaze")
-  return {
-    { type = "item", name = "menu.rom.launch", icon = "󰯙", label = "Launch Yaze", action = yaze_binary },
-    { type = "item", name = "menu.rom.repo", icon = "󰋜", label = "Open Yaze Repo", action = ctx.open_path(yaze_repo) },
-    { type = "item", name = "menu.rom.doc", icon = "󰊕", label = "ROM Workflow Doc", action = ctx.open_path(ctx.paths.rom_doc) },
-    { type = "item", name = "menu.rom.focus_emacs", icon = "󰘔", label = "Focus Emacs Space", action = focus_emacs_action(ctx) },
-  }
+
+  local items = {}
+  if yaze_action then
+    table.insert(items, { type = "item", name = "menu.rom.launch", icon = "󰯙", label = "Launch Yaze", action = yaze_action })
+  end
+  if repo_ok then
+    table.insert(items, { type = "item", name = "menu.rom.repo", icon = "󰋜", label = "Open Yaze Repo", action = ctx.open_path(yaze_repo) })
+    table.insert(items, { type = "item", name = "menu.rom.doc", icon = "󰊕", label = "ROM Workflow Doc", action = ctx.open_path(ctx.paths.rom_doc) })
+    table.insert(items, { type = "item", name = "menu.rom.focus_emacs", icon = "󰘔", label = "Focus Emacs Space", action = focus_emacs_action(ctx) })
+  else
+    table.insert(items, { type = "item", name = "menu.rom.repo_missing", icon = "⚠️", label = "Yaze Repo Missing", action = ctx.open_path(ctx.paths.whichkey_plan) })
+  end
+  return items
 end
 
 local function emacs_items(ctx)
@@ -254,6 +345,7 @@ function menu.render_all_menus(ctx)
   local popup_corner_radius = appearance.popup_corner_radius or 4
   local popup_border_color = appearance.popup_border_color or ctx.theme.WHITE
   local popup_bg_color = appearance.popup_bg_color or ctx.theme.bar.bg
+  local popup_padding = appearance.popup_padding or 8
 
   -- Use enhanced apple menu if available
   local ok, apple_menu_enhanced = pcall(require, "apple_menu_enhanced")
@@ -281,6 +373,8 @@ function menu.render_all_menus(ctx)
       config_dir = CONFIG_DIR,
       associated_displays = ctx.associated_displays,
       yabai_control_script = ctx.scripts.yabai_control,
+      popup_toggle_action = ctx.popup_toggle_action,
+      popup_toggle_script = ctx.popup_toggle_script,
     })
     return
   end
@@ -294,6 +388,11 @@ function menu.render_all_menus(ctx)
   local associated_displays = ctx.associated_displays or "all"
   
   -- 1. System Menu (Apple Icon)
+  local apple_menu_click = "sketchybar -m --set $NAME popup.drawing=toggle"
+  if type(ctx.popup_toggle_action) == "function" then
+    apple_menu_click = ctx.popup_toggle_action()
+  end
+
   sbar.add("item", "apple_menu", {
     position = "left",
     icon = ctx.icon_for and ctx.icon_for("apple", "") or "",
@@ -307,13 +406,15 @@ function menu.render_all_menus(ctx)
         padding_left = 4,
         padding_right = 4
     },
-    click_script = "sketchybar -m --set $NAME popup.drawing=toggle",
+    click_script = apple_menu_click,
     popup = {
       background = {
         border_width = popup_border_width,
         corner_radius = popup_corner_radius,
         border_color = popup_border_color,
         color = popup_bg_color,
+        padding_left = popup_padding,
+        padding_right = popup_padding,
       }
     }
   })
@@ -326,6 +427,7 @@ function menu.render_all_menus(ctx)
   local stemforge_app = resolve_stemforge_app(ctx)
   local stem_sampler_app = resolve_stem_sampler_app(ctx)
   local yaze_app = resolve_yaze_app(ctx)
+  local yaze_launcher = resolve_yaze_launcher()
 
   if afs_root then
     local afs_tui = string.format("cd %s && python3 -m tui.app", shell_quote(afs_root))
@@ -405,13 +507,14 @@ function menu.render_all_menus(ctx)
     })
   end
 
-  if yaze_app then
+  if yaze_launcher or yaze_app then
     table.insert(apple_menu_items, {
       type = "item",
       name = "menu.tools.yaze",
       icon = "󰯙",
       label = "Yaze",
-      action = string.format("open %s", shell_quote(yaze_app)),
+      action = yaze_launcher and shell_quote(yaze_launcher)
+        or string.format("open %s", shell_quote(yaze_app)),
     })
   end
 

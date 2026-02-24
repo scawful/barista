@@ -8,9 +8,53 @@ CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
 FOCUS_SCRIPT="$CONFIG_DIR/plugins/focus_space.sh"
 ICON_CACHE_DIR="$CONFIG_DIR/cache/space_icons"
 RETRY_FILE="$CONFIG_DIR/.spaces_retry"
+STATE_FILE="$CONFIG_DIR/state.json"
+SPACE_ACTION_SCRIPT="$CONFIG_DIR/scripts/space_action.sh"
+SPACE_MANAGER_BIN="$CONFIG_DIR/bin/space_manager"
 # OPTIMIZED: Reduced retry attempts and delays for faster startup
 MAX_SPACE_QUERY_ATTEMPTS=3
 SPACE_QUERY_DELAY=0.05
+
+normalize_creator_mode() {
+  case "$1" in
+    primary|active|per_display)
+      printf '%s' "$1"
+      ;;
+    *)
+      printf '%s' "primary"
+      ;;
+  esac
+}
+
+resolve_creator_mode() {
+  local mode=""
+  if command -v jq >/dev/null 2>&1 && [ -f "$STATE_FILE" ]; then
+    mode=$(jq -r '.spaces.creator_mode // empty' "$STATE_FILE" 2>/dev/null || true)
+  fi
+  normalize_creator_mode "${mode:-primary}"
+}
+
+space_click_action() {
+  local space_index="${1:-}"
+  if [ -x "$SPACE_ACTION_SCRIPT" ]; then
+    printf '%s click --space %s' "$SPACE_ACTION_SCRIPT" "$space_index"
+    return 0
+  fi
+  printf '%s %s' "$FOCUS_SCRIPT" "$space_index"
+}
+
+creator_click_action() {
+  local target_display="${1:-active}"
+  if [ -x "$SPACE_ACTION_SCRIPT" ]; then
+    printf '%s create --display %s' "$SPACE_ACTION_SCRIPT" "$target_display"
+    return 0
+  fi
+  if [ -x "$SPACE_MANAGER_BIN" ]; then
+    printf '%s create' "$SPACE_MANAGER_BIN"
+    return 0
+  fi
+  printf '%s' 'yabai -m space --create'
+}
 
 item_exists() {
   local item="${1:-}"
@@ -76,6 +120,8 @@ schedule_spaces_retry() {
   ) &
 }
 
+CREATOR_MODE="$(resolve_creator_mode)"
+
 RAW_SPACES_DATA=""
 if command -v yabai >/dev/null 2>&1; then
     for ((attempt=1; attempt<=MAX_SPACE_QUERY_ATTEMPTS; attempt++)); do
@@ -135,12 +181,48 @@ if [ ${#SPACE_LINES[@]} -eq 0 ]; then
   done
 fi
 
+declare -a DISPLAY_IDS=()
+for entry in "${SPACE_LINES[@]}"; do
+  display="${entry%% *}"
+  [ -n "$display" ] || continue
+  seen=0
+  for existing_display in "${DISPLAY_IDS[@]-}"; do
+    if [ "$existing_display" = "$display" ]; then
+      seen=1
+      break
+    fi
+  done
+  if [ "$seen" -eq 0 ]; then
+    DISPLAY_IDS+=("$display")
+  fi
+done
+
+if [ -d "$ICON_CACHE_DIR" ]; then
+  ACTIVE_SPACES=" "
+  for entry in "${SPACE_LINES[@]}"; do
+    space_index="${entry##* }"
+    ACTIVE_SPACES="${ACTIVE_SPACES}${space_index} "
+  done
+  shopt -s nullglob
+  for cache_file in "$ICON_CACHE_DIR"/*; do
+    [ -f "$cache_file" ] || continue
+    cache_name="${cache_file##*/}"
+    case " $ACTIVE_SPACES " in
+      *" $cache_name "*) ;;
+      *) rm -f "$cache_file" 2>/dev/null || true ;;
+    esac
+  done
+  shopt -u nullglob
+fi
+
 # Prepare batch command
 declare -a SB_ARGS=()
 
 # Remove existing spaces first
 sketchybar --remove '/space\..*/' >/dev/null 2>&1 || true
 sketchybar --remove '/spaces\..*/' >/dev/null 2>&1 || true
+sketchybar --remove '/space_creator\..*/' >/dev/null 2>&1 || true
+sketchybar --remove space_creator >/dev/null 2>&1 || true
 
 anchor_item="front_app"
 needs_front_app_reorder=0
@@ -171,6 +253,7 @@ for entry in "${SPACE_LINES[@]}"; do
       icon="$cached_icon"
     fi
   fi
+  click_action="$(space_click_action "$space_index")"
 
   SB_ARGS+=(--add space "$item" left)
   SB_ARGS+=(--set "$item" space="$space_index" \
@@ -192,8 +275,8 @@ for entry in "${SPACE_LINES[@]}"; do
                           background.corner_radius=8 \
                           background.height=20 \
                           script="$CONFIG_DIR/plugins/space.sh" \
-                          click_script="$FOCUS_SCRIPT $space_index")
-  SB_ARGS+=(--subscribe "$item" mouse.entered mouse.exited space_change space_mode_refresh front_app_switched)
+                          click_script="$click_action")
+  SB_ARGS+=(--subscribe "$item" mouse.entered mouse.exited space_change space_mode_refresh)
   if [ -n "$last_item" ]; then
     SB_ARGS+=(--move "$item" after "$last_item")
   fi
@@ -202,38 +285,71 @@ for entry in "${SPACE_LINES[@]}"; do
   SPACE_ITEMS+=("$item")
 done
 
-# Add space creator button (+ icon)
+# Add space creator button(s)
 PRIMARY_DISPLAY=1
-if command -v yabai >/dev/null 2>&1; then
-    PRIMARY_DISPLAY=$(yabai -m query --displays --display | jq .index 2>/dev/null || echo 1)
+if command -v yabai >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+  PRIMARY_DISPLAY=$(yabai -m query --displays --display 2>/dev/null | jq -r '.index // 1' 2>/dev/null || echo 1)
 fi
 
-SB_ARGS+=(--add item space_creator left)
-SB_ARGS+=(--set space_creator \
-                display="$([ "$fallback_active" -eq 1 ] && echo active || echo "$PRIMARY_DISPLAY")" \
-                icon="󰐕" \
-                icon.color="0x80a6adc8" \
-                icon.padding_left=8 \
-                icon.padding_right=8 \
-                label="" \
-                label.drawing=off \
-                background.drawing=off \
-                background.color="0x00000000" \
-                background.corner_radius=8 \
-                background.height=20 \
-                script="$CONFIG_DIR/plugins/space_creator.sh" \
-                click_script="$HOME/.config/sketchybar/bin/space_manager create")
-SB_ARGS+=(--subscribe space_creator mouse.entered mouse.exited)
-if [ -n "$last_item" ]; then
-  SB_ARGS+=(--move space_creator after "$last_item")
+declare -a CREATOR_TARGETS=()
+case "$CREATOR_MODE" in
+  per_display)
+    if [ "$fallback_active" -eq 1 ]; then
+      CREATOR_TARGETS=("active")
+    else
+      CREATOR_TARGETS=("${DISPLAY_IDS[@]-}")
+    fi
+    ;;
+  active)
+    CREATOR_TARGETS=("active")
+    ;;
+  primary|*)
+    if [ "$fallback_active" -eq 1 ]; then
+      CREATOR_TARGETS=("active")
+    else
+      CREATOR_TARGETS=("$PRIMARY_DISPLAY")
+    fi
+    ;;
+esac
+
+if [ ${#CREATOR_TARGETS[@]} -eq 0 ]; then
+  CREATOR_TARGETS=("active")
 fi
+
+declare -a CREATOR_ITEMS=()
+for creator_target in "${CREATOR_TARGETS[@]-}"; do
+  creator_item="space_creator"
+  if [ "$CREATOR_MODE" = "per_display" ] && [ "$creator_target" != "active" ]; then
+    creator_item="space_creator.$creator_target"
+  fi
+  creator_cmd="$(creator_click_action "$creator_target")"
+
+  SB_ARGS+=(--add item "$creator_item" left)
+  SB_ARGS+=(--set "$creator_item" \
+                  display="$creator_target" \
+                  icon="󰐕" \
+                  icon.color="0x80a6adc8" \
+                  icon.padding_left=8 \
+                  icon.padding_right=8 \
+                  label="" \
+                  label.drawing=off \
+                  background.drawing=off \
+                  background.color="0x00000000" \
+                  background.corner_radius=8 \
+                  background.height=20 \
+                  script="$CONFIG_DIR/plugins/space_creator.sh" \
+                  click_script="$creator_cmd")
+  SB_ARGS+=(--subscribe "$creator_item" mouse.entered mouse.exited)
+  if [ -n "$last_item" ]; then
+    SB_ARGS+=(--move "$creator_item" after "$last_item")
+  fi
+  last_item="$creator_item"
+  CREATOR_ITEMS+=("$creator_item")
+done
 
 # Execute all commands in one single call
 sketchybar "${SB_ARGS[@]}"
 
-# Force a refresh so selection/highlight updates after rebuilding items.
-sketchybar --trigger space_change >/dev/null 2>&1 || true
-sketchybar --trigger space_mode_refresh >/dev/null 2>&1 || true
 
 # If front_app wasn't ready yet, reorder spaces once it appears.
 if [ "$needs_front_app_reorder" -eq 1 ]; then
@@ -245,7 +361,10 @@ if [ "$needs_front_app_reorder" -eq 1 ]; then
           sketchybar --move "$space_item" after "$last" >/dev/null 2>&1 || true
           last="$space_item"
         done
-        sketchybar --move space_creator after "$last" >/dev/null 2>&1 || true
+        for creator_item in "${CREATOR_ITEMS[@]-}"; do
+          sketchybar --move "$creator_item" after "$last" >/dev/null 2>&1 || true
+          last="$creator_item"
+        done
         exit 0
       fi
       sleep 0.05

@@ -59,6 +59,18 @@ right_click_close_mode() {
   normalize_close_mode "$mode"
 }
 
+modifier_has() {
+  local needle="$1"
+  local raw="${MODIFIER:-${modifiers:-}}"
+  [ -n "$raw" ] || return 1
+  case ",$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')," in
+    *"$needle"*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 confirm_file_for_space() {
   local space_idx="$1"
   printf '/tmp/barista_space_close_confirm_%s_%s' "$UID" "$space_idx"
@@ -78,12 +90,16 @@ mark_confirm() {
   local space_idx="$1"
   local file="$2"
   date +%s > "$file" 2>/dev/null || true
-  sketchybar --set "space.$space_idx" icon.color=0xfff38ba8 >/dev/null 2>&1 || true
-  (
-    sleep "$SPACE_CLOSE_CONFIRM_TTL_SEC"
-    rm -f "$file" 2>/dev/null || true
+  sketchybar --set "space.$space_idx" \
+    icon="󰅖" \
+    icon.color=0xfff38ba8 \
+    background.drawing=on \
+    background.color=0x60f38ba8 >/dev/null 2>&1 || true
+  nohup sh -c "
+    sleep \"$SPACE_CLOSE_CONFIRM_TTL_SEC\"
+    rm -f \"$file\" 2>/dev/null || true
     sketchybar --trigger space_change >/dev/null 2>&1 || true
-  ) &
+  " >/dev/null 2>&1 &
 }
 
 refresh_space_items() {
@@ -129,6 +145,72 @@ alternate_space_on_display() {
   [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ] || return 1
   run_with_timeout 1 "$YABAI_BIN" -m query --spaces --display "$display_idx" 2>/dev/null \
     | "$JQ_BIN" -r --argjson exclude "$exclude_idx" 'map(.index) | map(select(. != $exclude)) | .[0] // empty'
+}
+
+display_space_indices() {
+  local display_idx="$1"
+  [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ] || return 1
+  run_with_timeout 1 "$YABAI_BIN" -m query --spaces --display "$display_idx" 2>/dev/null \
+    | "$JQ_BIN" -r 'map(.index) | sort | .[]'
+}
+
+neighbor_space_on_display() {
+  local current_idx="$1"
+  local direction="$2"
+  local display_idx
+  display_idx=$(space_display "$current_idx" || true)
+  [ -n "$display_idx" ] || return 1
+
+  local spaces=()
+  local space_entry
+  while IFS= read -r space_entry; do
+    [ -n "$space_entry" ] || continue
+    spaces+=("$space_entry")
+  done < <(display_space_indices "$display_idx")
+  [ "${#spaces[@]}" -gt 1 ] || return 1
+
+  local pos=-1
+  local i
+  for i in "${!spaces[@]}"; do
+    if [ "${spaces[$i]}" = "$current_idx" ]; then
+      pos="$i"
+      break
+    fi
+  done
+  [ "$pos" -ge 0 ] || return 1
+
+  if [ "$direction" = "left" ]; then
+    [ "$pos" -gt 0 ] || return 1
+    printf '%s' "${spaces[$((pos - 1))]}"
+    return 0
+  fi
+
+  [ "$pos" -lt $(( ${#spaces[@]} - 1 )) ] || return 1
+  printf '%s' "${spaces[$((pos + 1))]}"
+}
+
+move_space() {
+  local from_idx="$1"
+  local to_idx="$2"
+  [ -n "$YABAI_BIN" ] || return 1
+  if [ "$from_idx" = "$to_idx" ]; then
+    return 0
+  fi
+  if [ -x "$SPACE_MANAGER_BIN" ]; then
+    "$SPACE_MANAGER_BIN" move "$from_idx" "$to_idx" >/dev/null 2>&1 || true
+  else
+    run_with_timeout 1 "$YABAI_BIN" -m space "$from_idx" --move "$to_idx" >/dev/null 2>&1 || true
+  fi
+  refresh_space_items
+}
+
+reorder_space_relative() {
+  local space_idx="$1"
+  local direction="$2"
+  local neighbor
+  neighbor=$(neighbor_space_on_display "$space_idx" "$direction" || true)
+  [ -n "$neighbor" ] || return 0
+  move_space "$space_idx" "$neighbor"
 }
 
 destroy_space() {
@@ -203,6 +285,18 @@ is_right_click() {
 
 handle_space_click() {
   local space_idx="$1"
+
+  # Reorder shortcuts:
+  # - shift + click: move left on current display
+  # - cmd + shift + click: move right on current display
+  if modifier_has "shift"; then
+    if modifier_has "cmd" || modifier_has "command"; then
+      reorder_space_relative "$space_idx" "right"
+    else
+      reorder_space_relative "$space_idx" "left"
+    fi
+    return 0
+  fi
 
   if is_right_click; then
     local mode

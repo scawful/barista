@@ -21,7 +21,7 @@ normalize_creator_mode() {
       printf '%s' "$1"
       ;;
     *)
-      printf '%s' "active"
+      printf '%s' "per_display"
       ;;
   esac
 }
@@ -31,7 +31,7 @@ resolve_creator_mode() {
   if command -v jq >/dev/null 2>&1 && [ -f "$STATE_FILE" ]; then
     mode=$(jq -r '.spaces.creator_mode // empty' "$STATE_FILE" 2>/dev/null || true)
   fi
-  normalize_creator_mode "${mode:-active}"
+  normalize_creator_mode "${mode:-per_display}"
 }
 
 space_click_action() {
@@ -197,6 +197,28 @@ for entry in "${SPACE_LINES[@]}"; do
   fi
 done
 
+declare -a VISIBLE_SPACE_LINES=()
+if [ -n "$RAW_SPACES_DATA" ] && command -v jq >/dev/null 2>&1; then
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    VISIBLE_SPACE_LINES+=("$line")
+  done < <(printf '%s\n' "$RAW_SPACES_DATA" | jq -r '.[] | select(."is-visible" == true) | "\(.display) \(.index)"')
+fi
+
+visible_space_for_display() {
+  local target_display="${1:-}"
+  local pair pair_display pair_space
+  for pair in "${VISIBLE_SPACE_LINES[@]-}"; do
+    pair_display="${pair%% *}"
+    pair_space="${pair##* }"
+    if [ "$pair_display" = "$target_display" ] && [ -n "$pair_space" ]; then
+      printf '%s' "$pair_space"
+      return 0
+    fi
+  done
+  return 1
+}
+
 if [ -d "$ICON_CACHE_DIR" ]; then
   ACTIVE_SPACES=" "
   for entry in "${SPACE_LINES[@]}"; do
@@ -323,10 +345,19 @@ for creator_target in "${CREATOR_TARGETS[@]-}"; do
     creator_item="space_creator.$creator_target"
   fi
   creator_cmd="$(creator_click_action "$creator_target")"
+  creator_space=""
+  creator_ignore_association="on"
+  if [ "$creator_target" != "active" ]; then
+    creator_space="$(visible_space_for_display "$creator_target" || true)"
+    if [ -n "$creator_space" ]; then
+      creator_ignore_association="off"
+    fi
+  fi
 
   SB_ARGS+=(--add item "$creator_item" left)
   SB_ARGS+=(--set "$creator_item" \
                   display="$creator_target" \
+                  ignore_association="$creator_ignore_association" \
                   icon="󰐕" \
                   icon.color="0x80a6adc8" \
                   icon.padding_left=8 \
@@ -339,6 +370,9 @@ for creator_target in "${CREATOR_TARGETS[@]-}"; do
                   background.height=20 \
                   script="$CONFIG_DIR/plugins/space_creator.sh" \
                   click_script="$creator_cmd")
+  if [ -n "$creator_space" ]; then
+    SB_ARGS+=(--set "$creator_item" space="$creator_space")
+  fi
   SB_ARGS+=(--subscribe "$creator_item" mouse.entered mouse.exited)
   if [ -n "$last_item" ]; then
     SB_ARGS+=(--move "$creator_item" after "$last_item")

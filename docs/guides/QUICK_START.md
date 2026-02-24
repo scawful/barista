@@ -112,7 +112,6 @@ brew install cmake lua jq
 
 ## Documentation
 
-- [BUILD.md](BUILD.md) - Detailed build instructions
-- [REFACTORING_SUMMARY.md](REFACTORING_SUMMARY.md) - Refactoring overview
-- [docs/CMake_MIGRATION.md](docs/CMake_MIGRATION.md) - Migration guide
+- [BUILD.md](../BUILD.md) - Detailed build instructions
+- [docs/architecture/SKETCHYBAR_LAYOUT.md](../architecture/SKETCHYBAR_LAYOUT.md) - Bar layout and where to edit items
 

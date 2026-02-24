@@ -107,7 +107,7 @@ modules/menu.lua
 
 CREATED:
 ├── ICON_SYSTEM_DOCS.md - Complete icon documentation
-├── QUICK_ICON_FIX.md - Quick reference for fixes
+├── COMMON_PITFALLS.md - Quick reference for common issues
 ├── test_apple_icon.sh - Test script to set apple icon
 └── FINAL_ICON_STATUS.md - This file
 ```

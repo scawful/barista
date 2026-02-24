@@ -42,9 +42,8 @@ docs/
 │   ├── CONTRIBUTING.md        # Contribution guide
 │   └── GITHUB_SETUP.md        # Distribution setup
 ├── troubleshooting/            # Issue fixes
-│   ├── ICON_FIXES_SUMMARY.md
 │   ├── ICON_SYSTEM_DOCS.md
-│   ├── QUICK_ICON_FIX.md
+│   ├── COMMON_PITFALLS.md
 │   ├── FINAL_ICON_STATUS.md
 │   └── WIDGET_FIXES.md
 └── api/                        # API references

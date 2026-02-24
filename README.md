@@ -77,7 +77,7 @@ Optionally pass the target dir (default: `~/.config/sketchybar`). If the runtime
 ```
 
 ### Configuration
-Edit `~/.config/sketchybar/state.json` to toggle specific widgets or change colors without touching Lua code. To find which file defines each bar item and which plugin script runs it, see [docs/architecture/SKETCHYBAR_LAYOUT.md](docs/architecture/SKETCHYBAR_LAYOUT.md).
+Edit `~/.config/sketchybar/state.json` to toggle widgets and appearance, or use `barista_config.lua` for overrides that survive the GUI. See [docs/guides/CUSTOMIZATION.md](docs/guides/CUSTOMIZATION.md) for state.json, profiles, themes, and [docs/architecture/SKETCHYBAR_LAYOUT.md](docs/architecture/SKETCHYBAR_LAYOUT.md) for which file defines each bar item.
 
 ```json
 {

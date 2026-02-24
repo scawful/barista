@@ -526,7 +526,7 @@ Reload: `sketchybar --reload`
 
 - [Control Panel Guide](CONTROL_PANEL_V2.md) - Icon Gallery tab
 - [Architecture Analysis](architecture/CODE_ANALYSIS.md) - Icon system design
-- [Icon Fixes Summary](troubleshooting/ICON_FIXES_SUMMARY.md) - Common issues
+- [Common Pitfalls](troubleshooting/COMMON_PITFALLS.md) - Common issues and fixes
 
 ---
 

@@ -1,7 +1,7 @@
 # Barista Documentation Index
 
 **Status:** Experimental (hybrid C/Lua)
-**Last Updated:** 2026-01-06
+**Last Updated:** 2026-02-24
 
 ## Quick Links
 
@@ -19,6 +19,7 @@ User-facing setup and usage guides.
 | Document | Description |
 |----------|-------------|
 | [INSTALLATION_GUIDE.md](guides/INSTALLATION_GUIDE.md) | Complete installation walkthrough |
+| [CUSTOMIZATION.md](guides/CUSTOMIZATION.md) | state.json, barista_config.lua, profiles, themes, layout |
 | [UPDATE_GUIDE.md](guides/UPDATE_GUIDE.md) | Safe upgrade procedures |
 | [QUICK_START.md](guides/QUICK_START.md) | Get running in 5 minutes |
 | [QUICK_REBUILD.md](guides/QUICK_REBUILD.md) | Rebuild commands reference |

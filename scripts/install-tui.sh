@@ -10,6 +10,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
+AUTO_YES=0
 
 # Colors
 RED='\033[0;31m'
@@ -140,18 +141,35 @@ main() {
         --venv)
             create_venv
             ;;
+        --yes)
+            AUTO_YES=1
+            if check_deps; then
+                echo ""
+                echo "Run barista with: $REPO_DIR/bin/barista"
+            else
+                install_deps
+                echo ""
+                echo "Run barista with: $REPO_DIR/bin/barista"
+            fi
+            ;;
         *)
             if check_deps; then
                 echo ""
                 echo "Run barista with: $REPO_DIR/bin/barista"
             else
                 echo ""
-                read -p "Install missing dependencies? [Y/n] " -n 1 -r
-                echo
-                if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
+                if [[ "${BARISTA_INSTALL_TUI_YES:-0}" == "1" || "$AUTO_YES" == "1" ]]; then
                     install_deps
                     echo ""
                     echo "Run barista with: $REPO_DIR/bin/barista"
+                else
+                    read -p "Install missing dependencies? [Y/n] " -n 1 -r
+                    echo
+                    if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
+                        install_deps
+                        echo ""
+                        echo "Run barista with: $REPO_DIR/bin/barista"
+                    fi
                 fi
             fi
             ;;

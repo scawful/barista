@@ -16,6 +16,8 @@ CONFIG_DIR="${HOME}/.config/sketchybar"
 MAIN_REMOTE="${BARISTA_REMOTE:-origin}"
 MAIN_BRANCH="${BARISTA_BRANCH:-main}"
 SKIP_RESTART="${BARISTA_SKIP_RESTART:-0}"
+TARGET_REF="${BARISTA_TARGET:-}"
+AUTO_YES=0
 
 echo_info() {
   echo -e "${BLUE}[INFO]${NC} $1"
@@ -32,6 +34,47 @@ echo_warning() {
 echo_error() {
   echo -e "${RED}[ERROR]${NC} $1"
 }
+
+usage() {
+  cat <<EOF
+Usage: $0 [--yes] [--target <ref>] [--skip-restart]
+
+Options:
+  --yes             Non-interactive; apply update without prompt
+  --target <ref>    Update to explicit git ref (default: ${MAIN_REMOTE}/${MAIN_BRANCH})
+  --skip-restart    Skip service restarts after update
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --yes|-y)
+      AUTO_YES=1
+      shift
+      ;;
+    --target)
+      TARGET_REF="${2:-}"
+      if [[ -z "$TARGET_REF" ]]; then
+        echo_error "Missing value for --target"
+        exit 1
+      fi
+      shift 2
+      ;;
+    --skip-restart)
+      SKIP_RESTART=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo_error "Unknown option: $1"
+      usage
+      exit 1
+      ;;
+  esac
+done
 
 restart_services() {
   if [[ "$SKIP_RESTART" == "1" ]]; then
@@ -98,6 +141,8 @@ fi
 
 cd "$CONFIG_DIR"
 
+UPDATE_REF="${TARGET_REF:-${MAIN_REMOTE}/${MAIN_BRANCH}}"
+
 # Current state
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 CURRENT_COMMIT=$(git rev-parse HEAD)
@@ -110,6 +155,7 @@ echo "╚═══════════════════════�
 echo ""
 echo_info "Repository: $REMOTE_URL"
 echo_info "Branch: $CURRENT_BRANCH (tracking ${MAIN_REMOTE}/${MAIN_BRANCH})"
+echo_info "Target ref: $UPDATE_REF"
 echo_info "Current commit: ${CURRENT_COMMIT:0:8}"
 echo ""
 
@@ -129,8 +175,17 @@ if ! git fetch "$MAIN_REMOTE"; then
   exit 1
 fi
 
+if ! git rev-parse --verify "$UPDATE_REF" >/dev/null 2>&1; then
+  if git rev-parse --verify "${MAIN_REMOTE}/${UPDATE_REF}" >/dev/null 2>&1; then
+    UPDATE_REF="${MAIN_REMOTE}/${UPDATE_REF}"
+  else
+    echo_error "Target ref not found: $UPDATE_REF"
+    exit 1
+  fi
+fi
+
 # Check what changed
-CHANGES=$(git log HEAD.."${MAIN_REMOTE}/${MAIN_BRANCH}" --oneline 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+CHANGES=$(git log HEAD.."${UPDATE_REF}" --oneline 2>/dev/null | wc -l | tr -d ' ' || echo "0")
 
 if [[ "$CHANGES" -eq 0 ]]; then
   echo_success "Already up to date!"
@@ -142,15 +197,19 @@ echo ""
 
 # Show changelog
 echo "Recent changes:"
-git log HEAD.."${MAIN_REMOTE}/${MAIN_BRANCH}" --oneline -10 2>/dev/null || true
+git log HEAD.."${UPDATE_REF}" --oneline -10 2>/dev/null || true
 echo ""
 
 # Ask for confirmation
-read -p "Update now? [y/N] " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-  echo_warning "Update cancelled"
-  exit 0
+if [[ "$AUTO_YES" != "1" ]]; then
+  read -p "Update now? [y/N] " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo_warning "Update cancelled"
+    exit 0
+  fi
+else
+  echo_info "Auto-confirm enabled (--yes)"
 fi
 
 # Stash local changes (preserve user files)
@@ -159,12 +218,12 @@ git stash push -m "barista-update-$(date +%s)" -- \
   ':!state.json' ':!profiles/**' ':!themes/**' ':!*.local.lua' ':!plugins/*.local.sh' 2>/dev/null || true
 
 # Merge/fast-forward
-if git merge-base --is-ancestor HEAD "${MAIN_REMOTE}/${MAIN_BRANCH}" 2>/dev/null; then
+if git merge-base --is-ancestor HEAD "${UPDATE_REF}" 2>/dev/null; then
   echo_info "Fast-forwarding to latest..."
-  git merge --ff-only "${MAIN_REMOTE}/${MAIN_BRANCH}"
+  git merge --ff-only "${UPDATE_REF}"
 else
   echo_info "Merging updates..."
-  if ! git merge "${MAIN_REMOTE}/${MAIN_BRANCH}" --no-edit; then
+  if ! git merge "${UPDATE_REF}" --no-edit; then
     echo_warning "Merge conflicts detected. Resolving automatically..."
     git checkout --theirs -- '*.lua' 'modules/**' 'plugins/**' 'helpers/**' '*.md' 'CMakeLists.txt' 2>/dev/null || true
     git checkout --ours -- 'state.json' 'profiles/**' 'themes/**' '*.local.lua' 'plugins/*.local.sh' 2>/dev/null || true

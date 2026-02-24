@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SYNC_SCRIPT="$SCRIPT_DIR/work_mac_sync.sh"
+
 HOST=""
 REMOTE_DIR="${BARISTA_REMOTE_DIR:-~/.config/sketchybar}"
-REMOTE_URL="${BARISTA_REMOTE_URL:-https://github.com/scawful/barista.git}"
 TARGET_REF="${BARISTA_TARGET_REF:-origin/main}"
 WORK_DOMAIN="${BARISTA_WORK_GOOGLE_DOMAIN:-}"
 PANEL_MODE="${BARISTA_ALT_PANEL_MODE:-tui}"
-SKIP_RESTART="${BARISTA_SKIP_RESTART:-0}"
+REMOTE_URL="${BARISTA_REMOTE_URL:-https://github.com/scawful/barista.git}"
+SKIP_RESTART=0
 INSTALL_EXTRAS=1
 
 usage() {
@@ -38,6 +41,10 @@ while [[ $# -gt 0 ]]; do
       PANEL_MODE="${2:-}"
       shift 2
       ;;
+    --repo-url)
+      REMOTE_URL="${2:-}"
+      shift 2
+      ;;
     --skip-restart)
       SKIP_RESTART=1
       shift
@@ -64,73 +71,27 @@ if [ -z "$HOST" ]; then
   exit 1
 fi
 
-ssh "$HOST" \
-  BARISTA_REMOTE_DIR="$REMOTE_DIR" \
-  BARISTA_REMOTE_URL="$REMOTE_URL" \
-  BARISTA_TARGET_REF="$TARGET_REF" \
-  BARISTA_WORK_DOMAIN="$WORK_DOMAIN" \
-  BARISTA_PANEL_MODE="$PANEL_MODE" \
-  BARISTA_SKIP_RESTART="$SKIP_RESTART" \
-  BARISTA_INSTALL_EXTRAS="$INSTALL_EXTRAS" \
-  'bash -s' <<'REMOTE'
-set -euo pipefail
-
-expand_home() {
-  case "$1" in
-    "~/"*) printf '%s/%s' "$HOME" "${1#~/}" ;;
-    "~") printf '%s' "$HOME" ;;
-    *) printf '%s' "$1" ;;
-  esac
-}
-
-repo_dir="$(expand_home "$BARISTA_REMOTE_DIR")"
-mkdir -p "$(dirname "$repo_dir")"
-
-if [ ! -d "$repo_dir/.git" ]; then
-  echo "[remote] cloning barista into $repo_dir"
-  git clone "$BARISTA_REMOTE_URL" "$repo_dir"
-fi
-
-cd "$repo_dir"
-
-if [ ! -x "./bin/barista-update" ]; then
-  echo "[remote] missing ./bin/barista-update in $repo_dir" >&2
+if [ ! -x "$SYNC_SCRIPT" ]; then
+  echo "Missing sync script: $SYNC_SCRIPT" >&2
   exit 1
 fi
 
-echo "[remote] updating to $BARISTA_TARGET_REF"
-BARISTA_SKIP_RESTART="$BARISTA_SKIP_RESTART" ./bin/barista-update --yes --target "$BARISTA_TARGET_REF"
+args=(
+  --host "$HOST"
+  --remote-dir "$REMOTE_DIR"
+  --repo-url "$REMOTE_URL"
+  --target "$TARGET_REF"
+  --panel-mode "$PANEL_MODE"
+)
 
-if [ -x "./scripts/setup_machine.sh" ]; then
-  if [ "${BARISTA_INSTALL_EXTRAS:-1}" = "1" ] || [ -n "${BARISTA_WORK_DOMAIN:-}" ]; then
-    setup_args=(--state "$repo_dir/state.json" --panel-mode "$BARISTA_PANEL_MODE" --yes --no-reload)
-    if [ "${BARISTA_INSTALL_EXTRAS:-1}" != "1" ]; then
-      setup_args+=(--skip-fonts --skip-panel)
-    fi
-    if [ -n "${BARISTA_WORK_DOMAIN:-}" ]; then
-      setup_args+=(--work-apps --replace-work-apps --domain "$BARISTA_WORK_DOMAIN")
-    fi
-    echo "[remote] applying machine setup options"
-    ./scripts/setup_machine.sh "${setup_args[@]}"
-  fi
-else
-  if [ "${BARISTA_INSTALL_EXTRAS:-1}" = "1" ] && [ -x "./scripts/install_missing_fonts_and_panel.sh" ]; then
-    echo "[remote] installing fonts and panel mode"
-    ./scripts/install_missing_fonts_and_panel.sh --yes --panel-mode "$BARISTA_PANEL_MODE" --state "$repo_dir/state.json" --no-reload
-  fi
-
-  if [ -n "${BARISTA_WORK_DOMAIN:-}" ] && [ -x "./scripts/configure_work_google_apps.sh" ]; then
-    echo "[remote] applying work Google apps for domain ${BARISTA_WORK_DOMAIN}"
-    ./scripts/configure_work_google_apps.sh --state "$repo_dir/state.json" --domain "$BARISTA_WORK_DOMAIN" --replace --no-reload
-  fi
+if [ -n "$WORK_DOMAIN" ]; then
+  args+=(--work-domain "$WORK_DOMAIN")
+fi
+if [ "$SKIP_RESTART" -eq 1 ]; then
+  args+=(--skip-reload)
+fi
+if [ "$INSTALL_EXTRAS" -eq 0 ]; then
+  args+=(--skip-setup)
 fi
 
-if command -v sketchybar >/dev/null 2>&1; then
-  sketchybar --reload >/dev/null 2>&1 || true
-fi
-if command -v skhd >/dev/null 2>&1; then
-  skhd --reload >/dev/null 2>&1 || true
-fi
-
-echo "[remote] update complete"
-REMOTE
+exec "$SYNC_SCRIPT" "${args[@]}"

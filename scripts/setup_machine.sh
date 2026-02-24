@@ -10,6 +10,7 @@ STATE_FILE="${BARISTA_STATE_FILE:-$HOME/.config/sketchybar/state.json}"
 PANEL_MODE="${BARISTA_ALT_PANEL_MODE:-tui}"
 WORK_DOMAIN="${BARISTA_WORK_GOOGLE_DOMAIN:-}"
 WORK_APPS_FILE=""
+WORK_APPS_OUT_FILE=""
 
 INSTALL_FONTS=1
 CONFIGURE_PANEL=1
@@ -17,6 +18,14 @@ CONFIGURE_WORK_APPS=0
 REPLACE_WORK_APPS=0
 AUTO_YES=0
 DO_RELOAD=1
+DRY_RUN=0
+REPORT=0
+
+ACTION_FONTS=0
+ACTION_PANEL=0
+ACTION_WORK_APPS=0
+ACTION_RELOAD=0
+WORK_APPS_OUTPUT_FILE_RESOLVED=""
 
 usage() {
   cat <<EOF
@@ -26,6 +35,8 @@ Core options:
   --state <path>                          State file (default: ~/.config/sketchybar/state.json)
   --yes                                   Non-interactive confirmation
   --no-reload                             Skip sketchybar reload
+  --dry-run                               Show planned changes without modifying files/system
+  --report                                Print a machine-readable action report
 
 Fonts + panel options:
   --panel-mode <native|tui|imgui|custom>  Preferred control panel mode
@@ -37,11 +48,24 @@ Fonts + panel options:
 Work apps options:
   --work-apps                             Configure work apps menu items
   --domain <workspace-domain>             Workspace domain for Google app URLs
-  --from-file <apps.json>                 JSON array payload for custom apps
+  --from-file <apps.json>                 JSON array payload for custom apps input
+  --work-apps-out-file <path>             Output JSON path for per-machine work apps data
   --replace                               Replace existing work app menu items
   --skip-work-apps                        Skip work app configuration
   --apps-only                             Only configure work app menu items
 EOF
+}
+
+note() {
+  printf '%s\n' "$*"
+}
+
+note_warn() {
+  printf '[warn] %s\n' "$*" >&2
+}
+
+note_dry() {
+  printf '[dry-run] %s\n' "$*"
 }
 
 require_value() {
@@ -55,9 +79,19 @@ require_value() {
 
 expand_home() {
   case "$1" in
-    "~/"*) printf '%s/%s\n' "$HOME" "${1#~/}" ;;
-    "~") printf '%s\n' "$HOME" ;;
+    ~/*) printf '%s/%s\n' "$HOME" "${1#~/}" ;;
+    ~) printf '%s\n' "$HOME" ;;
     *) printf '%s\n' "$1" ;;
+  esac
+}
+
+resolve_relative_to_state_dir() {
+  local raw="$1"
+  case "$raw" in
+    "" ) printf '%s\n' "" ;;
+    ~/*|~) expand_home "$raw" ;;
+    /*) printf '%s\n' "$raw" ;;
+    *) printf '%s/%s\n' "$(dirname "$STATE_FILE")" "$raw" ;;
   esac
 }
 
@@ -86,6 +120,12 @@ while [[ $# -gt 0 ]]; do
     --from-file|--work-apps-file)
       require_value "$1" "${2:-}"
       WORK_APPS_FILE="$2"
+      CONFIGURE_WORK_APPS=1
+      shift 2
+      ;;
+    --work-apps-out-file|--apps-out-file)
+      require_value "$1" "${2:-}"
+      WORK_APPS_OUT_FILE="$2"
       CONFIGURE_WORK_APPS=1
       shift 2
       ;;
@@ -131,6 +171,14 @@ while [[ $# -gt 0 ]]; do
       DO_RELOAD=0
       shift
       ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --report)
+      REPORT=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -162,6 +210,9 @@ confirm() {
 }
 
 ensure_state_file() {
+  if [ "$DRY_RUN" -eq 1 ]; then
+    return 0
+  fi
   mkdir -p "$(dirname "$STATE_FILE")"
   if [ ! -f "$STATE_FILE" ]; then
     printf '{}' > "$STATE_FILE"
@@ -179,6 +230,21 @@ jq_edit_state() {
   local filter="$1"
   shift
 
+  require_jq
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local source_file
+    source_file="$STATE_FILE"
+    if [ ! -f "$source_file" ]; then
+      source_file="$(mktemp)"
+      printf '{}' > "$source_file"
+    fi
+    jq "$@" "$filter" "$source_file" >/dev/null
+    if [ "$source_file" != "$STATE_FILE" ]; then
+      rm -f "$source_file" >/dev/null 2>&1 || true
+    fi
+    return 0
+  fi
+
   ensure_state_file
   local tmp
   tmp="$(mktemp)"
@@ -189,26 +255,34 @@ jq_edit_state() {
 ensure_font_cask() {
   local cask="$1"
   if brew list --cask "$cask" >/dev/null 2>&1; then
-    echo "[fonts] $cask already installed"
+    note "[fonts] $cask already installed"
     return 0
   fi
-  echo "[fonts] installing $cask"
+  if [ "$DRY_RUN" -eq 1 ]; then
+    note_dry "[fonts] would install $cask"
+    return 0
+  fi
+  note "[fonts] installing $cask"
   brew install --cask "$cask"
 }
 
 install_fonts() {
+  ACTION_FONTS=1
   if ! command -v brew >/dev/null 2>&1; then
-    echo "[fonts] Homebrew not found, skipping font install" >&2
+    note_warn "Homebrew not found, skipping font install"
     return 0
   fi
-  brew tap homebrew/cask-fonts >/dev/null 2>&1 || true
+  if [ "$DRY_RUN" -eq 1 ]; then
+    note_dry "[fonts] would tap homebrew/cask-fonts"
+  else
+    brew tap homebrew/cask-fonts >/dev/null 2>&1 || true
+  fi
   ensure_font_cask font-hack-nerd-font
   ensure_font_cask font-source-code-pro
 }
 
 set_panel_preference() {
   local mode="$1"
-  require_jq
   jq_edit_state '
     .control_panel = (.control_panel // {}) |
     .control_panel.preferred = $mode
@@ -216,14 +290,25 @@ set_panel_preference() {
 }
 
 apply_menu_readability_defaults() {
-  require_jq
   jq_edit_state '
     .appearance = (.appearance // {}) |
     .appearance.popup_bg_color = "0xEE21162F" |
     .appearance.menu_popup_bg_color = "0xF021162F" |
-    .appearance.popup_border_color = (.appearance.popup_border_color // "0x90cdd6f4") |
-    .appearance.menu_font_style = (.appearance.menu_font_style // "Bold") |
-    .appearance.menu_header_font_style = (.appearance.menu_header_font_style // "Bold") |
+    .appearance.popup_border_color = (.appearance.popup_border_color // "0xB0cdd6f4") |
+    .appearance.menu_font_style = (
+      if ((.appearance.menu_font_style // "Bold") | ascii_downcase | test("regular|light|thin")) then
+        "Semibold"
+      else
+        (.appearance.menu_font_style // "Bold")
+      end
+    ) |
+    .appearance.menu_header_font_style = (
+      if ((.appearance.menu_header_font_style // "Bold") | ascii_downcase | test("regular|light|thin")) then
+        "Bold"
+      else
+        (.appearance.menu_header_font_style // "Bold")
+      end
+    ) |
     .appearance.menu_font_size_offset = (
       if (.appearance.menu_font_size_offset // 0) < 2 then 2 else .appearance.menu_font_size_offset end
     ) |
@@ -235,6 +320,7 @@ apply_menu_readability_defaults() {
 }
 
 configure_panel_mode() {
+  ACTION_PANEL=1
   local mode
   mode="$(printf '%s' "$PANEL_MODE" | tr '[:upper:]' '[:lower:]')"
   case "$mode" in
@@ -243,7 +329,11 @@ configure_panel_mode() {
       ;;
     tui)
       if [ -x "$ROOT_DIR/scripts/install-tui.sh" ]; then
-        "$ROOT_DIR/scripts/install-tui.sh" --yes
+        if [ "$DRY_RUN" -eq 1 ]; then
+          note_dry "[panel] would install TUI dependencies"
+        else
+          "$ROOT_DIR/scripts/install-tui.sh" --yes
+        fi
       fi
       set_panel_preference tui
       ;;
@@ -251,7 +341,7 @@ configure_panel_mode() {
       if [ -x "$HOME/src/lab/barista_config/build/barista_config" ] || command -v barista_config >/dev/null 2>&1; then
         set_panel_preference imgui
       else
-        echo "[panel] barista_config binary not found; leaving current preference" >&2
+        note_warn "barista_config binary not found; leaving current preference"
       fi
       ;;
     custom)
@@ -294,12 +384,28 @@ default_apps_json() {
 JSON
 }
 
+default_work_apps_output_file() {
+  printf '%s/data/work_apps.local.json\n' "$(dirname "$STATE_FILE")"
+}
+
+resolve_work_apps_output_file() {
+  local candidate="$WORK_APPS_OUT_FILE"
+  if [ -z "$candidate" ] && command -v jq >/dev/null 2>&1 && [ -f "$STATE_FILE" ]; then
+    candidate="$(jq -r '.menus.work.apps_file // empty' "$STATE_FILE" 2>/dev/null || true)"
+  fi
+  if [ -z "$candidate" ]; then
+    candidate="$(default_work_apps_output_file)"
+  fi
+  WORK_APPS_OUTPUT_FILE_RESOLVED="$(resolve_relative_to_state_dir "$candidate")"
+  printf '%s\n' "$WORK_APPS_OUTPUT_FILE_RESOLVED"
+}
+
 load_apps_json() {
   require_jq
   local apps_json
   if [ -n "$WORK_APPS_FILE" ]; then
     local apps_file
-    apps_file="$(expand_home "$WORK_APPS_FILE")"
+    apps_file="$(resolve_relative_to_state_dir "$WORK_APPS_FILE")"
     if [ ! -f "$apps_file" ]; then
       echo "Apps file not found: $apps_file" >&2
       exit 1
@@ -330,9 +436,26 @@ load_apps_json() {
   ')"
 }
 
+write_work_apps_file() {
+  local out_file="$1"
+  require_jq
+  if [ "$DRY_RUN" -eq 1 ]; then
+    note_dry "[work-apps] would write JSON to $out_file"
+    return 0
+  fi
+  mkdir -p "$(dirname "$out_file")"
+  printf '%s' "$APPS_JSON" | jq '.' > "$out_file"
+}
+
 apply_work_apps() {
+  ACTION_WORK_APPS=1
   require_jq
   load_apps_json
+
+  local apps_file
+  apps_file="$(resolve_work_apps_output_file)"
+  WORK_APPS_OUTPUT_FILE_RESOLVED="$apps_file"
+  write_work_apps_file "$apps_file"
 
   if [ "$REPLACE_WORK_APPS" -eq 1 ]; then
     jq_edit_state '
@@ -340,26 +463,49 @@ apply_work_apps() {
       .menus.apple = (.menus.apple // {}) |
       .menus.apple.sections = (.menus.apple.sections // {}) |
       .menus.apple.sections.work = (.menus.apple.sections.work // {"label":"Work Apps","order":3}) |
+      .menus.work = (.menus.work // {}) |
+      .menus.work.apps_file = $apps_file |
+      .menus.work.workspace_domain = $domain |
+      .menus.work.google_apps = $apps |
       .menus.apple.custom = $apps
-    ' --argjson apps "$APPS_JSON"
+    ' --argjson apps "$APPS_JSON" --arg apps_file "$apps_file" --arg domain "$WORK_DOMAIN"
   else
     jq_edit_state '
       .menus = (.menus // {}) |
       .menus.apple = (.menus.apple // {}) |
       .menus.apple.sections = (.menus.apple.sections // {}) |
       .menus.apple.sections.work = (.menus.apple.sections.work // {"label":"Work Apps","order":3}) |
+      .menus.work = (.menus.work // {}) |
+      .menus.work.apps_file = $apps_file |
+      .menus.work.workspace_domain = $domain |
+      .menus.work.google_apps = $apps |
       .menus.apple.custom = (
         ((.menus.apple.custom // []) as $existing |
          ($apps | map((.id // .label // "") | tostring)) as $incoming_keys |
          ($existing | map(select((.id // .label // "") as $k | ($incoming_keys | index(($k|tostring))) | not)))
          + $apps)
       )
-    ' --argjson apps "$APPS_JSON"
+    ' --argjson apps "$APPS_JSON" --arg apps_file "$apps_file" --arg domain "$WORK_DOMAIN"
   fi
 }
 
+print_report() {
+  [ "$REPORT" -eq 1 ] || return 0
+  printf 'setup.report.status=ok\n'
+  printf 'setup.report.dry_run=%s\n' "$DRY_RUN"
+  printf 'setup.report.state_file=%s\n' "$STATE_FILE"
+  printf 'setup.report.panel_mode=%s\n' "$PANEL_MODE"
+  printf 'setup.report.work_domain=%s\n' "$WORK_DOMAIN"
+  printf 'setup.report.work_apps_output_file=%s\n' "$WORK_APPS_OUTPUT_FILE_RESOLVED"
+  printf 'setup.report.actions.fonts=%s\n' "$ACTION_FONTS"
+  printf 'setup.report.actions.panel=%s\n' "$ACTION_PANEL"
+  printf 'setup.report.actions.work_apps=%s\n' "$ACTION_WORK_APPS"
+  printf 'setup.report.actions.reload=%s\n' "$ACTION_RELOAD"
+}
+
 if [ "$INSTALL_FONTS" -eq 0 ] && [ "$CONFIGURE_PANEL" -eq 0 ] && [ "$CONFIGURE_WORK_APPS" -eq 0 ]; then
-  echo "No setup actions selected."
+  note "No setup actions selected."
+  print_report
   exit 0
 fi
 
@@ -382,7 +528,17 @@ if [ "$CONFIGURE_WORK_APPS" -eq 1 ]; then
 fi
 
 if [ "$DO_RELOAD" -eq 1 ] && command -v sketchybar >/dev/null 2>&1; then
-  sketchybar --reload >/dev/null 2>&1 || true
+  ACTION_RELOAD=1
+  if [ "$DRY_RUN" -eq 1 ]; then
+    note_dry "would reload sketchybar"
+  else
+    sketchybar --reload >/dev/null 2>&1 || true
+  fi
 fi
 
-echo "Machine setup complete."
+print_report
+if [ "$DRY_RUN" -eq 1 ]; then
+  note "Machine setup dry-run complete."
+else
+  note "Machine setup complete."
+fi

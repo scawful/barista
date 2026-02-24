@@ -1,0 +1,56 @@
+[
+  {
+    "id": "gmail",
+    "label": "Gmail",
+    "icon": "󰇮",
+    "url": "https://mail.google.com/",
+    "section": "work",
+    "order": 1,
+    "enabled": true
+  },
+  {
+    "id": "calendar",
+    "label": "Calendar",
+    "icon": "󰃭",
+    "url": "https://calendar.google.com/",
+    "section": "work",
+    "order": 2,
+    "enabled": true
+  },
+  {
+    "id": "drive",
+    "label": "Drive",
+    "icon": "󰉋",
+    "url": "https://drive.google.com/",
+    "section": "work",
+    "order": 3,
+    "enabled": true
+  },
+  {
+    "id": "docs",
+    "label": "Docs",
+    "icon": "󰈬",
+    "url": "https://docs.google.com/document/u/0/",
+    "section": "work",
+    "order": 4,
+    "enabled": true
+  },
+  {
+    "id": "sheets",
+    "label": "Sheets",
+    "icon": "󰈛",
+    "url": "https://docs.google.com/spreadsheets/u/0/",
+    "section": "work",
+    "order": 5,
+    "enabled": true
+  },
+  {
+    "id": "meet",
+    "label": "Meet",
+    "icon": "󰤙",
+    "url": "https://meet.google.com/",
+    "section": "work",
+    "order": 6,
+    "enabled": true
+  }
+]

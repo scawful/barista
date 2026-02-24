@@ -10,6 +10,7 @@ JQ_BIN="${JQ_BIN:-$(command -v jq || true)}"
 SPACE_MANAGER_BIN="${SPACE_MANAGER_BIN:-$CONFIG_DIR/bin/space_manager}"
 SPACE_CLOSE_CONFIRM_TTL_SEC="${SPACE_CLOSE_CONFIRM_TTL_SEC:-2}"
 SPACE_SWAP_ARM_TTL_SEC="${SPACE_SWAP_ARM_TTL_SEC:-10}"
+SPACE_SWAP_INDICATOR_ITEM="${SPACE_SWAP_INDICATOR_ITEM:-spaces.swap_indicator}"
 
 run_with_timeout() {
   local timeout_s="$1"
@@ -106,6 +107,12 @@ context_menu_on_right_click() {
   [ "$(normalize_bool "$enabled")" = "true" ]
 }
 
+swap_indicator_enabled() {
+  local enabled
+  enabled=$(state_value '.spaces.swap_indicator' 'true')
+  [ "$(normalize_bool "$enabled")" = "true" ]
+}
+
 modifier_has() {
   local needle="$1"
   local raw="${MODIFIER:-${modifiers:-}}"
@@ -182,6 +189,7 @@ clear_swap_state() {
   local file
   file=$(swap_state_file)
   rm -f "$file" 2>/dev/null || true
+  sync_swap_indicator
   sketchybar --trigger space_change >/dev/null 2>&1 || true
 }
 
@@ -190,6 +198,7 @@ arm_swap_state() {
   local file
   file=$(swap_state_file)
   printf '%s %s\n' "$space_idx" "$(date +%s)" > "$file" 2>/dev/null || true
+  sync_swap_indicator
 
   sketchybar --set "space.$space_idx" \
     icon="󰚗" \
@@ -201,9 +210,57 @@ arm_swap_state() {
     sleep \"$SPACE_SWAP_ARM_TTL_SEC\"
     if [ -f \"$file\" ]; then
       rm -f \"$file\" 2>/dev/null || true
+      sketchybar --set \"$SPACE_SWAP_INDICATOR_ITEM\" drawing=off label='' background.drawing=off >/dev/null 2>&1 || true
       sketchybar --trigger space_change >/dev/null 2>&1 || true
     fi
   " >/dev/null 2>&1 &
+}
+
+ensure_swap_indicator_item() {
+  if ! swap_indicator_enabled; then
+    return 0
+  fi
+  if sketchybar --query "$SPACE_SWAP_INDICATOR_ITEM" >/dev/null 2>&1; then
+    return 0
+  fi
+  sketchybar --add item "$SPACE_SWAP_INDICATOR_ITEM" left >/dev/null 2>&1 || true
+  sketchybar --set "$SPACE_SWAP_INDICATOR_ITEM" \
+    icon="󰚗" \
+    icon.color="0xfff9e2af" \
+    label="" \
+    label.color="0xfff9e2af" \
+    label.padding_left=4 \
+    label.padding_right=8 \
+    background.drawing=off \
+    background.color="0x00000000" \
+    background.corner_radius=8 \
+    background.height=20 \
+    drawing=off \
+    click_script="$CONFIG_DIR/scripts/space_action.sh swap-cancel" >/dev/null 2>&1 || true
+}
+
+sync_swap_indicator() {
+  ensure_swap_indicator_item
+  if ! swap_indicator_enabled; then
+    sketchybar --set "$SPACE_SWAP_INDICATOR_ITEM" drawing=off >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  local source_idx
+  source_idx=$(read_swap_source || true)
+  if [ -n "$source_idx" ]; then
+    sketchybar --set "$SPACE_SWAP_INDICATOR_ITEM" \
+      drawing=on \
+      icon="󰚗" \
+      label="Swap $source_idx -> select target" \
+      background.drawing=on \
+      background.color="0x40f9e2af" >/dev/null 2>&1 || true
+  else
+    sketchybar --set "$SPACE_SWAP_INDICATOR_ITEM" \
+      drawing=off \
+      label="" \
+      background.drawing=off >/dev/null 2>&1 || true
+  fi
 }
 
 toggle_space_menu() {
@@ -268,6 +325,43 @@ display_space_indices() {
     | "$JQ_BIN" -r 'map(.index) | sort | .[]'
 }
 
+display_indices() {
+  [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ] || return 1
+  run_with_timeout 1 "$YABAI_BIN" -m query --displays 2>/dev/null \
+    | "$JQ_BIN" -r 'map(.index) | sort | .[]'
+}
+
+neighbor_display() {
+  local display_idx="$1"
+  local direction="$2"
+  local displays=()
+  local entry
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    displays+=("$entry")
+  done < <(display_indices)
+  [ "${#displays[@]}" -gt 1 ] || return 1
+
+  local pos=-1
+  local i
+  for i in "${!displays[@]}"; do
+    if [ "${displays[$i]}" = "$display_idx" ]; then
+      pos="$i"
+      break
+    fi
+  done
+  [ "$pos" -ge 0 ] || return 1
+
+  if [ "$direction" = "prev" ]; then
+    [ "$pos" -gt 0 ] || return 1
+    printf '%s' "${displays[$((pos - 1))]}"
+    return 0
+  fi
+
+  [ "$pos" -lt $(( ${#displays[@]} - 1 )) ] || return 1
+  printf '%s' "${displays[$((pos + 1))]}"
+}
+
 neighbor_space_on_display() {
   local current_idx="$1"
   local direction="$2"
@@ -301,6 +395,32 @@ neighbor_space_on_display() {
 
   [ "$pos" -lt $(( ${#spaces[@]} - 1 )) ] || return 1
   printf '%s' "${spaces[$((pos + 1))]}"
+}
+
+move_space_to_display_neighbor() {
+  local space_idx="$1"
+  local direction="$2"
+  [ -n "$YABAI_BIN" ] || return 1
+
+  local current_display target_display
+  current_display=$(space_display "$space_idx" || true)
+  [ -n "$current_display" ] || return 1
+
+  case "$direction" in
+    prev)
+      target_display=$(neighbor_display "$current_display" "prev" || true)
+      ;;
+    next)
+      target_display=$(neighbor_display "$current_display" "next" || true)
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  [ -n "$target_display" ] || return 0
+
+  run_with_timeout 1 "$YABAI_BIN" -m space "$space_idx" --display "$target_display" >/dev/null 2>&1 || true
+  refresh_space_items
 }
 
 move_space() {
@@ -493,6 +613,8 @@ Commands:
   menu-close --space <index>
   move-left --space <index>
   move-right --space <index>
+  move-display-prev --space <index>
+  move-display-next --space <index>
   swap-arm --space <index>
   swap-cancel
 USAGE
@@ -514,6 +636,8 @@ parse_space_arg() {
 
 command="${1:-}"
 shift || true
+
+sync_swap_indicator >/dev/null 2>&1 || true
 
 case "$command" in
   create)
@@ -586,6 +710,24 @@ case "$command" in
       exit 1
     fi
     reorder_space_relative "$space_idx" "right"
+    hide_space_menu "$space_idx"
+    ;;
+  move-display-prev)
+    space_idx=$(parse_space_arg "$@")
+    if [ -z "$space_idx" ]; then
+      usage
+      exit 1
+    fi
+    move_space_to_display_neighbor "$space_idx" "prev"
+    hide_space_menu "$space_idx"
+    ;;
+  move-display-next)
+    space_idx=$(parse_space_arg "$@")
+    if [ -z "$space_idx" ]; then
+      usage
+      exit 1
+    fi
+    move_space_to_display_neighbor "$space_idx" "next"
     hide_space_menu "$space_idx"
     ;;
   swap-arm)

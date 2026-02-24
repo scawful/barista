@@ -87,7 +87,7 @@ space_menu_action() {
     menu-close)
       printf '%s %s' "$FOCUS_SCRIPT" "$space_index"
       ;;
-    move-left|move-right|swap-arm|swap-cancel)
+    move-left|move-right|move-display-prev|move-display-next|swap-arm|swap-cancel)
       printf '%s' ''
       ;;
   esac
@@ -275,11 +275,26 @@ topology_signature() {
 }
 
 visible_signature() {
-  printf '%s\n' "${VISIBLE_SPACE_LINES[@]-}" | join_lines_with_comma
+  printf '%s\n' "${VISIBLE_SPACE_LINES[@]-}" | sed '/^$/d' | sort -k1,1n -k2,2n | join_lines_with_comma
 }
 
 creator_targets_signature() {
   printf '%s\n' "${CREATOR_TARGETS[@]-}" | join_lines_with_comma
+}
+
+visible_by_display_signature() {
+  local display visible out
+  out=""
+  for display in "${DISPLAY_IDS[@]-}"; do
+    visible="$(visible_space_for_display "$display" || true)"
+    [ -n "$visible" ] || continue
+    if [ -n "$out" ]; then
+      out="$out,$display:$visible"
+    else
+      out="$display:$visible"
+    fi
+  done
+  printf '%s' "$out"
 }
 
 load_signature() {
@@ -291,9 +306,13 @@ load_signature() {
 write_signatures() {
   local topology="$1"
   local visible="$2"
+  local visible_by_display="$3"
+  local active_display_sig="$4"
   {
     printf 'topology=%s\n' "$topology"
     printf 'visible=%s\n' "$visible"
+    printf 'visible_by_display=%s\n' "$visible_by_display"
+    printf 'active_display=%s\n' "$active_display_sig"
   } > "$SIG_CACHE_FILE" 2>/dev/null || true
 }
 
@@ -377,6 +396,8 @@ for entry in "${SPACE_LINES[@]}"; do
     menu_close_action="$(space_menu_action "menu-close" "$space_index")"
     menu_move_left_action="$(space_menu_action "move-left" "$space_index")"
     menu_move_right_action="$(space_menu_action "move-right" "$space_index")"
+    menu_move_display_prev_action="$(space_menu_action "move-display-prev" "$space_index")"
+    menu_move_display_next_action="$(space_menu_action "move-display-next" "$space_index")"
     menu_swap_action="$(space_menu_action "swap-arm" "$space_index")"
     menu_swap_cancel_action="$(space_menu_action "swap-cancel" "$space_index")"
 
@@ -404,6 +425,22 @@ for entry in "${SPACE_LINES[@]}"; do
                     label="Move Right" \
                     script="$CONFIG_DIR/plugins/popup_hover.sh" \
                     click_script="$menu_move_right_action")
+
+    SB_ARGS+=(--add item "$menu_prefix.display_prev" "popup.$item")
+    SB_ARGS+=(--set "$menu_prefix.display_prev" \
+                    icon="󰍺" \
+                    icon.color="0xff89dceb" \
+                    label="To Prev Display" \
+                    script="$CONFIG_DIR/plugins/popup_hover.sh" \
+                    click_script="$menu_move_display_prev_action")
+
+    SB_ARGS+=(--add item "$menu_prefix.display_next" "popup.$item")
+    SB_ARGS+=(--set "$menu_prefix.display_next" \
+                    icon="󰍹" \
+                    icon.color="0xff89dceb" \
+                    label="To Next Display" \
+                    script="$CONFIG_DIR/plugins/popup_hover.sh" \
+                    click_script="$menu_move_display_next_action")
 
     SB_ARGS+=(--add item "$menu_prefix.swap" "popup.$item")
     SB_ARGS+=(--set "$menu_prefix.swap" \
@@ -468,9 +505,14 @@ fi
 
 TOPOLOGY_SIG="$(topology_signature)|creator_mode=$CREATOR_MODE|creator_targets=$(creator_targets_signature)"
 VISIBLE_SIG="$(visible_signature)"
+VISIBLE_BY_DISPLAY_SIG="$(visible_by_display_signature)"
+ACTIVE_DISPLAY_SIG="${active_display:-none}"
 
 if [ "$DIFF_UPDATES_ENABLED" -eq 1 ]; then
   cached_topology="$(load_signature topology || true)"
+  cached_visible="$(load_signature visible || true)"
+  cached_visible_by_display="$(load_signature visible_by_display || true)"
+  cached_active_display="$(load_signature active_display || true)"
   if [ -n "$cached_topology" ] && [ "$cached_topology" = "$TOPOLOGY_SIG" ]; then
     fast_path_ok=1
     for entry in "${SPACE_LINES[@]-}"; do
@@ -484,6 +526,8 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ]; then
           "space.$space_index.menu.close" \
           "space.$space_index.menu.left" \
           "space.$space_index.menu.right" \
+          "space.$space_index.menu.display_prev" \
+          "space.$space_index.menu.display_next" \
           "space.$space_index.menu.swap" \
           "space.$space_index.menu.swap_cancel"; do
           if ! item_exists "$menu_item"; then
@@ -514,6 +558,15 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ]; then
         space_index="${entry##* }"
         click_action="$(space_click_action "$space_index")"
         sketchybar --set "space.$space_index" click_script="$click_action" >/dev/null 2>&1 || true
+        if [ -x "$SPACE_ACTION_SCRIPT" ]; then
+          sketchybar --set "space.$space_index.menu.close" click_script="$(space_menu_action "menu-close" "$space_index")" >/dev/null 2>&1 || true
+          sketchybar --set "space.$space_index.menu.left" click_script="$(space_menu_action "move-left" "$space_index")" >/dev/null 2>&1 || true
+          sketchybar --set "space.$space_index.menu.right" click_script="$(space_menu_action "move-right" "$space_index")" >/dev/null 2>&1 || true
+          sketchybar --set "space.$space_index.menu.display_prev" click_script="$(space_menu_action "move-display-prev" "$space_index")" >/dev/null 2>&1 || true
+          sketchybar --set "space.$space_index.menu.display_next" click_script="$(space_menu_action "move-display-next" "$space_index")" >/dev/null 2>&1 || true
+          sketchybar --set "space.$space_index.menu.swap" click_script="$(space_menu_action "swap-arm" "$space_index")" >/dev/null 2>&1 || true
+          sketchybar --set "space.$space_index.menu.swap_cancel" click_script="$(space_menu_action "swap-cancel" "$space_index")" >/dev/null 2>&1 || true
+        fi
       done
 
       for creator_target in "${CREATOR_TARGETS[@]-}"; do
@@ -544,9 +597,19 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ]; then
         fi
       done
 
-      write_signatures "$TOPOLOGY_SIG" "$VISIBLE_SIG"
-      sketchybar --trigger space_change >/dev/null 2>&1 || true
-      sketchybar --trigger space_mode_refresh >/dev/null 2>&1 || true
+      write_signatures "$TOPOLOGY_SIG" "$VISIBLE_SIG" "$VISIBLE_BY_DISPLAY_SIG" "$ACTIVE_DISPLAY_SIG"
+
+      should_trigger_refresh=0
+      if [ "$cached_visible" != "$VISIBLE_SIG" ] || \
+         [ "$cached_visible_by_display" != "$VISIBLE_BY_DISPLAY_SIG" ] || \
+         [ "$cached_active_display" != "$ACTIVE_DISPLAY_SIG" ]; then
+        should_trigger_refresh=1
+      fi
+
+      if [ "$should_trigger_refresh" -eq 1 ]; then
+        sketchybar --trigger space_change >/dev/null 2>&1 || true
+        sketchybar --trigger space_mode_refresh >/dev/null 2>&1 || true
+      fi
       exit 0
     fi
   fi
@@ -603,7 +666,7 @@ sketchybar --remove space_creator >/dev/null 2>&1 || true
 
 # Execute all commands in one single call
 sketchybar "${SB_ARGS[@]}"
-write_signatures "$TOPOLOGY_SIG" "$VISIBLE_SIG"
+write_signatures "$TOPOLOGY_SIG" "$VISIBLE_SIG" "$VISIBLE_BY_DISPLAY_SIG" "$ACTIVE_DISPLAY_SIG"
 
 
 # If front_app wasn't ready yet, reorder spaces once it appears.

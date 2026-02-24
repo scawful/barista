@@ -41,6 +41,7 @@ logs
 # User configuration (should not be committed)
 state.json
 component_settings.json
+data/work_apps.local.json
 *.icon_backup
 state.json.*backup
 themes/theme.local.lua
@@ -48,6 +49,7 @@ themes/theme.local.lua
 # Cache
 cache/
 .spaces_cache*
+.spaces_active_cache*
 .spaces_signatures*
 *.spaces
 

@@ -37,9 +37,39 @@ local default_state = {
     corner_radius = 0,
     bar_color = "0xC021162F",
     blur_radius = 30,
+    bar_padding_left = 14,
+    bar_padding_right = 14,
+    bar_margin = 0,
+    bar_y_offset = 0,
+    bar_border_width = 0,
+    bar_border_color = "0x00000000",
     clock_font_style = "Semibold",
     widget_scale = 1.0,
     widget_corner_radius = 6,
+    popup_padding = 8,
+    popup_corner_radius = 8,
+    popup_border_width = 2,
+    popup_border_color = "0x60cdd6f4",
+    popup_bg_color = "0xC021162F",
+    popup_item_height = 0,
+    popup_item_corner_radius = 4,
+    menu_font_style = "Bold",
+    menu_header_font_style = "Bold",
+    menu_font_size_offset = 1,
+    menu_label_color = "0xffe8edf7",
+    menu_popup_bg_color = "0xE021162F",
+    hover_color = "0x40f5c2e7",
+    hover_border_color = "0x60cdd6f4",
+    hover_border_width = 1,
+    hover_animation_curve = "sin",
+    hover_animation_duration = 8,
+    submenu_hover_color = "0x80cba6f7",
+    submenu_idle_color = "0x00000000",
+    submenu_close_delay = 0.25,
+    group_bg_color = "0x30313244",
+    group_border_color = "0x20585b70",
+    group_border_width = 1,
+    group_corner_radius = 6,
     font_icon = "Hack Nerd Font",
     font_text = "Source Code Pro",
     font_numbers = "SF Mono",
@@ -57,23 +87,54 @@ local default_state = {
     cpu = "",
     memory = "",
     disk = "",
+    swap = "",
+    uptime = "",
   },
   widget_colors = {},
   space_icons = {},
   space_modes = {},
+  spaces = {
+    creator_mode = "per_display",
+    right_click_close = "confirm",
+    reorder_mode = "menu",
+    modifier_reorder_enabled = true,
+    context_menu_on_right_click = true,
+    swap_indicator = true,
+    experimental_diff_updates = true,
+  },
   system_info_items = {
     cpu = false,
     mem = true,
     disk = true,
     net = true,
+    swap = true,
+    uptime = true,
+    procs = true,
     docs = true,
     actions = true,
+  },
+  modes = {
+    window_manager = "auto",
   },
   toggles = {
     yabai_shortcuts = true,
   },
   paths = {
     scripts_dir = "",
+  },
+  menus = {
+    apple = {
+      show_missing = false,
+      items = {},
+      custom = {},
+      sections = {},
+      hover = {},
+    },
+    work = {
+      google_apps = {},
+      apps_file = "data/work_apps.local.json",
+      workspace_domain = "",
+    },
   },
   integrations = {},
 }
@@ -96,9 +157,19 @@ local function sanitize_state(data)
   if type(data.appearance) ~= "table" then data.appearance = {} end
   if type(data.toggles) ~= "table" then data.toggles = {} end
   if type(data.icons) ~= "table" then data.icons = {} end
+  if type(data.modes) ~= "table" then data.modes = {} end
   if type(data.paths) ~= "table" then data.paths = {} end
   if type(data.integrations) ~= "table" then data.integrations = {} end
   if type(data.space_modes) ~= "table" then data.space_modes = {} end
+  if type(data.spaces) ~= "table" then data.spaces = {} end
+  if type(data.menus) ~= "table" then data.menus = {} end
+  if type(data.menus.apple) ~= "table" then data.menus.apple = {} end
+  if type(data.menus.work) ~= "table" then data.menus.work = {} end
+  if type(data.menus.apple.items) ~= "table" then data.menus.apple.items = {} end
+  if type(data.menus.apple.custom) ~= "table" then data.menus.apple.custom = {} end
+  if type(data.menus.apple.sections) ~= "table" then data.menus.apple.sections = {} end
+  if type(data.menus.apple.hover) ~= "table" then data.menus.apple.hover = {} end
+  if type(data.menus.work.google_apps) ~= "table" then data.menus.work.google_apps = {} end
 
   -- Handle space_icons
   if type(data.space_icons) ~= "table" then

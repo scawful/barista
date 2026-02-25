@@ -63,3 +63,6 @@ __pycache__/
 .venv/
 
 .context/
+
+# Local app bundle artifacts
+gui/BaristaControlPanel.app/

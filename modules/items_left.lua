@@ -61,21 +61,22 @@ local function register(ctx)
 
   local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
   local font_bold = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small)
+  local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
   local add_fa = popup_items.make_add(sbar, "front_app", { hover_script = hover_script_cmd, attach_hover = attach_hover })
 
   add_fa("front_app.header", {
     icon = "",
     label = "Application Controls",
     ["label.font"] = font_bold,
-    ["label.color"] = theme.SAPPHIRE,
+    ["label.color"] = tc("SAPPHIRE"),
     background = { drawing = false },
   })
 
   local app_actions = {
-    { name = "front_app.show", icon = "󰓇", icon_color = theme.SKY, label = "Bring to Front", action = call_script(FRONT_APP_ACTION_SCRIPT, "show"), shortcut = "⌘⇥" },
-    { name = "front_app.hide", icon = "󰘔", icon_color = theme.PEACH, label = "Hide App", action = call_script(FRONT_APP_ACTION_SCRIPT, "hide"), shortcut = "⌘H" },
-    { name = "front_app.quit", icon = "󰅘", icon_color = theme.RED, label = "Quit App", action = call_script(FRONT_APP_ACTION_SCRIPT, "quit"), shortcut = "⌘Q" },
-    { name = "front_app.force_quit", icon = "󰜏", icon_color = theme.MAROON or theme.RED, label = "Force Quit", action = call_script(FRONT_APP_ACTION_SCRIPT, "force-quit") },
+    { name = "front_app.show", icon = "󰓇", icon_color = tc("SKY"), label = "Bring to Front", action = call_script(FRONT_APP_ACTION_SCRIPT, "show"), shortcut = "⌘⇥" },
+    { name = "front_app.hide", icon = "󰘔", icon_color = tc("PEACH"), label = "Hide App", action = call_script(FRONT_APP_ACTION_SCRIPT, "hide"), shortcut = "⌘H" },
+    { name = "front_app.quit", icon = "󰅘", icon_color = tc("RED"), label = "Quit App", action = call_script(FRONT_APP_ACTION_SCRIPT, "quit"), shortcut = "⌘Q" },
+    { name = "front_app.force_quit", icon = "󰜏", icon_color = tc("MAROON", "RED"), label = "Force Quit", action = call_script(FRONT_APP_ACTION_SCRIPT, "force-quit") },
   }
   for _, entry in ipairs(app_actions) do
     add_fa(entry.name, {
@@ -98,16 +99,16 @@ local function register(ctx)
     icon = "",
     label = "Window Controls",
     ["label.font"] = font_bold,
-    ["label.color"] = theme.TEAL,
+    ["label.color"] = tc("TEAL"),
     background = { drawing = false },
   })
 
   local window_actions = {
-    { name = "front_app.window.float", icon = "󰒄", icon_color = theme.SAPPHIRE, label = "Toggle Float", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-float") },
-    { name = "front_app.window.fullscreen", icon = "󰊓", icon_color = theme.GREEN, label = "Toggle Fullscreen", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-fullscreen") },
-    { name = "front_app.window.sticky", icon = "󰐊", icon_color = theme.YELLOW, label = "Toggle Sticky", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-sticky") },
-    { name = "front_app.window.topmost", icon = "󰁜", icon_color = theme.MAUVE or theme.LAVENDER, label = "Toggle Topmost", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-topmost") },
-    { name = "front_app.window.center", icon = "󰘞", icon_color = theme.BLUE, label = "Center Window", action = call_script(YABAI_CONTROL_SCRIPT, "window-center") },
+    { name = "front_app.window.float", icon = "󰒄", icon_color = tc("SAPPHIRE"), label = "Toggle Float", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-float") },
+    { name = "front_app.window.fullscreen", icon = "󰊓", icon_color = tc("GREEN"), label = "Toggle Fullscreen", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-fullscreen") },
+    { name = "front_app.window.sticky", icon = "󰐊", icon_color = tc("YELLOW"), label = "Toggle Sticky", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-sticky") },
+    { name = "front_app.window.topmost", icon = "󰁜", icon_color = tc("MAUVE", "LAVENDER"), label = "Toggle Topmost", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-topmost") },
+    { name = "front_app.window.center", icon = "󰘞", icon_color = tc("BLUE"), label = "Center Window", action = call_script(YABAI_CONTROL_SCRIPT, "window-center") },
   }
   for _, entry in ipairs(window_actions) do
     add_fa(entry.name, {
@@ -130,15 +131,15 @@ local function register(ctx)
     icon = "",
     label = "Move Window",
     ["label.font"] = font_bold,
-    ["label.color"] = theme.MAUVE or theme.LAVENDER,
+    ["label.color"] = tc("MAUVE", "LAVENDER"),
     background = { drawing = false },
   })
 
   local move_actions = {
-    { name = "front_app.move.display_prev", icon = "󰍺", icon_color = theme.SKY, label = "Move to Prev Display", action = call_script(YABAI_CONTROL_SCRIPT, "window-display-prev") },
-    { name = "front_app.move.display_next", icon = "󰍹", icon_color = theme.SKY, label = "Move to Next Display", action = call_script(YABAI_CONTROL_SCRIPT, "window-display-next") },
-    { name = "front_app.move.space_prev", icon = "󱂬", icon_color = theme.PEACH, label = "Move to Prev Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-prev-wrap") },
-    { name = "front_app.move.space_next", icon = "󱂬", icon_color = theme.PEACH, label = "Move to Next Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-next-wrap") },
+    { name = "front_app.move.display_prev", icon = "󰍺", icon_color = tc("SKY"), label = "Move to Prev Display", action = call_script(YABAI_CONTROL_SCRIPT, "window-display-prev") },
+    { name = "front_app.move.display_next", icon = "󰍹", icon_color = tc("SKY"), label = "Move to Next Display", action = call_script(YABAI_CONTROL_SCRIPT, "window-display-next") },
+    { name = "front_app.move.space_prev", icon = "󱂬", icon_color = tc("PEACH"), label = "Move to Prev Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-prev-wrap") },
+    { name = "front_app.move.space_next", icon = "󱂬", icon_color = tc("PEACH"), label = "Move to Next Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-next-wrap") },
   }
   for _, entry in ipairs(move_actions) do
     add_fa(entry.name, {

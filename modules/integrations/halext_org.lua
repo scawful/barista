@@ -11,7 +11,10 @@ end
 local HOME = os.getenv("HOME") or ""
 local AUTH_FILE = HOME .. "/.config/halext/auth.json"
 local CACHE_FILE = HOME .. "/.cache/barista/halext-org-summary.json"
+local FOCUS_CACHE_FILE = HOME .. "/.cache/barista/halext-org-focus.json"
+local MOMENTUM_CACHE_FILE = HOME .. "/.cache/barista/halext-org-momentum.json"
 local CACHE_TTL = 300  -- 5 minutes
+local FOCUS_CACHE_TTL = 30  -- 30 seconds for active focus
 local BASE_URL = "https://org.halext.org/api"
 
 local function path_exists(path)
@@ -105,6 +108,99 @@ local function fetch_summary(force_refresh)
   return data
 end
 
+local function fetch_focus_session()
+  local token = get_auth_token()
+  if not token then return nil end
+
+  -- Check focus cache
+  if path_exists(FOCUS_CACHE_FILE) then
+    local handle = io.popen("stat -f %m " .. FOCUS_CACHE_FILE .. " 2>/dev/null")
+    if handle then
+      local mtime = tonumber(handle:read("*a") or "0")
+      handle:close()
+      if mtime and (os.time() - mtime) < FOCUS_CACHE_TTL then
+        local cached = nil
+        if json and path_exists(FOCUS_CACHE_FILE) then
+          local file = io.open(FOCUS_CACHE_FILE, "r")
+          if file then
+            local content = file:read("*a")
+            file:close()
+            local ok, data = pcall(json.decode, content)
+            if ok and type(data) == "table" then cached = data end
+          end
+        end
+        if cached then return cached end
+      end
+    end
+  end
+
+  local auth_header = string.format("-H 'Authorization: Bearer %s'", token)
+  local cmd = string.format(
+    "curl -s -X GET %s '%s/focus/stats' 2>/dev/null",
+    auth_header, BASE_URL)
+  local response = exec(cmd)
+
+  if not response or response == "" then return nil end
+  local ok, data = pcall(json.decode, response)
+  if not ok or type(data) ~= "table" then return nil end
+
+  -- Cache it
+  ensure_cache_dir()
+  local enc_ok, encoded = pcall(json.encode, data)
+  if enc_ok then
+    local file = io.open(FOCUS_CACHE_FILE, "w")
+    if file then file:write(encoded); file:close() end
+  end
+
+  return data
+end
+
+local function fetch_momentum()
+  local token = get_auth_token()
+  if not token then return nil end
+
+  -- Check momentum cache
+  if path_exists(MOMENTUM_CACHE_FILE) then
+    local handle = io.popen("stat -f %m " .. MOMENTUM_CACHE_FILE .. " 2>/dev/null")
+    if handle then
+      local mtime = tonumber(handle:read("*a") or "0")
+      handle:close()
+      if mtime and (os.time() - mtime) < CACHE_TTL then
+        local cached = nil
+        if json and path_exists(MOMENTUM_CACHE_FILE) then
+          local file = io.open(MOMENTUM_CACHE_FILE, "r")
+          if file then
+            local content = file:read("*a")
+            file:close()
+            local ok, data = pcall(json.decode, content)
+            if ok and type(data) == "table" then cached = data end
+          end
+        end
+        if cached then return cached end
+      end
+    end
+  end
+
+  local auth_header = string.format("-H 'Authorization: Bearer %s'", token)
+  local cmd = string.format(
+    "curl -s -X GET %s '%s/v1/dashboard/momentum' 2>/dev/null",
+    auth_header, BASE_URL)
+  local response = exec(cmd)
+
+  if not response or response == "" then return nil end
+  local ok, data = pcall(json.decode, response)
+  if not ok or type(data) ~= "table" then return nil end
+
+  ensure_cache_dir()
+  local enc_ok, encoded = pcall(json.encode, data)
+  if enc_ok then
+    local file = io.open(MOMENTUM_CACHE_FILE, "w")
+    if file then file:write(encoded); file:close() end
+  end
+
+  return data
+end
+
 function halext_org.is_available()
   return path_exists(AUTH_FILE)
 end
@@ -115,14 +211,44 @@ function halext_org.get_status()
     return "?", "󰔟", "0xff6c7086"
   end
 
+  -- Check for active focus session stats
+  local focus = fetch_focus_session()
+
+  -- Check momentum for streak
+  local momentum = fetch_momentum()
+  local streak = momentum and momentum.streak_day or 0
+
+  -- Streak at risk: after 6pm with no completions
+  local hour = tonumber(os.date("%H"))
+  local streak_at_risk = hour and hour >= 18 and momentum
+    and (momentum.entries_completed or 0) == 0
+
+  -- Build display: streak flame + task count
   local pending = summary.tasks_pending or 0
   local today = summary.tasks_today or 0
-  if today > 0 then
-    return string.format("%d", today), "󰔟", "0xfff9e2af"
-  elseif pending > 0 then
-    return string.format("%d", pending), "󰔟", "0xffa6e3a1"
+
+  local label = ""
+  if streak > 0 then
+    label = string.format("🔥%d ", streak)
   end
-  return "", "󰔟", "0xffa6e3a1"
+
+  if focus and focus.total_sessions and focus.total_sessions > 0 then
+    label = label .. string.format("⏱%dm", focus.total_focus_minutes or 0)
+  elseif today > 0 then
+    label = label .. string.format("%d", today)
+  elseif pending > 0 then
+    label = label .. string.format("%d", pending)
+  end
+
+  local icon = "󰔟"
+  local color = "0xffa6e3a1"  -- green default
+  if streak_at_risk then
+    color = "0xfff38ba8"  -- red warning
+  elseif today > 0 then
+    color = "0xfff9e2af"  -- yellow
+  end
+
+  return label, icon, color
 end
 
 function halext_org.create_menu_items(ctx)
@@ -160,6 +286,54 @@ function halext_org.create_menu_items(ctx)
       icon_color = (summary.tasks_today or 0) > 0 and "0xfff38ba8" or "0xffa6e3a1",
     })
 
+    -- Focus session stats
+    local focus = fetch_focus_session()
+    if focus and focus.total_sessions and focus.total_sessions > 0 then
+      table.insert(items, {
+        type = "item",
+        name = "halext_org.focus_minutes",
+        icon = "⏱",
+        label = string.format("Focus Today: %d min (%d sessions)",
+          focus.total_focus_minutes or 0, focus.total_sessions or 0),
+        icon_color = "0xff89b4fa",
+      })
+    end
+
+    -- Momentum / streak
+    local momentum = fetch_momentum()
+    if momentum then
+      local streak = momentum.streak_day or 0
+      local score = momentum.momentum_score or 0
+      local hour = tonumber(os.date("%H"))
+      local streak_at_risk = hour and hour >= 18
+        and (momentum.entries_completed or 0) == 0
+
+      local streak_color = "0xfff9e2af"  -- yellow
+      if streak_at_risk then
+        streak_color = "0xfff38ba8"  -- red warning
+      elseif streak > 3 then
+        streak_color = "0xffa6e3a1"  -- green
+      end
+
+      table.insert(items, {
+        type = "item",
+        name = "halext_org.streak",
+        icon = "🔥",
+        label = string.format("Streak: %d days (%.0f%% momentum)", streak, score * 100),
+        icon_color = streak_color,
+      })
+
+      if streak_at_risk then
+        table.insert(items, {
+          type = "item",
+          name = "halext_org.streak_warning",
+          icon = "⚠",
+          label = "Streak at risk! Complete a task today.",
+          icon_color = "0xfff38ba8",
+        })
+      end
+    end
+
     if summary.events_upcoming then
       table.insert(items, {
         type = "item",
@@ -189,6 +363,14 @@ function halext_org.create_menu_items(ctx)
     icon = "󰖟",
     label = "Open Dashboard",
     action = "open 'https://org.halext.org'",
+  })
+
+  table.insert(items, {
+    type = "item",
+    name = "halext_org.open_echoflow",
+    icon = "󰐹",
+    label = "Open EchoFlow",
+    action = "open -a EchoFlow",
   })
 
   table.insert(items, {

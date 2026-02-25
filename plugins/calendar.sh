@@ -14,6 +14,8 @@ declare -a CALENDAR_ITEMS=(
   "clock.calendar.week5"
   "clock.calendar.week6"
   "clock.calendar.summary"
+  "clock.calendar.weekend"
+  "clock.calendar.progress"
   "clock.calendar.footer"
 )
 
@@ -82,10 +84,30 @@ for week in weeks:
             cells.append(f" {day:2d} ")
     lines.append("".join(cells).rstrip())
 
-# Summary line with moon phase
+# Summary line with moon phase + time
 moon_icon = moon_phase(today)
 day_name = today.strftime("%A")
-lines.append(f"{moon_icon}  {day_name}, {today.strftime('%b')} {today.day}".rstrip())
+now = datetime.datetime.now().astimezone()
+time_str = now.strftime("%I:%M %p").lstrip("0")
+tz = now.tzname() or ""
+lines.append(f"{moon_icon}  {day_name}, {today.strftime('%b')} {today.day} · {time_str} {tz}".rstrip())
+
+# Weekend countdown
+weekday = today.weekday()  # Monday = 0
+days_until_weekend = (5 - weekday) % 7
+if days_until_weekend == 0:
+    weekend_line = "󰸗 Weekend is here"
+elif days_until_weekend == 1:
+    weekend_line = "󰸗 Weekend in 1 day"
+else:
+    weekend_line = f"󰸗 Weekend in {days_until_weekend} days"
+lines.append(weekend_line.rstrip())
+
+# Month progress
+days_in_month = calendar.monthrange(today.year, today.month)[1]
+days_left = days_in_month - today.day
+month_progress = round((today.day / days_in_month) * 100)
+lines.append(f"󰃭 {days_left} days left · {month_progress}% of month".rstrip())
 
 # Footer with week number and day of year
 week_num = today.isocalendar()[1]

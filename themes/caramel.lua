@@ -7,6 +7,7 @@ return {
   },
   clock = 0x80FFF4E6,  -- Cream
   volume = 0x80FFD4A3,  -- Golden
+  battery = 0x80FFD4A3,  -- Golden (match volume)
 
   -- Coffee-inspired palette
   ESPRESSO = "0xFF3E2723",     -- Deep espresso brown

@@ -77,6 +77,22 @@ if [ "${BARISTA_USE_SOURCE_GUI:-0}" = "1" ] && [ -x "${SOURCE_DIR}/build/bin/con
   exit 0
 fi
 
+resolve_panel_bin() {
+  local candidates=(
+    "$PANEL_BIN"
+    "${PANEL_FALLBACKS[@]}"
+    "$CONFIG_DIR/build/bin/config_menu"
+    "$SOURCE_DIR/build/bin/config_menu"
+  )
+  for candidate in "${candidates[@]}"; do
+    if [[ -x "$candidate" ]]; then
+      PANEL_BIN="$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 resolve_imgui_bin() {
   if [[ -n "$IMGUICLI_BIN" && -x "$IMGUICLI_BIN" ]]; then
     echo "$IMGUICLI_BIN"
@@ -188,15 +204,8 @@ if [[ "${BARISTA_TUI_ONLY:-0}" == "1" || "${BARISTA_LUA_ONLY:-0}" == "1" || "${B
   fi
 fi
 
-# Use installed binary
-if [[ ! -x "$PANEL_BIN" ]]; then
-  for candidate in "${PANEL_FALLBACKS[@]}"; do
-    if [ -x "$candidate" ]; then
-      PANEL_BIN="$candidate"
-      break
-    fi
-  done
-fi
+# Use installed binary or fallback to build outputs
+resolve_panel_bin || true
 
 if [[ ! -x "$PANEL_BIN" ]]; then
   if [[ -d "$GUI_DIR" ]]; then
@@ -205,6 +214,7 @@ if [[ ! -x "$PANEL_BIN" ]]; then
     if command -v cmake &> /dev/null; then
       cd "${SOURCE_DIR}" || exit 1
       ./rebuild_gui.sh 2>&1 | tail -5
+      resolve_panel_bin || true
     else
       echo "[barista] CMake not found. Install with: brew install cmake" >&2
       if launch_tui_panel; then

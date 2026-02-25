@@ -43,14 +43,14 @@ function M.setup(config)
       script = PLUGIN_DIR .. "/calendar.sh",
       update_freq = 1800,
       font_style = "Semibold",
-      color = theme.LAVENDER,
+      color = (theme.LAVENDER or theme.WHITE),
       ["icon.font"] = font_string(config.font.icon, config.font.style_map["Bold"], config.font.sizes.small)
     },
     {
       name = "clock.calendar.weekdays",
       icon = "",
       font_style = "Bold",
-      color = theme.DARK_WHITE
+      color = (theme.DARK_WHITE or theme.WHITE)
     },
   }
 
@@ -67,14 +67,14 @@ function M.setup(config)
     name = "clock.calendar.summary",
     icon = "",
     font_style = "Semibold",
-    color = theme.YELLOW
+    color = (theme.YELLOW or theme.WHITE)
   })
 
   table.insert(calendar_items, {
     name = "clock.calendar.footer",
     icon = "",
     font_style = "Regular",
-    color = theme.DARK_WHITE
+    color = (theme.DARK_WHITE or theme.WHITE)
   })
 
   for _, item in ipairs(calendar_items) do

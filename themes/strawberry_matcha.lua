@@ -7,6 +7,7 @@ return {
   },
   clock = 0x80FFB3BA,  -- Strawberry pink
   volume = 0x809CCC9C,  -- Sage green
+  battery = 0x809CCC9C,  -- Sage green (match volume)
 
   -- Strawberry palette
   STRAWBERRY = "0xFFFF6B7A",       -- Fresh strawberry

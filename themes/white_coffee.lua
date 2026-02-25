@@ -7,6 +7,7 @@ return {
   },
   clock = 0x80B8A89D,  -- Warm gray
   volume = 0x80C9B8A6,  -- Beige
+  battery = 0x80C9B8A6,  -- Beige (match volume)
 
   -- White coffee palette
   MILK = "0xFFFFFAF5",         -- Fresh milk

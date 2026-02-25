@@ -32,6 +32,7 @@ local function register(ctx)
   local CODE_DIR = ctx.CODE_DIR
 
   local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
+  local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
 
   -- Clock
   widget_factory.create_clock({
@@ -47,18 +48,18 @@ local function register(ctx)
   subscribe_popup_autoclose("clock")
   attach_hover("clock")
 
-  -- Calendar popup items
+  -- Calendar popup items (tc = theme color with fallback for themes that omit accent keys)
   local calendar_items = {
-    { name = "clock.calendar.header", icon = "", script = PLUGIN_DIR .. "/calendar.sh", update_freq = 1800, font_style = "Semibold", color = theme.LAVENDER, ["icon.font"] = font_string(settings.font.icon, settings.font.style_map["Bold"], settings.font.sizes.small) },
-    { name = "clock.calendar.weekdays", icon = "", font_style = "Bold", color = theme.DARK_WHITE },
+    { name = "clock.calendar.header", icon = "", script = PLUGIN_DIR .. "/calendar.sh", update_freq = 1800, font_style = "Semibold", color = tc("LAVENDER"), ["icon.font"] = font_string(settings.font.icon, settings.font.style_map["Bold"], settings.font.sizes.small) },
+    { name = "clock.calendar.weekdays", icon = "", font_style = "Bold", color = theme.DARK_WHITE or theme.WHITE },
   }
   for i = 1, 6 do
     table.insert(calendar_items, { name = string.format("clock.calendar.week%d", i), icon = "", font_style = "Regular", color = theme.WHITE })
   end
-  table.insert(calendar_items, { name = "clock.calendar.summary", icon = "", font_style = "Semibold", color = theme.YELLOW })
-  table.insert(calendar_items, { name = "clock.calendar.weekend", icon = "", font_style = "Regular", color = theme.SKY })
-  table.insert(calendar_items, { name = "clock.calendar.progress", icon = "", font_style = "Regular", color = theme.DARK_WHITE })
-  table.insert(calendar_items, { name = "clock.calendar.footer", icon = "", font_style = "Regular", color = theme.DARK_WHITE })
+  table.insert(calendar_items, { name = "clock.calendar.summary", icon = "", font_style = "Semibold", color = tc("YELLOW") })
+  table.insert(calendar_items, { name = "clock.calendar.weekend", icon = "", font_style = "Regular", color = tc("SKY") })
+  table.insert(calendar_items, { name = "clock.calendar.progress", icon = "", font_style = "Regular", color = theme.DARK_WHITE or theme.WHITE })
+  table.insert(calendar_items, { name = "clock.calendar.footer", icon = "", font_style = "Regular", color = theme.DARK_WHITE or theme.WHITE })
 
   for _, item in ipairs(calendar_items) do
     local is_header = item.name == "clock.calendar.header"
@@ -87,7 +88,7 @@ local function register(ctx)
   -- AI Resource
   sbar.add("item", "ai_resource", {
     position = "right",
-    icon = { string = "󰾆", color = theme.GREEN },
+    icon = { string = "󰾆", color = tc("GREEN") },
     label = { string = "AI: NORM" },
     update_freq = 60,
     script = PLUGIN_DIR .. "/ai_resource_toggle.sh",
@@ -162,10 +163,10 @@ local function register(ctx)
   -- Volume
   local volume_env = env_prefix({
     BARISTA_ICON_VOLUME = state_module.get_icon(state, "volume", ""),
-    BARISTA_VOLUME_OK = theme.GREEN,
-    BARISTA_VOLUME_WARN = theme.YELLOW,
-    BARISTA_VOLUME_LOW = theme.RED,
-    BARISTA_VOLUME_MUTE = theme.BLUE,
+    BARISTA_VOLUME_OK = tc("GREEN"),
+    BARISTA_VOLUME_WARN = tc("YELLOW"),
+    BARISTA_VOLUME_LOW = tc("RED"),
+    BARISTA_VOLUME_MUTE = tc("BLUE"),
     BARISTA_HOVER_COLOR = tostring(hover_color),
     BARISTA_HOVER_ANIMATION_CURVE = tostring(hover_animation_curve),
     BARISTA_HOVER_ANIMATION_DURATION = tostring(hover_animation_duration),
@@ -211,7 +212,7 @@ local function register(ctx)
     BARISTA_HOVER_ANIMATION_DURATION = tostring(hover_animation_duration),
   })
   widget_factory.create_battery({
-    script = battery_env .. PLUGIN_DIR .. "/battery.sh '" .. theme.GREEN .. "' '" .. theme.YELLOW .. "' '" .. theme.RED .. "' '" .. theme.BLUE .. "'",
+    script = battery_env .. PLUGIN_DIR .. "/battery.sh '" .. tc("GREEN") .. "' '" .. tc("YELLOW") .. "' '" .. tc("RED") .. "' '" .. tc("BLUE") .. "'",
     update_freq = 120,
     click_script = popup_toggle_action(),
     popup = { align = "right", background = popup_background() }

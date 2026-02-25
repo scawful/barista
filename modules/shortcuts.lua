@@ -72,6 +72,60 @@ local function read_state_code_dir()
   return expand_path(candidate)
 end
 
+local function read_state_integrations()
+  local ok, json = pcall(require, "json")
+  if not ok then
+    return {}
+  end
+
+  local state_file = CONFIG_DIR .. "/state.json"
+  local file = io.open(state_file, "r")
+  if not file then
+    return {}
+  end
+
+  local contents = file:read("*a")
+  file:close()
+
+  local ok_decode, data = pcall(json.decode, contents)
+  if not ok_decode or type(data) ~= "table" then
+    return {}
+  end
+
+  if type(data.integrations) ~= "table" then
+    return {}
+  end
+
+  return data.integrations
+end
+
+local function read_state_modes()
+  local ok, json = pcall(require, "json")
+  if not ok then
+    return {}
+  end
+
+  local state_file = CONFIG_DIR .. "/state.json"
+  local file = io.open(state_file, "r")
+  if not file then
+    return {}
+  end
+
+  local contents = file:read("*a")
+  file:close()
+
+  local ok_decode, data = pcall(json.decode, contents)
+  if not ok_decode or type(data) ~= "table" then
+    return {}
+  end
+
+  if type(data.modes) ~= "table" then
+    return {}
+  end
+
+  return data.modes
+end
+
 local function command_path(command)
   if not command or command == "" then
     return nil
@@ -87,6 +141,60 @@ local function command_path(command)
     return nil
   end
   return result
+end
+
+local function service_running(name)
+  if not name or name == "" then
+    return false
+  end
+  local handle = io.popen(string.format("pgrep -x %q >/dev/null 2>&1 && echo 1 || echo 0", name))
+  if not handle then
+    return false
+  end
+  local result = handle:read("*a") or ""
+  handle:close()
+  return result:match("1") ~= nil
+end
+
+local function normalize_mode(mode)
+  if not mode or mode == "" then
+    return "auto"
+  end
+  mode = tostring(mode):lower()
+  if mode == "off" or mode == "false" or mode == "none" or mode == "disable" or mode == "disabled" then
+    return "disabled"
+  end
+  if mode == "optional" or mode == "opt" then
+    return "optional"
+  end
+  if mode == "required" or mode == "require" or mode == "enabled" or mode == "enable" or mode == "on" then
+    return "required"
+  end
+  return mode
+end
+
+local function resolve_window_manager_mode()
+  local mode = os.getenv("BARISTA_WINDOW_MANAGER_MODE")
+  if not mode or mode == "" then
+    local modes = read_state_modes()
+    mode = modes.window_manager
+  end
+  return normalize_mode(mode)
+end
+
+local function window_manager_enabled()
+  local mode = resolve_window_manager_mode()
+  local has_yabai = command_path("yabai") ~= nil
+  if mode == "disabled" then
+    return false
+  end
+  if mode == "optional" then
+    return service_running("yabai")
+  end
+  if mode == "required" then
+    return has_yabai
+  end
+  return has_yabai
 end
 
 local function path_is_executable(path)
@@ -197,8 +305,8 @@ end
 local function resolve_afs_browser_app(code_dir)
   return resolve_path({
     os.getenv("AFS_BROWSER_APP"),
-    code_dir and (code_dir .. "/lab/afs_suite/build/apps/browser/afs-browser.app") or nil,
     code_dir and (code_dir .. "/lab/afs_suite/build_ai/apps/browser/afs-browser.app") or nil,
+    code_dir and (code_dir .. "/lab/afs_suite/build/apps/browser/afs-browser.app") or nil,
     code_dir and (code_dir .. "/lab/afs_suite/build/apps/browser/Debug/afs-browser.app") or nil,
     code_dir and (code_dir .. "/lab/afs_suite/build/apps/browser/Release/afs-browser.app") or nil,
   }, true)
@@ -227,10 +335,57 @@ local function resolve_stem_sampler_app(code_dir)
 end
 
 local function resolve_yaze_app(code_dir)
+  local yaze_dir = os.getenv("BARISTA_YAZE_DIR")
+  local yaze_app = os.getenv("BARISTA_YAZE_APP") or os.getenv("YAZE_APP")
+  local nightly_prefix = os.getenv("BARISTA_YAZE_NIGHTLY_PREFIX")
+    or os.getenv("YAZE_NIGHTLY_PREFIX")
+    or (HOME .. "/.local/yaze/nightly")
   return resolve_path({
+    yaze_app,
+    nightly_prefix .. "/current/yaze.app",
+    nightly_prefix .. "/yaze.app",
+    HOME .. "/Applications/Yaze Nightly.app",
+    HOME .. "/Applications/yaze nightly.app",
+    HOME .. "/applications/Yaze Nightly.app",
+    HOME .. "/applications/yaze nightly.app",
+    "/Applications/Yaze Nightly.app",
+    "/Applications/yaze nightly.app",
+    yaze_dir and (yaze_dir .. "/build_ai/bin/Debug/yaze.app") or nil,
+    yaze_dir and (yaze_dir .. "/build_ai/bin/Release/yaze.app") or nil,
+    yaze_dir and (yaze_dir .. "/build_ai/bin/yaze.app") or nil,
+    yaze_dir and (yaze_dir .. "/build/bin/Release/yaze.app") or nil,
+    yaze_dir and (yaze_dir .. "/build/bin/Debug/yaze.app") or nil,
+    yaze_dir and (yaze_dir .. "/build/bin/yaze.app") or nil,
+    code_dir and (code_dir .. "/hobby/yaze/build_ai/bin/Debug/yaze.app") or nil,
+    code_dir and (code_dir .. "/hobby/yaze/build_ai/bin/Release/yaze.app") or nil,
+    code_dir and (code_dir .. "/yaze/build_ai/bin/Debug/yaze.app") or nil,
+    code_dir and (code_dir .. "/yaze/build_ai/bin/Release/yaze.app") or nil,
+    code_dir and (code_dir .. "/hobby/yaze/build_ai/bin/yaze.app") or nil,
+    code_dir and (code_dir .. "/yaze/build_ai/bin/yaze.app") or nil,
     code_dir and (code_dir .. "/hobby/yaze/build/bin/yaze.app") or nil,
     code_dir and (code_dir .. "/yaze/build/bin/yaze.app") or nil,
   }, true)
+end
+
+local function resolve_yaze_launcher()
+  local override = os.getenv("BARISTA_YAZE_LAUNCHER") or os.getenv("YAZE_LAUNCHER")
+  if override and override ~= "" then
+    local expanded = expand_path(override)
+    if expanded and path_is_executable(expanded) then
+      return expanded
+    end
+    local resolved = command_path(override)
+    if resolved then
+      return resolved
+    end
+  end
+
+  local resolved = command_path("yaze-nightly")
+  if resolved then
+    return resolved
+  end
+
+  return nil
 end
 
 local function resolve_sys_manual_binary(code_dir)
@@ -341,10 +496,24 @@ local AFS_STUDIO_ROOT = select(1, resolve_afs_studio_root(CODE_DIR, AFS_ROOT))
 local AFS_BROWSER_APP = select(1, resolve_afs_browser_app(CODE_DIR))
 local STEMFORGE_APP = select(1, resolve_stemforge_app(CODE_DIR))
 local STEM_SAMPLER_APP = select(1, resolve_stem_sampler_app(CODE_DIR))
-local YAZE_APP = select(1, resolve_yaze_app(CODE_DIR))
+local YAZE_APP, YAZE_OK = resolve_yaze_app(CODE_DIR)
+local YAZE_LAUNCHER = resolve_yaze_launcher()
 local SYS_MANUAL_BIN, SYS_MANUAL_OK = resolve_sys_manual_binary(CODE_DIR)
 local HELP_CENTER_BIN, HELP_CENTER_OK = resolve_help_center_bin()
 local ICON_BROWSER_BIN, ICON_BROWSER_OK = resolve_icon_browser_bin()
+
+local function integration_flag(name)
+  local integrations = read_state_integrations()
+  local entry = integrations[name]
+  if type(entry) ~= "table" or entry.enabled == nil then
+    return nil
+  end
+  return entry.enabled ~= false
+end
+
+local YAZE_FLAG = integration_flag("yaze")
+local YAZE_AVAILABLE = YAZE_OK or (YAZE_LAUNCHER and YAZE_LAUNCHER ~= "")
+local YAZE_ENABLED = (YAZE_FLAG == nil) and YAZE_AVAILABLE or (YAZE_FLAG and YAZE_AVAILABLE)
 
 local function open_path_command(path)
   if not path or path == "" then
@@ -476,7 +645,14 @@ local AFS_STUDIO_ACTION = afs_studio_action()
 local AFS_LABELER_ACTION = afs_labeler_action()
 local STEMFORGE_ACTION = open_app_command(STEMFORGE_APP, "StemForge")
 local STEM_SAMPLER_ACTION = open_app_command(STEM_SAMPLER_APP, "StemSampler")
-local YAZE_ACTION = open_app_command(YAZE_APP, "Yaze")
+local YAZE_ACTION = ""
+if YAZE_ENABLED then
+  if YAZE_LAUNCHER and YAZE_LAUNCHER ~= "" then
+    YAZE_ACTION = shell_quote(YAZE_LAUNCHER)
+  else
+    YAZE_ACTION = open_app_command(YAZE_APP, "Yaze")
+  end
+end
 
 -- Modifier key symbols and their skhd representations
 shortcuts.modifiers = {
@@ -530,13 +706,6 @@ shortcuts.global = {
   },
   {
     mods = {"cmd", "alt"},
-    key = "k",
-    action = "open_help_center",
-    desc = "Open Help Center",
-    symbol = "⌘⌥K"
-  },
-  {
-    mods = {"cmd", "alt"},
     key = "h",
     action = "open_help_center",
     desc = "Open Help Center",
@@ -548,6 +717,13 @@ shortcuts.global = {
     action = "open_icon_browser",
     desc = "Open Icon Browser",
     symbol = "⌘⌥I"
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "o",
+    action = "toggle_keyboard_overlay",
+    desc = "Toggle Keyboard Overlay",
+    symbol = "⌘⌥O"
   },
   {
     mods = {"cmd", "alt"},
@@ -570,51 +746,8 @@ shortcuts.global = {
     key = "y",
     action = "toggle_yabai_shortcuts",
     desc = "Toggle Yabai Shortcuts",
-    symbol = "⌘⌥Y"
-  },
-
-  -- Workspace Apps
-  {
-    mods = {"cmd", "alt"},
-    key = "b",
-    action = "launch_afs_browser",
-    desc = "Launch AFS Browser",
-    symbol = "⌘⌥B"
-  },
-  {
-    mods = {"cmd", "alt"},
-    key = "s",
-    action = "launch_afs_studio",
-    desc = "Launch AFS Studio",
-    symbol = "⌘⌥S"
-  },
-  {
-    mods = {"cmd", "alt"},
-    key = "f",
-    action = "launch_stemforge",
-    desc = "Launch StemForge",
-    symbol = "⌘⌥F"
-  },
-  {
-    mods = {"cmd", "alt"},
-    key = "m",
-    action = "launch_stem_sampler",
-    desc = "Launch StemSampler",
-    symbol = "⌘⌥M"
-  },
-  {
-    mods = {"cmd", "alt"},
-    key = "z",
-    action = "launch_yaze",
-    desc = "Launch Yaze",
-    symbol = "⌘⌥Z"
-  },
-  {
-    mods = {"cmd", "alt"},
-    key = "d",
-    action = "open_sys_manual",
-    desc = "Open Sys Manual",
-    symbol = "⌘⌥D"
+    symbol = "⌘⌥Y",
+    requires = "window_manager"
   },
 
   -- Space Navigation (ctrl + arrows)
@@ -622,15 +755,17 @@ shortcuts.global = {
     mods = {"ctrl"},
     key = "left",
     action = "space_prev",
-    desc = "Previous Space",
-    symbol = "⌃←"
+    desc = "Previous Space (wrap)",
+    symbol = "⌃←",
+    requires = "window_manager"
   },
   {
     mods = {"ctrl"},
     key = "right",
     action = "space_next",
-    desc = "Next Space",
-    symbol = "⌃→"
+    desc = "Next Space (wrap)",
+    symbol = "⌃→",
+    requires = "window_manager"
   },
 
   -- Display Movement (cmd + alt + shift)
@@ -639,14 +774,16 @@ shortcuts.global = {
     key = "left",
     action = "window_display_prev",
     desc = "Send to Prev Display",
-    symbol = "⌘⌥⇧←"
+    symbol = "⌘⌥⇧←",
+    requires = "window_manager"
   },
   {
     mods = {"cmd", "alt", "shift"},
     key = "right",
     action = "window_display_next",
     desc = "Send to Next Display",
-    symbol = "⌘⌥⇧→"
+    symbol = "⌘⌥⇧→",
+    requires = "window_manager"
   },
 
   -- Layout modes (ctrl+shift)
@@ -655,21 +792,24 @@ shortcuts.global = {
     key = "f",
     action = "set_layout_float",
     desc = "Set Float Layout",
-    symbol = "⌃⇧F"
+    symbol = "⌃⇧F",
+    requires = "window_manager"
   },
   {
     mods = {"ctrl", "shift"},
     key = "b",
     action = "set_layout_bsp",
     desc = "Set BSP Layout",
-    symbol = "⌃⇧B"
+    symbol = "⌃⇧B",
+    requires = "window_manager"
   },
   {
     mods = {"ctrl", "shift"},
     key = "s",
     action = "set_layout_stack",
     desc = "Set Stack Layout",
-    symbol = "⌃⇧S"
+    symbol = "⌃⇧S",
+    requires = "window_manager"
   },
 }
 
@@ -683,6 +823,7 @@ shortcuts.actions = {
   open_help_center = help_center_action(),
   open_icon_browser = icon_browser_action(),
   open_sys_manual = sys_manual_action(),
+  toggle_keyboard_overlay = CONFIG_DIR .. "/scripts/open_keyboard_overlay.sh",
   toggle_cortex = string.format("%q toggle", CORTEX_CLI),
 
   -- Yabai
@@ -752,8 +893,16 @@ shortcuts.actions = {
 
 local function all_shortcuts()
   local list = {}
+  local wm_enabled = window_manager_enabled()
   for _, shortcut in ipairs(shortcuts.global) do
-    table.insert(list, shortcut)
+    local requires = shortcut.requires
+    if not requires then
+      table.insert(list, shortcut)
+    elseif requires == "yaze" and YAZE_ENABLED then
+      table.insert(list, shortcut)
+    elseif requires == "window_manager" and wm_enabled then
+      table.insert(list, shortcut)
+    end
   end
   return list
 end

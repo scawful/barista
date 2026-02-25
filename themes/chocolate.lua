@@ -7,6 +7,7 @@ return {
   },
   clock = 0x80D4A574,  -- Golden
   volume = 0x80A67C52,  -- Caramel
+  battery = 0x80A67C52,  -- Caramel (match volume)
 
   -- Chocolate palette
   DARK_CHOCOLATE = "0xFF1A0F0A",    -- 85% dark chocolate

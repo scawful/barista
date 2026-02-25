@@ -9,15 +9,6 @@ local function menu_label(label, shortcut)
   return label
 end
 
-local function menu_entry_padding()
-  return {
-    icon_left = 4,
-    icon_right = 6,
-    label_left = 6,
-    label_right = 6,
-  }
-end
-
 function menu_renderer.create(ctx)
   local sbar = ctx.sbar
   local settings = ctx.settings
@@ -28,6 +19,79 @@ function menu_renderer.create(ctx)
   local sketchybar_bin = ctx.sketchybar_bin or "sketchybar"
   local post_config_delay = ctx.post_config_delay or 1.0
   local config_dir = ctx.paths and ctx.paths.config_dir or nil
+  local associated_displays = ctx.associated_displays or "all"
+  local appearance = ctx.appearance or {}
+  local popup_padding = tonumber(appearance.popup_padding) or 6
+  local popup_item_height = tonumber(appearance.popup_item_height) or 0
+  if popup_item_height <= 0 then
+    popup_item_height = math.max(widget_height - 10, 16)
+  end
+  local popup_item_corner_radius = tonumber(appearance.popup_item_corner_radius) or 4
+  local popup_border_width = tonumber(appearance.popup_border_width) or 2
+  local popup_corner_radius = tonumber(appearance.popup_corner_radius) or 6
+  local popup_border_color = appearance.popup_border_color or theme.WHITE
+  local popup_bg_color = appearance.menu_popup_bg_color or appearance.popup_bg_color or theme.bar.bg
+  local menu_label_color = appearance.menu_label_color or theme.WHITE
+
+  local function resolved_style(style_name, fallback)
+    local raw = tostring(style_name or fallback or "Regular")
+    local normalized = raw:sub(1, 1):upper() .. raw:sub(2):lower()
+    if settings.font.style_map[normalized] then
+      return settings.font.style_map[normalized]
+    end
+    if settings.font.style_map[fallback] then
+      return settings.font.style_map[fallback]
+    end
+    return settings.font.style_map["Regular"] or "Regular"
+  end
+
+  local menu_font_size_offset = tonumber(appearance.menu_font_size_offset) or 1
+  local menu_font_size = math.max((settings.font.sizes.small or 12) + menu_font_size_offset, 10)
+  local menu_font_style = resolved_style(appearance.menu_font_style or "Bold", "Semibold")
+  local menu_header_style = resolved_style(appearance.menu_header_font_style or "Bold", "Bold")
+  local menu_font_small
+  local menu_font_header
+  if type(ctx.font_string) == "function" then
+    menu_font_small = ctx.font_string(settings.font.text, menu_font_style, menu_font_size)
+    menu_font_header = ctx.font_string(settings.font.text, menu_header_style, menu_font_size)
+  else
+    menu_font_small = string.format("%s:%s:%0.1f", settings.font.text, menu_font_style, menu_font_size)
+    menu_font_header = string.format("%s:%s:%0.1f", settings.font.text, menu_header_style, menu_font_size)
+  end
+
+  local function menu_entry_padding()
+    local icon_left = math.max(popup_padding - 2, 2)
+    local icon_right = popup_padding
+    local label_left = popup_padding
+    local label_right = popup_padding
+    return {
+      icon_left = icon_left,
+      icon_right = icon_right,
+      label_left = label_left,
+      label_right = label_right,
+    }
+  end
+
+  local function popup_background()
+    return {
+      border_width = popup_border_width,
+      corner_radius = popup_corner_radius,
+      border_color = popup_border_color,
+      color = popup_bg_color,
+      padding_left = popup_padding,
+      padding_right = popup_padding,
+    }
+  end
+
+  local function popup_toggle(item_name)
+    if type(ctx.popup_toggle_action) == "function" then
+      return ctx.popup_toggle_action(item_name)
+    end
+    if item_name and item_name ~= "" then
+      return string.format("sketchybar -m --set %s popup.drawing=toggle", item_name)
+    end
+    return "sketchybar -m --set $NAME popup.drawing=toggle"
+  end
 
   local function is_executable(path)
     if not path or path == "" then
@@ -87,7 +151,7 @@ function menu_renderer.create(ctx)
       position = "popup." .. popup,
       icon = "",
       label = entry.label,
-      ["label.font"] = string.format("%s:%s:%0.1f", settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+      ["label.font"] = menu_font_header,
       ["label.color"] = theme.DARK_WHITE,
       ["icon.drawing"] = false,
       background = { drawing = false },
@@ -102,7 +166,7 @@ function menu_renderer.create(ctx)
       position = "popup." .. popup,
       icon = "",
       label = entry.label or "───────────────",
-      ["label.font"] = string.format("%s:%s:%0.1f", settings.font.text, settings.font.style_map["Regular"], settings.font.sizes.small),
+      ["label.font"] = menu_font_small,
       ["label.color"] = theme.DARK_WHITE,
       ["icon.drawing"] = false,
       background = { drawing = false },
@@ -144,14 +208,16 @@ function menu_renderer.create(ctx)
       label = label,
       click_script = click,
       script = string.format("env SUBMENU_PARENT=%q %s", popup, ctx.HOVER_SCRIPT or ""),
+      ["label.font"] = menu_font_small,
+      ["label.color"] = entry.label_color or entry.color or menu_label_color,
       ["icon.padding_left"] = padding.icon_left,
       ["icon.padding_right"] = padding.icon_right,
       ["label.padding_left"] = padding.label_left,
       ["label.padding_right"] = padding.label_right,
       background = {
         drawing = false,
-        corner_radius = 4,
-        height = math.max(widget_height - 10, 16)
+        corner_radius = popup_item_corner_radius,
+        height = popup_item_height
       }
     }
 
@@ -181,14 +247,11 @@ function menu_renderer.create(ctx)
       icon = "",
       label = "",
       drawing = false,
+      associated_display = associated_displays,
+      associated_space = "all",
       popup = {
         align = "right",
-        background = {
-          border_width = 2,
-          corner_radius = 4,
-          border_color = theme.WHITE,
-          color = theme.bar.bg
-        }
+        background = popup_background()
       }
     })
     
@@ -198,10 +261,7 @@ function menu_renderer.create(ctx)
     end
     
     -- Create clickable menu item that opens the popup
-    local click_action = string.format(
-      "sketchybar -m --set %s popup.drawing=toggle",
-      popup_item_name
-    )
+    local click_action = popup_toggle(popup_item_name)
     
     sbar.add("item", entry.name, {
       position = "popup." .. popup,
@@ -209,14 +269,16 @@ function menu_renderer.create(ctx)
       label = entry.label or "",
       click_script = click_action,
       script = ctx.HOVER_SCRIPT,
+      ["label.font"] = menu_font_small,
+      ["label.color"] = menu_label_color,
       ["icon.padding_left"] = padding.icon_left,
       ["icon.padding_right"] = padding.icon_right,
       ["label.padding_left"] = padding.label_left,
       ["label.padding_right"] = padding.label_right,
       background = {
         drawing = false,
-        corner_radius = 4,
-        height = math.max(widget_height - 10, 16)
+        corner_radius = popup_item_corner_radius,
+        height = popup_item_height
       }
     })
     attach_hover(entry.name)
@@ -252,24 +314,19 @@ function menu_renderer.create(ctx)
       icon = entry.icon or "",
       label = string.format("%s  %s", entry.label, arrow),
       script = ctx.SUBMENU_HOVER_SCRIPT,
-      click_script = "sketchybar -m --set $NAME popup.drawing=toggle",
+      click_script = popup_toggle(),
       ["icon.padding_left"] = padding.icon_left,
       ["icon.padding_right"] = padding.icon_right,
       ["label.padding_left"] = padding.label_left,
       ["label.padding_right"] = padding.label_right,
       background = {
         drawing = false,
-        corner_radius = 4,
-        height = math.max(widget_height - 8, 16)
+        corner_radius = popup_item_corner_radius,
+        height = popup_item_height
       },
       popup = {
         align = "right",
-        background = {
-          border_width = 2,
-          corner_radius = 4,
-          border_color = theme.WHITE,
-          color = theme.bar.bg
-        }
+        background = popup_background()
       }
     })
     shell_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited mouse.exited.global", post_config_delay, sketchybar_bin, parent))

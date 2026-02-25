@@ -7,6 +7,7 @@ return {
   },
   clock = 0x80CDAF95,  -- Latte
   volume = 0x80D4A574,  -- Caramel
+  battery = 0x80CDAF95,  -- Latte (match clock)
 
   -- Mocha palette
   ESPRESSO = "0xFF3E2723",         -- Espresso base

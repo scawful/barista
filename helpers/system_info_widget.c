@@ -22,6 +22,19 @@ typedef struct {
     int net_online;
 } SystemInfo;
 
+static void read_cmd(const char *cmd, char *out, size_t len) {
+    if (!out || len == 0) return;
+    out[0] = '\0';
+    FILE *fp = popen(cmd, "r");
+    if (!fp) return;
+    if (fgets(out, len, fp)) {
+        out[strcspn(out, "\n")] = 0;
+    } else {
+        out[0] = '\0';
+    }
+    pclose(fp);
+}
+
 // Get CPU usage (simplified - get load average as proxy)
 void get_cpu_info(SystemInfo *info) {
     double loadavg[3];
@@ -69,44 +82,53 @@ void get_disk_info(SystemInfo *info) {
 
 // Get network info (with timeout protection)
 void get_network_info(SystemInfo *info) {
-    // 1. Get IP Address (Timeout: 0.5s)
-    // Using perl alarm to prevent blocking if ifconfig hangs
-    const char *ip_cmd = "perl -e 'alarm 1; exec @ARGV' \"ifconfig en0 2>/dev/null | grep 'inet ' | awk '{print $2}'\"";
-    FILE *fp = popen(ip_cmd, "r");
-    
-    if (fp) {
-        if (fgets(info->net_ip, sizeof(info->net_ip), fp)) {
-            info->net_ip[strcspn(info->net_ip, "\n")] = 0;
-            info->net_online = (strlen(info->net_ip) > 0);
-        } else {
-            info->net_online = 0;
-            strcpy(info->net_ip, "offline");
-        }
-        pclose(fp);
-    } else {
-        info->net_online = 0;
-        strcpy(info->net_ip, "error");
+    char wifi_iface[32] = "";
+    char active_iface[32] = "";
+    read_cmd(
+        "perl -e 'alarm 1; exec @ARGV' \"networksetup -listallhardwareports 2>/dev/null | "
+        "awk '/^Hardware Port: (Wi-Fi|AirPort)$/{found=1} found && /^Device: /{print $2; exit}'\"",
+        wifi_iface, sizeof(wifi_iface));
+    read_cmd(
+        "perl -e 'alarm 1; exec @ARGV' \"route -n get default 2>/dev/null | awk '/interface: /{print $2; exit}'\"",
+        active_iface, sizeof(active_iface));
+
+    const char *iface = "en0";
+    if (wifi_iface[0] != '\0') {
+        iface = wifi_iface;
+    } else if (active_iface[0] != '\0') {
+        iface = active_iface;
     }
 
-    // 2. Get SSID (Timeout: 0.5s) only if online
-    if (info->net_online) {
-        // Use airport utility (faster than networksetup) wrapped in timeout
-        const char *ssid_cmd = "perl -e 'alarm 1; exec @ARGV' \"/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I | grep ' SSID' | cut -d ':' -f 2 | tr -d ' '\"";
-        
-        FILE *ssid_fp = popen(ssid_cmd, "r");
-        if (ssid_fp) {
-            if (fgets(info->net_name, sizeof(info->net_name), ssid_fp)) {
-                info->net_name[strcspn(info->net_name, "\n")] = 0;
-            }
-            pclose(ssid_fp);
-        }
-        
-        if (info->net_name[0] == '\0') {
-            strcpy(info->net_name, "Wi-Fi");
-        }
-    } else {
+    char cmd[CMD_SIZE];
+    snprintf(cmd, sizeof(cmd),
+             "perl -e 'alarm 1; exec @ARGV' \"ipconfig getifaddr %s 2>/dev/null\"",
+             iface);
+    read_cmd(cmd, info->net_ip, sizeof(info->net_ip));
+    if (info->net_ip[0] == '\0' && active_iface[0] != '\0' && strcmp(active_iface, iface) != 0) {
+        snprintf(cmd, sizeof(cmd),
+                 "perl -e 'alarm 1; exec @ARGV' \"ipconfig getifaddr %s 2>/dev/null\"",
+                 active_iface);
+        read_cmd(cmd, info->net_ip, sizeof(info->net_ip));
+    }
+
+    read_cmd(
+        "perl -e 'alarm 1; exec @ARGV' "
+        "\"/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I "
+        "| awk -F': ' '/ SSID/ {print $2; exit}'\"",
+        info->net_name, sizeof(info->net_name));
+    if (info->net_name[0] == '\0' && wifi_iface[0] != '\0') {
+        snprintf(cmd, sizeof(cmd),
+                 "perl -e 'alarm 1; exec @ARGV' "
+                 "\"networksetup -getairportnetwork %s 2>/dev/null | "
+                 "awk -F': ' '/Current Wi-Fi Network:/{print $2; exit}'\"",
+                 wifi_iface);
+        read_cmd(cmd, info->net_name, sizeof(info->net_name));
+    }
+    if (strcmp(info->net_name, "You are not associated with an AirPort network.") == 0) {
         info->net_name[0] = '\0';
     }
+
+    info->net_online = (info->net_ip[0] != '\0' || info->net_name[0] != '\0');
 }
 
 int main(int argc, char *argv[]) {
@@ -174,17 +196,30 @@ int main(int argc, char *argv[]) {
 
     // Network
     if (info.net_online) {
-        const char *ssid = info.net_name[0] ? info.net_name : "Wi-Fi";
-        snprintf(cmd, sizeof(cmd),
-                 "sketchybar --set system_info.net "
-                 "label=\"%s (%s)\" "
-                 "icon.color=\"0xFFa6e3a1\"",
-                 ssid,
-                 info.net_ip);
+        if (info.net_name[0] != '\0' && info.net_ip[0] != '\0') {
+            snprintf(cmd, sizeof(cmd),
+                     "sketchybar --set system_info.net "
+                     "label=\"Wi-Fi: %s (%s)\" "
+                     "icon.color=\"0xFFa6e3a1\"",
+                     info.net_name,
+                     info.net_ip);
+        } else if (info.net_name[0] != '\0') {
+            snprintf(cmd, sizeof(cmd),
+                     "sketchybar --set system_info.net "
+                     "label=\"Wi-Fi: %s\" "
+                     "icon.color=\"0xFFa6e3a1\"",
+                     info.net_name);
+        } else {
+            snprintf(cmd, sizeof(cmd),
+                     "sketchybar --set system_info.net "
+                     "label=\"Network: %s\" "
+                     "icon.color=\"0xFFa6e3a1\"",
+                     info.net_ip);
+        }
     } else {
         snprintf(cmd, sizeof(cmd),
                  "sketchybar --set system_info.net "
-                 "label=\"Wi-Fi Offline\" "
+                 "label=\"Wi-Fi: Disconnected\" "
                  "icon.color=\"0xFFf38ba8\"");
     }
     system(cmd);

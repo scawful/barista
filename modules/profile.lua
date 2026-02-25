@@ -93,6 +93,16 @@ function profile.merge_config(base_config, user_profile)
     end
   end
 
+  -- Merge modes (allow profiles to override auto defaults)
+  if user_profile.modes then
+    base_config.modes = base_config.modes or {}
+    for k, v in pairs(user_profile.modes) do
+      if base_config.modes[k] == nil or base_config.modes[k] == "auto" then
+        base_config.modes[k] = v
+      end
+    end
+  end
+
   -- Merge space icons
   if user_profile.spaces and user_profile.spaces.icons then
     base_config.space_icons = base_config.space_icons or {}

@@ -1,5 +1,61 @@
 local M = {}
 
+local function command_available(command)
+  if not command or command == "" then
+    return false
+  end
+  local handle = io.popen(string.format("command -v %q 2>/dev/null", command))
+  if not handle then
+    return false
+  end
+  local result = handle:read("*a") or ""
+  handle:close()
+  result = result:gsub("%s+$", "")
+  return result ~= ""
+end
+
+local function service_running(name)
+  if not name or name == "" then
+    return false
+  end
+  local handle = io.popen(string.format("pgrep -x %q >/dev/null 2>&1 && echo 1 || echo 0", name))
+  if not handle then
+    return false
+  end
+  local result = handle:read("*a") or ""
+  handle:close()
+  return result:match("1") ~= nil
+end
+
+local function normalize_mode(mode)
+  if not mode or mode == "" then
+    return "auto"
+  end
+  mode = tostring(mode):lower()
+  if mode == "off" or mode == "false" or mode == "none" or mode == "disable" or mode == "disabled" then
+    return "disabled"
+  end
+  if mode == "optional" or mode == "opt" then
+    return "optional"
+  end
+  if mode == "required" or mode == "require" or mode == "enabled" or mode == "enable" or mode == "on" then
+    return "required"
+  end
+  return mode
+end
+
+local function window_manager_enabled(opts)
+  local mode = normalize_mode(opts and opts.window_manager_mode or os.getenv("BARISTA_WINDOW_MANAGER_MODE"))
+  local has_yabai = command_available("yabai")
+  if mode == "disabled" then
+    return false
+  end
+  if mode == "optional" then
+    return service_running("yabai")
+  end
+  return has_yabai
+end
+
 local function menu_label(label, shortcut)
   if shortcut and shortcut ~= "" then
     return string.format("%-17s %s", label, shortcut)
@@ -135,9 +191,10 @@ local function default_menu(ctx)
   local config_dir = ctx.config_dir
   local YABAI_CONTROL_SCRIPT = ctx.yabai_control_script
   local SKHD_CONTROL_SCRIPT = ctx.skhd_control_script
+  local wm_enabled = window_manager_enabled({ window_manager_mode = ctx.window_manager_mode })
 
   local sketchybar_tool_items = {
-    { type = "item", name = "menu.sketchybar.reload", icon = "󰑐", label = "Reload Bar", action = call_script(config_dir .. "/plugins/reload_bar.sh") },
+    { type = "item", name = "menu.sketchybar.reload", icon = "󰑐", label = "Reload Bar", action = call_script(config_dir .. "/plugins/reload_sketchybar.sh") },
     { type = "item", name = "menu.sketchybar.logs", icon = "󰍛", label = "Follow Logs (Terminal)", action = string.format("open -a Terminal %q", config_dir .. "/logs") },
     { type = "item", name = "menu.sketchybar.config", icon = "󰒓", label = "Open Config Folder", action = string.format("open %q", config_dir) },
     { type = "item", name = "menu.sketchybar.accessibility", icon = "󰈈", label = "Repair Accessibility", action = call_script(scripts_dir .. "/yabai_accessibility_fix.sh") },
@@ -166,15 +223,15 @@ local function default_menu(ctx)
     { type = "item", name = "menu.apps.finder", icon = "", label = "Finder", action = "open -a Finder" },
     { type = "item", name = "menu.apps.vscode", icon = "󰨞", label = "VS Code", action = "open -a 'Visual Studio Code'" },
     { type = "item", name = "menu.apps.activity", icon = "󰨇", label = "Activity Monitor", action = "open -a 'Activity Monitor'" },
-    { type = "item", name = "menu.apps.reload", icon = "󰑐", label = "Reload SketchyBar", action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload" },
+    { type = "item", name = "menu.apps.reload", icon = "󰑐", label = "Reload SketchyBar", action = "/opt/homebrew/bin/sketchybar --reload" },
   }
 
   local help_items = {
-    { type = "item", name = "menu.help.handoff", icon = "󰣖", label = "Open HANDOFF Notes", action = string.format("open %q", config_dir .. "/HANDOFF.md") },
+    { type = "item", name = "menu.help.handoff", icon = "󰣖", label = "Open HANDOFF Notes", action = string.format("open %q", config_dir .. "/docs/guides/HANDOFF.md") },
     { type = "item", name = "menu.help.docs", icon = "󰋖", label = "Docs Folder", action = string.format("open %q", config_dir .. "/docs") },
   }
 
-  return {
+  local menu_items = {
     { type = "header", name = "menu.system.header", label = "System" },
     { type = "item", name = "menu.system.about", icon = "󰋗", label = "About This Mac", action = "open -a 'System Information'" },
     { type = "item", name = "menu.system.settings", icon = "", label = "System Settings…", action = "open -a 'System Settings'", shortcut = "⌘," },
@@ -184,11 +241,17 @@ local function default_menu(ctx)
     { type = "item", name = "menu.system.lock", icon = "󰷛", label = "Lock Screen", action = [[osascript -e 'tell application "System Events" to keystroke "q" using {control down, command down}']], shortcut = "⌃⌘Q" },
     { type = "separator", name = "menu.system.sep2" },
     { type = "submenu", name = "menu.sketchybar.tools", icon = "󰒓", label = "SketchyBar Tools", items = sketchybar_tool_items },
-    { type = "submenu", name = "menu.yabai.section", icon = "󱂬", label = "Yabai Controls", items = yabai_control_items },
-    { type = "submenu", name = "menu.windows.section", icon = "󰍿", label = "Window Actions", items = window_action_items },
-    { type = "submenu", name = "menu.apps.section", icon = "󰖟", label = "Apps & Tools", items = app_tool_items },
-    { type = "submenu", name = "menu.help.section", icon = "󰋖", label = "Help & Tips", items = help_items },
   }
+
+  if wm_enabled then
+    table.insert(menu_items, { type = "submenu", name = "menu.yabai.section", icon = "󱂬", label = "Yabai Controls", items = yabai_control_items })
+    table.insert(menu_items, { type = "submenu", name = "menu.windows.section", icon = "󰍿", label = "Window Actions", items = window_action_items })
+  end
+
+  table.insert(menu_items, { type = "submenu", name = "menu.apps.section", icon = "󰖟", label = "Apps & Tools", items = app_tool_items })
+  table.insert(menu_items, { type = "submenu", name = "menu.help.section", icon = "󰋖", label = "Help & Tips", items = help_items })
+
+  return menu_items
 end
 
 function M.setup(opts)
@@ -209,6 +272,7 @@ function M.setup(opts)
     config_dir = opts.config_dir,
     yabai_control_script = opts.yabai_control_script,
     skhd_control_script = opts.skhd_control_script,
+    window_manager_mode = opts.window_manager_mode,
     button = (opts.button_name or "zelda"),
   }
   ctx.popup = "popup." .. ctx.button

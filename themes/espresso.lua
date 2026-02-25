@@ -7,6 +7,7 @@ return {
   },
   clock = 0x802A211C,   -- Matte roast
   volume = 0x8042332B,  -- Warm copper
+  battery = 0x8042332B,  -- Warm copper (match volume)
 
   -- Palette
   ESPRESSO = "0xFF1C130E",

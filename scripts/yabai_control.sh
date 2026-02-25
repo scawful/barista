@@ -5,6 +5,11 @@ YABAI_BIN="${YABAI_BIN:-$(command -v yabai || true)}"
 JQ_BIN="${JQ_BIN:-$(command -v jq || true)}"
 SKHD_BIN="${SKHD_BIN:-$(command -v skhd || true)}"
 CONFIG_DIR="${BARISTA_CONFIG_DIR:-$HOME/.config/sketchybar}"
+SPACE_FOCUS_TIMEOUT_SEC="${SPACE_FOCUS_TIMEOUT_SEC:-1}"
+SPACE_QUERY_TIMEOUT_SEC="${SPACE_QUERY_TIMEOUT_SEC:-1}"
+SPACE_FOCUS_LOCK_STALE_SEC="${SPACE_FOCUS_LOCK_STALE_SEC:-2}"
+SPACE_FOCUS_LOCK_DIR="/tmp/yabai_control_space_focus_${UID}.lock"
+SPACE_FOCUS_OSASCRIPT_FALLBACK="${SPACE_FOCUS_OSASCRIPT_FALLBACK:-0}"
 
 if [[ -z "$YABAI_BIN" ]]; then
   echo "yabai not found in PATH." >&2
@@ -18,19 +23,92 @@ require_jq() {
   fi
 }
 
+run_with_timeout() {
+  local timeout_s="$1"
+  shift
+  if command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$timeout_s" "$@"
+    return $?
+  fi
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$timeout_s" "$@"
+    return $?
+  fi
+  if command -v perl >/dev/null 2>&1; then
+    perl -e 'alarm shift; exec @ARGV' "$timeout_s" "$@"
+    return $?
+  fi
+  "$@"
+}
+
+acquire_space_focus_lock() {
+  if mkdir "$SPACE_FOCUS_LOCK_DIR" 2>/dev/null; then
+    return 0
+  fi
+
+  local now mtime age
+  now=$(date +%s)
+  mtime=$(stat -f %m "$SPACE_FOCUS_LOCK_DIR" 2>/dev/null || echo 0)
+  age=$(( now - mtime ))
+  if (( age > SPACE_FOCUS_LOCK_STALE_SEC )); then
+    rmdir "$SPACE_FOCUS_LOCK_DIR" 2>/dev/null || true
+    mkdir "$SPACE_FOCUS_LOCK_DIR" 2>/dev/null
+    return $?
+  fi
+  return 1
+}
+
+release_space_focus_lock() {
+  rmdir "$SPACE_FOCUS_LOCK_DIR" 2>/dev/null || true
+}
+
 current_space_index() {
   require_jq
-  "$YABAI_BIN" -m query --spaces --space | "$JQ_BIN" -r '.index'
+  local current
+
+  current=$(
+    run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --windows --window 2>/dev/null \
+      | "$JQ_BIN" -r '.space // empty' \
+      | head -n 1
+  )
+  if [[ -n "$current" && "$current" != "null" ]]; then
+    echo "$current"
+    return 0
+  fi
+
+  current=$(
+    run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --spaces --display 2>/dev/null \
+      | "$JQ_BIN" -r '.[] | select(.["has-focus"] == true or .["is-visible"] == true) | .index' \
+      | head -n 1
+  )
+  if [[ -n "$current" && "$current" != "null" ]]; then
+    echo "$current"
+    return 0
+  fi
+
+  return 1
 }
 
 current_space_layout() {
   require_jq
-  "$YABAI_BIN" -m query --spaces --space | "$JQ_BIN" -r '.type'
+  local layout
+
+  layout=$(
+    run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --spaces --display 2>/dev/null \
+      | "$JQ_BIN" -r '.[] | select(.["has-focus"] == true or .["is-visible"] == true) | .type' \
+      | head -n 1
+  )
+  if [[ -n "$layout" && "$layout" != "null" ]]; then
+    echo "$layout"
+    return 0
+  fi
+
+  return 1
 }
 
 display_space_indices() {
   require_jq
-  "$YABAI_BIN" -m query --spaces --display | "$JQ_BIN" -r '.[].index'
+  run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --spaces --display | "$JQ_BIN" -r '.[].index'
 }
 
 neighbor_space_index() {
@@ -65,30 +143,62 @@ neighbor_space_index() {
 space_focus_safe() {
   local target="$1"
   local direction="${2:-$target}"
-  if "$YABAI_BIN" -m space --focus "$target" >/dev/null 2>&1; then
+  if run_with_timeout "$SPACE_FOCUS_TIMEOUT_SEC" "$YABAI_BIN" -m space --focus "$target" >/dev/null 2>&1; then
     return 0
   fi
 
-  case "$direction" in
-    next)
-      osascript -e 'tell application "System Events" to key code 124 using control down' >/dev/null 2>&1
-      return 0
-      ;;
-    prev)
-      osascript -e 'tell application "System Events" to key code 123 using control down' >/dev/null 2>&1
-      return 0
-      ;;
-  esac
+  if space_focus_events_fallback "$direction"; then
+    return 0
+  fi
 
   echo "space focus failed (scripting addition likely missing)" >&2
   return 1
 }
 
+space_focus_events_fallback() {
+  local direction="$1"
+  if [[ "$SPACE_FOCUS_OSASCRIPT_FALLBACK" != "1" ]]; then
+    return 1
+  fi
+  case "$direction" in
+    next)
+      run_with_timeout "$SPACE_FOCUS_TIMEOUT_SEC" osascript -e 'tell application "System Events" to key code 124 using control down' >/dev/null 2>&1 || true
+      return 0
+      ;;
+    prev)
+      run_with_timeout "$SPACE_FOCUS_TIMEOUT_SEC" osascript -e 'tell application "System Events" to key code 123 using control down' >/dev/null 2>&1 || true
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
 space_focus_wrap() {
   local direction="$1"
-  local target
-  target=$(neighbor_space_index "$direction") || return 1
-  space_focus_safe "$target" "$direction"
+  if ! acquire_space_focus_lock; then
+    # Drop repeated keypresses while a focus command is already in-flight.
+    return 0
+  fi
+
+  local rc=0
+  run_with_timeout "$SPACE_FOCUS_TIMEOUT_SEC" "$YABAI_BIN" -m space --focus "$direction" >/dev/null 2>&1 || rc=$?
+  release_space_focus_lock
+
+  if (( rc == 0 )); then
+    return 0
+  fi
+  if (( rc == 124 )); then
+    # Yabai focus command timed out; skip additional focus attempts for this press.
+    return 0
+  fi
+
+  if space_focus_events_fallback "$direction"; then
+    return 0
+  fi
+
+  echo "space focus failed (scripting addition likely missing)" >&2
+  return 1
 }
 
 window_space_wrap() {
@@ -106,7 +216,7 @@ space_focus_app() {
   fi
   require_jq
   local space
-  space=$("$YABAI_BIN" -m query --windows | "$JQ_BIN" -r --arg app "$app" '.[] | select(.app == $app) | .space' | head -n 1)
+  space=$(run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --windows | "$JQ_BIN" -r --arg app "$app" '.[] | select(.app == $app) | .space' | head -n 1)
   if [[ -z "$space" ]]; then
     echo "No window found for app: $app" >&2
     exit 1
@@ -387,8 +497,8 @@ shift || true
 
 case "$command" in
   status)
-    layout=$(current_space_layout)
-    current=$(current_space_index)
+    layout=$(current_space_layout 2>/dev/null || echo "unknown")
+    current=$(current_space_index 2>/dev/null || echo "unknown")
     echo "layout: $layout"
     echo "current space: $current"
     ;;

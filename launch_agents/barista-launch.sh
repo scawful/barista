@@ -1,5 +1,7 @@
 #!/bin/bash
 # Barista supervisor script for SketchyBar, Yabai, and skhd.
+# Canonical copy: ~/src/lab/barista/launch_agents/barista-launch.sh
+# When ~/.config/sketchybar is a symlink to lab/barista, the plist runs this via $HOME/.config/sketchybar/launch_agents/barista-launch.sh
 
 set -euo pipefail
 

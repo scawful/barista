@@ -12,6 +12,19 @@ function widgets.create_factory(sbar, theme, settings, state_data)
     return math.floor(value * scale + 0.5)
   end
 
+  local function popup_background()
+    local appearance = state_data.appearance or {}
+    local padding = appearance.popup_padding or 8
+    return {
+      border_width = appearance.popup_border_width or 2,
+      corner_radius = appearance.popup_corner_radius or 6,
+      border_color = appearance.popup_border_color or theme.WHITE,
+      color = appearance.popup_bg_color or theme.bar.bg,
+      padding_left = padding,
+      padding_right = padding,
+    }
+  end
+
   -- Get widget color from state
   local function widget_color(name, fallback)
     local color = state_data.widget_colors and state_data.widget_colors[name]
@@ -69,12 +82,15 @@ function widgets.create_factory(sbar, theme, settings, state_data)
 
   -- Create a popup widget
   function factory.create_popup(parent_name, config)
+    local background = popup_background()
     local popup_config = {
       background = {
-        border_width = 2,
-        corner_radius = 4,
-        border_color = theme.WHITE,
-        color = theme.bar.bg,
+        border_width = background.border_width,
+        corner_radius = background.corner_radius,
+        border_color = background.border_color,
+        color = background.color,
+        padding_left = background.padding_left,
+        padding_right = background.padding_right,
       }
     }
 
@@ -207,12 +223,7 @@ function widgets.create_factory(sbar, theme, settings, state_data)
       },
       click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
       popup = {
-        background = {
-          border_width = 2,
-          corner_radius = 4,
-          border_color = theme.WHITE,
-          color = theme.bar.bg,
-        }
+        background = popup_background()
       }
     }
 

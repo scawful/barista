@@ -17,6 +17,15 @@ profile.integrations = {
   emacs = true,       -- Personal Emacs org-mode workflows
   halext = false,     -- halext-org (when ready)
   cortex = true,      -- Cortex + AFS quick actions
+  journal = true,     -- Journal/org-mode capture + inbox
+  nerv = true,        -- NERV transfer queue status
+  halext_org = true,  -- Halext-org dashboard widget
+  workspace = true,   -- Workspace status
+}
+
+-- Window manager mode (expects yabai/skhd for personal setup)
+profile.modes = {
+  window_manager = "required",
 }
 
 -- Custom paths

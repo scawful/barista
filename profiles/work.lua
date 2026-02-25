@@ -15,6 +15,15 @@ profile.integrations = {
   halext = true,      -- Use halext-org for task management
   cpp_dev = true,     -- C++ development tools
   ssh_cloud = true,   -- SSH and cloud workflows
+  journal = false,    -- Hide personal journal at work
+  nerv = false,       -- Hide NERV at work
+  halext_org = true,  -- Halext-org dashboard
+  workspace = true,   -- Workspace status
+}
+
+-- Window manager mode (expects yabai/skhd on work machines)
+profile.modes = {
+  window_manager = "required",
 }
 
 -- Custom paths

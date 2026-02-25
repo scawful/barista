@@ -16,6 +16,9 @@ profile.integrations = {
   halext = false,
   cortex = false,
   oracle = false,
+  journal = false,
+  nerv = false,
+  halext_org = false,
 }
 
 -- Window manager mode (keep yabai/skhd optional)

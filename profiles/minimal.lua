@@ -14,6 +14,14 @@ profile.integrations = {
   yaze = false,
   emacs = false,
   halext = false,
+  journal = false,
+  nerv = false,
+  halext_org = false,
+}
+
+-- Window manager mode (opt-in when yabai is running)
+profile.modes = {
+  window_manager = "optional",
 }
 
 -- Custom paths (none for minimal)

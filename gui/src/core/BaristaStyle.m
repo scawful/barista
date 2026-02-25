@@ -19,7 +19,7 @@
 - (instancetype)init {
   self = [super init];
   if (self) {
-    self.sidebarWidth = 240.0;
+    self.sidebarWidth = 260.0;
     [self refreshFromConfig];
   }
   return self;
@@ -194,9 +194,9 @@
   self.gridColor = [self.textColor colorWithAlphaComponent:0.06];
   self.selectionColor = [self.accentColor colorWithAlphaComponent:0.18];
 
-  self.titleFont = [self monoFontOfSize:15.0 weight:NSFontWeightSemibold];
-  self.sectionFont = [self monoFontOfSize:12.0 weight:NSFontWeightSemibold];
-  self.bodyFont = [self monoFontOfSize:11.0 weight:NSFontWeightRegular];
+  self.titleFont = [self monoFontOfSize:18.0 weight:NSFontWeightSemibold];
+  self.sectionFont = [self monoFontOfSize:14.0 weight:NSFontWeightSemibold];
+  self.bodyFont = [self monoFontOfSize:13.0 weight:NSFontWeightRegular];
 }
 
 - (void)applyWindowStyle:(NSWindow *)window {

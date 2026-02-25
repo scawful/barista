@@ -185,8 +185,8 @@ static char kWorkflowActionKey;
   scroll.backgroundColor = style.backgroundColor;
   CGFloat width = scroll.contentSize.width;
   NSFont *buttonFont = [self preferredTextFontWithSize:12 weight:NSFontWeightRegular];
-  NSArray *docs = [self workflowArrayForKey:@"docs" fallback:nil];
-  NSArray *actions = [self workflowArrayForKey:@"actions" fallback:nil];
+  NSArray *docs = [self filteredWorkflowItems:[self workflowArrayForKey:@"docs" fallback:nil]];
+  NSArray *actions = [self filteredWorkflowItems:[self workflowArrayForKey:@"actions" fallback:nil]];
   NSInteger rows = MAX(1, docs.count);
   NSInteger actionRows = MAX(1, (actions.count + 1) / 2);
   CGFloat height = MAX(420.0, 60.0 + rows * 34.0 + actionRows * 42.0 + 100.0);
@@ -427,10 +427,13 @@ static char kWorkflowActionKey;
   NSArray *sections = [self workflowArrayForKey:@"keymap" fallback:nil];
   for (NSDictionary *section in sections) {
     NSString *title = section[@"section"] ?: @"Shortcuts";
-    [rows addObject:@{ @"type": @"section", @"title": title }];
     NSArray *items = section[@"items"];
-    if (![items isKindOfClass:[NSArray class]]) continue;
-    for (NSDictionary *item in items) {
+    NSArray *filteredItems = [self filteredWorkflowItems:items];
+    if (filteredItems.count == 0) {
+      continue;
+    }
+    [rows addObject:@{ @"type": @"section", @"title": title }];
+    for (NSDictionary *item in filteredItems) {
       NSString *keys = item[@"keys"] ?: @"";
       NSString *desc = item[@"description"] ?: @"";
       [rows addObject:@{
@@ -786,6 +789,50 @@ static char kWorkflowActionKey;
   return fallback ?: @[];
 }
 
+- (BOOL)isIntegrationEnabled:(NSString *)name {
+  if (![name isKindOfClass:[NSString class]] || name.length == 0) {
+    return YES;
+  }
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *keyPath = [NSString stringWithFormat:@"integrations.%@.enabled", name];
+  id value = [config valueForKeyPath:keyPath defaultValue:nil];
+  if ([value isKindOfClass:[NSNumber class]]) {
+    return [value boolValue];
+  }
+  return NO;
+}
+
+- (BOOL)workflowItemIsAvailable:(NSDictionary *)item {
+  id requires = item[@"requires"];
+  if ([requires isKindOfClass:[NSString class]]) {
+    return [self isIntegrationEnabled:requires];
+  }
+  if ([requires isKindOfClass:[NSArray class]]) {
+    for (id entry in (NSArray *)requires) {
+      if ([entry isKindOfClass:[NSString class]] && ![self isIntegrationEnabled:entry]) {
+        return NO;
+      }
+    }
+  }
+  return YES;
+}
+
+- (NSArray<NSDictionary *> *)filteredWorkflowItems:(NSArray<NSDictionary *> *)items {
+  if (![items isKindOfClass:[NSArray class]]) {
+    return @[];
+  }
+  NSMutableArray *filtered = [NSMutableArray array];
+  for (NSDictionary *item in items) {
+    if (![item isKindOfClass:[NSDictionary class]]) {
+      continue;
+    }
+    if ([self workflowItemIsAvailable:item]) {
+      [filtered addObject:item];
+    }
+  }
+  return filtered;
+}
+
 - (NSDictionary *)loadWorkflowData {
   if (![self.configPath isKindOfClass:[NSString class]] || self.configPath.length == 0) {
     return @{};
@@ -900,6 +947,18 @@ static char kWorkflowActionKey;
     alert.informativeText = [NSString stringWithFormat:@"Build icon_browser first: cd %@/gui && make icon_browser", self.configPath];
     [alert runModal];
   }
+}
+
+- (void)openKeyboardOverlay:(id)sender {
+  NSString *script = [self.scriptsPath stringByAppendingPathComponent:@"open_keyboard_overlay.sh"];
+  if ([[NSFileManager defaultManager] isExecutableFileAtPath:script]) {
+    [self runScript:script arguments:@[]];
+    return;
+  }
+  NSAlert *alert = [[NSAlert alloc] init];
+  alert.messageText = @"Keyboard Overlay Not Found";
+  alert.informativeText = @"Missing open_keyboard_overlay.sh script in the Barista scripts directory.";
+  [alert runModal];
 }
 
 - (NSString *)resolveSysManualBinary {

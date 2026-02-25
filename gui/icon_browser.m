@@ -15,6 +15,76 @@
 
 @implementation IconBrowserController
 
+- (NSString *)resolvedConfigPath {
+  NSString *configPath = [[[NSProcessInfo processInfo] environment] objectForKey:@"BARISTA_CONFIG_DIR"];
+  if (!configPath.length) {
+    configPath = [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"];
+  }
+  if ([configPath hasPrefix:@"~/"]) {
+    configPath = [NSHomeDirectory() stringByAppendingPathComponent:[configPath substringFromIndex:2]];
+  }
+  return configPath;
+}
+
+- (void)appendIconsFromMap:(NSDictionary *)map category:(NSString *)category {
+  if (![map isKindOfClass:[NSDictionary class]] || map.count == 0) {
+    return;
+  }
+  for (NSString *name in map) {
+    id glyph = map[name];
+    if (![glyph isKindOfClass:[NSString class]]) {
+      continue;
+    }
+    NSString *glyphStr = (NSString *)glyph;
+    if (glyphStr.length == 0) {
+      continue;
+    }
+    [self.allIcons addObject:@{
+      @"name": name ?: @"",
+      @"glyph": glyphStr,
+      @"category": category ?: @"custom"
+    }];
+  }
+}
+
+- (void)appendIconsFromJSONFile:(NSString *)path category:(NSString *)category {
+  if (!path.length) {
+    return;
+  }
+  NSData *data = [NSData dataWithContentsOfFile:path];
+  if (!data.length) {
+    return;
+  }
+  NSError *error = nil;
+  id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+  if (!json || error) {
+    return;
+  }
+  if ([json isKindOfClass:[NSDictionary class]]) {
+    [self appendIconsFromMap:(NSDictionary *)json category:category];
+  }
+}
+
+- (void)appendIconsFromStateFile:(NSString *)path {
+  if (!path.length) {
+    return;
+  }
+  NSData *data = [NSData dataWithContentsOfFile:path];
+  if (!data.length) {
+    return;
+  }
+  NSError *error = nil;
+  id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+  if (!json || error || ![json isKindOfClass:[NSDictionary class]]) {
+    return;
+  }
+  NSDictionary *state = (NSDictionary *)json;
+  id icons = state[@"icons"];
+  if ([icons isKindOfClass:[NSDictionary class]]) {
+    [self appendIconsFromMap:(NSDictionary *)icons category:@"custom"];
+  }
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
   [self loadIconLibrary];
   [self buildWindow];
@@ -32,27 +102,47 @@
                         @"local json = require('json'); "
                         @"print(json.encode(icons.get_all()))";
 
-  NSTask *task = [[NSTask alloc] init];
-  task.launchPath = @"/usr/bin/lua";
-  task.arguments = @[@"-e", luaScript];
+  NSString *luaPath = nil;
+  NSArray<NSString *> *luaCandidates = @[
+    @"/opt/homebrew/bin/lua",
+    @"/usr/local/bin/lua",
+    @"/usr/bin/lua"
+  ];
+  NSFileManager *fileManager = [NSFileManager defaultManager];
+  for (NSString *candidate in luaCandidates) {
+    if ([fileManager isExecutableFileAtPath:candidate]) {
+      luaPath = candidate;
+      break;
+    }
+  }
 
-  NSPipe *pipe = [NSPipe pipe];
-  task.standardOutput = pipe;
-  task.standardError = pipe;
+  if (luaPath) {
+    NSTask *task = [[NSTask alloc] init];
+    task.launchPath = luaPath;
+    task.arguments = @[@"-e", luaScript];
 
-  [task launch];
-  [task waitUntilExit];
+    NSPipe *pipe = [NSPipe pipe];
+    task.standardOutput = pipe;
+    task.standardError = pipe;
 
-  NSData *data = [[pipe fileHandleForReading] readDataToEndOfFile];
-  NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    @try {
+      [task launch];
+      [task waitUntilExit];
 
-  if (task.terminationStatus == 0 && output.length > 0) {
-    NSError *error = nil;
-    id jsonArray = [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding]
-                                                   options:0
-                                                     error:&error];
-    if ([jsonArray isKindOfClass:[NSArray class]]) {
-      [self.allIcons addObjectsFromArray:jsonArray];
+      NSData *data = [[pipe fileHandleForReading] readDataToEndOfFile];
+      NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+
+      if (task.terminationStatus == 0 && output.length > 0) {
+        NSError *error = nil;
+        id jsonArray = [NSJSONSerialization JSONObjectWithData:[output dataUsingEncoding:NSUTF8StringEncoding]
+                                                       options:0
+                                                         error:&error];
+        if ([jsonArray isKindOfClass:[NSArray class]]) {
+          [self.allIcons addObjectsFromArray:jsonArray];
+        }
+      }
+    } @catch (NSException *exception) {
+      // Fall back to bundled icons if Lua is unavailable.
     }
   }
 
@@ -60,6 +150,11 @@
   if (self.allIcons.count == 0) {
     [self loadFallbackIcons];
   }
+
+  NSString *configPath = [self resolvedConfigPath];
+  [self appendIconsFromJSONFile:[configPath stringByAppendingPathComponent:@"icon_map.json"]
+                        category:@"applications"];
+  [self appendIconsFromStateFile:[configPath stringByAppendingPathComponent:@"state.json"]];
 
   self.filteredIcons = [self.allIcons mutableCopy];
 }

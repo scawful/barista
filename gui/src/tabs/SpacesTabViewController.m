@@ -22,149 +22,183 @@
 - (void)viewDidLoad {
   [super viewDidLoad];
 
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  CGFloat y = self.view.bounds.size.height - 40;
-  CGFloat leftMargin = 40;
+  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
+  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  rootStack.alignment = NSLayoutAttributeLeading;
+  rootStack.spacing = 24;
+  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
+  [self.view addSubview:rootStack];
 
   // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 400, 30)];
+  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
   title.stringValue = @"Space Customization";
-  title.font = [NSFont systemFontOfSize:20 weight:NSFontWeightBold];
+  title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
   title.bordered = NO;
   title.editable = NO;
   title.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:title];
-  y -= 60;
+  [rootStack addView:title inGravity:NSStackViewGravityTop];
 
-  // Space Selector
-  NSTextField *spaceLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 100, 20)];
+  // Space Selector Row
+  NSStackView *selectorRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  selectorRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  selectorRow.spacing = 12;
+  [rootStack addView:selectorRow inGravity:NSStackViewGravityTop];
+
+  NSTextField *spaceLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
   spaceLabel.stringValue = @"Space:";
+  spaceLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
   spaceLabel.bordered = NO;
   spaceLabel.editable = NO;
   spaceLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:spaceLabel];
+  [selectorRow addView:spaceLabel inGravity:NSStackViewGravityLeading];
 
-  self.spaceSelector = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(leftMargin + 110, y - 3, 150, 26)];
+  self.spaceSelector = [[NSPopUpButton alloc] initWithFrame:NSZeroRect];
   for (int i = 1; i <= 10; i++) {
     [self.spaceSelector addItemWithTitle:[NSString stringWithFormat:@"Space %d", i]];
   }
   self.spaceSelector.target = self;
   self.spaceSelector.action = @selector(spaceChanged:);
-  [self.view addSubview:self.spaceSelector];
-  y -= 60;
+  [self.spaceSelector.widthAnchor constraintEqualToConstant:150].active = YES;
+  [selectorRow addView:self.spaceSelector inGravity:NSStackViewGravityLeading];
+
+  [rootStack setCustomSpacing:40 afterView:selectorRow];
 
   // Icon Section
-  NSTextField *iconSectionLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 200, 24)];
-  iconSectionLabel.stringValue = @"Space Icon";
-  iconSectionLabel.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
+  NSTextField *iconSectionLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  iconSectionLabel.stringValue = @"SPACE ICON";
+  iconSectionLabel.font = [NSFont systemFontOfSize:12 weight:NSFontWeightBold];
+  iconSectionLabel.textColor = [NSColor secondaryLabelColor];
   iconSectionLabel.bordered = NO;
   iconSectionLabel.editable = NO;
   iconSectionLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:iconSectionLabel];
-  y -= 40;
+  [rootStack addView:iconSectionLabel inGravity:NSStackViewGravityTop];
 
-  // Icon Preview
-  self.iconPreview = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 100, 80)];
+  NSStackView *iconContent = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  iconContent.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  iconContent.spacing = 20;
+  iconContent.alignment = NSLayoutAttributeCenterY;
+  [rootStack addView:iconContent inGravity:NSStackViewGravityTop];
+
+  // Icon Preview Box
+  NSView *previewBox = [[NSView alloc] initWithFrame:NSZeroRect];
+  previewBox.wantsLayer = YES;
+  previewBox.layer.backgroundColor = [[NSColor blackColor] colorWithAlphaComponent:0.2].CGColor;
+  previewBox.layer.cornerRadius = 8;
+  [previewBox.widthAnchor constraintEqualToConstant:100].active = YES;
+  [previewBox.heightAnchor constraintEqualToConstant:100].active = YES;
+  [iconContent addView:previewBox inGravity:NSStackViewGravityLeading];
+
+  self.iconPreview = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 100, 100)];
   self.iconPreview.stringValue = @"󰝚";
-  self.iconPreview.font = [self preferredIconFontWithSize:64];
+  self.iconPreview.font = [self preferredIconFontWithSize:60];
   self.iconPreview.bordered = NO;
   self.iconPreview.editable = NO;
   self.iconPreview.backgroundColor = [NSColor clearColor];
   self.iconPreview.alignment = NSTextAlignmentCenter;
-  [self.view addSubview:self.iconPreview];
+  self.iconPreview.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  [previewBox addSubview:self.iconPreview];
 
-  // Icon Input
-  NSTextField *iconLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + 120, y + 30, 100, 20)];
-  iconLabel.stringValue = @"Glyph:";
-  iconLabel.bordered = NO;
-  iconLabel.editable = NO;
-  iconLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:iconLabel];
+  NSStackView *iconControls = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  iconControls.orientation = NSUserInterfaceLayoutOrientationVertical;
+  iconControls.spacing = 12;
+  iconControls.alignment = NSLayoutAttributeLeading;
+  [iconContent addView:iconControls inGravity:NSStackViewGravityLeading];
 
-  self.iconField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + 180, y + 28, 200, 24)];
-  self.iconField.placeholderString = @"Enter Nerd Font glyph...";
+  NSStackView *inputRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  inputRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  inputRow.spacing = 8;
+  [iconControls addView:inputRow inGravity:NSStackViewGravityTop];
+
+  self.iconField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  self.iconField.placeholderString = @"Glyph";
   self.iconField.font = [self preferredIconFontWithSize:16];
   self.iconField.target = self;
   self.iconField.action = @selector(iconChanged:);
-  [self.view addSubview:self.iconField];
+  [self.iconField.widthAnchor constraintEqualToConstant:120].active = YES;
+  [inputRow addView:self.iconField inGravity:NSStackViewGravityLeading];
 
-  NSButton *browseIconsButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 390, y + 26, 120, 28)];
+  NSButton *browseIconsButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [browseIconsButton setButtonType:NSButtonTypeMomentaryPushIn];
   [browseIconsButton setBezelStyle:NSBezelStyleRounded];
-  browseIconsButton.title = @"Browse Icons";
+  browseIconsButton.title = @"Icon Library";
   browseIconsButton.target = self;
   browseIconsButton.action = @selector(browseIcons:);
-  [self.view addSubview:browseIconsButton];
+  [inputRow addView:browseIconsButton inGravity:NSStackViewGravityLeading];
 
-  NSButton *clearIconButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 520, y + 26, 80, 28)];
+  NSButton *clearIconButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [clearIconButton setButtonType:NSButtonTypeMomentaryPushIn];
   [clearIconButton setBezelStyle:NSBezelStyleRounded];
   clearIconButton.title = @"Clear";
   clearIconButton.target = self;
   clearIconButton.action = @selector(clearIcon:);
-  [self.view addSubview:clearIconButton];
-  y -= 100;
+  [inputRow addView:clearIconButton inGravity:NSStackViewGravityLeading];
+
+  [rootStack setCustomSpacing:40 afterView:iconContent];
 
   // Layout Mode Section
-  NSTextField *modeSectionLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 200, 24)];
-  modeSectionLabel.stringValue = @"Layout Mode";
-  modeSectionLabel.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
+  NSTextField *modeSectionLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  modeSectionLabel.stringValue = @"LAYOUT MODE";
+  modeSectionLabel.font = [NSFont systemFontOfSize:12 weight:NSFontWeightBold];
+  modeSectionLabel.textColor = [NSColor secondaryLabelColor];
   modeSectionLabel.bordered = NO;
   modeSectionLabel.editable = NO;
   modeSectionLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:modeSectionLabel];
-  y -= 40;
+  [rootStack addView:modeSectionLabel inGravity:NSStackViewGravityTop];
 
-  // Mode Selector
-  self.modeSelector = [[NSSegmentedControl alloc] initWithFrame:NSMakeRect(leftMargin, y, 450, 28)];
+  self.modeSelector = [[NSSegmentedControl alloc] initWithFrame:NSZeroRect];
   self.modeSelector.segmentCount = 3;
   [self.modeSelector setLabel:@"Float (Default)" forSegment:0];
   [self.modeSelector setLabel:@"BSP Tiling" forSegment:1];
   [self.modeSelector setLabel:@"Stack Tiling" forSegment:2];
-  [self.modeSelector setWidth:150 forSegment:0];
   [self.modeSelector.cell setTrackingMode:NSSegmentSwitchTrackingSelectOne];
   self.modeSelector.target = self;
   self.modeSelector.action = @selector(modeChanged:);
-  [self.view addSubview:self.modeSelector];
-  y -= 60;
+  [self.modeSelector.widthAnchor constraintEqualToConstant:450].active = YES;
+  [rootStack addView:self.modeSelector inGravity:NSStackViewGravityTop];
 
-  // Description
-  NSTextField *descLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 500, 60)];
+  NSTextField *descLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
   descLabel.stringValue = @"• Float: Windows can be moved and resized freely\n• BSP: Binary space partitioning (tiling)\n• Stack: Windows stacked on top of each other";
-  descLabel.font = [NSFont systemFontOfSize:12];
+  descLabel.font = [NSFont systemFontOfSize:13];
   descLabel.bordered = NO;
   descLabel.editable = NO;
   descLabel.backgroundColor = [NSColor clearColor];
   descLabel.textColor = [NSColor secondaryLabelColor];
-  [self.view addSubview:descLabel];
-  y -= 80;
+  [rootStack addView:descLabel inGravity:NSStackViewGravityTop];
 
-  // Apply Button
-  self.applyButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin, y, 200, 32)];
+  [rootStack setCustomSpacing:40 afterView:descLabel];
+
+  // Action Buttons
+  NSStackView *buttonRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  buttonRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  buttonRow.spacing = 12;
+  [rootStack addView:buttonRow inGravity:NSStackViewGravityTop];
+
+  self.applyButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.applyButton setButtonType:NSButtonTypeMomentaryPushIn];
   [self.applyButton setBezelStyle:NSBezelStyleRounded];
-  self.applyButton.title = @"Apply to Current Space";
+  self.applyButton.title = @"Apply to Space";
+  self.applyButton.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
   self.applyButton.target = self;
   self.applyButton.action = @selector(applySettings:);
-  [self.view addSubview:self.applyButton];
+  [self.applyButton.widthAnchor constraintEqualToConstant:160].active = YES;
+  [buttonRow addView:self.applyButton inGravity:NSStackViewGravityLeading];
 
-  self.clearModeButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 220, y, 160, 32)];
+  self.clearModeButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.clearModeButton setButtonType:NSButtonTypeMomentaryPushIn];
   [self.clearModeButton setBezelStyle:NSBezelStyleRounded];
   self.clearModeButton.title = @"Clear Mode";
-  self.clearModeButton.toolTip = @"Stop enforcing layout for this space (use default)";
   self.clearModeButton.target = self;
   self.clearModeButton.action = @selector(clearMode:);
-  [self.view addSubview:self.clearModeButton];
+  [buttonRow addView:self.clearModeButton inGravity:NSStackViewGravityLeading];
 
-  self.resetModesButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 400, y, 180, 32)];
+  self.resetModesButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.resetModesButton setButtonType:NSButtonTypeMomentaryPushIn];
   [self.resetModesButton setBezelStyle:NSBezelStyleRounded];
-  self.resetModesButton.title = @"Reset All Modes";
-  self.resetModesButton.toolTip = @"Clear space_modes for every space";
+  self.resetModesButton.title = @"Reset All";
   self.resetModesButton.target = self;
   self.resetModesButton.action = @selector(resetAllModes:);
-  [self.view addSubview:self.resetModesButton];
+  [buttonRow addView:self.resetModesButton inGravity:NSStackViewGravityLeading];
 
   [self loadSpaceSettings];
 }

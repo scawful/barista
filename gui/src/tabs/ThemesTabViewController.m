@@ -35,95 +35,117 @@
   }
   self.availableThemes = [themes sortedArrayUsingSelector:@selector(compare:)];
 
-  CGFloat y = self.view.bounds.size.height - 40;
-  CGFloat leftMargin = 50;
+  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
+  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  rootStack.alignment = NSLayoutAttributeLeading;
+  rootStack.spacing = 24;
+  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
+  [self.view addSubview:rootStack];
 
   // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 400, 30)];
+  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
   title.stringValue = @"Theme Selection";
-  title.font = style.titleFont;
+  title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
   title.bordered = NO;
   title.editable = NO;
   title.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:title];
-  y -= 60;
+  [rootStack addView:title inGravity:NSStackViewGravityTop];
 
-  // Theme Selector
-  NSTextField *selectorLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 150, 20)];
-  selectorLabel.stringValue = @"Current Theme:";
-  selectorLabel.font = style.bodyFont;
+  // Theme Selector Row
+  NSStackView *selectorRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  selectorRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  selectorRow.spacing = 12;
+  [rootStack addView:selectorRow inGravity:NSStackViewGravityTop];
+
+  NSTextField *selectorLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  selectorLabel.stringValue = @"Active Theme:";
+  selectorLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
   selectorLabel.bordered = NO;
   selectorLabel.editable = NO;
   selectorLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:selectorLabel];
+  [selectorRow addView:selectorLabel inGravity:NSStackViewGravityLeading];
 
-  self.themeSelector = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(leftMargin + 160, y - 3, 300, 26)];
+  self.themeSelector = [[NSPopUpButton alloc] initWithFrame:NSZeroRect];
   for (NSString *theme in self.availableThemes) {
     [self.themeSelector addItemWithTitle:theme];
   }
   self.themeSelector.target = self;
   self.themeSelector.action = @selector(themeChanged:);
-  
+  [self.themeSelector.widthAnchor constraintEqualToConstant:250].active = YES;
+  [selectorRow addView:self.themeSelector inGravity:NSStackViewGravityLeading];
+
   // Load current theme from state
   NSString *currentTheme = [config valueForKeyPath:@"appearance.theme" defaultValue:@"default"];
   [self.themeSelector selectItemWithTitle:currentTheme];
   if (![self.themeSelector selectedItem]) {
     [self.themeSelector selectItemAtIndex:0];
   }
-  
-  [self.view addSubview:self.themeSelector];
-  y -= 60;
 
-  // Preview
-  NSTextField *previewLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 150, 20)];
-  previewLabel.stringValue = @"Theme Preview:";
-  previewLabel.font = style.sectionFont;
+  // Preview Section
+  NSTextField *previewLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  previewLabel.stringValue = @"PREVIEW";
+  previewLabel.font = [NSFont systemFontOfSize:12 weight:NSFontWeightBold];
+  previewLabel.textColor = [NSColor secondaryLabelColor];
   previewLabel.bordered = NO;
   previewLabel.editable = NO;
   previewLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:previewLabel];
-  y -= 40;
+  [rootStack addView:previewLabel inGravity:NSStackViewGravityTop];
 
-  NSView *previewBox = [[NSView alloc] initWithFrame:NSMakeRect(leftMargin, y - 200, 600, 200)];
+  NSView *previewBox = [[NSView alloc] initWithFrame:NSZeroRect];
   previewBox.wantsLayer = YES;
-  previewBox.layer.backgroundColor = style.panelColor.CGColor;
-  previewBox.layer.cornerRadius = 8;
-  [self.view addSubview:previewBox];
+  previewBox.layer.backgroundColor = [[NSColor blackColor] colorWithAlphaComponent:0.2].CGColor;
+  previewBox.layer.cornerRadius = 12;
+  [previewBox.widthAnchor constraintEqualToConstant:600].active = YES;
+  [previewBox.heightAnchor constraintEqualToConstant:120].active = YES;
+  [rootStack addView:previewBox inGravity:NSStackViewGravityTop];
 
-  self.themePreview = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 80, 560, 40)];
+  self.themePreview = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.themePreview.stringValue = @"Theme colors will be applied to the bar";
-  self.themePreview.font = style.sectionFont;
+  self.themePreview.font = [NSFont systemFontOfSize:16 weight:NSFontWeightMedium];
   self.themePreview.bordered = NO;
   self.themePreview.editable = NO;
   self.themePreview.alignment = NSTextAlignmentCenter;
+  self.themePreview.backgroundColor = [NSColor clearColor];
   self.themePreview.tag = 9901;
+  self.themePreview.translatesAutoresizingMaskIntoConstraints = NO;
   [previewBox addSubview:self.themePreview];
-  y -= 250;
+  [self.themePreview.centerXAnchor constraintEqualToAnchor:previewBox.centerXAnchor].active = YES;
+  [self.themePreview.centerYAnchor constraintEqualToAnchor:previewBox.centerYAnchor].active = YES;
 
-  // Apply Button
-  NSButton *applyButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin, y, 200, 32)];
+  [rootStack setCustomSpacing:40 afterView:previewBox];
+
+  // Action Buttons
+  NSStackView *buttonRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  buttonRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  buttonRow.spacing = 12;
+  [rootStack addView:buttonRow inGravity:NSStackViewGravityTop];
+
+  NSButton *applyButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [applyButton setButtonType:NSButtonTypeMomentaryPushIn];
   [applyButton setBezelStyle:NSBezelStyleRounded];
   applyButton.title = @"Apply Theme";
+  applyButton.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
   applyButton.target = self;
   applyButton.action = @selector(applyTheme:);
-  [self.view addSubview:applyButton];
+  [applyButton.widthAnchor constraintEqualToConstant:160].active = YES;
+  [buttonRow addView:applyButton inGravity:NSStackViewGravityLeading];
 
-  NSButton *openThemesButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 220, y, 180, 32)];
+  NSButton *openThemesButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [openThemesButton setButtonType:NSButtonTypeMomentaryPushIn];
   [openThemesButton setBezelStyle:NSBezelStyleRounded];
-  openThemesButton.title = @"Open Themes Folder";
+  openThemesButton.title = @"Themes Folder";
   openThemesButton.target = self;
   openThemesButton.action = @selector(openThemesFolder:);
-  [self.view addSubview:openThemesButton];
+  [buttonRow addView:openThemesButton inGravity:NSStackViewGravityLeading];
 
-  NSButton *openOverrideButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 420, y, 200, 32)];
+  NSButton *openOverrideButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [openOverrideButton setButtonType:NSButtonTypeMomentaryPushIn];
   [openOverrideButton setBezelStyle:NSBezelStyleRounded];
-  openOverrideButton.title = @"Edit theme.local.lua";
+  openOverrideButton.title = @"Edit Local Overrides";
   openOverrideButton.target = self;
   openOverrideButton.action = @selector(openThemeOverride:);
-  [self.view addSubview:openOverrideButton];
+  [buttonRow addView:openOverrideButton inGravity:NSStackViewGravityLeading];
 
   [self updatePreview];
 }

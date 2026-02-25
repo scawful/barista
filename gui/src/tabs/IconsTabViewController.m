@@ -83,47 +83,52 @@
   [self loadIcons];
   [self loadAppIconMap];
 
-  CGFloat y = self.view.bounds.size.height - 40;
-  CGFloat leftMargin = 40;
+  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
+  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  rootStack.alignment = NSLayoutAttributeLeading;
+  rootStack.spacing = 20;
+  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
+  [self.view addSubview:rootStack];
 
   // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 400, 30)];
+  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
   title.stringValue = @"Icon Settings";
-  title.font = [NSFont systemFontOfSize:20 weight:NSFontWeightBold];
+  title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
   title.bordered = NO;
   title.editable = NO;
   title.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:title];
-  y -= 40;
+  [rootStack addView:title inGravity:NSStackViewGravityTop];
 
   // Mode toggle
-  self.modeControl = [[NSSegmentedControl alloc] initWithFrame:NSMakeRect(leftMargin, y, 240, 26)];
+  self.modeControl = [[NSSegmentedControl alloc] initWithFrame:NSZeroRect];
   [self.modeControl setSegmentCount:2];
   [self.modeControl setLabel:@"Mappings" forSegment:0];
   [self.modeControl setLabel:@"Library" forSegment:1];
   self.modeControl.selectedSegment = 0;
   self.modeControl.target = self;
   self.modeControl.action = @selector(modeChanged:);
-  [self.view addSubview:self.modeControl];
-  y -= 30;
+  [self.modeControl.widthAnchor constraintEqualToConstant:300].active = YES;
+  [rootStack addView:self.modeControl inGravity:NSStackViewGravityTop];
 
-  CGFloat contentHeight = y - 10;
-  CGFloat contentWidth = self.view.bounds.size.width;
+  // Container for content
+  NSView *contentContainer = [[NSView alloc] initWithFrame:NSZeroRect];
+  contentContainer.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  [rootStack addView:contentContainer inGravity:NSStackViewGravityTop];
+  [contentContainer.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+  [contentContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-20].active = YES;
 
-  self.mappingContainer = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, contentWidth, contentHeight)];
-  self.libraryContainer = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, contentWidth, contentHeight)];
-  self.mappingContainer.autoresizingMask = NSViewWidthSizable;
-  self.libraryContainer.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-
-  self.mappingScrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, contentWidth, contentHeight)];
-  self.mappingScrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  self.mappingScrollView.hasVerticalScroller = YES;
-  self.mappingScrollView.autohidesScrollers = YES;
-  self.mappingScrollView.borderType = NSNoBorder;
-  self.mappingScrollView.documentView = self.mappingContainer;
-
-  [self.view addSubview:self.mappingScrollView];
-  [self.view addSubview:self.libraryContainer];
+  self.mappingContainer = [[NSView alloc] initWithFrame:NSZeroRect];
+  self.libraryContainer = [[NSView alloc] initWithFrame:NSZeroRect];
+  
+  for (NSView *v in @[self.mappingContainer, self.libraryContainer]) {
+    v.translatesAutoresizingMaskIntoConstraints = NO;
+    [contentContainer addSubview:v];
+    [v.topAnchor constraintEqualToAnchor:contentContainer.topAnchor].active = YES;
+    [v.leadingAnchor constraintEqualToAnchor:contentContainer.leadingAnchor].active = YES;
+    [v.trailingAnchor constraintEqualToAnchor:contentContainer.trailingAnchor].active = YES;
+    [v.bottomAnchor constraintEqualToAnchor:contentContainer.bottomAnchor].active = YES;
+  }
 
   [self buildMappingUI];
   [self buildLibraryUI];
@@ -133,200 +138,229 @@
 - (void)buildMappingUI {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
 
-  CGFloat leftMargin = 40;
-  CGFloat labelWidth = 130;
-  CGFloat fieldWidth = 80;
-  CGFloat rowHeight = 26;
+  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:self.mappingContainer.bounds];
+  scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  scrollView.hasVerticalScroller = YES;
+  scrollView.autohidesScrollers = YES;
+  scrollView.borderType = NSNoBorder;
+  scrollView.drawsBackground = NO;
+  [self.mappingContainer addSubview:scrollView];
+
+  NSStackView *stack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  stack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  stack.alignment = NSLayoutAttributeLeading;
+  stack.spacing = 16;
+  stack.edgeInsets = NSEdgeInsetsMake(10, 0, 20, 20);
+  scrollView.documentView = stack;
+  [stack.widthAnchor constraintEqualToAnchor:scrollView.widthAnchor constant:-20].active = YES;
+
+  NSTextField *widgetHeader = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  widgetHeader.stringValue = @"Widget Icons";
+  widgetHeader.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
+  widgetHeader.bordered = NO;
+  widgetHeader.editable = NO;
+  widgetHeader.backgroundColor = [NSColor clearColor];
+  [stack addView:widgetHeader inGravity:NSStackViewGravityTop];
 
   self.widgetIconFields = [NSMutableDictionary dictionary];
   self.widgetIconPreviews = [NSMutableDictionary dictionary];
   NSArray *entries = [self widgetIconEntries];
 
-  CGFloat requiredHeight = 20 + 30 + (entries.count * rowHeight) + 40 + 28 + 34 + 220;
-  if (requiredHeight > self.mappingContainer.bounds.size.height) {
-    NSRect frame = self.mappingContainer.frame;
-    frame.size.height = requiredHeight;
-    self.mappingContainer.frame = frame;
-  }
-
-  CGFloat y = self.mappingContainer.bounds.size.height - 20;
-
-  NSTextField *widgetHeader = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 300, 22)];
-  widgetHeader.stringValue = @"Widget Icons";
-  widgetHeader.font = [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold];
-  widgetHeader.bordered = NO;
-  widgetHeader.editable = NO;
-  widgetHeader.backgroundColor = [NSColor clearColor];
-  [self.mappingContainer addSubview:widgetHeader];
-  y -= 30;
+  NSGridView *grid = [[NSGridView alloc] initWithFrame:NSZeroRect];
+  grid.rowSpacing = 10;
+  grid.columnSpacing = 12;
+  [stack addView:grid inGravity:NSStackViewGravityTop];
 
   for (NSDictionary *entry in entries) {
     NSString *key = entry[@"key"];
     NSString *labelText = entry[@"label"];
 
-    NSTextField *label = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, labelWidth, 20)];
+    NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
     label.stringValue = labelText;
     label.bordered = NO;
     label.editable = NO;
     label.backgroundColor = [NSColor clearColor];
-    [self.mappingContainer addSubview:label];
+    label.alignment = NSTextAlignmentRight;
 
-    NSTextField *field = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + labelWidth + 8, y - 2, fieldWidth, 24)];
+    NSTextField *field = [[NSTextField alloc] initWithFrame:NSZeroRect];
     field.placeholderString = @"Glyph";
     field.delegate = self;
+    [field.widthAnchor constraintEqualToConstant:80].active = YES;
     NSString *currentValue = [config valueForKeyPath:[NSString stringWithFormat:@"icons.%@", key] defaultValue:@""];
     if ([currentValue isKindOfClass:[NSString class]]) {
       field.stringValue = currentValue;
     }
-    [self.mappingContainer addSubview:field];
 
-    NSTextField *preview = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin + labelWidth + 8 + fieldWidth + 8, y - 6, 36, 28)];
+    NSTextField *preview = [[NSTextField alloc] initWithFrame:NSZeroRect];
     preview.bordered = NO;
     preview.editable = NO;
     preview.backgroundColor = [NSColor clearColor];
     preview.alignment = NSTextAlignmentCenter;
-    preview.font = [self preferredIconFontWithSize:18];
+    preview.font = [self preferredIconFontWithSize:20];
     preview.stringValue = field.stringValue;
-    [self.mappingContainer addSubview:preview];
+    [preview.widthAnchor constraintEqualToConstant:40].active = YES;
 
+    [grid addRowWithViews:@[label, field, preview]];
     self.widgetIconFields[key] = field;
     self.widgetIconPreviews[key] = preview;
-
-    y -= rowHeight;
   }
 
-  self.applyWidgetIconsButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin, y - 4, 180, 28)];
+  self.applyWidgetIconsButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.applyWidgetIconsButton setButtonType:NSButtonTypeMomentaryPushIn];
   [self.applyWidgetIconsButton setBezelStyle:NSBezelStyleRounded];
   self.applyWidgetIconsButton.title = @"Apply Widget Icons";
   self.applyWidgetIconsButton.target = self;
   self.applyWidgetIconsButton.action = @selector(applyWidgetIcons:);
-  [self.mappingContainer addSubview:self.applyWidgetIconsButton];
-  y -= 40;
+  [self.applyWidgetIconsButton.widthAnchor constraintEqualToConstant:200].active = YES;
+  [stack addView:self.applyWidgetIconsButton inGravity:NSStackViewGravityTop];
 
-  NSTextField *appHeader = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 300, 22)];
+  [stack setCustomSpacing:40 afterView:self.applyWidgetIconsButton];
+
+  NSTextField *appHeader = [[NSTextField alloc] initWithFrame:NSZeroRect];
   appHeader.stringValue = @"App Icon Map";
-  appHeader.font = [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold];
+  appHeader.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
   appHeader.bordered = NO;
   appHeader.editable = NO;
   appHeader.backgroundColor = [NSColor clearColor];
-  [self.mappingContainer addSubview:appHeader];
-  y -= 28;
+  [stack addView:appHeader inGravity:NSStackViewGravityTop];
 
-  self.appSearchField = [[NSSearchField alloc] initWithFrame:NSMakeRect(leftMargin, y, 220, 24)];
+  NSStackView *appControls = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  appControls.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  appControls.spacing = 12;
+  [stack addView:appControls inGravity:NSStackViewGravityTop];
+
+  self.appSearchField = [[NSSearchField alloc] initWithFrame:NSZeroRect];
   self.appSearchField.placeholderString = @"Search apps...";
   self.appSearchField.target = self;
   self.appSearchField.action = @selector(appSearchChanged:);
   self.appSearchField.delegate = self;
-  [self.mappingContainer addSubview:self.appSearchField];
+  [self.appSearchField.widthAnchor constraintEqualToConstant:250].active = YES;
+  [appControls addView:self.appSearchField inGravity:NSStackViewGravityLeading];
 
-  self.appOpenBrowserButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 240, y, 150, 24)];
+  self.appOpenBrowserButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.appOpenBrowserButton setButtonType:NSButtonTypeMomentaryPushIn];
   [self.appOpenBrowserButton setBezelStyle:NSBezelStyleRounded];
-  self.appOpenBrowserButton.title = @"Icon Browser";
+  self.appOpenBrowserButton.title = @"Open Icon Browser";
   self.appOpenBrowserButton.target = self;
   self.appOpenBrowserButton.action = @selector(openIconBrowser:);
-  [self.mappingContainer addSubview:self.appOpenBrowserButton];
-  y -= 34;
+  [appControls addView:self.appOpenBrowserButton inGravity:NSStackViewGravityLeading];
 
-  CGFloat tableHeight = 220;
-  CGFloat tableWidth = self.mappingContainer.bounds.size.width - (leftMargin * 2);
-  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(leftMargin, y - tableHeight + 6, tableWidth, tableHeight)];
-  scrollView.hasVerticalScroller = YES;
-  scrollView.autohidesScrollers = YES;
-  scrollView.borderType = NSBezelBorder;
+  NSScrollView *appTableScroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+  appTableScroll.hasVerticalScroller = YES;
+  appTableScroll.autohidesScrollers = YES;
+  appTableScroll.borderType = NSBezelBorder;
+  [appTableScroll.heightAnchor constraintEqualToConstant:300].active = YES;
+  [appTableScroll.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
 
-  self.appTableView = [[NSTableView alloc] initWithFrame:scrollView.bounds];
+  self.appTableView = [[NSTableView alloc] initWithFrame:NSZeroRect];
   self.appTableView.dataSource = self;
   self.appTableView.delegate = self;
+  self.appTableView.rowHeight = 30;
 
   NSTableColumn *appColumn = [[NSTableColumn alloc] initWithIdentifier:@"app"];
-  appColumn.title = @"App";
-  appColumn.width = tableWidth - 110;
+  appColumn.title = @"Application";
+  appColumn.width = 300;
   [self.appTableView addTableColumn:appColumn];
 
   NSTableColumn *glyphColumn = [[NSTableColumn alloc] initWithIdentifier:@"glyph"];
   glyphColumn.title = @"Glyph";
-  glyphColumn.width = 90;
-  glyphColumn.editable = YES;
+  glyphColumn.width = 100;
   [self.appTableView addTableColumn:glyphColumn];
 
-  scrollView.documentView = self.appTableView;
-  [self.mappingContainer addSubview:scrollView];
+  appTableScroll.documentView = self.appTableView;
+  [stack addView:appTableScroll inGravity:NSStackViewGravityTop];
 }
 
 - (void)buildLibraryUI {
-  CGFloat y = self.libraryContainer.bounds.size.height - 20;
-  CGFloat leftMargin = 40;
+  NSStackView *stack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  stack.translatesAutoresizingMaskIntoConstraints = NO;
+  stack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  stack.alignment = NSLayoutAttributeLeading;
+  stack.spacing = 16;
+  [self.libraryContainer addSubview:stack];
+  
+  [stack.topAnchor constraintEqualToAnchor:self.libraryContainer.topAnchor].active = YES;
+  [stack.leadingAnchor constraintEqualToAnchor:self.libraryContainer.leadingAnchor].active = YES;
+  [stack.trailingAnchor constraintEqualToAnchor:self.libraryContainer.trailingAnchor].active = YES;
+  [stack.bottomAnchor constraintEqualToAnchor:self.libraryContainer.bottomAnchor].active = YES;
 
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 400, 24)];
-  title.stringValue = @"Icon Library";
-  title.font = [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold];
-  title.bordered = NO;
-  title.editable = NO;
-  title.backgroundColor = [NSColor clearColor];
-  [self.libraryContainer addSubview:title];
-  y -= 36;
+  NSStackView *controls = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  controls.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  controls.spacing = 12;
+  [stack addView:controls inGravity:NSStackViewGravityTop];
 
-  self.searchField = [[NSSearchField alloc] initWithFrame:NSMakeRect(leftMargin, y, 300, 24)];
-  self.searchField.placeholderString = @"Search icons...";
+  self.searchField = [[NSSearchField alloc] initWithFrame:NSZeroRect];
+  self.searchField.placeholderString = @"Search icon library...";
   self.searchField.delegate = self;
   self.searchField.target = self;
   self.searchField.action = @selector(searchChanged:);
-  [self.libraryContainer addSubview:self.searchField];
+  [self.searchField.widthAnchor constraintEqualToConstant:300].active = YES;
+  [controls addView:self.searchField inGravity:NSStackViewGravityLeading];
 
-  self.openBrowserButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 320, y, 150, 24)];
+  self.openBrowserButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.openBrowserButton setButtonType:NSButtonTypeMomentaryPushIn];
   [self.openBrowserButton setBezelStyle:NSBezelStyleRounded];
-  self.openBrowserButton.title = @"Open Icon Browser";
+  self.openBrowserButton.title = @"Full Icon Browser";
   self.openBrowserButton.target = self;
   self.openBrowserButton.action = @selector(openIconBrowser:);
-  [self.libraryContainer addSubview:self.openBrowserButton];
-  y -= 50;
+  [controls addView:self.openBrowserButton inGravity:NSStackViewGravityLeading];
 
-  self.previewField = [[NSTextField alloc] initWithFrame:NSMakeRect(self.libraryContainer.bounds.size.width - 180, y + 10, 120, 120)];
+  NSStackView *mainContent = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  mainContent.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  mainContent.spacing = 20;
+  mainContent.alignment = NSLayoutAttributeTop;
+  [stack addView:mainContent inGravity:NSStackViewGravityTop];
+  [mainContent.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+  [mainContent.bottomAnchor constraintEqualToAnchor:stack.bottomAnchor].active = YES;
+
+  NSScrollView *tableScroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+  tableScroll.hasVerticalScroller = YES;
+  tableScroll.autohidesScrollers = YES;
+  tableScroll.borderType = NSBezelBorder;
+  [mainContent addView:tableScroll inGravity:NSStackViewGravityLeading];
+  [tableScroll.bottomAnchor constraintEqualToAnchor:mainContent.bottomAnchor].active = YES;
+
+  self.tableView = [[NSTableView alloc] initWithFrame:NSZeroRect];
+  self.tableView.dataSource = self;
+  self.tableView.delegate = self;
+  self.tableView.rowHeight = 30;
+
+  NSTableColumn *glyphCol = [[NSTableColumn alloc] initWithIdentifier:@"glyph"];
+  glyphCol.title = @"Icon";
+  glyphCol.width = 60;
+  [self.tableView addTableColumn:glyphCol];
+
+  NSTableColumn *nameCol = [[NSTableColumn alloc] initWithIdentifier:@"name"];
+  nameCol.title = @"Name";
+  nameCol.width = 200;
+  [self.tableView addTableColumn:nameCol];
+
+  tableScroll.documentView = self.tableView;
+
+  NSStackView *previewStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  previewStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  previewStack.spacing = 20;
+  previewStack.alignment = NSLayoutAttributeCenterX;
+  [previewStack.widthAnchor constraintEqualToConstant:200].active = YES;
+  [mainContent addView:previewStack inGravity:NSStackViewGravityTrailing];
+
+  self.previewField = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.previewField.stringValue = @"";
-  self.previewField.font = [NSFont systemFontOfSize:96];
+  self.previewField.font = [self preferredIconFontWithSize:120];
   self.previewField.bordered = NO;
   self.previewField.editable = NO;
   self.previewField.backgroundColor = [NSColor clearColor];
   self.previewField.alignment = NSTextAlignmentCenter;
-  [self.libraryContainer addSubview:self.previewField];
+  [previewStack addView:self.previewField inGravity:NSStackViewGravityTop];
 
-  self.glyphCopyButton = [[NSButton alloc] initWithFrame:NSMakeRect(self.libraryContainer.bounds.size.width - 180, y - 40, 120, 32)];
+  self.glyphCopyButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.glyphCopyButton setButtonType:NSButtonTypeMomentaryPushIn];
   [self.glyphCopyButton setBezelStyle:NSBezelStyleRounded];
   self.glyphCopyButton.title = @"Copy Glyph";
   self.glyphCopyButton.target = self;
   self.glyphCopyButton.action = @selector(copyGlyph:);
-  [self.libraryContainer addSubview:self.glyphCopyButton];
-
-  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(leftMargin, 40, self.libraryContainer.bounds.size.width - 240, y - 60)];
-  scrollView.hasVerticalScroller = YES;
-  scrollView.autohidesScrollers = YES;
-  scrollView.borderType = NSBezelBorder;
-
-  self.tableView = [[NSTableView alloc] initWithFrame:scrollView.bounds];
-  self.tableView.dataSource = self;
-  self.tableView.delegate = self;
-
-  NSTableColumn *glyphColumn = [[NSTableColumn alloc] initWithIdentifier:@"glyph"];
-  glyphColumn.title = @"Icon";
-  glyphColumn.width = 60;
-  [self.tableView addTableColumn:glyphColumn];
-
-  NSTableColumn *nameColumn = [[NSTableColumn alloc] initWithIdentifier:@"name"];
-  nameColumn.title = @"Name";
-  nameColumn.width = 150;
-  [self.tableView addTableColumn:nameColumn];
-
-  NSTableColumn *categoryColumn = [[NSTableColumn alloc] initWithIdentifier:@"category"];
-  categoryColumn.title = @"Category";
-  categoryColumn.width = 120;
-  [self.tableView addTableColumn:categoryColumn];
-
-  scrollView.documentView = self.tableView;
-  [self.libraryContainer addSubview:scrollView];
+  [self.glyphCopyButton.widthAnchor constraintEqualToConstant:140].active = YES;
+  [previewStack addView:self.glyphCopyButton inGravity:NSStackViewGravityTop];
 }
 
 - (void)modeChanged:(NSSegmentedControl *)sender {

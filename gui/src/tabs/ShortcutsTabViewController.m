@@ -82,60 +82,66 @@
 - (void)viewDidLoad {
   [super viewDidLoad];
 
-  // Load shortcuts from modules/shortcuts.lua
   [self loadShortcuts];
 
-  CGFloat y = self.view.bounds.size.height - 40;
-  CGFloat leftMargin = 40;
+  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
+  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  rootStack.alignment = NSLayoutAttributeLeading;
+  rootStack.spacing = 20;
+  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
+  [self.view addSubview:rootStack];
 
   // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 400, 30)];
+  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
   title.stringValue = @"Keyboard Shortcuts";
-  title.font = [NSFont systemFontOfSize:20 weight:NSFontWeightBold];
+  title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
   title.bordered = NO;
   title.editable = NO;
   title.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:title];
-  y -= 50;
+  [rootStack addView:title inGravity:NSStackViewGravityTop];
 
-  // Search
-  self.searchField = [[NSSearchField alloc] initWithFrame:NSMakeRect(leftMargin, y, 300, 24)];
-  self.searchField.placeholderString = @"Search shortcuts...";
+  // Search and Header Actions
+  NSStackView *headerStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  headerStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  headerStack.spacing = 12;
+  [rootStack addView:headerStack inGravity:NSStackViewGravityTop];
+
+  self.searchField = [[NSSearchField alloc] initWithFrame:NSZeroRect];
+  self.searchField.placeholderString = @"Filter shortcuts...";
   self.searchField.target = self;
   self.searchField.action = @selector(searchChanged:);
-  [self.view addSubview:self.searchField];
-  y -= 50;
+  [self.searchField.widthAnchor constraintEqualToConstant:300].active = YES;
+  [headerStack addView:self.searchField inGravity:NSStackViewGravityLeading];
 
-  CGFloat buttonY = y;
-  NSButton *openButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 380, buttonY, 160, 32)];
-  [openButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [openButton setBezelStyle:NSBezelStyleRounded];
-  openButton.title = @"Open shortcuts.lua";
-  openButton.target = self;
-  openButton.action = @selector(openShortcutsSource:);
-  [self.view addSubview:openButton];
+  for (NSString *title in @[@"Open shortcuts.lua", @"Generate + Reload"]) {
+    NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
+    [btn setButtonType:NSButtonTypeMomentaryPushIn];
+    [btn setBezelStyle:NSBezelStyleRounded];
+    btn.title = title;
+    btn.target = self;
+    if ([title containsString:@"Open"]) btn.action = @selector(openShortcutsSource:);
+    else btn.action = @selector(generateShortcuts:);
+    [headerStack addView:btn inGravity:NSStackViewGravityLeading];
+  }
 
-  NSButton *generateButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 550, buttonY, 160, 32)];
-  [generateButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [generateButton setBezelStyle:NSBezelStyleRounded];
-  generateButton.title = @"Generate + Reload";
-  generateButton.target = self;
-  generateButton.action = @selector(generateShortcuts:);
-  [self.view addSubview:generateButton];
-
-  // Table view
-  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(leftMargin, 60, 700, y - 60)];
+  // Table View
+  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
   scrollView.hasVerticalScroller = YES;
   scrollView.autohidesScrollers = YES;
   scrollView.borderType = NSBezelBorder;
+  [rootStack addView:scrollView inGravity:NSStackViewGravityTop];
+  [scrollView.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+  [scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-80].active = YES;
 
-  self.tableView = [[NSTableView alloc] initWithFrame:scrollView.bounds];
+  self.tableView = [[NSTableView alloc] initWithFrame:NSZeroRect];
   self.tableView.dataSource = self;
   self.tableView.delegate = self;
+  self.tableView.rowHeight = 28;
 
   NSTableColumn *descColumn = [[NSTableColumn alloc] initWithIdentifier:@"description"];
   descColumn.title = @"Description";
-  descColumn.width = 250;
+  descColumn.width = 300;
   [self.tableView addTableColumn:descColumn];
 
   NSTableColumn *symbolColumn = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
@@ -144,21 +150,27 @@
   [self.tableView addTableColumn:symbolColumn];
 
   NSTableColumn *commandColumn = [[NSTableColumn alloc] initWithIdentifier:@"command"];
-  commandColumn.title = @"Command";
-  commandColumn.width = 300;
+  commandColumn.title = @"Action / Command";
+  commandColumn.width = 400;
   [self.tableView addTableColumn:commandColumn];
 
   scrollView.documentView = self.tableView;
-  [self.view addSubview:scrollView];
 
-  // Export button
-  NSButton *exportButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 720, buttonY, 150, 32)];
+  // Footer Actions
+  NSStackView *footerStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  footerStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  footerStack.spacing = 12;
+  [rootStack addView:footerStack inGravity:NSStackViewGravityTop];
+
+  NSButton *exportButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [exportButton setButtonType:NSButtonTypeMomentaryPushIn];
   [exportButton setBezelStyle:NSBezelStyleRounded];
-  exportButton.title = @"Export to skhd";
+  exportButton.title = @"Export to skhd.conf";
+  exportButton.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
   exportButton.target = self;
   exportButton.action = @selector(exportToSkhd:);
-  [self.view addSubview:exportButton];
+  [exportButton.widthAnchor constraintEqualToConstant:180].active = YES;
+  [footerStack addView:exportButton inGravity:NSStackViewGravityLeading];
 }
 
 - (void)loadShortcuts {

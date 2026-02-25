@@ -23,240 +23,167 @@
 - (void)viewDidLoad {
   [super viewDidLoad];
 
-  CGFloat y = self.view.bounds.size.height - 40;
-  CGFloat leftMargin = 40;
+  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
+  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  rootStack.alignment = NSLayoutAttributeLeading;
+  rootStack.spacing = 20;
+  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
+  [self.view addSubview:rootStack];
 
   // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 400, 30)];
+  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
   title.stringValue = @"Advanced Settings";
-  title.font = [NSFont systemFontOfSize:20 weight:NSFontWeightBold];
+  title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
   title.bordered = NO;
   title.editable = NO;
   title.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:title];
-  y -= 50;
+  [rootStack addView:title inGravity:NSStackViewGravityTop];
 
-  // JSON Editor Label
-  NSTextField *editorLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 200, 20)];
-  editorLabel.stringValue = @"Raw State JSON:";
-  editorLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightSemibold];
+  // JSON Editor Section
+  NSTextField *editorLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  editorLabel.stringValue = @"RAW STATE JSON";
+  editorLabel.font = [NSFont systemFontOfSize:12 weight:NSFontWeightBold];
+  editorLabel.textColor = [NSColor secondaryLabelColor];
   editorLabel.bordered = NO;
   editorLabel.editable = NO;
   editorLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:editorLabel];
-  y -= 30;
+  [rootStack addView:editorLabel inGravity:NSStackViewGravityTop];
 
-  // JSON Editor
-  CGFloat scrollBottom = 250;
-  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(leftMargin, scrollBottom, self.view.bounds.size.width - 80, y - scrollBottom)];
+  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
   scrollView.hasVerticalScroller = YES;
   scrollView.autohidesScrollers = YES;
   scrollView.borderType = NSBezelBorder;
+  [scrollView.heightAnchor constraintEqualToConstant:250].active = YES;
+  [scrollView.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
-  self.jsonEditor = [[NSTextView alloc] initWithFrame:scrollView.bounds];
-  self.jsonEditor.font = [NSFont fontWithName:@"SF Mono" size:12] ?: [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular];
-  self.jsonEditor.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  self.jsonEditor = [[NSTextView alloc] initWithFrame:NSZeroRect];
+  self.jsonEditor.font = [NSFont fontWithName:@"SF Mono" size:13] ?: [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular];
   self.jsonEditor.delegate = self;
-
+  self.jsonEditor.minSize = NSMakeSize(0.0, 250);
+  self.jsonEditor.maxSize = NSMakeSize(FLT_MAX, FLT_MAX);
+  self.jsonEditor.verticallyResizable = YES;
+  self.jsonEditor.horizontallyResizable = NO;
+  self.jsonEditor.autoresizingMask = NSViewWidthSizable;
   scrollView.documentView = self.jsonEditor;
-  [self.view addSubview:scrollView];
+  [rootStack addView:scrollView inGravity:NSStackViewGravityTop];
 
   [self loadJSON];
 
-  // Scripts Path
-  CGFloat scriptsTop = scrollBottom - 10;
-  NSTextField *scriptsLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, scriptsTop, 400, 20)];
-  scriptsLabel.stringValue = @"Scripts Directory (optional override):";
-  scriptsLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
-  scriptsLabel.bordered = NO;
-  scriptsLabel.editable = NO;
-  scriptsLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:scriptsLabel];
+  // Scripts Path Section
+  NSBox *scriptsBox = [[NSBox alloc] initWithFrame:NSZeroRect];
+  scriptsBox.title = @"Scripts Directory Override";
+  [rootStack addView:scriptsBox inGravity:NSStackViewGravityTop];
+  [scriptsBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
-  self.scriptsField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, scriptsTop - 28, 420, 24)];
-  self.scriptsField.placeholderString = @"Auto (uses config/scripts)";
-  [self.view addSubview:self.scriptsField];
+  NSStackView *scriptsStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  scriptsStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  scriptsStack.alignment = NSLayoutAttributeLeading;
+  scriptsStack.spacing = 8;
+  scriptsStack.edgeInsets = NSEdgeInsetsMake(10, 15, 15, 15);
+  scriptsBox.contentView = scriptsStack;
 
-  NSButton *scriptsApplyButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 430, scriptsTop - 30, 70, 26)];
-  [scriptsApplyButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [scriptsApplyButton setBezelStyle:NSBezelStyleRounded];
-  scriptsApplyButton.title = @"Apply";
-  scriptsApplyButton.target = self;
-  scriptsApplyButton.action = @selector(applyScriptsPath:);
-  [self.view addSubview:scriptsApplyButton];
+  NSStackView *scriptsRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  scriptsRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  scriptsRow.spacing = 8;
+  [scriptsStack addView:scriptsRow inGravity:NSStackViewGravityTop];
 
-  NSButton *scriptsAutoButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 510, scriptsTop - 30, 80, 26)];
-  [scriptsAutoButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [scriptsAutoButton setBezelStyle:NSBezelStyleRounded];
-  scriptsAutoButton.title = @"Auto";
-  scriptsAutoButton.target = self;
-  scriptsAutoButton.action = @selector(resetScriptsPath:);
-  [self.view addSubview:scriptsAutoButton];
+  self.scriptsField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  self.scriptsField.placeholderString = @"Auto (uses ~/.config/sketchybar/scripts)";
+  [self.scriptsField.widthAnchor constraintEqualToConstant:400].active = YES;
+  [scriptsRow addView:self.scriptsField inGravity:NSStackViewGravityLeading];
 
-  NSButton *scriptsOpenButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 600, scriptsTop - 30, 120, 26)];
-  [scriptsOpenButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [scriptsOpenButton setBezelStyle:NSBezelStyleRounded];
-  scriptsOpenButton.title = @"Open Folder";
-  scriptsOpenButton.target = self;
-  scriptsOpenButton.action = @selector(openScriptsFolder:);
-  [self.view addSubview:scriptsOpenButton];
+  for (NSString *title in @[@"Apply", @"Auto", @"Open"]) {
+    NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
+    [btn setButtonType:NSButtonTypeMomentaryPushIn];
+    [btn setBezelStyle:NSBezelStyleRounded];
+    btn.title = title;
+    btn.target = self;
+    if ([title isEqualToString:@"Apply"]) btn.action = @selector(applyScriptsPath:);
+    else if ([title isEqualToString:@"Auto"]) btn.action = @selector(resetScriptsPath:);
+    else btn.action = @selector(openScriptsFolder:);
+    [scriptsRow addView:btn inGravity:NSStackViewGravityLeading];
+  }
 
-  self.scriptsResolvedLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, scriptsTop - 52, 600, 18)];
+  self.scriptsResolvedLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.scriptsResolvedLabel.bordered = NO;
   self.scriptsResolvedLabel.editable = NO;
   self.scriptsResolvedLabel.backgroundColor = [NSColor clearColor];
   self.scriptsResolvedLabel.font = [NSFont systemFontOfSize:11];
   self.scriptsResolvedLabel.textColor = [NSColor secondaryLabelColor];
-  [self.view addSubview:self.scriptsResolvedLabel];
+  [scriptsStack addView:self.scriptsResolvedLabel inGravity:NSStackViewGravityTop];
 
   [self loadScriptsPath];
 
-  // Code Path
-  CGFloat codeTop = scriptsTop - 70;
-  NSTextField *codeLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, codeTop, 400, 20)];
-  codeLabel.stringValue = @"Code Directory (repos + workflows):";
-  codeLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
-  codeLabel.bordered = NO;
-  codeLabel.editable = NO;
-  codeLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:codeLabel];
+  // Control Panel Routing Section
+  NSBox *routingBox = [[NSBox alloc] initWithFrame:NSZeroRect];
+  routingBox.title = @"Control Panel Implementation";
+  [rootStack addView:routingBox inGravity:NSStackViewGravityTop];
+  [routingBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
-  self.codeField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, codeTop - 28, 420, 24)];
-  self.codeField.placeholderString = @"Auto (uses ~/src)";
-  [self.view addSubview:self.codeField];
+  NSStackView *routingStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  routingStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  routingStack.alignment = NSLayoutAttributeLeading;
+  routingStack.spacing = 12;
+  routingStack.edgeInsets = NSEdgeInsetsMake(10, 15, 15, 15);
+  routingBox.contentView = routingStack;
 
-  NSButton *codeApplyButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 430, codeTop - 30, 70, 26)];
-  [codeApplyButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [codeApplyButton setBezelStyle:NSBezelStyleRounded];
-  codeApplyButton.title = @"Apply";
-  codeApplyButton.target = self;
-  codeApplyButton.action = @selector(applyCodePath:);
-  [self.view addSubview:codeApplyButton];
+  NSStackView *routingRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  routingRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  routingRow.spacing = 12;
+  [routingStack addView:routingRow inGravity:NSStackViewGravityTop];
 
-  NSButton *codeAutoButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 510, codeTop - 30, 80, 26)];
-  [codeAutoButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [codeAutoButton setBezelStyle:NSBezelStyleRounded];
-  codeAutoButton.title = @"Auto";
-  codeAutoButton.target = self;
-  codeAutoButton.action = @selector(resetCodePath:);
-  [self.view addSubview:codeAutoButton];
-
-  NSButton *codeOpenButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 600, codeTop - 30, 120, 26)];
-  [codeOpenButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [codeOpenButton setBezelStyle:NSBezelStyleRounded];
-  codeOpenButton.title = @"Open Folder";
-  codeOpenButton.target = self;
-  codeOpenButton.action = @selector(openCodeFolder:);
-  [self.view addSubview:codeOpenButton];
-
-  self.codeResolvedLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, codeTop - 52, 600, 18)];
-  self.codeResolvedLabel.bordered = NO;
-  self.codeResolvedLabel.editable = NO;
-  self.codeResolvedLabel.backgroundColor = [NSColor clearColor];
-  self.codeResolvedLabel.font = [NSFont systemFontOfSize:11];
-  self.codeResolvedLabel.textColor = [NSColor secondaryLabelColor];
-  [self.view addSubview:self.codeResolvedLabel];
-
-  [self loadCodePath];
-
-  // Control Panel Routing
-  CGFloat controlTop = codeTop - 40;
-  NSTextField *controlLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, controlTop, 400, 20)];
-  controlLabel.stringValue = @"Control Panel Routing:";
-  controlLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
-  controlLabel.bordered = NO;
-  controlLabel.editable = NO;
-  controlLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:controlLabel];
-
-  self.controlPanelModeSelector = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(leftMargin, controlTop - 28, 220, 26)];
-  [self.controlPanelModeSelector addItemsWithTitles:@[
-    @"Native (Cocoa)",
-    @"ImGui (barista_config)",
-    @"Custom Command"
-  ]];
+  self.controlPanelModeSelector = [[NSPopUpButton alloc] initWithFrame:NSZeroRect];
+  [self.controlPanelModeSelector addItemsWithTitles:@[@"Native (Cocoa)", @"ImGui (barista_config)", @"Custom Command"]];
   self.controlPanelModeSelector.target = self;
   self.controlPanelModeSelector.action = @selector(controlPanelModeChanged:);
-  [self.view addSubview:self.controlPanelModeSelector];
+  [self.controlPanelModeSelector.widthAnchor constraintEqualToConstant:220].active = YES;
+  [routingRow addView:self.controlPanelModeSelector inGravity:NSStackViewGravityLeading];
 
-  NSButton *openPanelButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 240, controlTop - 30, 140, 28)];
-  [openPanelButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [openPanelButton setBezelStyle:NSBezelStyleRounded];
-  openPanelButton.title = @"Open Panel";
-  openPanelButton.target = self;
-  openPanelButton.action = @selector(openControlPanelNow:);
-  [self.view addSubview:openPanelButton];
+  NSButton *openPanelBtn = [[NSButton alloc] initWithFrame:NSZeroRect];
+  [openPanelBtn setButtonType:NSButtonTypeMomentaryPushIn];
+  [openPanelBtn setBezelStyle:NSBezelStyleRounded];
+  openPanelBtn.title = @"Test Launch";
+  openPanelBtn.target = self;
+  openPanelBtn.action = @selector(openControlPanelNow:);
+  [routingRow addView:openPanelBtn inGravity:NSStackViewGravityLeading];
 
-  self.controlPanelCommandField = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, controlTop - 56, 520, 24)];
-  self.controlPanelCommandField.placeholderString = @"Custom command (used when mode = Custom)";
+  self.controlPanelCommandField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  self.controlPanelCommandField.placeholderString = @"Enter custom command...";
   self.controlPanelCommandField.delegate = self;
-  self.controlPanelCommandField.target = self;
-  self.controlPanelCommandField.action = @selector(controlPanelCommandChanged:);
-  [self.view addSubview:self.controlPanelCommandField];
+  [self.controlPanelCommandField.widthAnchor constraintEqualToConstant:500].active = YES;
+  [routingStack addView:self.controlPanelCommandField inGravity:NSStackViewGravityTop];
 
   [self loadControlPanelSettings];
 
-  // Buttons
-  self.saveButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin, 50, 120, 32)];
-  [self.saveButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [self.saveButton setBezelStyle:NSBezelStyleRounded];
-  self.saveButton.title = @"Save JSON";
-  self.saveButton.target = self;
-  self.saveButton.action = @selector(saveJSON:);
-  [self.view addSubview:self.saveButton];
+  // Footer Action Bar
+  NSStackView *footer = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  footer.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  footer.spacing = 12;
+  [rootStack addView:footer inGravity:NSStackViewGravityTop];
 
-  self.reloadButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 130, 50, 140, 32)];
-  [self.reloadButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [self.reloadButton setBezelStyle:NSBezelStyleRounded];
-  self.reloadButton.title = @"Reload from Disk";
-  self.reloadButton.target = self;
-  self.reloadButton.action = @selector(reloadJSON:);
-  [self.view addSubview:self.reloadButton];
+  for (NSString *title in @[@"Save JSON", @"Reload Disk", @"Open Config", @"Reload Bar"]) {
+    NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
+    [btn setButtonType:NSButtonTypeMomentaryPushIn];
+    [btn setBezelStyle:NSBezelStyleRounded];
+    btn.title = title;
+    btn.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
+    btn.target = self;
+    if ([title isEqualToString:@"Save JSON"]) btn.action = @selector(saveJSON:);
+    else if ([title isEqualToString:@"Reload Disk"]) btn.action = @selector(reloadJSON:);
+    else if ([title isEqualToString:@"Open Config"]) btn.action = @selector(openConfigFolder:);
+    else btn.action = @selector(reloadBar:);
+    [footer addView:btn inGravity:NSStackViewGravityLeading];
+  }
 
-  NSButton *openConfigButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 280, 50, 160, 32)];
-  [openConfigButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [openConfigButton setBezelStyle:NSBezelStyleRounded];
-  openConfigButton.title = @"Open Config Folder";
-  openConfigButton.target = self;
-  openConfigButton.action = @selector(openConfigFolder:);
-  [self.view addSubview:openConfigButton];
-
-  NSButton *openMenuDataButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 450, 50, 160, 32)];
-  [openMenuDataButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [openMenuDataButton setBezelStyle:NSBezelStyleRounded];
-  openMenuDataButton.title = @"Open Menu Data";
-  openMenuDataButton.target = self;
-  openMenuDataButton.action = @selector(openMenuData:);
-  [self.view addSubview:openMenuDataButton];
-
-  NSButton *reloadBarButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 620, 50, 140, 32)];
-  [reloadBarButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [reloadBarButton setBezelStyle:NSBezelStyleRounded];
-  reloadBarButton.title = @"Reload Bar";
-  reloadBarButton.target = self;
-  reloadBarButton.action = @selector(reloadBar:);
-  [self.view addSubview:reloadBarButton];
-
-  // Status
-  self.statusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, 20, 500, 20)];
+  // Status Label
+  self.statusLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.statusLabel.stringValue = @"";
   self.statusLabel.bordered = NO;
   self.statusLabel.editable = NO;
   self.statusLabel.backgroundColor = [NSColor clearColor];
   self.statusLabel.font = [NSFont systemFontOfSize:12];
-  [self.view addSubview:self.statusLabel];
-
-  // System Info
-  NSTextField *infoLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, 10, 600, 8)];
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  infoLabel.stringValue = [NSString stringWithFormat:@"Config: %@ | State: %@ | Code: %@",
-                           config.configPath, config.statePath, config.codePath ?: @"(auto)"];
-  infoLabel.bordered = NO;
-  infoLabel.editable = NO;
-  infoLabel.backgroundColor = [NSColor clearColor];
-  infoLabel.font = [NSFont systemFontOfSize:9];
-  infoLabel.textColor = [NSColor secondaryLabelColor];
-  [self.view addSubview:infoLabel];
+  [rootStack addView:self.statusLabel inGravity:NSStackViewGravityTop];
 }
 
 - (void)loadScriptsPath {

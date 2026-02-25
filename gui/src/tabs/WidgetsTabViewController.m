@@ -17,72 +17,57 @@
   [super viewDidLoad];
 
   self.widgets = @[
-    @{@"key": @"clock", @"name": @"Clock", @"icon": @""},
-    @{@"key": @"battery", @"name": @"Battery", @"icon": @""},
+    @{@"key": @"clock", @"name": @"Clock", @"icon": @"󰥔"},
+    @{@"key": @"battery", @"name": @"Battery", @"icon": @"󰁹"},
     @{@"key": @"volume", @"name": @"Volume", @"icon": @"󰕾"},
     @{@"key": @"network", @"name": @"Network", @"icon": @"󰖩"},
     @{@"key": @"system_info", @"name": @"System Info", @"icon": @"󰍛"},
   ];
 
-  CGFloat y = self.view.bounds.size.height - 40;
-  CGFloat leftMargin = 40;
+  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
+  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  rootStack.alignment = NSLayoutAttributeLeading;
+  rootStack.spacing = 20;
+  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
+  [self.view addSubview:rootStack];
 
   // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 400, 30)];
+  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
   title.stringValue = @"Widget Management";
-  title.font = [NSFont systemFontOfSize:20 weight:NSFontWeightBold];
+  title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
   title.bordered = NO;
   title.editable = NO;
   title.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:title];
-  y -= 60;
+  [rootStack addView:title inGravity:NSStackViewGravityTop];
 
-  self.toggleButtons = [NSMutableDictionary dictionary];
-  self.colorWells = [NSMutableDictionary dictionary];
-
-  NSTextField *hint = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 700, 20)];
-  hint.stringValue = @"Toggle widgets and pick accent colors (icon overrides live in the Icons tab).";
-  hint.font = [NSFont systemFontOfSize:12];
+  NSTextField *hint = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  hint.stringValue = @"Toggle widgets and pick accent colors. Specific icon glyphs can be customized in the Icons tab.";
+  hint.font = [NSFont systemFontOfSize:13];
   hint.textColor = [NSColor secondaryLabelColor];
   hint.bordered = NO;
   hint.editable = NO;
   hint.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:hint];
-  y -= 40;
+  [rootStack addView:hint inGravity:NSStackViewGravityTop];
 
-  CGFloat iconX = leftMargin;
-  CGFloat nameX = leftMargin + 36;
-  CGFloat toggleX = leftMargin + 260;
-  CGFloat colorX = leftMargin + 420;
-  CGFloat rowHeight = 36;
+  [rootStack setCustomSpacing:30 afterView:hint];
 
-  NSTextField *nameHeader = [[NSTextField alloc] initWithFrame:NSMakeRect(nameX, y, 160, 18)];
-  nameHeader.stringValue = @"Widget";
-  nameHeader.font = [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold];
-  nameHeader.textColor = [NSColor secondaryLabelColor];
-  nameHeader.bordered = NO;
-  nameHeader.editable = NO;
-  nameHeader.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:nameHeader];
+  self.toggleButtons = [NSMutableDictionary dictionary];
+  self.colorWells = [NSMutableDictionary dictionary];
 
-  NSTextField *toggleHeader = [[NSTextField alloc] initWithFrame:NSMakeRect(toggleX, y, 120, 18)];
-  toggleHeader.stringValue = @"Enabled";
-  toggleHeader.font = [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold];
-  toggleHeader.textColor = [NSColor secondaryLabelColor];
-  toggleHeader.bordered = NO;
-  toggleHeader.editable = NO;
-  toggleHeader.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:toggleHeader];
+  NSGridView *grid = [[NSGridView alloc] initWithFrame:NSZeroRect];
+  grid.rowSpacing = 16;
+  grid.columnSpacing = 24;
+  grid.xPlacement = NSGridCellPlacementLeading;
+  grid.yPlacement = NSGridCellPlacementCenter;
+  [rootStack addView:grid inGravity:NSStackViewGravityTop];
 
-  NSTextField *colorHeader = [[NSTextField alloc] initWithFrame:NSMakeRect(colorX, y, 120, 18)];
-  colorHeader.stringValue = @"Color";
-  colorHeader.font = [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold];
-  colorHeader.textColor = [NSColor secondaryLabelColor];
-  colorHeader.bordered = NO;
-  colorHeader.editable = NO;
-  colorHeader.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:colorHeader];
-  y -= 26;
+  // Header Row
+  NSTextField *hIcon = [self headerLabel:@" "];
+  NSTextField *hName = [self headerLabel:@"WIDGET"];
+  NSTextField *hToggle = [self headerLabel:@"STATUS"];
+  NSTextField *hColor = [self headerLabel:@"ACCENT COLOR"];
+  [grid addRowWithViews:@[hIcon, hName, hToggle, hColor]];
 
   ConfigurationManager *config = [ConfigurationManager sharedManager];
 
@@ -90,35 +75,36 @@
     NSDictionary *widget = self.widgets[index];
     NSString *key = widget[@"key"];
 
-    NSTextField *iconField = [[NSTextField alloc] initWithFrame:NSMakeRect(iconX, y - 2, 24, 24)];
+    NSTextField *iconField = [[NSTextField alloc] initWithFrame:NSZeroRect];
     iconField.stringValue = widget[@"icon"] ?: @"";
-    iconField.font = [self preferredIconFontWithSize:16];
+    iconField.font = [self preferredIconFontWithSize:18];
     iconField.bordered = NO;
     iconField.editable = NO;
     iconField.backgroundColor = [NSColor clearColor];
     iconField.alignment = NSTextAlignmentCenter;
-    [self.view addSubview:iconField];
+    [iconField.widthAnchor constraintEqualToConstant:30].active = YES;
 
-    NSTextField *nameField = [[NSTextField alloc] initWithFrame:NSMakeRect(nameX, y, 200, 20)];
+    NSTextField *nameField = [[NSTextField alloc] initWithFrame:NSZeroRect];
     nameField.stringValue = widget[@"name"] ?: @"";
+    nameField.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
     nameField.bordered = NO;
     nameField.editable = NO;
     nameField.backgroundColor = [NSColor clearColor];
-    [self.view addSubview:nameField];
+    [nameField.widthAnchor constraintEqualToConstant:180].active = YES;
 
-    NSButton *toggle = [[NSButton alloc] initWithFrame:NSMakeRect(toggleX, y - 2, 120, 20)];
+    NSButton *toggle = [[NSButton alloc] initWithFrame:NSZeroRect];
     [toggle setButtonType:NSButtonTypeSwitch];
-    toggle.title = @"";
+    toggle.title = @"Enabled";
+    toggle.font = [NSFont systemFontOfSize:13];
     toggle.target = self;
     toggle.action = @selector(toggleWidget:);
     toggle.tag = index;
     NSString *keyPath = [NSString stringWithFormat:@"widgets.%@", key];
     BOOL enabled = [[config valueForKeyPath:keyPath defaultValue:@YES] boolValue];
     toggle.state = enabled ? NSControlStateValueOn : NSControlStateValueOff;
-    [self.view addSubview:toggle];
     self.toggleButtons[key] = toggle;
 
-    NSColorWell *colorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(colorX, y - 4, 60, 24)];
+    NSColorWell *colorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(0, 0, 60, 30)];
     colorWell.target = self;
     colorWell.action = @selector(widgetColorChanged:);
     colorWell.tag = index;
@@ -131,11 +117,23 @@
         colorWell.color = color;
       }
     }
-    [self.view addSubview:colorWell];
+    [colorWell.widthAnchor constraintEqualToConstant:80].active = YES;
+    [colorWell.heightAnchor constraintEqualToConstant:32].active = YES;
     self.colorWells[key] = colorWell;
 
-    y -= rowHeight;
+    [grid addRowWithViews:@[iconField, nameField, toggle, colorWell]];
   }
+}
+
+- (NSTextField *)headerLabel:(NSString *)text {
+  NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  label.stringValue = text;
+  label.font = [NSFont systemFontOfSize:12 weight:NSFontWeightBold];
+  label.textColor = [NSColor secondaryLabelColor];
+  label.bordered = NO;
+  label.editable = NO;
+  label.backgroundColor = [NSColor clearColor];
+  return label;
 }
 
 - (void)toggleWidget:(NSButton *)sender {

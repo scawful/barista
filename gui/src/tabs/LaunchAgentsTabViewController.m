@@ -24,54 +24,66 @@
   self.launchAgents = [NSMutableArray array];
   self.filteredLaunchAgents = @[];
 
-  CGFloat y = self.view.bounds.size.height - 40;
-  CGFloat leftMargin = 40;
+  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
+  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  rootStack.alignment = NSLayoutAttributeLeading;
+  rootStack.spacing = 20;
+  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
+  [self.view addSubview:rootStack];
 
   // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y, 400, 30)];
+  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
   title.stringValue = @"Launch Agents";
-  title.font = [NSFont systemFontOfSize:20 weight:NSFontWeightBold];
+  title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
   title.bordered = NO;
   title.editable = NO;
   title.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:title];
-  y -= 50;
+  [rootStack addView:title inGravity:NSStackViewGravityTop];
 
-  // Search
-  self.searchField = [[NSSearchField alloc] initWithFrame:NSMakeRect(leftMargin, y, 300, 24)];
+  // Search and Actions
+  NSStackView *headerStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  headerStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  headerStack.spacing = 12;
+  [rootStack addView:headerStack inGravity:NSStackViewGravityTop];
+
+  self.searchField = [[NSSearchField alloc] initWithFrame:NSZeroRect];
   self.searchField.placeholderString = @"Filter by label or path";
   self.searchField.target = self;
   self.searchField.action = @selector(filterChanged:);
-  [self.view addSubview:self.searchField];
+  [self.searchField.widthAnchor constraintEqualToConstant:300].active = YES;
+  [headerStack addView:self.searchField inGravity:NSStackViewGravityLeading];
 
-  NSButton *refreshButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 320, y, 100, 24)];
+  NSButton *refreshButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [refreshButton setButtonType:NSButtonTypeMomentaryPushIn];
   [refreshButton setBezelStyle:NSBezelStyleRounded];
-  refreshButton.title = @"Refresh";
+  refreshButton.title = @"Refresh Status";
   refreshButton.target = self;
   refreshButton.action = @selector(loadLaunchAgents:);
-  [self.view addSubview:refreshButton];
-  y -= 50;
+  [headerStack addView:refreshButton inGravity:NSStackViewGravityLeading];
 
-  // Table view
-  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(leftMargin, 120, 700, y - 120)];
+  // Table View
+  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
   scrollView.hasVerticalScroller = YES;
   scrollView.autohidesScrollers = YES;
   scrollView.borderType = NSBezelBorder;
+  [rootStack addView:scrollView inGravity:NSStackViewGravityTop];
+  [scrollView.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+  [scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-100].active = YES;
 
-  self.tableView = [[NSTableView alloc] initWithFrame:scrollView.bounds];
+  self.tableView = [[NSTableView alloc] initWithFrame:NSZeroRect];
   self.tableView.dataSource = self;
   self.tableView.delegate = self;
-  self.tableView.rowHeight = 26.0;
+  self.tableView.rowHeight = 30.0;
 
   NSTableColumn *stateColumn = [[NSTableColumn alloc] initWithIdentifier:@"state"];
   stateColumn.title = @"State";
-  stateColumn.width = 140;
+  stateColumn.width = 120;
   [self.tableView addTableColumn:stateColumn];
 
   NSTableColumn *labelColumn = [[NSTableColumn alloc] initWithIdentifier:@"label"];
-  labelColumn.title = @"Label";
-  labelColumn.width = 320;
+  labelColumn.title = @"Agent Label";
+  labelColumn.width = 300;
   [self.tableView addTableColumn:labelColumn];
 
   NSTableColumn *pidColumn = [[NSTableColumn alloc] initWithIdentifier:@"pid"];
@@ -80,45 +92,40 @@
   [self.tableView addTableColumn:pidColumn];
 
   NSTableColumn *plistColumn = [[NSTableColumn alloc] initWithIdentifier:@"plist"];
-  plistColumn.title = @"Plist";
-  plistColumn.width = 180;
+  plistColumn.title = @"Plist Path";
+  plistColumn.width = 250;
   [self.tableView addTableColumn:plistColumn];
 
   scrollView.documentView = self.tableView;
-  [self.view addSubview:scrollView];
 
-  // Control buttons
-  self.startButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 720, y + 100, 160, 32)];
-  [self.startButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [self.startButton setBezelStyle:NSBezelStyleRounded];
-  self.startButton.title = @"Start";
-  self.startButton.target = self;
-  self.startButton.action = @selector(startSelected:);
-  [self.view addSubview:self.startButton];
+  // Agent Controls
+  NSStackView *buttonRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  buttonRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  buttonRow.spacing = 12;
+  [rootStack addView:buttonRow inGravity:NSStackViewGravityTop];
 
-  self.stopButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 720, y + 50, 160, 32)];
-  [self.stopButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [self.stopButton setBezelStyle:NSBezelStyleRounded];
-  self.stopButton.title = @"Stop";
-  self.stopButton.target = self;
-  self.stopButton.action = @selector(stopSelected:);
-  [self.view addSubview:self.stopButton];
-
-  self.restartButton = [[NSButton alloc] initWithFrame:NSMakeRect(leftMargin + 720, y, 160, 32)];
-  [self.restartButton setButtonType:NSButtonTypeMomentaryPushIn];
-  [self.restartButton setBezelStyle:NSBezelStyleRounded];
-  self.restartButton.title = @"Restart";
-  self.restartButton.target = self;
-  self.restartButton.action = @selector(restartSelected:);
-  [self.view addSubview:self.restartButton];
+  for (NSString *title in @[@"Start", @"Stop", @"Restart"]) {
+    NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
+    [btn setButtonType:NSButtonTypeMomentaryPushIn];
+    [btn setBezelStyle:NSBezelStyleRounded];
+    btn.title = title;
+    btn.target = self;
+    [btn.widthAnchor constraintEqualToConstant:120].active = YES;
+    if ([title isEqualToString:@"Start"]) { btn.action = @selector(startSelected:); self.startButton = btn; }
+    else if ([title isEqualToString:@"Stop"]) { btn.action = @selector(stopSelected:); self.stopButton = btn; }
+    else { btn.action = @selector(restartSelected:); self.restartButton = btn; }
+    [buttonRow addView:btn inGravity:NSStackViewGravityLeading];
+  }
 
   // Status
-  self.statusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, 80, 700, 24)];
+  self.statusLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.statusLabel.editable = NO;
-  self.statusLabel.bezeled = NO;
+  self.statusLabel.bordered = NO;
   self.statusLabel.backgroundColor = [NSColor clearColor];
   self.statusLabel.stringValue = @"No agents loaded.";
-  [self.view addSubview:self.statusLabel];
+  self.statusLabel.font = [NSFont systemFontOfSize:12];
+  self.statusLabel.textColor = [NSColor secondaryLabelColor];
+  [rootStack addView:self.statusLabel inGravity:NSStackViewGravityTop];
 
   [self loadLaunchAgents:nil];
 }

@@ -248,67 +248,71 @@
   self.sidebarView.wantsLayer = YES;
   self.sidebarView.layer.backgroundColor = style.sidebarColor.CGColor;
 
-  CGFloat headerHeight = 110.0;
+  CGFloat headerHeight = 140.0;
   NSView *header = [[NSView alloc] initWithFrame:NSMakeRect(0, bounds.size.height - headerHeight, sidebarWidth, headerHeight)];
   header.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
   header.wantsLayer = YES;
   header.layer.backgroundColor = style.backgroundColor.CGColor;
   [self.sidebarView addSubview:header];
 
+  NSStackView *headerStack = [[NSStackView alloc] initWithFrame:NSInsetRect(header.bounds, 14, 10)];
+  headerStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  headerStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  headerStack.alignment = NSLayoutAttributeLeading;
+  headerStack.spacing = 4;
+  [header addSubview:headerStack];
+
   ConfigurationManager *config = [ConfigurationManager sharedManager];
   NSString *themeName = style.themeName.length ? style.themeName : @"default";
   NSString *configPath = [self shortPath:config.configPath];
   NSString *codePath = [self shortPath:config.codePath];
 
-  CGFloat y = headerHeight - 28.0;
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(14, y, sidebarWidth - 24, 18)];
+  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
   title.stringValue = @"BARISTA // CONTROL";
   title.font = style.titleFont;
   title.textColor = style.textColor;
   title.bordered = NO;
   title.editable = NO;
   title.backgroundColor = [NSColor clearColor];
-  [header addSubview:title];
+  [headerStack addView:title inGravity:NSStackViewGravityTop];
 
-  y -= 18.0;
-  NSTextField *subtitle = [[NSTextField alloc] initWithFrame:NSMakeRect(14, y, sidebarWidth - 24, 16)];
+  NSTextField *subtitle = [[NSTextField alloc] initWithFrame:NSZeroRect];
   subtitle.stringValue = @"config + orchestration";
   subtitle.font = style.bodyFont;
   subtitle.textColor = style.mutedTextColor;
   subtitle.bordered = NO;
   subtitle.editable = NO;
   subtitle.backgroundColor = [NSColor clearColor];
-  [header addSubview:subtitle];
+  [headerStack addView:subtitle inGravity:NSStackViewGravityTop];
 
-  y -= 18.0;
-  NSTextField *themeLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(14, y, sidebarWidth - 24, 14)];
+  [headerStack setCustomSpacing:12 afterView:subtitle];
+
+  NSTextField *themeLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
   themeLabel.stringValue = [NSString stringWithFormat:@"THEME  %@", [themeName uppercaseString]];
   themeLabel.font = style.bodyFont;
   themeLabel.textColor = style.accentColor;
   themeLabel.bordered = NO;
   themeLabel.editable = NO;
   themeLabel.backgroundColor = [NSColor clearColor];
-  [header addSubview:themeLabel];
+  [headerStack addView:themeLabel inGravity:NSStackViewGravityTop];
 
-  y -= 16.0;
-  NSTextField *pathLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(14, y, sidebarWidth - 24, 14)];
+  NSTextField *pathLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
   pathLabel.stringValue = [NSString stringWithFormat:@"CFG    %@", configPath ?: @"~/.config/sketchybar"];
   pathLabel.font = style.bodyFont;
   pathLabel.textColor = style.mutedTextColor;
   pathLabel.bordered = NO;
   pathLabel.editable = NO;
   pathLabel.backgroundColor = [NSColor clearColor];
-  [header addSubview:pathLabel];
+  [headerStack addView:pathLabel inGravity:NSStackViewGravityTop];
 
-  y -= 16.0;
-  NSTextField *codeLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(14, y, sidebarWidth - 24, 14)];
+  NSTextField *codeLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
   codeLabel.stringValue = [NSString stringWithFormat:@"CODE   %@", codePath ?: @"~/src"];
   codeLabel.font = style.bodyFont;
   codeLabel.textColor = style.mutedTextColor;
   codeLabel.bordered = NO;
   codeLabel.editable = NO;
   codeLabel.backgroundColor = [NSColor clearColor];
-  [header addSubview:codeLabel];
+  [headerStack addView:codeLabel inGravity:NSStackViewGravityTop];
 
   NSView *headerDivider = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, sidebarWidth, 1.0)];
   headerDivider.wantsLayer = YES;
@@ -326,7 +330,7 @@
   self.sidebarTable.dataSource = self;
   self.sidebarTable.delegate = self;
   self.sidebarTable.headerView = nil;
-  self.sidebarTable.rowHeight = 24.0;
+  self.sidebarTable.rowHeight = 32.0;
   self.sidebarTable.backgroundColor = style.sidebarColor;
   self.sidebarTable.focusRingType = NSFocusRingTypeNone;
   self.sidebarTable.selectionHighlightStyle = NSTableViewSelectionHighlightStyleNone;
@@ -355,8 +359,8 @@
   BaristaStyle *style = [BaristaStyle sharedStyle];
   NSTableCellView *cell = [tableView makeViewWithIdentifier:@"BaristaTabCell" owner:self];
   if (!cell) {
-    cell = [[NSTableCellView alloc] initWithFrame:NSMakeRect(0, 0, tableColumn.width, 24)];
-    NSTextField *textField = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 2, tableColumn.width - 12, 20)];
+    cell = [[NSTableCellView alloc] initWithFrame:NSMakeRect(0, 0, tableColumn.width, 32)];
+    NSTextField *textField = [[NSTextField alloc] initWithFrame:NSMakeRect(12, 6, tableColumn.width - 14, 20)];
     textField.bordered = NO;
     textField.editable = NO;
     textField.backgroundColor = [NSColor clearColor];

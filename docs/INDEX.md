@@ -54,6 +54,13 @@ Implementation notes and engineering details.
 | [IMPROVEMENTS.md](dev/IMPROVEMENTS.md) | Planned improvements |
 | [SHARING.md](dev/SHARING.md) | Sharing/export notes |
 
+### improvements/
+Improvement backlogs and completed work.
+
+| Document | Description |
+|----------|-------------|
+| [THEMING_FONTS_WIDGETS.md](improvements/THEMING_FONTS_WIDGETS.md) | Theming, fonts, and widgets ideas and completed items |
+
 ### features/
 Feature documentation and specifications.
 

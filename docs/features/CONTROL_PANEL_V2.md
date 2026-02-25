@@ -49,6 +49,7 @@ Three major integrations with room for expansion:
 - Configure build directory
 - Manage recent ROMs
 - Quick launch to editor
+- Nightly support via `BARISTA_YAZE_LAUNCHER` / `YAZE_NIGHTLY_PREFIX`
 
 ##### Emacs
 - Workspace name customization
@@ -105,18 +106,27 @@ Three major integrations with room for expansion:
 
 ### Launch Methods
 
-#### 1. Shift-Click Apple Menu
+#### 1. Keyboard Shortcut
+```text
+⌘⌥P
+```
+
+#### 2. Shift-Click Apple Menu
 The primary way to access the control panel:
 ```bash
 # Simply Shift + Click the Apple menu icon in your bar
 ```
 
-#### 2. Command Line
+#### 3. Command Line
 ```bash
+# From an installed config
 ~/.config/sketchybar/gui/bin/config_menu_v2
+
+# From the Barista repo
+BARISTA_CONFIG_DIR=/path/to/barista ./bin/open_control_panel.sh
 ```
 
-#### 3. Programmatic Launch
+#### 4. Programmatic Launch
 ```lua
 -- From sketchybar configuration
 os.execute("~/.config/sketchybar/gui/bin/config_menu_v2 &")
@@ -124,7 +134,7 @@ os.execute("~/.config/sketchybar/gui/bin/config_menu_v2 &")
 
 ### Building from Source
 ```bash
-cd ~/.config/sketchybar/gui
+cd ~/.config/sketchybar/gui  # or /path/to/barista/gui
 make config_v2
 ```
 
@@ -136,7 +146,7 @@ make all
 
 ### Configuration File Structure
 
-The control panel reads/writes to `~/.config/sketchybar/state.json`:
+The control panel reads/writes to `CONFIG_DIR/state.json` (default: `~/.config/sketchybar/state.json`):
 
 ```json
 {
@@ -146,6 +156,9 @@ The control panel reads/writes to `~/.config/sketchybar/state.json`:
     "bar_color": "0xC021162F",
     "blur_radius": 30,
     "widget_scale": 1.0
+  },
+  "modes": {
+    "window_manager": "auto"
   },
   "widgets": {
     "clock": true,

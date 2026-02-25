@@ -13,6 +13,27 @@ Barista falls back to AppleScript for `space-prev` and `space-next` when the scr
 ~/.config/sketchybar/scripts/yabai_control.sh doctor
 ```
 
+## When It Worked Then Broke
+If space switching worked and suddenly stopped, the Dock likely restarted (macOS update, crash, display changes). The scripting addition unloads when Dock restarts.
+
+Fix quickly:
+```bash
+sudo /opt/homebrew/bin/yabai --load-sa
+yabai --restart-service
+```
+
+Prevent recurrence by adding a Dock-restart hook in `yabairc`:
+```bash
+yabai -m signal --add label=load-sa event=dock_did_restart action="sudo /opt/homebrew/bin/yabai --load-sa"
+```
+
+Confirm the hook exists:
+```bash
+yabai -m signal --list
+```
+
+If `ctrl + left/right` still does nothing, ensure macOS Mission Control shortcuts for "Move left/right a space" are disabled so skhd can capture them.
+
 ## Control Panel Shortcuts
 - Debug tab: Run Yabai Doctor, Restart Yabai, Restart Shortcuts
 - Advanced tab: Scripts Directory override (if you moved scripts)

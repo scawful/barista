@@ -32,6 +32,15 @@ cd ~/.config/sketchybar
 ./helpers/setup_permissions.sh
 ```
 
+### Non-Interactive Install (One-Line)
+
+```bash
+BARISTA_PROFILE=girlfriend \
+BARISTA_WINDOW_MANAGER_MODE=disabled \
+BARISTA_INSTALL_NONINTERACTIVE=1 \
+./scripts/install.sh
+```
+
 ## Detailed Installation
 
 ### Prerequisites
@@ -87,8 +96,9 @@ The installer will:
 1. Check and install dependencies
 2. Backup existing configuration (if any)
 3. Build all components using CMake
-4. Let you choose a profile (minimal, personal, work, custom)
-5. Start SketchyBar
+4. Let you choose a profile (minimal, personal, work, girlfriend, custom)
+5. Let you choose a window manager mode (auto/optional/required/disabled)
+6. Start SketchyBar
 
 ### Step 3: Grant macOS Permissions
 
@@ -122,7 +132,7 @@ Edit `~/.config/sketchybar/state.json`:
 
 ```json
 {
-  "profile": "work"  // or "minimal", "personal", or custom
+  "profile": "work"  // or "minimal", "personal", "girlfriend", or custom
 }
 ```
 
@@ -130,6 +140,28 @@ Available profiles:
 - **minimal**: Clean, basic setup (recommended for new users)
 - **personal**: Full-featured with integrations
 - **work**: Work-focused with Emacs and productivity integrations
+- **girlfriend**: Warm, cozy setup with friendly defaults
+
+Tip: Preselect a profile with `BARISTA_PROFILE` to skip the prompt.
+
+### Step 4b: Window Manager Mode (Yabai/skhd)
+
+Barista can hide or relax window-manager features if yabai/skhd are not installed or not fully permitted.
+
+Modes (set in `state.json` or via `BARISTA_WINDOW_MANAGER_MODE`):
+- **auto**: Enable when yabai is installed; treat yabai/skhd as required for health.
+- **optional**: Only show window-manager controls when yabai is running; health ignores yabai/skhd.
+- **required**: Expect yabai/skhd to be configured; health turns red when missing.
+- **disabled**: Hide yabai/skhd widgets, menus, and shortcuts.
+
+Example state:
+```json
+{
+  "modes": {
+    "window_manager": "optional"
+  }
+}
+```
 
 ### Step 5: Start Services
 

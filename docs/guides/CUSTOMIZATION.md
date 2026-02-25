@@ -41,6 +41,11 @@ Profiles (Work, Personal, Minimal, Girlfriend) live in `profiles/*.lua` and chan
 
 `appearance.theme` in state (or `BARISTA_THEME` env) selects a theme from `themes/*.lua`. Optional override: `themes/theme.local.lua`. See [THEMES.md](../features/THEMES.md).
 
+## Fonts
+
+- **Icon font** (`appearance.font_icon`): Used for all bar and popup icons. Default is "Hack Nerd Font". The icon manager falls back by availability (e.g. SF Symbols, Menlo). For best coverage, install a [Nerd Font](https://www.nerdfonts.com/) (e.g. via the installer or `scripts/install_missing_fonts_and_panel.sh`). See [ICON_REFERENCE.md](../features/ICON_REFERENCE.md) for the full icon set.
+- **Text / numbers** (`appearance.font_text`, `appearance.font_numbers`): Used for labels and the clock. Change in state or in the Control Panel → Appearance tab.
+
 ## Where to edit the bar layout
 
 To add, remove, or change a bar item or its popup, use [docs/architecture/SKETCHYBAR_LAYOUT.md](../architecture/SKETCHYBAR_LAYOUT.md) to find the defining file (e.g. `main.lua`, `modules/items_left.lua`, `modules/items_right.lua`) and the plugin script that updates it.

@@ -2,6 +2,15 @@
 
 Barista comes with a collection of carefully crafted color themes inspired by coffee culture and beyond.
 
+## Theme contract
+
+Every theme should define:
+
+- **Required:** `bar.bg`, `WHITE`, `DARK_WHITE`, `BG_PRI_COLR`, `BG_SEC_COLR`
+- **Optional (per-widget tint):** `clock`, `volume`, `battery` — semi-transparent background colors for those bar widgets. If omitted, the bar falls back to `BG_SEC_COLR`.
+
+Popup and menu code may also use accent names like `LAVENDER`, `SAPPHIRE`, `SKY`, `YELLOW`; themes can define custom palettes and reuse those names (e.g. mocha’s `WHIPPED_CREAM`) or add the same keys for consistency. See `themes/default.lua` for the full Catppuccin set; other themes can subset or rename.
+
 ## Available Themes
 
 ### Coffee Themes ☕

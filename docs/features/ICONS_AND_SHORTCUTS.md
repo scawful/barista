@@ -92,9 +92,9 @@ These shortcuts work system-wide and don't conflict with common applications:
 - `⌘⌥P` - Open Control Panel
 - `⌘⌥C` - Toggle Cortex
 - `⌘⌥/` - Toggle Control Center
-- `⌘⌥K` - Open Help Center
 - `⌘⌥H` - Open Help Center
 - `⌘⌥I` - Open Icon Browser
+- `⌘⌥O` - Toggle Keyboard Overlay
 - `⌘⌥R` - Reload SketchyBar
 - `⌘⌥⇧R` - Rebuild + Reload SketchyBar
 - `⌘⌥Y` - Toggle Yabai Shortcuts
@@ -112,6 +112,8 @@ These shortcuts work system-wide and don't conflict with common applications:
 - `⌘⌥Z` - Launch Yaze
 - `⌘⌥D` - Open Sys Manual
 
+Note: The Yaze shortcut only appears when the integration is enabled and a launcher/app is found. It prefers `BARISTA_YAZE_LAUNCHER` (or `yaze-nightly` in `PATH`) and will fall back to `BARISTA_YAZE_APP` or the nightly prefix (`YAZE_NIGHTLY_PREFIX`).
+
 #### AFS app paths
 - AFS Browser uses the ImGui app bundle (override with `AFS_BROWSER_APP`).
 - AFS Studio/Labeler prefer `%CODE%/lab/afs/apps/studio` binaries; CLI fallback requires `menus.apple.terminal = true`.
@@ -124,17 +126,24 @@ These shortcuts work system-wide and don't conflict with common applications:
 - `⌃←` - Previous Space
 - `⌃→` - Next Space
 
+Note: Space navigation wraps within the current display and relies on the yabai scripting addition for instant switching. If it stops working, reload the scripting addition or run the Yabai doctor.
+
 #### Layout Modes (ctrl+shift)
 - `⌃⇧F` - Set Float Layout
 - `⌃⇧B` - Set BSP Layout
 - `⌃⇧S` - Set Stack Layout
+
+Note: Window-manager shortcuts are generated only when `modes.window_manager` permits them. Use `BARISTA_WINDOW_MANAGER_MODE=disabled` (or set `state.json` to disabled/optional) to suppress yabai/skhd bindings on machines without permissions.
 
 ### Generating skhd Configuration
 
 Generate the shortcuts configuration file:
 
 ```bash
-# Generate shortcuts config (uses BARISTA_CONFIG_DIR if set)
+# From the Barista repo
+BARISTA_CONFIG_DIR=/path/to/barista lua helpers/generate_shortcuts.lua
+
+# From an installed config
 lua ~/.config/sketchybar/helpers/generate_shortcuts.lua
 
 # Output: ~/.config/skhd/barista_shortcuts.conf
@@ -221,6 +230,8 @@ Toggle Cortex       ⌘⌥C
 Reload SketchyBar   ⌘⌥R
 Open Control Panel  ⌘⌥P
 ```
+
+Help Center + Control Panel data is sourced from `data/workflow_shortcuts.json`. Keep it aligned with `modules/shortcuts.lua` and regenerate the skhd file after edits.
 
 ## Best Practices
 

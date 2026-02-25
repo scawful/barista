@@ -54,7 +54,7 @@ menus.apple.hover = {
 - `stemforge`, `stem_sampler`
 - `yaze`
 - `cortex_toggle`, `cortex_hub`
-- `help_center`, `sys_manual`, `icon_browser`, `barista_config`, `reload_bar`
+- `help_center`, `sys_manual`, `icon_browser`, `keyboard_overlay`, `barista_config`, `reload_bar`
 
 ## Behavior notes
 
@@ -73,6 +73,16 @@ menus.apple.hover = {
 - **AFS Studio/Labeler**: direct binaries in `AFS_STUDIO_ROOT` or `%CODE%/lab/afs/apps/studio`.
   Terminal fallback uses `AFS_ROOT` CLI and requires `menus.apple.terminal = true`.
 - **AFS Root**: `AFS_ROOT` env var or `%CODE%/lab/afs`.
+
+## Yaze resolution
+
+- **Repo root**: `BARISTA_YAZE_DIR` or `%CODE%/yaze` (also checks `%CODE%/hobby/yaze`).
+- **App override**: `BARISTA_YAZE_APP` or `YAZE_APP`.
+- **Nightly prefix**: `BARISTA_YAZE_NIGHTLY_PREFIX` or `YAZE_NIGHTLY_PREFIX` (defaults to `~/.local/yaze/nightly`).
+  Barista checks `current/yaze.app` under that prefix.
+- **Launcher override**: `BARISTA_YAZE_LAUNCHER` or `YAZE_LAUNCHER`.
+  If unset, Barista uses `yaze-nightly` when it exists in `PATH`.
+- **Nightly app path**: also checks `~/Applications/Yaze Nightly.app` and `~/applications/yaze nightly.app`.
 
 ## Cortex integration
 

@@ -162,6 +162,7 @@ runtime_update.sh space-icon 1 "󰊠"
 - One-click launch with ROM
 - Build from menu
 - Git status monitoring
+- Nightly launcher support (`yaze-nightly` or `BARISTA_YAZE_LAUNCHER`)
 
 **Menu Items** (Apple → ROM Hacking):
 - Launch Yaze [status-aware]

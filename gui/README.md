@@ -38,6 +38,9 @@ From the project root:
 ./rebuild_gui.sh
 ```
 
+By default, `rebuild_gui.sh` leaves `gui/bin` untouched to avoid dirtying the repo.
+Set `BARISTA_SYNC_GUI_BIN=1` if you need to copy fresh binaries into `gui/bin`.
+
 Or from this directory:
 ```bash
 cd /path/to/barista

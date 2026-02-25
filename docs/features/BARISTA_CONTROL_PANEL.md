@@ -47,6 +47,11 @@ Transform the former “SketchyBar control panel” into a Barista-branded contr
 - `bin/open_control_panel.sh`
   - Launches the preferred control panel (native Cocoa by default).
   - Routing is configured via `control_panel.preferred` in state.json or env vars (see below).
+
+Help Center + Control Panel metadata lives in:
+- `data/workflow_shortcuts.json` (keymap, docs, quick actions)
+- `data/menu_help.json` (Help menu entries)
+- Regenerate `~/.config/skhd/barista_shortcuts.conf` with `BARISTA_CONFIG_DIR=/path/to/barista lua helpers/generate_shortcuts.lua` after shortcut changes.
 - Future:
   - `bin/toggle_popups.sh`
   - `bin/launch_agent <label> <action>`

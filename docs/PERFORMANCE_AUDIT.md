@@ -46,3 +46,9 @@ The Lua layer also relies on blocking I/O:
 ### Long Term (Architecture Fix)
 1.  **Async IPC:** Replace `popen` with a non-blocking `fork()` + `exec()` + `pipe()` loop, managed by a central event loop (e.g., `libuv` or a custom `select()` loop).
 2.  **Lua Async:** Use a Lua library like `luv` or move network requests to a separate "fetcher" process that writes to a file, which the main Lua script simply reads.
+
+## Shell Script Optimization
+
+- **AWK Variable Naming**: Standardized `awk` variable names to avoid collisions with built-ins (e.g., renamed `load` to `l`). This prevents fatal errors on systems using `gawk`.
+- **Binary Paths**: Standardized SketchyBar binary paths to `/opt/homebrew/bin/sketchybar` to avoid resolution overhead and ensure consistency across updates.
+- **Update Frequencies**: Maintained high-interval updates for non-critical widgets (Clock: 30s, Battery: 120s) to keep CPU usage under 1%.

@@ -8,7 +8,7 @@ Barista is a curated configuration for [SketchyBar](https://github.com/FelixKrat
 
 - **Dynamic Island**: Context-aware popups for volume, brightness, and music.
 - **Profiles**: Switch between "Work", "Personal", and "Cozy" modes instantly.
-- **Integrations**: Optional support for Yabai (tiling) and Skhd (hotkeys).
+- **Integrations**: Optional support for Yabai (tiling), Skhd (hotkeys), Journal (org-mode capture/inbox), NERV (transfer queue + host monitoring), and Halext-org (task dashboard). Integrations are toggled per profile.
 - **Extensible**: Lua-based configuration system.
 
 ## Quick Install
@@ -75,7 +75,7 @@ Optionally pass the target dir (default: `~/.config/sketchybar`). If the runtime
 ```
 
 ### Configuration
-Edit `~/.config/sketchybar/state.json` to toggle widgets and appearance, or use `barista_config.lua` for overrides that survive the GUI. See [docs/guides/CUSTOMIZATION.md](docs/guides/CUSTOMIZATION.md) for state.json, profiles, themes, and [docs/architecture/SKETCHYBAR_LAYOUT.md](docs/architecture/SKETCHYBAR_LAYOUT.md) for which file defines each bar item.
+Edit `~/.config/sketchybar/state.json` to toggle widgets and appearance, or use `barista_config.lua` for overrides that survive the GUI. See [docs/guides/CUSTOMIZATION.md](docs/guides/CUSTOMIZATION.md) for state.json, profiles, themes, and fonts; [docs/architecture/SKETCHYBAR_LAYOUT.md](docs/architecture/SKETCHYBAR_LAYOUT.md) for which file defines each bar item. To validate theme files: `lua scripts/validate_theme.lua [theme_name]`.
 
 ```json
 {

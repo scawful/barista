@@ -165,64 +165,40 @@ int main(int argc, char *argv[]) {
     char main_label[LABEL_SIZE];
     snprintf(main_label, sizeof(main_label), "%s %d%%", cpu_icon, info.cpu_percent);
 
-    // Update main widget
-    char cmd[CMD_SIZE];
-    snprintf(cmd, sizeof(cmd),
-             "sketchybar --set system_info "
-             "label=\"%s\" "
-             "icon.color=\"%s\" "
-             "label.font.style=\"Semibold\"",
-             main_label, cpu_color);
-    system(cmd);
-
-    // Update popup items
-    snprintf(cmd, sizeof(cmd),
-             "sketchybar --set system_info.cpu "
-             "label=\"CPU %d%%    Load %.2f\"",
-             info.cpu_percent, info.load_avg);
-    system(cmd);
-
-    snprintf(cmd, sizeof(cmd),
-             "sketchybar --set system_info.mem "
-             "label=\"Memory %lluG\"",
-             info.mem_used_gb);
-    system(cmd);
-
-    snprintf(cmd, sizeof(cmd),
-             "sketchybar --set system_info.disk "
-             "label=\"Disk %s\"",
-             info.disk_info);
-    system(cmd);
-
-    // Network
+    // Network label
+    char net_label[LABEL_SIZE];
+    const char *net_color;
     if (info.net_online) {
+        net_color = "0xFFa6e3a1";
         if (info.net_name[0] != '\0' && info.net_ip[0] != '\0') {
-            snprintf(cmd, sizeof(cmd),
-                     "sketchybar --set system_info.net "
-                     "label=\"Wi-Fi: %s (%s)\" "
-                     "icon.color=\"0xFFa6e3a1\"",
-                     info.net_name,
-                     info.net_ip);
+            snprintf(net_label, sizeof(net_label), "Wi-Fi: %s (%s)", info.net_name, info.net_ip);
         } else if (info.net_name[0] != '\0') {
-            snprintf(cmd, sizeof(cmd),
-                     "sketchybar --set system_info.net "
-                     "label=\"Wi-Fi: %s\" "
-                     "icon.color=\"0xFFa6e3a1\"",
-                     info.net_name);
+            snprintf(net_label, sizeof(net_label), "Wi-Fi: %s", info.net_name);
         } else {
-            snprintf(cmd, sizeof(cmd),
-                     "sketchybar --set system_info.net "
-                     "label=\"Network: %s\" "
-                     "icon.color=\"0xFFa6e3a1\"",
-                     info.net_ip);
+            snprintf(net_label, sizeof(net_label), "Network: %s", info.net_ip);
         }
     } else {
-        snprintf(cmd, sizeof(cmd),
-                 "sketchybar --set system_info.net "
-                 "label=\"Wi-Fi: Disconnected\" "
-                 "icon.color=\"0xFFf38ba8\"");
+        net_color = "0xFFf38ba8";
+        snprintf(net_label, sizeof(net_label), "Wi-Fi: Disconnected");
     }
+
+    /* PERF: Single batched sketchybar call for all 5 widget updates.
+     * Previously 5 separate system() calls = 5 fork+exec cycles. */
+    char cmd[CMD_SIZE * 4];
+    snprintf(cmd, sizeof(cmd),
+             "sketchybar"
+             " --set system_info label=\"%s\" icon.color=\"%s\" label.font.style=\"Semibold\""
+             " --set system_info.cpu label=\"CPU %d%%    Load %.2f\""
+             " --set system_info.mem label=\"Memory %lluG\""
+             " --set system_info.disk label=\"Disk %s\""
+             " --set system_info.net label=\"%s\" icon.color=\"%s\"",
+             main_label, cpu_color,
+             info.cpu_percent, info.load_avg,
+             info.mem_used_gb,
+             info.disk_info,
+             net_label, net_color);
     system(cmd);
 
     return 0;
 }
+

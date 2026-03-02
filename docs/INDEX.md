@@ -1,13 +1,14 @@
 # Barista Documentation Index
 
 **Status:** Experimental (hybrid C/Lua)
-**Last Updated:** 2026-02-24
+**Last Updated:** 2026-03-01
 
 ## Quick Links
 
 - [README](../README.md) - Project overview
 - [BUILD.md](BUILD.md) - Build instructions
 - [CHANGELOG.md](CHANGELOG.md) - Version history
+- [PERFORMANCE_AUDIT.md](PERFORMANCE_AUDIT.md) - Performance analysis and mitigations
 
 ---
 
@@ -30,6 +31,7 @@ User-facing setup and usage guides.
 | [GITHUB_SETUP.md](guides/GITHUB_SETUP.md) | GitHub distribution setup |
 | [TUI_CONFIGURATION.md](guides/TUI_CONFIGURATION.md) | TUI setup and config |
 | [CONFIG_OVERRIDES.md](guides/CONFIG_OVERRIDES.md) | Programmatic configuration overrides |
+| [barista-verify.sh](../scripts/barista-verify.sh) | Smoke test and validation tool |
 
 ### architecture/
 System design and technical documentation.

@@ -36,6 +36,15 @@ cmake --preset release
 cmake --build --preset release
 ```
 
+### Dev Build (AddressSanitizer)
+
+```bash
+cmake --preset dev
+cmake --build build
+```
+
+The dev preset enables AddressSanitizer for catching memory bugs during development.
+
 ## Project Structure
 
 ```
@@ -80,19 +89,13 @@ barista/
 
 ### GUI Applications (Objective-C)
 
-- `config_menu_v2` - Main configuration panel
-- `config_menu_enhanced` - Enhanced configuration panel
+- `config_menu` - Configuration panel
 - `icon_browser` - Icon browser
 - `help_center` - Help center
 
 ## Installation
 
-After building, binaries are located in `build/bin/`. To install:
-
-```bash
-# Copy binaries to installation directory
-cp build/bin/* ~/.config/sketchybar/bin/
-```
+After building, binaries are automatically synced from `build/bin/` to `bin/` via the `sync_binaries` CMake target.
 
 Or use the provided install script:
 
@@ -115,6 +118,34 @@ cmake --preset debug
 
 # Build with preset
 cmake --build --preset debug
+```
+
+### Using rebuild.sh
+
+The `scripts/rebuild.sh` script provides a convenient build wrapper:
+
+```bash
+./scripts/rebuild.sh                  # Quick rebuild all
+./scripts/rebuild.sh clean            # Clean rebuild
+./scripts/rebuild.sh --verify         # Build + run test suite
+./scripts/rebuild.sh --preset dev     # Build with CMake preset
+./scripts/rebuild.sh helpers          # Rebuild only C/C++ helpers
+./scripts/rebuild.sh gui              # Rebuild only GUI apps
+```
+
+### Running Tests
+
+Barista includes a Lua test suite (94 tests) and a smoke test script:
+
+```bash
+# Lua unit tests
+lua tests/run_tests.lua
+
+# Full smoke test (tests + binary validation + config check)
+./scripts/barista-verify.sh
+
+# Quick smoke test (skip shellcheck)
+./scripts/barista-verify.sh --quick
 ```
 
 ### IDE Integration

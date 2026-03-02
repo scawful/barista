@@ -8,8 +8,8 @@ Barista is a curated configuration for [SketchyBar](https://github.com/FelixKrat
 
 - **Dynamic Island**: Context-aware popups for volume, brightness, and music.
 - **Profiles**: Switch between "Work", "Personal", and "Cozy" modes instantly.
+- **Modular Architecture**: Lua-based configuration system decomposed for high performance and testability.
 - **Integrations**: Optional support for Yabai (tiling), Skhd (hotkeys), Journal (org-mode capture/inbox), NERV (transfer queue + host monitoring), and Halext-org (task dashboard). Integrations are toggled per profile.
-- **Extensible**: Lua-based configuration system.
 
 ## Quick Install
 
@@ -119,11 +119,21 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
   --panel-mode tui
 ```
 
-## Performance
-
 - **Hover animation:** In `state.json` or in `modules/state.lua` defaults, `hover_animation_duration` (default 8) and `hover_animation_curve` (default `sin`) control popup hover speed. Lower duration (e.g. 6) for even snappier feel.
-- **Heavy menus:** If a menu is slow to open, check the integration module (e.g. `modules/integrations/*.lua`) and any scripts run on open; add caching or lazy loading. Prefer C/Lua for hot paths; avoid long shell commands on every bar update.
-- **Tuning:** See `docs/workflow/HANDOFF_SOURCE_UNIVERSE_CLI_AGENT.md` for a stability/performance checklist and where to look (menu_renderer, popup_hover, state.lua).
+- **Process Batching:** Barista minimizes process forks. Space switching uses a batched diff-update path (40+ forks reduced to 1). C helpers like `system_info_widget` batch multiple updates into a single call.
+- **Direct Execution:** Hot-path C helpers use `execlp()` instead of `system()` to eliminate shell overhead and unnecessary forks.
+- **Modular Load:** Configuration logic is split across focused modules (`shell_utils`, `paths`, `binary_resolver`) to ensure fast initialization.
+- **Tuning:** See [docs/PERFORMANCE_AUDIT.md](docs/PERFORMANCE_AUDIT.md) for a stability/performance checklist and detailed audit results.
+
+## Testing
+
+Barista includes a comprehensive test suite of **94+ tests** across its Lua modules.
+
+```bash
+./scripts/barista-verify.sh          # Full smoke test (binaries, shell, lua)
+lua tests/run_tests.lua              # Run Lua unit tests only
+./scripts/rebuild.sh --verify       # Rebuild all and run tests
+```
 
 ## Troubleshooting
 

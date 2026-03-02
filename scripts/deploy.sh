@@ -230,39 +230,20 @@ write_deploy_metadata() {
     fi
   fi
 
-  if command -v python3 >/dev/null 2>&1; then
-    python3 - "$meta_file" "$log_file" "$now" "$SOURCE" "$git_commit" "$git_branch" "$git_describe" "$git_dirty" "$NOTE" <<'PY'
-import json
-import sys
-
-meta_file = sys.argv[1]
-log_file = sys.argv[2]
-now = sys.argv[3]
-source = sys.argv[4]
-commit = sys.argv[5]
-branch = sys.argv[6]
-describe = sys.argv[7]
-dirty = sys.argv[8].lower() == "true"
-note = sys.argv[9]
-
-entry = {
-    "timestamp": now,
-    "source": source,
-    "git": {
-        "commit": commit,
-        "branch": branch,
-        "describe": describe,
-        "dirty": dirty,
-    },
-    "note": note,
-}
-
-with open(meta_file, "w", encoding="utf-8") as fh:
-    json.dump(entry, fh, indent=2, ensure_ascii=False)
-
-with open(log_file, "a", encoding="utf-8") as fh:
-    fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
-PY
+  if command -v jq >/dev/null 2>&1; then
+    # Build metadata JSON with jq (no Python dependency)
+    jq -n \
+      --arg ts "$now" \
+      --arg src "$SOURCE" \
+      --arg commit "$git_commit" \
+      --arg branch "$git_branch" \
+      --arg describe "$git_describe" \
+      --argjson dirty "${git_dirty}" \
+      --arg note "$NOTE" \
+      '{timestamp: $ts, source: $src, git: {commit: $commit, branch: $branch, describe: $describe, dirty: $dirty}, note: $note}' \
+      > "$meta_file"
+    # Append to deploy log (one JSON object per line)
+    jq -c . "$meta_file" >> "$log_file"
   else
     echo "{\"timestamp\":\"$now\",\"source\":\"$SOURCE\"}" > "$meta_file"
   fi

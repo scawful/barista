@@ -153,17 +153,44 @@ show_summary() {
 
 # Main execution
 main() {
-    case "${1:-rebuild}" in
+    local do_verify=0
+    local preset=""
+    local action="rebuild"
+
+    # Parse flags
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --verify) do_verify=1; shift ;;
+        --preset) preset="$2"; shift 2 ;;
+        --preset=*) preset="${1#--preset=}"; shift ;;
+        *) action="$1"; shift ;;
+      esac
+    done
+
+    # Use preset if specified
+    if [ -n "$preset" ]; then
+      print_info "Using CMake preset: $preset"
+    fi
+
+    case "$action" in
         clean)
             check_prerequisites
             clean_build
-            configure_cmake
+            if [ -n "$preset" ]; then
+              cmake --preset "$preset"
+            else
+              configure_cmake
+            fi
             build_all
             show_summary
             ;;
         rebuild|all)
             check_prerequisites
-            configure_cmake
+            if [ -n "$preset" ]; then
+              cmake --preset "$preset"
+            else
+              configure_cmake
+            fi
             build_all
             show_summary
             ;;
@@ -181,15 +208,26 @@ main() {
             ;;
         help|--help|-h)
             show_help
+            return 0
             ;;
         *)
-            print_error "Unknown option: $1"
+            print_error "Unknown option: $action"
             echo ""
             show_help
             exit 1
             ;;
     esac
+
+    # Run verification if requested
+    if [ "$do_verify" -eq 1 ]; then
+      print_section "Running Verification"
+      local verify_script="$SCRIPT_DIR/barista-verify.sh"
+      if [ -x "$verify_script" ]; then
+        "$verify_script" --quick
+      else
+        print_warn "barista-verify.sh not found at $verify_script"
+      fi
+    fi
 }
 
 main "$@"
-

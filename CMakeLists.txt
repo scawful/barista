@@ -45,7 +45,16 @@ include_directories(
 add_subdirectory(helpers)
 add_subdirectory(gui)
 
-# Installation
+# Post-build: sync binaries from build/bin/ to project bin/
+# This keeps the deployed location up to date after each build
+file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+add_custom_target(sync_binaries ALL
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_BINARY_DIR}/bin
+    ${CMAKE_SOURCE_DIR}/bin
+  COMMENT "Syncing binaries to bin/"
+  DEPENDS helpers
+)
 set(INSTALL_BIN_DIR "${CMAKE_INSTALL_PREFIX}/bin")
 set(INSTALL_CONFIG_DIR "${CMAKE_INSTALL_PREFIX}")
 

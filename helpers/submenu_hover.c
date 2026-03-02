@@ -13,7 +13,9 @@
 
 static const char *HOVER_BG = "0x80cba6f7";
 static const char *IDLE_BG = "0x00000000";
-static const char *SUBMENUS[] = {
+
+/* Hardcoded fallback list (used when dynamic list file is missing) */
+static const char *FALLBACK_SUBMENUS[] = {
   "menu.control_center.app",
   "menu.windows.section",
   "menu.control_center.spaces",
@@ -30,7 +32,37 @@ static const char *SUBMENUS[] = {
   "menu.agents.section",
   "menu.debug.section"
 };
-static const size_t SUBMENU_COUNT = sizeof(SUBMENUS) / sizeof(SUBMENUS[0]);
+static const size_t FALLBACK_COUNT = sizeof(FALLBACK_SUBMENUS) / sizeof(FALLBACK_SUBMENUS[0]);
+
+/* Dynamic list: loaded from TMPDIR/sketchybar_submenu_list at startup */
+#define MAX_DYNAMIC_SUBMENUS 64
+static char dynamic_names[MAX_DYNAMIC_SUBMENUS][256];
+static const char *SUBMENUS[MAX_DYNAMIC_SUBMENUS];
+static size_t SUBMENU_COUNT = 0;
+
+static void load_submenu_list(const char *tmpdir) {
+  char list_path[PATH_MAX];
+  snprintf(list_path, sizeof(list_path), "%s/sketchybar_submenu_list", tmpdir);
+  FILE *fp = fopen(list_path, "r");
+  if (fp) {
+    char line[256];
+    while (SUBMENU_COUNT < MAX_DYNAMIC_SUBMENUS && fgets(line, sizeof(line), fp)) {
+      line[strcspn(line, "\n\r")] = '\0';
+      if (line[0] == '\0') continue;
+      strncpy(dynamic_names[SUBMENU_COUNT], line, sizeof(dynamic_names[0]) - 1);
+      SUBMENUS[SUBMENU_COUNT] = dynamic_names[SUBMENU_COUNT];
+      SUBMENU_COUNT++;
+    }
+    fclose(fp);
+  }
+  if (SUBMENU_COUNT == 0) {
+    /* Fallback to hardcoded list */
+    for (size_t i = 0; i < FALLBACK_COUNT && i < MAX_DYNAMIC_SUBMENUS; i++) {
+      SUBMENUS[i] = FALLBACK_SUBMENUS[i];
+    }
+    SUBMENU_COUNT = FALLBACK_COUNT;
+  }
+}
 
 static double CLOSE_DELAY = 0.25;  // Increased default for better reliability
 static char state_file[PATH_MAX];
@@ -205,6 +237,9 @@ int main(void) {
   snprintf(state_file, sizeof(state_file), "%s/sketchybar_submenu_active", tmpdir);
   snprintf(parent_state_file, sizeof(parent_state_file), "%s/sketchybar_parent_popup_lock", tmpdir);
   snprintf(pid_file, sizeof(pid_file), "%s/sketchybar_submenu_pid", tmpdir);
+
+  /* Load dynamic submenu list (or fall back to hardcoded) */
+  load_submenu_list(tmpdir);
 
   const char *delay_env = getenv("SUBMENU_CLOSE_DELAY");
   if (delay_env && delay_env[0] != '\0') {

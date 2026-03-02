@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <limits.h>
 
@@ -59,7 +60,11 @@ int main(void) {
             anim ? " --animate " : "", anim ? curve : "", anim ? " " : "", anim ? dur : "",
             name);
     }
-
-    system(cmd);
-    return 0;
+    /* PERF: Use execlp instead of system() to avoid double-fork.
+     * Since popup_hover is a one-shot binary (SketchyBar spawns it per event),
+     * we can exec directly — the process is replaced, saving one fork cycle. */
+    execlp("sh", "sh", "-c", cmd, (char *)NULL);
+    /* execlp only returns on failure */
+    perror("execlp");
+    return 1;
 }

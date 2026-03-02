@@ -20,15 +20,17 @@ cleanup_lock() {
 trap cleanup_lock EXIT
 
 # Skip work if neither display topology nor space mapping changed
+# PERF: Single yabai query, derive all three signatures via jq
 current_display_state=""
 current_space_state=""
 current_active_state=""
 if command -v yabai >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-  current_display_state="$(yabai -m query --displays 2>/dev/null | jq -r '[.[] | .index] | sort | join(\",\")' 2>/dev/null || true)"
-  # Track spaces by display/index to catch moves between monitors
-  current_space_state="$(yabai -m query --spaces 2>/dev/null | jq -r '[.[] | "\(.display)-\(.index)"] | sort | join(\",\")' 2>/dev/null || true)"
-  # Track visible/focused space mapping per display to avoid full rebuild on focus/display changes
-  current_active_state="$(yabai -m query --spaces 2>/dev/null | jq -r '[.[] | select(."is-visible" == true) | "\(.display):\(.index)"] | sort | join(\",\")' 2>/dev/null || true)"
+  ALL_SPACES_DATA="$(yabai -m query --spaces 2>/dev/null || true)"
+  if [ -n "$ALL_SPACES_DATA" ]; then
+    current_display_state="$(printf '%s' "$ALL_SPACES_DATA" | jq -r '[.[].display] | unique | sort | join(",")' 2>/dev/null || true)"
+    current_space_state="$(printf '%s' "$ALL_SPACES_DATA" | jq -r '[.[] | "\(.display)-\(.index)"] | sort | join(",")' 2>/dev/null || true)"
+    current_active_state="$(printf '%s' "$ALL_SPACES_DATA" | jq -r '[.[] | select(."is-visible" == true) | "\(.display):\(.index)"] | sort | join(",")' 2>/dev/null || true)"
+  fi
 fi
 
 if [ -n "$current_display_state$current_space_state" ]; then

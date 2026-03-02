@@ -554,18 +554,22 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ]; then
     fi
 
     if [ "$fast_path_ok" -eq 1 ]; then
+      # PERF: Build a single batched sketchybar command for all updates
+      # instead of N×7 individual forks per space change
+      declare -a FAST_ARGS=()
+
       for entry in "${SPACE_LINES[@]-}"; do
         space_index="${entry##* }"
         click_action="$(space_click_action "$space_index")"
-        sketchybar --set "space.$space_index" click_script="$click_action" >/dev/null 2>&1 || true
+        FAST_ARGS+=(--set "space.$space_index" click_script="$click_action")
         if [ -x "$SPACE_ACTION_SCRIPT" ]; then
-          sketchybar --set "space.$space_index.menu.close" click_script="$(space_menu_action "menu-close" "$space_index")" >/dev/null 2>&1 || true
-          sketchybar --set "space.$space_index.menu.left" click_script="$(space_menu_action "move-left" "$space_index")" >/dev/null 2>&1 || true
-          sketchybar --set "space.$space_index.menu.right" click_script="$(space_menu_action "move-right" "$space_index")" >/dev/null 2>&1 || true
-          sketchybar --set "space.$space_index.menu.display_prev" click_script="$(space_menu_action "move-display-prev" "$space_index")" >/dev/null 2>&1 || true
-          sketchybar --set "space.$space_index.menu.display_next" click_script="$(space_menu_action "move-display-next" "$space_index")" >/dev/null 2>&1 || true
-          sketchybar --set "space.$space_index.menu.swap" click_script="$(space_menu_action "swap-arm" "$space_index")" >/dev/null 2>&1 || true
-          sketchybar --set "space.$space_index.menu.swap_cancel" click_script="$(space_menu_action "swap-cancel" "$space_index")" >/dev/null 2>&1 || true
+          FAST_ARGS+=(--set "space.$space_index.menu.close" click_script="$(space_menu_action "menu-close" "$space_index")")
+          FAST_ARGS+=(--set "space.$space_index.menu.left" click_script="$(space_menu_action "move-left" "$space_index")")
+          FAST_ARGS+=(--set "space.$space_index.menu.right" click_script="$(space_menu_action "move-right" "$space_index")")
+          FAST_ARGS+=(--set "space.$space_index.menu.display_prev" click_script="$(space_menu_action "move-display-prev" "$space_index")")
+          FAST_ARGS+=(--set "space.$space_index.menu.display_next" click_script="$(space_menu_action "move-display-next" "$space_index")")
+          FAST_ARGS+=(--set "space.$space_index.menu.swap" click_script="$(space_menu_action "swap-arm" "$space_index")")
+          FAST_ARGS+=(--set "space.$space_index.menu.swap_cancel" click_script="$(space_menu_action "swap-cancel" "$space_index")")
         fi
       done
 
@@ -584,18 +588,23 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ]; then
           fi
         fi
         if [ -n "$creator_space" ]; then
-          sketchybar --set "$creator_item" \
-            display="$creator_target" \
-            ignore_association="$creator_ignore_association" \
-            space="$creator_space" \
-            click_script="$creator_cmd" >/dev/null 2>&1 || true
+          FAST_ARGS+=(--set "$creator_item"
+            display="$creator_target"
+            ignore_association="$creator_ignore_association"
+            space="$creator_space"
+            click_script="$creator_cmd")
         else
-          sketchybar --set "$creator_item" \
-            display="$creator_target" \
-            ignore_association="$creator_ignore_association" \
-            click_script="$creator_cmd" >/dev/null 2>&1 || true
+          FAST_ARGS+=(--set "$creator_item"
+            display="$creator_target"
+            ignore_association="$creator_ignore_association"
+            click_script="$creator_cmd")
         fi
       done
+
+      # Single batched call for all updates
+      if [ ${#FAST_ARGS[@]} -gt 0 ]; then
+        sketchybar "${FAST_ARGS[@]}" >/dev/null 2>&1 || true
+      fi
 
       write_signatures "$TOPOLOGY_SIG" "$VISIBLE_SIG" "$VISIBLE_BY_DISPLAY_SIG" "$ACTIVE_DISPLAY_SIG"
 

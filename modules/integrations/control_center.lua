@@ -6,169 +6,54 @@
 
 local control_center = {}
 
+-- Reuse extracted modules instead of duplicating utilities
+local shell_utils = require("shell_utils")
+local paths_module = require("paths")
+local binary_resolver = require("binary_resolver")
+
 local HOME = os.getenv("HOME")
 local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
 
-local function path_exists(path)
-  if not path or path == "" then
-    return false
-  end
-  local file = io.open(path, "r")
-  if file then
-    file:close()
-    return true
-  end
-  return false
-end
+-- Delegate to shared modules
+local path_exists = shell_utils.file_exists
+local shell_quote = shell_utils.shell_quote
+local expand_path = paths_module.expand_path
+local command_available = shell_utils.command_available
+local check_service = shell_utils.check_service
 
-local function shell_quote(value)
-  return string.format("%q", tostring(value))
-end
-
-local function expand_path(path)
-  if type(path) ~= "string" or path == "" then
-    return nil
-  end
-  if path:sub(1, 2) == "~/" then
-    return HOME .. path:sub(2)
-  end
-  return path
-end
-
-local function read_state_scripts_dir()
-  local ok, json = pcall(require, "json")
-  if not ok then
-    return nil
-  end
-
-  local file = io.open(CONFIG_DIR .. "/state.json", "r")
-  if not file then
-    return nil
-  end
-
-  local contents = file:read("*a")
-  file:close()
-
-  local ok_decode, data = pcall(json.decode, contents)
-  if not ok_decode or type(data) ~= "table" then
-    return nil
-  end
-
-  if type(data.paths) ~= "table" then
-    return nil
-  end
-
-  local candidate = data.paths.scripts_dir or data.paths.scripts
-  return expand_path(candidate)
+local function normalize_mode(mode)
+  return binary_resolver.normalize_window_manager_mode(mode)
 end
 
 local function read_state_modes()
   local ok, json = pcall(require, "json")
-  if not ok then
-    return {}
-  end
-
+  if not ok then return {} end
   local file = io.open(CONFIG_DIR .. "/state.json", "r")
-  if not file then
-    return {}
-  end
-
+  if not file then return {} end
   local contents = file:read("*a")
   file:close()
-
   local ok_decode, data = pcall(json.decode, contents)
-  if not ok_decode or type(data) ~= "table" then
+  if not ok_decode or type(data) ~= "table" or type(data.modes) ~= "table" then
     return {}
   end
-
-  if type(data.modes) ~= "table" then
-    return {}
-  end
-
   return data.modes
-end
-
-local function scripts_available(path)
-  if not path or path == "" then
-    return false
-  end
-  if path_exists(path .. "/yabai_control.sh") then
-    return true
-  end
-  if path_exists(path .. "/toggle_shortcuts.sh") then
-    return true
-  end
-  if path_exists(path .. "/toggle_yabai_shortcuts.sh") then
-    return true
-  end
-  return false
 end
 
 local function resolve_scripts_dir()
   local override = os.getenv("BARISTA_SCRIPTS_DIR")
-  if override and override ~= "" then
-    return expand_path(override)
-  end
-
-  local state_override = read_state_scripts_dir()
-  if state_override and state_override ~= "" and scripts_available(state_override) then
-    return state_override
-  end
-
+  if override and override ~= "" then return expand_path(override) end
   local config_scripts = CONFIG_DIR .. "/scripts"
-  if scripts_available(config_scripts) then
-    return config_scripts
-  end
-
-  local legacy_scripts = HOME .. "/.config/scripts"
-  if scripts_available(legacy_scripts) then
-    return legacy_scripts
-  end
-
+  if path_exists(config_scripts .. "/yabai_control.sh") then return config_scripts end
+  local legacy = HOME .. "/.config/scripts"
+  if path_exists(legacy .. "/yabai_control.sh") then return legacy end
   return config_scripts
 end
 
 local SCRIPTS_DIR = resolve_scripts_dir()
 
--- Check service status
-local function check_service(name)
-  local handle = io.popen(string.format("pgrep -x %s >/dev/null 2>&1 && echo 1 || echo 0", name))
-  if not handle then return false end
-  local result = handle:read("*a")
-  handle:close()
-  return result and result:match("1")
-end
+-- check_service and command_available are now in shell_utils
 
-local function command_available(command)
-  if not command or command == "" then
-    return false
-  end
-  local handle = io.popen(string.format("command -v %q 2>/dev/null", command))
-  if not handle then
-    return false
-  end
-  local result = handle:read("*a") or ""
-  handle:close()
-  result = result:gsub("%s+$", "")
-  return result ~= ""
-end
-
-local function normalize_mode(mode)
-  if not mode or mode == "" then
-    return "auto"
-  end
-  mode = tostring(mode):lower()
-  if mode == "off" or mode == "false" or mode == "none" or mode == "disable" or mode == "disabled" then
-    return "disabled"
-  end
-  if mode == "optional" or mode == "opt" then
-    return "optional"
-  end
-  if mode == "required" or mode == "require" or mode == "enabled" or mode == "enable" or mode == "on" then
-    return "required"
-  end
-  return mode
-end
+-- normalize_mode delegated to binary_resolver.normalize_window_manager_mode()
 
 local function resolve_window_manager_mode(opts)
   local mode = opts and opts.window_manager_mode

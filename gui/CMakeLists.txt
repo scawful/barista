@@ -73,40 +73,6 @@ if(APPLE)
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
   )
   
-  # Legacy config_menu_v2 (deprecated, kept for compatibility)
-  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/config_menu_v2.m)
-    add_executable(config_menu_v2
-      config_menu_v2.m
-    )
-    
-    target_compile_options(config_menu_v2 PRIVATE ${OBJC_FLAGS})
-    target_link_libraries(config_menu_v2 PRIVATE
-      ${COCOA_LIB}
-      ${FOUNDATION_LIB}
-    )
-    
-    set_target_properties(config_menu_v2 PROPERTIES
-      RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-  endif()
-  
-  # Legacy config_menu_enhanced (deprecated, kept for reference)
-  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/config_menu_enhanced.m)
-    add_executable(config_menu_enhanced
-      config_menu_enhanced.m
-    )
-    
-    target_compile_options(config_menu_enhanced PRIVATE ${OBJC_FLAGS})
-    target_link_libraries(config_menu_enhanced PRIVATE
-      ${COCOA_LIB}
-      ${FOUNDATION_LIB}
-    )
-    
-    set_target_properties(config_menu_enhanced PROPERTIES
-      RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-  endif()
-  
   # Icon Browser
   add_executable(icon_browser
     icon_browser.m
@@ -146,13 +112,4 @@ if(APPLE)
     help_center
     RUNTIME DESTINATION bin
   )
-  
-  # Install legacy targets if they exist
-  if(TARGET config_menu_v2)
-    install(TARGETS config_menu_v2 RUNTIME DESTINATION bin)
-  endif()
-  
-  if(TARGET config_menu_enhanced)
-    install(TARGETS config_menu_enhanced RUNTIME DESTINATION bin)
-  endif()
 endif()

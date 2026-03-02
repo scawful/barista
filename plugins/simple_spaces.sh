@@ -616,8 +616,8 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ]; then
       fi
 
       if [ "$should_trigger_refresh" -eq 1 ]; then
-        sketchybar --trigger space_change >/dev/null 2>&1 || true
-        sketchybar --trigger space_mode_refresh >/dev/null 2>&1 || true
+        # PERF: Single batched trigger call
+        sketchybar --trigger space_change --trigger space_mode_refresh >/dev/null 2>&1 || true
       fi
       exit 0
     fi
@@ -667,11 +667,8 @@ for creator_target in "${CREATOR_TARGETS[@]-}"; do
   CREATOR_ITEMS+=("$creator_item")
 done
 
-# Remove existing spaces only for full rebuild path
-sketchybar --remove '/space\..*/' >/dev/null 2>&1 || true
-sketchybar --remove '/spaces\..*/' >/dev/null 2>&1 || true
-sketchybar --remove '/space_creator\..*/' >/dev/null 2>&1 || true
-sketchybar --remove space_creator >/dev/null 2>&1 || true
+# PERF: Single batched remove call for full rebuild path
+sketchybar --remove '/space\..*/' --remove '/spaces\..*/' --remove '/space_creator\..*/' --remove space_creator >/dev/null 2>&1 || true
 
 # Execute all commands in one single call
 sketchybar "${SB_ARGS[@]}"
@@ -683,15 +680,20 @@ if [ "$needs_front_app_reorder" -eq 1 ]; then
   (
     for i in {1..30}; do
       if item_exists "front_app"; then
+        # PERF: Batch all reorder moves into a single sketchybar call
+        declare -a REORDER_ARGS=()
         last="front_app"
         for space_item in "${SPACE_ITEMS[@]}"; do
-          sketchybar --move "$space_item" after "$last" >/dev/null 2>&1 || true
+          REORDER_ARGS+=(--move "$space_item" after "$last")
           last="$space_item"
         done
         for creator_item in "${CREATOR_ITEMS[@]-}"; do
-          sketchybar --move "$creator_item" after "$last" >/dev/null 2>&1 || true
+          REORDER_ARGS+=(--move "$creator_item" after "$last")
           last="$creator_item"
         done
+        if [ ${#REORDER_ARGS[@]} -gt 0 ]; then
+          sketchybar "${REORDER_ARGS[@]}" >/dev/null 2>&1 || true
+        fi
         exit 0
       fi
       sleep 0.05

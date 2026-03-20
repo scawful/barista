@@ -47,6 +47,75 @@ run_test("normalize_wm_mode: unknown passes through", function()
   assert_equal(binary_resolver.normalize_window_manager_mode("custom"), "custom")
 end)
 
+-- normalize_runtime_backend tests
+run_test("normalize_runtime_backend: nil -> auto", function()
+  assert_equal(binary_resolver.normalize_runtime_backend(nil), "auto")
+end)
+
+run_test("normalize_runtime_backend: empty -> auto", function()
+  assert_equal(binary_resolver.normalize_runtime_backend(""), "auto")
+end)
+
+run_test("normalize_runtime_backend: lua-only -> lua", function()
+  assert_equal(binary_resolver.normalize_runtime_backend("lua-only"), "lua")
+end)
+
+run_test("normalize_runtime_backend: compiled -> compiled", function()
+  assert_equal(binary_resolver.normalize_runtime_backend("compiled"), "compiled")
+end)
+
+run_test("normalize_runtime_backend: unknown -> auto", function()
+  assert_equal(binary_resolver.normalize_runtime_backend("weird"), "auto")
+end)
+
+run_test("resolve_runtime_backend: env override wins", function()
+  local result = binary_resolver.resolve_runtime_backend(
+    { modes = { runtime_backend = "auto" } },
+    function(name)
+      if name == "BARISTA_RUNTIME_BACKEND" then
+        return "lua"
+      end
+      return nil
+    end
+  )
+  assert_equal(result, "lua")
+end)
+
+run_test("resolve_runtime_backend: legacy lua env still works", function()
+  local result = binary_resolver.resolve_runtime_backend(
+    "auto",
+    function(name)
+      if name == "BARISTA_LUA_ONLY" then
+        return "1"
+      end
+      return nil
+    end
+  )
+  assert_equal(result, "lua")
+end)
+
+run_test("resolve_runtime_backend: state backend used when env missing", function()
+  local result = binary_resolver.resolve_runtime_backend({ modes = { runtime_backend = "lua" } }, function()
+    return nil
+  end)
+  assert_equal(result, "lua")
+end)
+
+run_test("read_runtime_backend_from_state: reads state file", function()
+  local tmpdir = os.tmpname() .. "_barista_binary_resolver"
+  os.execute(string.format("mkdir -p %q", tmpdir))
+  local state_path = tmpdir .. "/state.json"
+  local file = assert(io.open(state_path, "w"))
+  file:write('{"modes":{"runtime_backend":"lua"}}')
+  file:close()
+
+  local result = binary_resolver.read_runtime_backend_from_state(tmpdir)
+  assert_equal(result, "lua")
+
+  os.remove(state_path)
+  os.execute(string.format("rmdir %q", tmpdir))
+end)
+
 -- compute_window_manager_enabled tests
 run_test("compute_wm_enabled: disabled mode → false", function()
   assert_true(not binary_resolver.compute_window_manager_enabled("disabled", "/usr/bin/yabai"))

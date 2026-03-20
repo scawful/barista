@@ -115,6 +115,7 @@ local default_state = {
   },
   modes = {
     window_manager = "auto",
+    runtime_backend = "auto",
   },
   toggles = {
     yabai_shortcuts = true,

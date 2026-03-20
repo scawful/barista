@@ -19,7 +19,8 @@ Usage: $0 [--fix] [--report] [--config-dir <path>] [--state <path>]
 
 Checks:
   - sketchybar/yabai/skhd availability and running status
-  - required fonts
+  - runtime backend and TUI fallback readiness
+  - resolved fonts for icon/text/number families
   - launch agent presence/loading
   - wrapper paths
   - script executable permissions
@@ -93,8 +94,10 @@ CONFIG_DIR="$(expand_home "$CONFIG_DIR")"
 STATE_FILE="$(expand_home "$STATE_FILE")"
 
 WINDOW_MANAGER_MODE="auto"
+RUNTIME_BACKEND="auto"
 if command -v jq >/dev/null 2>&1 && [ -f "$STATE_FILE" ]; then
   WINDOW_MANAGER_MODE="$(jq -r '.modes.window_manager // "auto"' "$STATE_FILE" 2>/dev/null || echo auto)"
+  RUNTIME_BACKEND="$(jq -r '.modes.runtime_backend // "auto"' "$STATE_FILE" 2>/dev/null || echo auto)"
 fi
 
 check_binary() {
@@ -147,41 +150,79 @@ check_process() {
   fi
 }
 
-font_installed() {
-  local pattern="$1"
-  local p
-  for p in "$HOME/Library/Fonts" "/Library/Fonts" "/System/Library/Fonts"; do
-    [ -d "$p" ] || continue
-    if find "$p" -maxdepth 1 -iname "*$pattern*" -print -quit 2>/dev/null | grep -q .; then
-      return 0
-    fi
-  done
-  return 1
-}
-
 check_fonts() {
-  local missing=0
-  if font_installed "Hack Nerd Font"; then
-    log_ok "Hack Nerd Font detected"
-  else
-    log_warn "Hack Nerd Font missing"
-    missing=1
+  local font_script="$CONFIG_DIR/scripts/barista-fonts.sh"
+  if [ ! -x "$font_script" ]; then
+    log_warn "Font resolver missing: $font_script"
+    return
   fi
 
-  if font_installed "SourceCodePro" || font_installed "Source Code Pro"; then
-    log_ok "Source Code Pro detected"
+  local report
+  report="$("$font_script" --state "$STATE_FILE" --report 2>/dev/null || true)"
+  local selected_icon selected_text selected_numbers
+  local source_icon source_text source_numbers
+  local installed_icon installed_text installed_numbers
+
+  selected_icon="$(printf '%s\n' "$report" | awk -F= '/^font.report.selected.icon=/{print substr($0, index($0, "=") + 1); exit}')"
+  selected_text="$(printf '%s\n' "$report" | awk -F= '/^font.report.selected.text=/{print substr($0, index($0, "=") + 1); exit}')"
+  selected_numbers="$(printf '%s\n' "$report" | awk -F= '/^font.report.selected.numbers=/{print substr($0, index($0, "=") + 1); exit}')"
+  source_icon="$(printf '%s\n' "$report" | awk -F= '/^font.report.source.icon=/{print $2; exit}')"
+  source_text="$(printf '%s\n' "$report" | awk -F= '/^font.report.source.text=/{print $2; exit}')"
+  source_numbers="$(printf '%s\n' "$report" | awk -F= '/^font.report.source.numbers=/{print $2; exit}')"
+  installed_icon="$(printf '%s\n' "$report" | awk -F= '/^font.report.installed.icon=/{print $2; exit}')"
+  installed_text="$(printf '%s\n' "$report" | awk -F= '/^font.report.installed.text=/{print $2; exit}')"
+  installed_numbers="$(printf '%s\n' "$report" | awk -F= '/^font.report.installed.numbers=/{print $2; exit}')"
+
+  if [ "$installed_icon" = "1" ]; then
+    log_ok "Icon font ready: ${selected_icon:-unknown} (${source_icon})"
   else
-    log_warn "Source Code Pro missing"
-    missing=1
+    log_warn "Icon font unresolved; preferred family missing"
+  fi
+  if [ "$installed_text" = "1" ]; then
+    log_ok "Text font ready: ${selected_text:-unknown} (${source_text})"
+  else
+    log_warn "Text font unresolved; preferred family missing"
+  fi
+  if [ "$installed_numbers" = "1" ]; then
+    log_ok "Number font ready: ${selected_numbers:-unknown} (${source_numbers})"
+  else
+    log_warn "Number font unresolved; preferred family missing"
   fi
 
-  if [ "$missing" -eq 1 ] && [ "$FIX" -eq 1 ] && [ -x "$CONFIG_DIR/scripts/setup_machine.sh" ]; then
+  if { [ "$installed_icon" != "1" ] || [ "$installed_text" != "1" ] || [ "$installed_numbers" != "1" ]; } \
+      && [ "$FIX" -eq 1 ] && [ -x "$CONFIG_DIR/scripts/setup_machine.sh" ]; then
     if "$CONFIG_DIR/scripts/setup_machine.sh" --fonts-only --yes --no-reload >/dev/null 2>&1; then
       log_ok "Fonts install attempted via setup_machine.sh"
     else
       log_warn "Could not auto-install fonts"
     fi
   fi
+}
+
+check_runtime_backend() {
+  case "$RUNTIME_BACKEND" in
+    lua)
+      log_ok "Runtime backend pinned to Lua-only mode"
+      if [ -x "$CONFIG_DIR/bin/barista" ]; then
+        log_ok "TUI available for Lua-only debugging"
+      else
+        log_warn "Lua-only runtime selected but bin/barista is missing"
+      fi
+      if [ -x "$CONFIG_DIR/scripts/install-tui.sh" ]; then
+        if "$CONFIG_DIR/scripts/install-tui.sh" --check >/dev/null 2>&1; then
+          log_ok "TUI Python dependencies are installed"
+        else
+          log_warn "TUI Python dependencies missing; run scripts/install-tui.sh --yes"
+        fi
+      fi
+      ;;
+    auto|"")
+      log_ok "Runtime backend uses auto helper detection"
+      ;;
+    *)
+      log_warn "Unknown runtime backend in state.json: $RUNTIME_BACKEND"
+      ;;
+  esac
 }
 
 check_launch_agent() {
@@ -337,6 +378,7 @@ case "$WINDOW_MANAGER_MODE" in
 esac
 
 check_state_json
+check_runtime_backend
 check_fonts
 check_wrapper_paths
 check_script_permissions
@@ -351,6 +393,7 @@ if [ "$REPORT" -eq 1 ]; then
   printf 'doctor.report.fix_mode=%s\n' "$FIX"
   printf 'doctor.report.config_dir=%s\n' "$CONFIG_DIR"
   printf 'doctor.report.state_file=%s\n' "$STATE_FILE"
+  printf 'doctor.report.runtime_backend=%s\n' "$RUNTIME_BACKEND"
 fi
 
 if [ "$FAIL_COUNT" -gt 0 ]; then

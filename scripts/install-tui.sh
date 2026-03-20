@@ -10,6 +10,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
+REQUIREMENTS_FILE="$REPO_DIR/config/requirements.txt"
 AUTO_YES=0
 
 # Colors
@@ -92,10 +93,10 @@ install_deps() {
     echo ""
     echo "Installing dependencies..."
     
-    if [ -f "$REPO_DIR/requirements.txt" ]; then
-        pip3 install -r "$REPO_DIR/requirements.txt"
+    if [ -f "$REQUIREMENTS_FILE" ]; then
+        python3 -m pip install -r "$REQUIREMENTS_FILE"
     else
-        pip3 install textual pydantic pyyaml
+        python3 -m pip install textual pydantic pyyaml
     fi
     
     echo ""
@@ -110,10 +111,15 @@ create_venv() {
     echo "Creating virtual environment at $VENV_DIR..."
     
     python3 -m venv "$VENV_DIR"
+    # shellcheck disable=SC1091
     source "$VENV_DIR/bin/activate"
-    
-    pip install --upgrade pip
-    pip install -r "$REPO_DIR/requirements.txt"
+
+    python3 -m pip install --upgrade pip
+    if [ -f "$REQUIREMENTS_FILE" ]; then
+        python3 -m pip install -r "$REQUIREMENTS_FILE"
+    else
+        python3 -m pip install textual pydantic pyyaml
+    fi
     
     echo ""
     echo -e "${GREEN}Virtual environment created!${NC}"

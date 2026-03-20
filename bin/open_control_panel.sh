@@ -20,6 +20,7 @@ DOC_FALLBACK="$CONFIG_DIR/docs/guides/TUI_CONFIGURATION.md"
 CONTROL_PREF="${BARISTA_CONTROL_PANEL:-${BARISTA_CONTROL_PANEL_MODE:-}}"
 CUSTOM_COMMAND="${BARISTA_CONTROL_PANEL_CMD:-}"
 IMGUICLI_BIN="${BARISTA_IMGUI_BIN:-}"
+RUNTIME_BACKEND="${BARISTA_RUNTIME_BACKEND:-}"
 
 read_state_value() {
   local query="$1"
@@ -58,6 +59,9 @@ fi
 if [[ -z "$CUSTOM_COMMAND" ]]; then
   CUSTOM_COMMAND="$(read_state_value '.control_panel.command // empty')"
 fi
+if [[ -z "$RUNTIME_BACKEND" ]]; then
+  RUNTIME_BACKEND="$(read_state_value '.modes.runtime_backend // empty')"
+fi
 
 if [[ "$CONTROL_PREF" == "null" ]]; then
   CONTROL_PREF=""
@@ -65,7 +69,13 @@ fi
 if [[ "$CUSTOM_COMMAND" == "null" ]]; then
   CUSTOM_COMMAND=""
 fi
+if [[ "$RUNTIME_BACKEND" == "null" ]]; then
+  RUNTIME_BACKEND=""
+fi
 
+if [[ -z "$CONTROL_PREF" && "$RUNTIME_BACKEND" == "lua" ]]; then
+  CONTROL_PREF="tui"
+fi
 CONTROL_PREF="${CONTROL_PREF:-native}"
 
 # Check if we're in the source directory (for development)

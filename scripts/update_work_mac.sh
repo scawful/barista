@@ -9,13 +9,14 @@ REMOTE_DIR="${BARISTA_REMOTE_DIR:-~/.config/sketchybar}"
 TARGET_REF="${BARISTA_TARGET_REF:-origin/main}"
 WORK_DOMAIN="${BARISTA_WORK_GOOGLE_DOMAIN:-}"
 PANEL_MODE="${BARISTA_ALT_PANEL_MODE:-tui}"
+RUNTIME_BACKEND="${BARISTA_RUNTIME_BACKEND:-lua}"
 REMOTE_URL="${BARISTA_REMOTE_URL:-https://github.com/scawful/barista.git}"
 SKIP_RESTART=0
 INSTALL_EXTRAS=1
 
 usage() {
   cat <<EOF
-Usage: $0 --host <user@work-mac> [--remote-dir <path>] [--target <ref>] [--work-domain <domain>] [--panel-mode <native|tui|imgui|custom>] [--skip-restart] [--no-extras]
+Usage: $0 --host <user@work-mac> [--remote-dir <path>] [--target <ref>] [--work-domain <domain>] [--panel-mode <native|tui|imgui|custom>] [--runtime-backend <auto|lua|compiled>] [--skip-restart] [--no-extras]
 EOF
 }
 
@@ -39,6 +40,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --panel-mode)
       PANEL_MODE="${2:-}"
+      shift 2
+      ;;
+    --runtime-backend)
+      RUNTIME_BACKEND="${2:-}"
       shift 2
       ;;
     --repo-url)
@@ -82,6 +87,7 @@ args=(
   --repo-url "$REMOTE_URL"
   --target "$TARGET_REF"
   --panel-mode "$PANEL_MODE"
+  --runtime-backend "$RUNTIME_BACKEND"
 )
 
 if [ -n "$WORK_DOMAIN" ]; then

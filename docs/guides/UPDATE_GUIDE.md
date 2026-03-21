@@ -48,3 +48,7 @@ If you keep Barista in a repo (for example in `~/src/lab/barista`) and deploy in
 ## Managed Laptop Notes
 - Run behind VPN/proxy if needed; the updater only hits Git remotes and Homebrew
 - If IT tools manage services, set `BARISTA_SKIP_RESTART=1` and restart via company tooling after the update
+- To keep the runtime in no-C++ mode after an update, re-apply:
+  `~/.config/sketchybar/scripts/setup_machine.sh --yes --panel-mode tui --runtime-backend lua`
+- Then verify with:
+  `~/.config/sketchybar/scripts/barista-debug.sh --lua-only --reload`

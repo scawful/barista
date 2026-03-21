@@ -102,11 +102,20 @@ Populate customizable Work Google app entries in the Apple menu:
 ```
 
 ### Fonts + Alternate Panel
-Install missing fonts and set a preferred alternate control panel mode:
+Install missing fonts, repair `state.json` to match available families, and set a preferred alternate control panel mode:
 
 ```bash
 ./scripts/install_missing_fonts_and_panel.sh --yes --panel-mode tui
 ```
+
+For managed/work Macs that should avoid compiled helpers entirely:
+
+```bash
+./scripts/setup_machine.sh --yes --panel-mode tui --runtime-backend lua
+./scripts/barista-debug.sh --lua-only --reload
+```
+
+See [docs/guides/WORK_MACHINE_GEMINI.md](docs/guides/WORK_MACHINE_GEMINI.md) for the Gemini-first upgrade flow.
 
 ### Update Another Mac
 Push the latest repo changes to a remote Mac and apply work profile extras:
@@ -116,7 +125,8 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
   --host user@work-mac.local \
   --target origin/main \
   --work-domain yourcompany.com \
-  --panel-mode tui
+  --panel-mode tui \
+  --runtime-backend lua
 ```
 
 - **Hover animation:** In `state.json` or in `modules/state.lua` defaults, `hover_animation_duration` (default 8) and `hover_animation_curve` (default `sin`) control popup hover speed. Lower duration (e.g. 6) for even snappier feel.
@@ -138,7 +148,8 @@ lua tests/run_tests.lua              # Run Lua unit tests only
 ## Troubleshooting
 
 - **Bar not showing?** Run `sketchybar --reload`.
-- **Icons missing?** Ensure you installed the Nerd Fonts prompted by the installer.
+- **Icons missing?** Run `./scripts/barista-fonts.sh --apply-state --report` and re-run `./scripts/barista-doctor.sh --fix`.
+- **Need to debug without C/C++ helpers?** Run `./scripts/barista-debug.sh --lua-only --reload`.
 - **Yabai acting weird?** Check `System Settings > Privacy & Security > Accessibility`.
 
 ---

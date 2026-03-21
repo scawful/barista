@@ -5,6 +5,13 @@ local shell_utils = require("shell_utils")
 
 local M = {}
 
+local function trim(value)
+  if type(value) ~= "string" then
+    return value
+  end
+  return (value:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
 --- Locate the sketchybar binary.
 function M.resolve_sketchybar_bin()
   local env_bin = os.getenv("SKETCHYBAR_BIN")
@@ -59,6 +66,78 @@ function M.resolve_yabai_bin()
     end
   end
   return nil
+end
+
+--- Normalise runtime backend selection.
+--- Supports state/env values like auto, lua, lua-only, pure-lua, compiled.
+function M.normalize_runtime_backend(mode)
+  if not mode or mode == "" then
+    return "auto"
+  end
+  mode = trim(tostring(mode):lower())
+  if mode == "lua" or mode == "lua-only" or mode == "lua_only"
+      or mode == "pure-lua" or mode == "pure_lua"
+      or mode == "fallback" or mode == "shell"
+      or mode == "no-cmake" or mode == "no_cmake" then
+    return "lua"
+  end
+  if mode == "c" or mode == "compiled" or mode == "native" then
+    return "compiled"
+  end
+  return "auto"
+end
+
+--- Read the preferred runtime backend directly from state.json.
+--- Used during startup before the full state module is loaded.
+function M.read_runtime_backend_from_state(config_dir)
+  local state_file = string.format("%s/state.json", config_dir)
+  if not shell_utils.file_exists(state_file) then
+    return "auto"
+  end
+
+  local file = io.open(state_file, "r")
+  if not file then
+    return "auto"
+  end
+
+  local contents = file:read("*a")
+  file:close()
+  if not contents or contents == "" then
+    return "auto"
+  end
+
+  local ok, json = pcall(require, "json")
+  if not ok or type(json) ~= "table" or type(json.decode) ~= "function" then
+    return "auto"
+  end
+
+  local decoded_ok, data = pcall(json.decode, contents)
+  if not decoded_ok or type(data) ~= "table" then
+    return "auto"
+  end
+
+  local modes = data.modes
+  if type(modes) ~= "table" then
+    return "auto"
+  end
+  return M.normalize_runtime_backend(modes.runtime_backend)
+end
+
+--- Resolve runtime backend from env vars plus optional state/backend input.
+function M.resolve_runtime_backend(state_or_backend, env_get)
+  local getenv = env_get or os.getenv
+  local env_backend = getenv("BARISTA_RUNTIME_BACKEND")
+  if env_backend and env_backend ~= "" then
+    return M.normalize_runtime_backend(env_backend)
+  end
+  if getenv("BARISTA_LUA_ONLY") == "1" or getenv("BARISTA_NO_CMAKE") == "1" then
+    return "lua"
+  end
+
+  if type(state_or_backend) == "table" and type(state_or_backend.modes) == "table" then
+    return M.normalize_runtime_backend(state_or_backend.modes.runtime_backend)
+  end
+  return M.normalize_runtime_backend(state_or_backend)
 end
 
 --- Resolve a compiled C helper binary.

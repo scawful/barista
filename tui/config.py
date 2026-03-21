@@ -146,7 +146,10 @@ class BaristaConfig(BaseModel):
             "workspace_domain": "",
         },
     })
-    modes: dict[str, object] = Field(default_factory=lambda: {"window_manager": "auto"})
+    modes: dict[str, object] = Field(default_factory=lambda: {
+        "window_manager": "auto",
+        "runtime_backend": "auto",
+    })
     
     # Custom paths (machine-specific)
     paths: dict[str, str] = Field(default_factory=dict)

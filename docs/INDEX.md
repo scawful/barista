@@ -30,6 +30,7 @@ User-facing setup and usage guides.
 | [CONTRIBUTING.md](guides/CONTRIBUTING.md) | Contribution guidelines |
 | [GITHUB_SETUP.md](guides/GITHUB_SETUP.md) | GitHub distribution setup |
 | [TUI_CONFIGURATION.md](guides/TUI_CONFIGURATION.md) | TUI setup and config |
+| [WORK_MACHINE_GEMINI.md](guides/WORK_MACHINE_GEMINI.md) | Work-machine, Gemini-first upgrade path |
 | [CONFIG_OVERRIDES.md](guides/CONFIG_OVERRIDES.md) | Programmatic configuration overrides |
 | [barista-verify.sh](../scripts/barista-verify.sh) | Smoke test and validation tool |
 

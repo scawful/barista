@@ -21,8 +21,8 @@ If you can’t build the native GUI on a machine, you can still update `state.js
 
 ```bash
 bin/open_control_panel.sh --tui
-# Or force the fallback:
-export BARISTA_TUI_ONLY=1
+# Or persist the work-machine fallback path:
+./scripts/setup_machine.sh --yes --panel-mode tui --runtime-backend lua
 ```
 
 ### CLI scripts (Python/Lua)
@@ -53,8 +53,8 @@ sketchybar --reload
 
 Install dependencies:
 ```bash
-pip install -r requirements.txt
-# Or: pip install textual pydantic pyyaml
+python3 -m pip install -r config/requirements.txt
+# Or: python3 -m pip install textual pydantic pyyaml
 ```
 
 ## Keyboard Shortcuts
@@ -144,16 +144,15 @@ You can also override scripts via `state.json` (`paths.scripts_dir` or `paths.sc
 For managed machines where you can't compile binaries:
 
 1. Install Python dependencies: `pip install textual pydantic`
-2. Set `BARISTA_LUA_ONLY=1` to skip C helpers
+2. Persist the Lua fallback runtime in state
 3. Use the TUI instead of the native GUI
 
 ```bash
-# In your shell config
-export BARISTA_LUA_ONLY=1
-
-# Configure paths if different
-export BARISTA_CODE_DIR=~/src
+./scripts/setup_machine.sh --yes --panel-mode tui --runtime-backend lua
+./scripts/barista-debug.sh --lua-only --reload
 ```
+
+`modes.runtime_backend = "lua"` survives reloads, unlike one-off env overrides.
 
 ## Troubleshooting
 

@@ -59,12 +59,16 @@ done
 
 lint_candidates=(
   scripts/setup_machine.sh
+  scripts/barista-fonts.sh
+  scripts/barista-debug.sh
   scripts/barista-doctor.sh
   scripts/work_mac_sync.sh
   scripts/update_work_mac.sh
   scripts/check_scripts.sh
   scripts/install_missing_fonts_and_panel.sh
+  scripts/install-tui.sh
   scripts/configure_work_google_apps.sh
+  bin/barista-debug
 )
 
 lint_files=()
@@ -96,13 +100,26 @@ fi
 
 echo "[check] smoke tests"
 ./scripts/setup_machine.sh --help >/dev/null
+./scripts/barista-fonts.sh --help >/dev/null
+./scripts/barista-debug.sh --help >/dev/null
 tmp_state="$(mktemp)"
 printf '{}' > "$tmp_state"
 ./scripts/setup_machine.sh --state "$tmp_state" --skip-fonts --skip-panel --work-apps --replace --dry-run --yes --no-reload >/dev/null
 rm -f "$tmp_state" >/dev/null 2>&1 || true
 ./scripts/barista-doctor.sh --help >/dev/null
+./scripts/install-tui.sh --check >/dev/null || true
 ./scripts/work_mac_sync.sh --help >/dev/null
 ./scripts/update_work_mac.sh --help >/dev/null
 ./bin/barista-update --help >/dev/null
+./bin/barista-debug --help >/dev/null
+
+font_tmp="$(mktemp -d)"
+font_state="$(mktemp)"
+mkdir -p "$font_tmp/fonts"
+touch "$font_tmp/fonts/HackNerdFont-Regular.ttf" "$font_tmp/fonts/SourceCodePro-Regular.ttf" "$font_tmp/fonts/SFMono-Regular.otf"
+printf '{"appearance":{"font_icon":"Missing Nerd Font"}}' > "$font_state"
+BARISTA_FONT_DIRS="$font_tmp/fonts" ./scripts/barista-fonts.sh --state "$font_state" --apply-state --report >/dev/null
+jq -e '.appearance.font_icon == "Hack Nerd Font" and .appearance.font_text == "Source Code Pro" and .appearance.font_numbers == "SF Mono"' "$font_state" >/dev/null
+rm -rf "$font_tmp" "$font_state" >/dev/null 2>&1 || true
 
 echo "[ok] script checks passed"

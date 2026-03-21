@@ -163,6 +163,23 @@ Example state:
 }
 ```
 
+### Step 4c: Runtime Backend (Compiled Helpers vs Lua)
+
+Barista can also persist whether the runtime should try compiled helpers automatically or stay in the pure-Lua fallback path.
+
+Modes:
+- **auto**: default; use compiled helpers when present and fall back to Lua otherwise
+- **lua**: skip compiled helpers and stay on the shell/Lua path
+- **compiled**: reserve this for future explicit helper pinning; today `auto` is the normal compiled-capable mode
+
+Managed/work-machine example:
+
+```bash
+./scripts/setup_machine.sh --yes --panel-mode tui --runtime-backend lua
+```
+
+This writes `modes.runtime_backend = "lua"` to `state.json`, which survives reloads and makes `bin/open_control_panel.sh` prefer the TUI automatically.
+
 ### Step 5: Start Services
 
 #### Using Homebrew Services
@@ -204,7 +221,13 @@ The launch agent will:
 
 3. Open control panel:
    - Shift + Click the Apple menu icon
-   - Or: `~/.config/sketchybar/bin/config_menu_v2`
+   - Or: `~/.config/sketchybar/bin/open_control_panel.sh`
+
+4. If you are avoiding compiled helpers, verify the fallback path:
+   ```bash
+   ~/.config/sketchybar/scripts/barista-debug.sh --lua-only --reload
+   ~/.config/sketchybar/scripts/barista-doctor.sh --report
+   ```
 
 ## Customization for Work
 

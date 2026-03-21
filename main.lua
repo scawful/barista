@@ -33,8 +33,12 @@ local binary_resolver  = require("binary_resolver")
 -- Initialize component switcher for C/Lua hybrid architecture
 local component_switcher = require("component_switcher")
 
--- Lua-only mode: for environments without compiled helpers (no CMake) or when explicitly requested
-local LUA_ONLY = (os.getenv("BARISTA_LUA_ONLY") == "1") or (os.getenv("BARISTA_NO_CMAKE") == "1")
+-- Runtime backend selection: environment overrides state, which lets managed
+-- machines persist a Lua-only fallback without depending on shell env.
+local runtime_backend = binary_resolver.resolve_runtime_backend(
+  binary_resolver.read_runtime_backend_from_state(CONFIG_DIR)
+)
+local LUA_ONLY = runtime_backend == "lua"
 local c_bridge = nil
 
 if not LUA_ONLY then
@@ -61,7 +65,11 @@ if not LUA_ONLY and c_bridge then
   c_bridge.init()
 else
   c_bridge = c_bridge or { init = function() end }
-  print("Barista: running in Lua-only mode (no compiled helpers)")
+  if runtime_backend == "lua" then
+    print("Barista: runtime_backend=lua; running in Lua-only mode")
+  else
+    print("Barista: running in Lua-only mode (no compiled helpers)")
+  end
 end
 
 -- Import existing icons into icon_manager for backwards compatibility

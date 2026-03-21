@@ -8,6 +8,7 @@ REMOTE_DIR="${BARISTA_REMOTE_DIR:-~/.config/sketchybar}"
 REMOTE_URL="${BARISTA_REMOTE_URL:-https://github.com/scawful/barista.git}"
 TARGET_REF="${BARISTA_TARGET_REF:-origin/main}"
 PANEL_MODE="${BARISTA_ALT_PANEL_MODE:-tui}"
+RUNTIME_BACKEND="${BARISTA_RUNTIME_BACKEND:-lua}"
 WORK_DOMAIN="${BARISTA_WORK_GOOGLE_DOMAIN:-}"
 WORK_APPS_FILE=""
 RUN_SETUP=1
@@ -25,6 +26,7 @@ Options:
   --repo-url <url>                       Git URL to clone/update
   --target <ref>                         Target git ref for barista-update
   --panel-mode <native|tui|imgui|custom> Panel preference for setup_machine
+  --runtime-backend <auto|lua|compiled>  Runtime backend persisted in state.json
   --work-domain <domain>                 Workspace domain for work app links
   --work-apps-file <path>                Local JSON array file to upload/use for work apps
   --skip-setup                           Skip setup_machine on remote
@@ -62,6 +64,10 @@ while [ $# -gt 0 ]; do
       ;;
     --panel-mode)
       PANEL_MODE="${2:-}"
+      shift 2
+      ;;
+    --runtime-backend)
+      RUNTIME_BACKEND="${2:-}"
       shift 2
       ;;
     --work-domain)
@@ -127,6 +133,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
   echo "[dry-run] repo_url=$REMOTE_URL"
   echo "[dry-run] target_ref=$TARGET_REF"
   echo "[dry-run] panel_mode=$PANEL_MODE"
+  echo "[dry-run] runtime_backend=$RUNTIME_BACKEND"
   echo "[dry-run] work_domain=$WORK_DOMAIN"
   echo "[dry-run] run_setup=$RUN_SETUP run_doctor=$RUN_DOCTOR skip_reload=$SKIP_RELOAD"
   exit 0
@@ -137,6 +144,7 @@ ssh "$HOST" \
   BARISTA_REMOTE_URL="$REMOTE_URL" \
   BARISTA_TARGET_REF="$TARGET_REF" \
   BARISTA_PANEL_MODE="$PANEL_MODE" \
+  BARISTA_RUNTIME_BACKEND="$RUNTIME_BACKEND" \
   BARISTA_WORK_DOMAIN="$WORK_DOMAIN" \
   BARISTA_REMOTE_APPS_FILE="$REMOTE_APPS_FILE" \
   BARISTA_RUN_SETUP="$RUN_SETUP" \
@@ -181,7 +189,7 @@ else
 fi
 
 if [ "${BARISTA_RUN_SETUP:-1}" = "1" ] && [ -x "./scripts/setup_machine.sh" ]; then
-  setup_args=(--state "$repo_dir/state.json" --panel-mode "$BARISTA_PANEL_MODE" --yes --report)
+  setup_args=(--state "$repo_dir/state.json" --panel-mode "$BARISTA_PANEL_MODE" --runtime-backend "$BARISTA_RUNTIME_BACKEND" --yes --report)
   if [ "${BARISTA_SKIP_RELOAD:-0}" = "1" ]; then
     setup_args+=(--no-reload)
   fi

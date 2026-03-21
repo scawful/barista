@@ -8,12 +8,14 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 STATE_FILE="${BARISTA_STATE_FILE:-$HOME/.config/sketchybar/state.json}"
 PANEL_MODE="${BARISTA_ALT_PANEL_MODE:-tui}"
+RUNTIME_BACKEND="${BARISTA_RUNTIME_BACKEND:-}"
 WORK_DOMAIN="${BARISTA_WORK_GOOGLE_DOMAIN:-}"
 WORK_APPS_FILE=""
 WORK_APPS_OUT_FILE=""
 
 INSTALL_FONTS=1
 CONFIGURE_PANEL=1
+CONFIGURE_RUNTIME=0
 CONFIGURE_WORK_APPS=0
 REPLACE_WORK_APPS=0
 AUTO_YES=0
@@ -23,6 +25,7 @@ REPORT=0
 
 ACTION_FONTS=0
 ACTION_PANEL=0
+ACTION_RUNTIME=0
 ACTION_WORK_APPS=0
 ACTION_RELOAD=0
 WORK_APPS_OUTPUT_FILE_RESOLVED=""
@@ -40,6 +43,7 @@ Core options:
 
 Fonts + panel options:
   --panel-mode <native|tui|imgui|custom>  Preferred control panel mode
+  --runtime-backend <auto|lua|compiled>   Persist runtime backend preference
   --skip-fonts                            Skip font installation
   --skip-panel                            Skip panel preference/readability updates
   --fonts-only                            Only install fonts
@@ -105,6 +109,12 @@ while [[ $# -gt 0 ]]; do
     --panel-mode)
       require_value "$1" "${2:-}"
       PANEL_MODE="$2"
+      shift 2
+      ;;
+    --runtime-backend)
+      require_value "$1" "${2:-}"
+      RUNTIME_BACKEND="$2"
+      CONFIGURE_RUNTIME=1
       shift 2
       ;;
     --work-apps|--configure-work-apps)
@@ -266,10 +276,24 @@ ensure_font_cask() {
   brew install --cask "$cask"
 }
 
+sync_font_preferences() {
+  local font_script="$ROOT_DIR/scripts/barista-fonts.sh"
+  if [ ! -x "$font_script" ]; then
+    note_warn "barista-fonts.sh missing; skipping font state repair"
+    return 0
+  fi
+  if [ "$DRY_RUN" -eq 1 ]; then
+    note_dry "[fonts] would detect/apply preferred fonts"
+    return 0
+  fi
+  "$font_script" --state "$STATE_FILE" --apply-state >/dev/null
+}
+
 install_fonts() {
   ACTION_FONTS=1
   if ! command -v brew >/dev/null 2>&1; then
     note_warn "Homebrew not found, skipping font install"
+    sync_font_preferences
     return 0
   fi
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -279,6 +303,7 @@ install_fonts() {
   fi
   ensure_font_cask font-hack-nerd-font
   ensure_font_cask font-source-code-pro
+  sync_font_preferences
 }
 
 set_panel_preference() {
@@ -287,6 +312,23 @@ set_panel_preference() {
     .control_panel = (.control_panel // {}) |
     .control_panel.preferred = $mode
   ' --arg mode "$mode"
+}
+
+set_runtime_backend() {
+  local backend="$1"
+  case "$(printf '%s' "$backend" | tr '[:upper:]' '[:lower:]')" in
+    auto|lua|compiled)
+      ;;
+    *)
+      echo "[runtime] unsupported backend: $backend" >&2
+      return 1
+      ;;
+  esac
+  ACTION_RUNTIME=1
+  jq_edit_state '
+    .modes = (.modes // {}) |
+    .modes.runtime_backend = $backend
+  ' --arg backend "$backend"
 }
 
 apply_menu_readability_defaults() {
@@ -352,6 +394,7 @@ configure_panel_mode() {
       return 1
       ;;
   esac
+  sync_font_preferences
   apply_menu_readability_defaults
 }
 
@@ -495,15 +538,17 @@ print_report() {
   printf 'setup.report.dry_run=%s\n' "$DRY_RUN"
   printf 'setup.report.state_file=%s\n' "$STATE_FILE"
   printf 'setup.report.panel_mode=%s\n' "$PANEL_MODE"
+  printf 'setup.report.runtime_backend=%s\n' "${RUNTIME_BACKEND:-}"
   printf 'setup.report.work_domain=%s\n' "$WORK_DOMAIN"
   printf 'setup.report.work_apps_output_file=%s\n' "$WORK_APPS_OUTPUT_FILE_RESOLVED"
   printf 'setup.report.actions.fonts=%s\n' "$ACTION_FONTS"
   printf 'setup.report.actions.panel=%s\n' "$ACTION_PANEL"
+  printf 'setup.report.actions.runtime=%s\n' "$ACTION_RUNTIME"
   printf 'setup.report.actions.work_apps=%s\n' "$ACTION_WORK_APPS"
   printf 'setup.report.actions.reload=%s\n' "$ACTION_RELOAD"
 }
 
-if [ "$INSTALL_FONTS" -eq 0 ] && [ "$CONFIGURE_PANEL" -eq 0 ] && [ "$CONFIGURE_WORK_APPS" -eq 0 ]; then
+if [ "$INSTALL_FONTS" -eq 0 ] && [ "$CONFIGURE_PANEL" -eq 0 ] && [ "$CONFIGURE_RUNTIME" -eq 0 ] && [ "$CONFIGURE_WORK_APPS" -eq 0 ]; then
   note "No setup actions selected."
   print_report
   exit 0
@@ -518,6 +563,12 @@ fi
 if [ "$CONFIGURE_PANEL" -eq 1 ]; then
   if confirm "Configure control panel mode ($PANEL_MODE) and menu readability defaults?"; then
     configure_panel_mode
+  fi
+fi
+
+if [ "$CONFIGURE_RUNTIME" -eq 1 ]; then
+  if confirm "Persist runtime backend preference (${RUNTIME_BACKEND})?"; then
+    set_runtime_backend "$RUNTIME_BACKEND"
   fi
 fi
 

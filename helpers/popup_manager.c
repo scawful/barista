@@ -157,10 +157,10 @@ static int should_dismiss_on_event(const char *sender) {
     return 1;
   }
 
-  // Dismiss on front app switch (optional, can be configured)
-  const char *dismiss_on_app_switch = getenv("DISMISS_ON_APP_SWITCH");
-  if (dismiss_on_app_switch && strcmp(dismiss_on_app_switch, "1") == 0) {
-    if (strcmp(sender, "front_app_switched") == 0) {
+  // Dismiss on front app switch (enabled by default, set DISMISS_ON_APP_SWITCH=0 to disable)
+  if (strcmp(sender, "front_app_switched") == 0) {
+    const char *dismiss_on_app_switch = getenv("DISMISS_ON_APP_SWITCH");
+    if (!dismiss_on_app_switch || strcmp(dismiss_on_app_switch, "0") != 0) {
       return 1;
     }
   }

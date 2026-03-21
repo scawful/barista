@@ -93,17 +93,18 @@ function menu_renderer.create(ctx)
     return "sketchybar -m --set $NAME popup.drawing=toggle"
   end
 
+  -- PERF: Lua-native file check + cached executable test
   local function is_executable(path)
     if not path or path == "" then
       return false
     end
-    local handle = io.popen(string.format("test -x %q && printf 1 || printf 0", path))
-    if not handle then
+    local f = io.open(path, "r")
+    if not f then
       return false
     end
-    local result = handle:read("*a")
-    handle:close()
-    return result and result:match("1") ~= nil
+    f:close()
+    local ok = os.execute(string.format("test -x %q", path))
+    return ok == true or ok == 0
   end
 
   local function resolve_menu_action_command()

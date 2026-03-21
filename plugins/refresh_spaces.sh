@@ -11,6 +11,18 @@ LOCK_DIR="${CONFIG_DIR}/.refresh_spaces.lock"
 ICON_CACHE_DIR="${CONFIG_DIR}/cache/space_icons"
 
 # Simple lock to avoid overlapping refreshes from rapid display events
+# Auto-recover stale locks older than 10 seconds (e.g. from killed processes)
+if [ -d "$LOCK_DIR" ]; then
+  lock_age=0
+  if stat -f %m "$LOCK_DIR" >/dev/null 2>&1; then
+    lock_mtime=$(stat -f %m "$LOCK_DIR" 2>/dev/null || echo 0)
+    now=$(date +%s)
+    lock_age=$((now - lock_mtime))
+  fi
+  if [ "$lock_age" -gt 10 ]; then
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+  fi
+fi
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   exit 0
 fi

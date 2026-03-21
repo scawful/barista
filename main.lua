@@ -359,7 +359,7 @@ local function init_spaces()
 end
 
 barista_context.init_spaces = init_spaces
-barista_context.widget_factory = widgets_module.create_factory(sbar, theme, bc.settings, state)
+barista_context.widget_factory = widgets_module.create_factory(theme, bc.settings, state)
 
 -----------------------------------------------------------------------
 -- Begin configuration
@@ -391,10 +391,38 @@ sbar.default(bc.defaults)
 menu_module.render_all_menus(barista_context)
 
 -- Register left and right bar items
+-----------------------------------------------------------------------
+-- Layout Processing
+-----------------------------------------------------------------------
+local function process_layout(layout, ctx)
+  local sbar = ctx.sbar
+  for _, entry in ipairs(layout) do
+    if entry.type == "item" then
+      sbar.add("item", entry.name, entry.props)
+      if entry.attach_hover then
+        ctx.attach_hover(entry.name)
+      end
+    elseif entry.type == "bracket" then
+      sbar.add("bracket", entry.children or entry.name, entry.props)
+    elseif entry.type == "set" then
+      sbar.set(entry.name, entry.props)
+    elseif entry.action == "exec" then
+      ctx.shell_exec(entry.cmd)
+    elseif entry.action == "call" then
+      entry.fn()
+    elseif entry.action == "subscribe_popup_autoclose" then
+      ctx.subscribe_popup_autoclose(entry.name)
+    elseif entry.action == "attach_hover" then
+      ctx.attach_hover(entry.name)
+    end
+  end
+end
+
 local items_left  = require("items_left")
 local items_right = require("items_right")
-items_left.register(barista_context)
-items_right.register(barista_context)
+
+process_layout(items_left.get_layout(barista_context), barista_context)
+process_layout(items_right.get_layout(barista_context), barista_context)
 
 -- Write dynamic popup/submenu lists for C helpers (replaces hardcoded lists)
 local submenu_registry = require("submenu_registry")

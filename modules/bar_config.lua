@@ -42,7 +42,21 @@ function compute(state, theme, state_module, associated_displays)
   local popup_corner_radius = tonumber(state_module.get_appearance(state, "popup_corner_radius", 6)) or 6
   local popup_border_width = tonumber(state_module.get_appearance(state, "popup_border_width", 2)) or 2
   local popup_border_color = parse_color(state_module.get_appearance(state, "popup_border_color", theme.WHITE))
-  local popup_bg_color = parse_color(state_module.get_appearance(state, "popup_bg_color", theme.bar.bg))
+  -- Popup bg defaults to bar color with boosted alpha (0xF0) for readability
+  local raw_popup_bg = state_module.get_appearance(state, "popup_bg_color", nil)
+  local popup_bg_color
+  if raw_popup_bg then
+    popup_bg_color = parse_color(raw_popup_bg)
+  else
+    local base = parse_color(theme.bar.bg) or 0xC021162F
+    if type(base) == "number" then
+      -- Replace alpha channel with 0xF0 (~94% opaque)
+      popup_bg_color = bit32 and bit32.bor(bit32.band(base, 0x00FFFFFF), 0xF0000000)
+        or (base % 0x1000000) + 0xF0000000
+    else
+      popup_bg_color = base
+    end
+  end
 
   local hover_color = state_module.get_appearance(state, "hover_color", "0x40f5c2e7")
   local hover_border_color = state_module.get_appearance(state, "hover_border_color", "0x60cdd6f4")

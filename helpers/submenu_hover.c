@@ -64,7 +64,7 @@ static void load_submenu_list(const char *tmpdir) {
   }
 }
 
-static double CLOSE_DELAY = 0.25;  // Increased default for better reliability
+static double CLOSE_DELAY = 0.12;  // Snappy dismiss — env SUBMENU_CLOSE_DELAY overrides
 static char state_file[PATH_MAX];
 static char parent_state_file[PATH_MAX];
 static char pid_file[PATH_MAX];  // Track pending close PIDs

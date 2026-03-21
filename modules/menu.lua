@@ -36,21 +36,51 @@ local function expand_path(path)
   return path
 end
 
+-- PERF: Lua-native file checks with caching avoid forking subprocesses per path
+local _path_cache = {}
 local function path_exists(path, want_dir)
   if not path or path == "" then
     return false
   end
-  local flag = want_dir and "-d" or "-e"
-  local ok = os.execute(string.format("test %s %q", flag, path))
-  return ok == true or ok == 0
+  local cache_key = (want_dir and "d:" or "f:") .. path
+  if _path_cache[cache_key] ~= nil then
+    return _path_cache[cache_key]
+  end
+  local result
+  if want_dir then
+    local ok = os.execute(string.format("test -d %q", path))
+    result = ok == true or ok == 0
+  else
+    local f = io.open(path, "r")
+    if f then
+      f:close()
+      result = true
+    else
+      result = false
+    end
+  end
+  _path_cache[cache_key] = result
+  return result
 end
 
 local function path_is_executable(path)
   if not path or path == "" then
     return false
   end
+  local cache_key = "x:" .. path
+  if _path_cache[cache_key] ~= nil then
+    return _path_cache[cache_key]
+  end
+  local f = io.open(path, "r")
+  if not f then
+    _path_cache[cache_key] = false
+    return false
+  end
+  f:close()
   local ok = os.execute(string.format("test -x %q", path))
-  return ok == true or ok == 0
+  local result = ok == true or ok == 0
+  _path_cache[cache_key] = result
+  return result
 end
 
 local function command_path(command)

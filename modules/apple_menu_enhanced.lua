@@ -14,31 +14,53 @@ local function expand_path(path)
   return path
 end
 
+-- PERF: Lua-native file checks avoid forking subprocesses per path.
+-- path_exists for files uses io.open (zero forks); directory checks still use os.execute.
+-- Results are cached to avoid repeated checks on the same path.
+local _path_cache = {}
 local function path_exists(path, want_dir)
   if not path or path == "" then
     return false
   end
-  local flag = want_dir and "-d" or "-e"
-  local handle = io.popen(string.format("test %s %q && printf 1 || printf 0", flag, path))
-  if not handle then
-    return false
+  local cache_key = (want_dir and "d:" or "f:") .. path
+  if _path_cache[cache_key] ~= nil then
+    return _path_cache[cache_key]
   end
-  local result = handle:read("*a")
-  handle:close()
-  return result and result:match("1") ~= nil
+  local result
+  if want_dir then
+    local ok = os.execute(string.format("test -d %q", path))
+    result = ok == true or ok == 0
+  else
+    local f = io.open(path, "r")
+    if f then
+      f:close()
+      result = true
+    else
+      result = false
+    end
+  end
+  _path_cache[cache_key] = result
+  return result
 end
 
 local function path_is_executable(path)
   if not path or path == "" then
     return false
   end
-  local handle = io.popen(string.format("test -x %q && printf 1 || printf 0", path))
-  if not handle then
+  local cache_key = "x:" .. path
+  if _path_cache[cache_key] ~= nil then
+    return _path_cache[cache_key]
+  end
+  local f = io.open(path, "r")
+  if not f then
+    _path_cache[cache_key] = false
     return false
   end
-  local result = handle:read("*a")
-  handle:close()
-  return result and result:match("1") ~= nil
+  f:close()
+  local ok = os.execute(string.format("test -x %q", path))
+  local result = ok == true or ok == 0
+  _path_cache[cache_key] = result
+  return result
 end
 
 local function shell_quote(value)
@@ -878,6 +900,20 @@ function apple_menu.setup(ctx)
   local cortex_hub = cortex_cli_ok and (shell_quote(cortex_cli) .. " hub") or ""
   local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
 
+  -- AFS context helpers
+  local afs_context_root = os.getenv("AFS_CONTEXT_ROOT")
+    or ((os.getenv("HOME") or "") .. "/.context")
+  local afs_scratchpad_dir = afs_context_root .. "/scratchpad"
+  local afs_context_available = path_exists(afs_context_root, true)
+  local afs_scratchpad_action = afs_context_available
+    and open_terminal(string.format("ls -la %s && echo '--- Scratchpad ---' && cat %s/*.md 2>/dev/null || echo 'Empty'",
+        shell_quote(afs_scratchpad_dir), shell_quote(afs_scratchpad_dir)))
+    or ""
+  local afs_query_action = ""
+  if afs_root then
+    afs_query_action = open_terminal(afs_cli(afs_root, "context query --interactive"))
+  end
+
   local base_items = {
     {
       id = "afs_browser",
@@ -889,6 +925,26 @@ function apple_menu.setup(ctx)
       shortcut_action = "launch_afs_browser",
       available = afs_browser_ok,
       default_enabled = true,
+    },
+    {
+      id = "afs_context",
+      label = "AFS Context Query",
+      icon = "󰊕",
+      icon_color = tc("TEAL"),
+      section = "afs",
+      action = afs_query_action,
+      available = afs_root ~= nil,
+      default_enabled = afs_root ~= nil,
+    },
+    {
+      id = "afs_scratchpad",
+      label = "AFS Scratchpad",
+      icon = "󰏫",
+      icon_color = tc("PEACH"),
+      section = "afs",
+      action = afs_scratchpad_action,
+      available = afs_context_available,
+      default_enabled = afs_context_available,
     },
     {
       id = "afs_studio",

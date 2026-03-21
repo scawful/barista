@@ -1,25 +1,23 @@
 -- Right-side bar items: clock, calendar, ai_resource, system_info, volume, battery, brackets.
 
-local function register(ctx)
-  local sbar = ctx.sbar
-  local theme = ctx.theme
+local popup_items = require("popup_items")
+
+local function get_layout(ctx)
+  local factory = ctx.widget_factory
   local settings = ctx.settings
+  local theme = ctx.theme
   local font_string = ctx.font_string
   local PLUGIN_DIR = ctx.PLUGIN_DIR
   local widget_height = ctx.widget_height
   local popup_background = ctx.popup_background
   local hover_script_cmd = ctx.hover_script_cmd
   local popup_toggle_action = ctx.popup_toggle_action
-  local attach_hover = ctx.attach_hover
-  local subscribe_popup_autoclose = ctx.subscribe_popup_autoclose
-  local shell_exec = ctx.shell_exec
-  local SKETCHYBAR_BIN = ctx.SKETCHYBAR_BIN
   local POST_CONFIG_DELAY = ctx.POST_CONFIG_DELAY
+  local SKETCHYBAR_BIN = ctx.SKETCHYBAR_BIN
   local group_bg_color = ctx.group_bg_color
   local group_border_color = ctx.group_border_color
   local group_border_width = ctx.group_border_width
   local group_corner_radius = ctx.group_corner_radius
-  local widget_factory = ctx.widget_factory
   local icon_for = ctx.icon_for
   local state_module = ctx.state_module
   local state = ctx.state
@@ -28,14 +26,14 @@ local function register(ctx)
   local hover_color = ctx.hover_color
   local hover_animation_curve = ctx.hover_animation_curve
   local hover_animation_duration = ctx.hover_animation_duration
-  local open_path = ctx.open_path
-  local CODE_DIR = ctx.CODE_DIR
+
+  local layout = {}
 
   local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
   local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
 
   -- Clock
-  widget_factory.create_clock({
+  table.insert(layout, factory.create_clock({
     icon = icon_for("clock", "󰥔"),
     script = compiled_script("clock_widget", PLUGIN_DIR .. "/clock.sh"),
     update_freq = 30,
@@ -44,9 +42,9 @@ local function register(ctx)
       align = "right",
       background = popup_background()
     }
-  })
-  subscribe_popup_autoclose("clock")
-  attach_hover("clock")
+  }))
+  table.insert(layout, { action = "subscribe_popup_autoclose", name = "clock" })
+  table.insert(layout, { action = "attach_hover", name = "clock" })
 
   -- Calendar popup items (tc = theme color with fallback for themes that omit accent keys)
   local calendar_items = {
@@ -82,19 +80,9 @@ local function register(ctx)
     }
     if item.script then opts.script = item.script end
     if item.update_freq then opts.update_freq = item.update_freq end
-    sbar.add("item", item.name, opts)
+    table.insert(layout, { type = "item", name = item.name, props = opts })
   end
 
-  -- AI Resource
-  sbar.add("item", "ai_resource", {
-    position = "right",
-    icon = { string = "󰾆", color = tc("GREEN") },
-    label = { string = "AI: NORM" },
-    update_freq = 60,
-    script = PLUGIN_DIR .. "/ai_resource_toggle.sh",
-    click_script = PLUGIN_DIR .. "/ai_resource_toggle.sh",
-  })
-  shell_exec(string.format("sleep %.1f; %s --subscribe ai_resource ai_resource_update", POST_CONFIG_DELAY, SKETCHYBAR_BIN))
 
   -- System Info
   local system_info_env = env_prefix({
@@ -110,13 +98,13 @@ local function register(ctx)
     BARISTA_HOVER_ANIMATION_DURATION = tostring(hover_animation_duration),
   })
   local system_info_script = system_info_env .. PLUGIN_DIR .. "/system_info.sh"
-  widget_factory.create_system_info({
+  table.insert(layout, factory.create_system_info({
     script = system_info_script,
     update_freq = 45,
     click_script = popup_toggle_action(),
-  })
-  subscribe_popup_autoclose("system_info")
-  attach_hover("system_info")
+  }))
+  table.insert(layout, { action = "subscribe_popup_autoclose", name = "system_info" })
+  table.insert(layout, { action = "attach_hover", name = "system_info" })
 
   local info_flags = state.system_info_items or {}
   local function info_enabled(key)
@@ -146,11 +134,10 @@ local function register(ctx)
     if item.action then
       opts.click_script = item.action .. "; sketchybar -m --set system_info popup.drawing=off"
     end
-    sbar.add("item", item.name, opts)
-    attach_hover(item.name)
+    table.insert(layout, { type = "item", name = item.name, props = opts, attach_hover = true })
   end
 
-  sbar.add("bracket", { "clock", "system_info" }, {
+  table.insert(layout, factory.create_bracket("right_group_1", { "clock", "system_info" }, {
     background = {
       color = group_bg_color,
       corner_radius = math.max(group_corner_radius, 4),
@@ -158,7 +145,7 @@ local function register(ctx)
       border_width = group_border_width,
       border_color = group_border_color,
     }
-  })
+  }))
 
   -- Volume
   local volume_env = env_prefix({
@@ -172,23 +159,22 @@ local function register(ctx)
     BARISTA_HOVER_ANIMATION_DURATION = tostring(hover_animation_duration),
   })
   local volume_script = volume_env .. PLUGIN_DIR .. "/volume.sh"
-  widget_factory.create_volume({
+  table.insert(layout, factory.create_volume({
     script = volume_script,
     click_script = PLUGIN_DIR .. "/volume_click.sh",
     popup = { align = "right", background = popup_background() }
-  })
-  shell_exec(string.format("sleep %.1f; %s --subscribe volume volume_change", POST_CONFIG_DELAY, SKETCHYBAR_BIN))
-  subscribe_popup_autoclose("volume")
-  attach_hover("volume")
+  }))
+  table.insert(layout, { action = "exec", cmd = string.format("sleep %.1f; %s --subscribe volume volume_change", POST_CONFIG_DELAY, SKETCHYBAR_BIN) })
+  table.insert(layout, { action = "subscribe_popup_autoclose", name = "volume" })
+  table.insert(layout, { action = "attach_hover", name = "volume" })
 
-  local popup_items = require("popup_items")
-  local add_vol = popup_items.make_add(sbar, "volume", { hover_script = hover_script_cmd, attach_hover = attach_hover })
-  add_vol("volume.header", {
+  local add_vol = popup_items.make_add("volume", { hover_script = hover_script_cmd })
+  table.insert(layout, add_vol("volume.header", {
     icon = "",
     label = "Volume Controls",
     ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
     background = { drawing = false },
-  })
+  }))
   local volume_actions = {
     { name = "volume.mute", icon = "󰖁", label = "Toggle Mute", action = "osascript -e 'set volume output muted not (output muted of (get volume settings))'" },
     { name = "volume.0", icon = "󰕿", label = "0%", action = "osascript -e 'set volume output volume 0'" },
@@ -200,7 +186,7 @@ local function register(ctx)
     { name = "volume.settings", icon = "", label = "Sound Settings", action = "open -b com.apple.systempreferences /System/Library/PreferencePanes/Sound.prefPane" },
   }
   for _, entry in ipairs(volume_actions) do
-    add_vol(entry.name, { icon = entry.icon, label = entry.label, click_script = entry.action, ["label.font"] = font_small })
+    table.insert(layout, add_vol(entry.name, { icon = entry.icon, label = entry.label, click_script = entry.action, ["label.font"] = font_small }))
   end
 
   -- Battery
@@ -211,23 +197,23 @@ local function register(ctx)
     BARISTA_HOVER_ANIMATION_CURVE = tostring(hover_animation_curve),
     BARISTA_HOVER_ANIMATION_DURATION = tostring(hover_animation_duration),
   })
-  widget_factory.create_battery({
+  table.insert(layout, factory.create_battery({
     script = battery_env .. PLUGIN_DIR .. "/battery.sh '" .. tc("GREEN") .. "' '" .. tc("YELLOW") .. "' '" .. tc("RED") .. "' '" .. tc("BLUE") .. "'",
     update_freq = 120,
     click_script = popup_toggle_action(),
     popup = { align = "right", background = popup_background() }
-  })
-  shell_exec(string.format("sleep %.1f; %s --subscribe battery system_woke power_source_change", POST_CONFIG_DELAY, SKETCHYBAR_BIN))
-  subscribe_popup_autoclose("battery")
-  attach_hover("battery")
+  }))
+  table.insert(layout, { action = "exec", cmd = string.format("sleep %.1f; %s --subscribe battery system_woke power_source_change", POST_CONFIG_DELAY, SKETCHYBAR_BIN) })
+  table.insert(layout, { action = "subscribe_popup_autoclose", name = "battery" })
+  table.insert(layout, { action = "attach_hover", name = "battery" })
 
-  local add_bat = popup_items.make_add(sbar, "battery", { hover_script = hover_script_cmd, attach_hover = attach_hover })
-  add_bat("battery.header", {
+  local add_bat = popup_items.make_add("battery", { hover_script = hover_script_cmd })
+  table.insert(layout, add_bat("battery.header", {
     icon = "",
     label = "Battery",
     ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
     background = { drawing = false },
-  })
+  }))
   local battery_items = {
     { name = "battery.status", icon = "󰁹", label = "Status: …" },
     { name = "battery.time", icon = "󰥔", label = "Time: …" },
@@ -237,10 +223,10 @@ local function register(ctx)
     { name = "battery.settings", icon = "", label = "Battery Settings", action = "open -b com.apple.systempreferences /System/Library/PreferencePanes/Battery.prefPane" },
   }
   for _, entry in ipairs(battery_items) do
-    add_bat(entry.name, { icon = entry.icon, label = entry.label, click_script = entry.action, ["label.font"] = font_small })
+    table.insert(layout, add_bat(entry.name, { icon = entry.icon, label = entry.label, click_script = entry.action, ["label.font"] = font_small }))
   end
 
-  sbar.add("bracket", { "volume", "battery" }, {
+  table.insert(layout, factory.create_bracket("right_group_2", { "volume", "battery" }, {
     background = {
       color = group_bg_color,
       corner_radius = math.max(group_corner_radius, 4),
@@ -248,9 +234,11 @@ local function register(ctx)
       border_width = group_border_width,
       border_color = group_border_color,
     }
-  })
+  }))
 
-  shell_exec(string.format("%s --trigger volume_change && %s --update volume && %s --update battery", SKETCHYBAR_BIN, SKETCHYBAR_BIN, SKETCHYBAR_BIN))
+  table.insert(layout, { action = "exec", cmd = string.format("%s --trigger volume_change && %s --update volume && %s --update battery", SKETCHYBAR_BIN, SKETCHYBAR_BIN, SKETCHYBAR_BIN) })
+
+  return layout
 end
 
-return { register = register }
+return { get_layout = get_layout }

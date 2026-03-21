@@ -194,9 +194,14 @@
                         store:tabItems];
 
   self.tabItems = [tabItems copy];
+  NSLog(@"[barista] setupTabView building sidebar (%lu tabs)", (unsigned long)self.tabItems.count);
   [self setupSidebarWithStyle:style];
+  NSLog(@"[barista] setupTabView sidebar done");
+  @try {
   NSRect bounds = self.window.contentView.bounds;
+  NSLog(@"[barista] bounds=%@", NSStringFromRect(bounds));
   self.tabContainer = [[BaristaPanelView alloc] initWithFrame:NSMakeRect(style.sidebarWidth, 0, bounds.size.width - style.sidebarWidth, bounds.size.height)];
+  NSLog(@"[barista] tabContainer created");
   self.tabContainer.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 
   CGFloat panelPadding = 14.0;
@@ -215,7 +220,11 @@
   for (NSTabViewItem *item in self.tabView.tabViewItems) {
     NSViewController *controller = item.viewController;
     if (controller) {
-      [style applyStyleToViewHierarchy:controller.view];
+      @try {
+        [style applyStyleToViewHierarchy:controller.view];
+      } @catch (NSException *exception) {
+        NSLog(@"[barista] style exception on tab %@: %@", item.identifier, exception.reason);
+      }
     }
   }
 
@@ -224,6 +233,9 @@
     [self.sidebarTable selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
   }
   NSLog(@"[barista] setupTabView done");
+  } @catch (NSException *exception) {
+    NSLog(@"[barista] EXCEPTION in setupTabView: %@ %@", exception.name, exception.reason);
+  }
 }
 
 - (void)addTabWithIdentifier:(NSString *)identifier

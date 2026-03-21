@@ -367,7 +367,7 @@ local function init_spaces()
 end
 
 barista_context.init_spaces = init_spaces
-barista_context.widget_factory = widgets_module.create_factory(theme, bc.settings, state)
+barista_context.widget_factory = widgets_module.create_factory(sbar, theme, bc.settings, state)
 
 -----------------------------------------------------------------------
 -- Begin configuration

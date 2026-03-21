@@ -1,10 +1,10 @@
--- Helper to add multiple popup items with shared defaults and hover.
+-- Helper to create popup items with shared defaults and hover.
 -- Used by items_left (front_app, volume, battery) and items_right.
+-- Returns layout entries (declarative) — no sbar.add calls.
 
-local function add_popup_items(sbar, parent_name, items, opts)
+local function build_popup_items(parent_name, items, opts)
   opts = opts or {}
   local hover_script = opts.hover_script or ""
-  local attach_hover_fn = opts.attach_hover or function() end
   local defaults = {
     position = "popup." .. parent_name,
     script = hover_script,
@@ -14,6 +14,7 @@ local function add_popup_items(sbar, parent_name, items, opts)
     ["label.padding_right"] = opts.label_padding_right or 8,
     background = { drawing = false },
   }
+  local definitions = {}
   for _, item in ipairs(items) do
     local id = item.name
     local props = item.props or item
@@ -26,28 +27,21 @@ local function add_popup_items(sbar, parent_name, items, opts)
         merged[k] = v
       end
     end
-    sbar.add("item", id, merged)
-    attach_hover_fn(id)
+    table.insert(definitions, { type = "item", name = id, props = merged, attach_hover = true })
   end
+  return definitions
 end
 
--- Add a single popup item (merge props onto defaults).
-local function add_popup_item(sbar, id, props, opts)
-  local parent = (opts and opts.parent_name) or "popup"
-  add_popup_items(sbar, parent, { { name = id, props = props } }, opts)
-end
-
--- Return a function add(id, props) for a given parent and opts (hover_script, attach_hover).
-function make_add(sbar, parent_name, opts)
+-- Return a function add(id, props) that produces a single layout entry.
+local function make_add(parent_name, opts)
   opts = opts or {}
-  opts.parent_name = parent_name
   return function(id, props)
-    add_popup_item(sbar, id, props, opts)
+    local items = build_popup_items(parent_name, { { name = id, props = props } }, opts)
+    return items[1]
   end
 end
 
 return {
-  add_popup_items = add_popup_items,
-  add_popup_item = add_popup_item,
+  build_popup_items = build_popup_items,
   make_add = make_add,
 }

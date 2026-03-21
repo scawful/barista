@@ -35,6 +35,16 @@ function widgets.create_factory(sbar, theme, settings, state_data)
     return color or fallback
   end
 
+  -- Primitive: create a raw item definition
+  function factory.create_item(name, props)
+    return { type = "item", name = name, props = props }
+  end
+
+  -- Primitive: create a raw bracket definition
+  function factory.create_bracket(name, children, props)
+    return { type = "bracket", name = name, children = children, props = props }
+  end
+
   -- Create a standard widget with common properties
   function factory.create(name, config)
     local widget_scale = state_data.appearance.widget_scale or 1.0

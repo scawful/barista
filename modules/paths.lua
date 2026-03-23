@@ -2,6 +2,7 @@
 -- Extracted from main.lua to centralise path logic.
 
 local shell_utils = require("shell_utils")
+local locator = require("tool_locator")
 
 local HOME = os.getenv("HOME")
 
@@ -9,13 +10,7 @@ local M = {}
 
 --- Expand a leading "~/" to $HOME.
 function M.expand_path(path)
-  if type(path) ~= "string" or path == "" then
-    return nil
-  end
-  if path:sub(1, 2) == "~/" then
-    return HOME .. path:sub(2)
-  end
-  return path
+  return locator.expand_path(path)
 end
 
 --- Resolve the scripts directory.
@@ -53,18 +48,10 @@ end
 
 --- Resolve the user's source code directory.
 function M.resolve_code_dir(state)
-  local override = os.getenv("BARISTA_CODE_DIR")
-  if override and override ~= "" then
-    return M.expand_path(override)
-  end
-  if state and type(state.paths) == "table" then
-    local candidate = state.paths.code_dir or state.paths.code
-    candidate = M.expand_path(candidate)
-    if candidate and candidate ~= "" then
-      return candidate
-    end
-  end
-  return HOME .. "/src"
+  return locator.resolve_code_dir({
+    state = state,
+    code_dir = state and state.paths and (state.paths.code_dir or state.paths.code) or nil,
+  })
 end
 
 --- Resolve the menu_action binary/script.

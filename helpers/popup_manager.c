@@ -22,14 +22,12 @@
 
 /* Hardcoded fallback lists */
 static const char *FALLBACK_POPUP_ITEMS[] = {
-  "apple_menu", "front_app", "clock", "system_info", "yabai_status"
+  "apple_menu", "front_app", "clock", "system_info", "volume", "battery", "control_center"
 };
 static const size_t FALLBACK_POPUP_COUNT = sizeof(FALLBACK_POPUP_ITEMS) / sizeof(FALLBACK_POPUP_ITEMS[0]);
 
 static const char *FALLBACK_SUBMENU_PARENTS[] = {
-  "menu.sketchybar.styles", "menu.sketchybar.tools", "menu.yabai.section",
-  "menu.windows.section", "menu.rom.section", "menu.emacs.section",
-  "menu.apps.section", "menu.dev.section", "menu.help.section"
+  "yaze.recent_roms", "emacs.recent_org"
 };
 static const size_t FALLBACK_SUBMENU_COUNT = sizeof(FALLBACK_SUBMENU_PARENTS) / sizeof(FALLBACK_SUBMENU_PARENTS[0]);
 
@@ -46,8 +44,10 @@ static size_t SUBMENU_COUNT = 0;
 static size_t load_list(const char *path, char storage[][256], const char *ptrs[], size_t max,
                         const char *fallback[], size_t fallback_count) {
   size_t count = 0;
+  int file_found = 0;
   FILE *fp = fopen(path, "r");
   if (fp) {
+    file_found = 1;
     char line[256];
     while (count < max && fgets(line, sizeof(line), fp)) {
       line[strcspn(line, "\n\r")] = '\0';
@@ -58,7 +58,7 @@ static size_t load_list(const char *path, char storage[][256], const char *ptrs[
     }
     fclose(fp);
   }
-  if (count == 0) {
+  if (count == 0 && !file_found) {
     for (size_t i = 0; i < fallback_count && i < max; i++) {
       ptrs[i] = fallback[i];
     }

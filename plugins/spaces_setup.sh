@@ -9,6 +9,27 @@ STATE_FILE="$CONFIG_DIR/state.json"
 CACHE_FILE="${CONFIG_DIR}/.spaces_cache"
 last_item=""
 
+resolve_space_item_height() {
+  local bar_height=""
+  if command -v sketchybar >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    bar_height="$(sketchybar --query bar 2>/dev/null | jq -r '.height // empty' 2>/dev/null || true)"
+  fi
+  if [ -z "$bar_height" ] && [ -f "$STATE_FILE" ] && command -v jq >/dev/null 2>&1; then
+    bar_height="$(jq -r '.appearance.bar_height // empty' "$STATE_FILE" 2>/dev/null || true)"
+  fi
+  if [ -z "$bar_height" ] || ! [ "$bar_height" -eq "$bar_height" ] 2>/dev/null; then
+    bar_height=28
+  fi
+
+  local space_height=$((bar_height - 8))
+  if [ "$space_height" -lt 20 ]; then
+    space_height=20
+  fi
+  printf '%s' "$space_height"
+}
+
+SPACE_ITEM_HEIGHT="$(resolve_space_item_height)"
+
 # Wait for anchor item (yabai_status) to exist - reduced iterations
 for i in {1..20}; do
   sketchybar --query yabai_status >/dev/null 2>&1 && break
@@ -148,7 +169,7 @@ for entry in "${SPACE_LINES[@]}"; do
                            background.drawing=off \
                            background.color="0x00000000" \
                            background.corner_radius=8 \
-                           background.height=20 \
+                           background.height="$SPACE_ITEM_HEIGHT" \
                            script="$CONFIG_DIR/plugins/space.sh" \
                            click_script="$FOCUS_SCRIPT $space_index" \
              --subscribe "$item" mouse.entered mouse.exited space_change space_mode_refresh >/dev/null 2>&1
@@ -193,7 +214,7 @@ sketchybar --add item space_creator left \
                  background.drawing=off \
                  background.color="0x00000000" \
                  background.corner_radius=8 \
-                 background.height=20 \
+                 background.height="$SPACE_ITEM_HEIGHT" \
                  script="$CONFIG_DIR/plugins/space_creator.sh" \
                  click_script="$HOME/.config/sketchybar/bin/space_manager create" \
            --subscribe space_creator mouse.entered mouse.exited >/dev/null 2>&1

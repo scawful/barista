@@ -44,6 +44,25 @@ state_value() {
   printf '%s' "$fallback"
 }
 
+resolve_space_item_height() {
+  local bar_height=""
+  if command -v sketchybar >/dev/null 2>&1 && [ -n "$JQ_BIN" ]; then
+    bar_height="$(sketchybar --query bar 2>/dev/null | "$JQ_BIN" -r '.height // empty' 2>/dev/null || true)"
+  fi
+  if [ -z "$bar_height" ] || [ "$bar_height" = "null" ]; then
+    bar_height="$(state_value '.appearance.bar_height' '28')"
+  fi
+  if ! [ "$bar_height" -eq "$bar_height" ] 2>/dev/null; then
+    bar_height=28
+  fi
+
+  local space_height=$((bar_height - 8))
+  if [ "$space_height" -lt 20 ]; then
+    space_height=20
+  fi
+  printf '%s' "$space_height"
+}
+
 normalize_close_mode() {
   case "$1" in
     off|confirm|direct)
@@ -217,10 +236,13 @@ arm_swap_state() {
 }
 
 ensure_swap_indicator_item() {
+  local indicator_height
+  indicator_height="$(resolve_space_item_height)"
   if ! swap_indicator_enabled; then
     return 0
   fi
   if sketchybar --query "$SPACE_SWAP_INDICATOR_ITEM" >/dev/null 2>&1; then
+    sketchybar --set "$SPACE_SWAP_INDICATOR_ITEM" background.height="$indicator_height" >/dev/null 2>&1 || true
     return 0
   fi
   sketchybar --add item "$SPACE_SWAP_INDICATOR_ITEM" left >/dev/null 2>&1 || true
@@ -234,12 +256,14 @@ ensure_swap_indicator_item() {
     background.drawing=off \
     background.color="0x00000000" \
     background.corner_radius=8 \
-    background.height=20 \
+    background.height="$indicator_height" \
     drawing=off \
     click_script="$CONFIG_DIR/scripts/space_action.sh swap-cancel" >/dev/null 2>&1 || true
 }
 
 sync_swap_indicator() {
+  local indicator_height
+  indicator_height="$(resolve_space_item_height)"
   ensure_swap_indicator_item
   if ! swap_indicator_enabled; then
     sketchybar --set "$SPACE_SWAP_INDICATOR_ITEM" drawing=off >/dev/null 2>&1 || true
@@ -254,6 +278,7 @@ sync_swap_indicator() {
       icon="󰚗" \
       label="Swap $source_idx -> select target" \
       background.drawing=on \
+      background.height="$indicator_height" \
       background.color="0x40f9e2af" >/dev/null 2>&1 || true
   else
     sketchybar --set "$SPACE_SWAP_INDICATOR_ITEM" \

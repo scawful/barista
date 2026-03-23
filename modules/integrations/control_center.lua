@@ -20,9 +20,14 @@ local shell_quote = shell_utils.shell_quote
 local expand_path = paths_module.expand_path
 local command_available = shell_utils.command_available
 local check_service = shell_utils.check_service
+local SKETCHYBAR_BIN = binary_resolver.resolve_sketchybar_bin()
 
 local function normalize_mode(mode)
   return binary_resolver.normalize_window_manager_mode(mode)
+end
+
+local function sketchybar_cmd(args)
+  return string.format("%s %s", shell_quote(SKETCHYBAR_BIN), args)
 end
 
 local function read_state_modes()
@@ -233,8 +238,19 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
   local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
   local font_bold = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small)
   local YABAI_CONTROL = SCRIPTS_DIR .. "/yabai_control.sh"
+  local TOGGLE_SHORTCUTS = SCRIPTS_DIR .. "/toggle_yabai_shortcuts.sh"
+  local TOGGLE_SHORTCUTS_FALLBACK = SCRIPTS_DIR .. "/toggle_shortcuts.sh"
   local wm = resolve_window_manager_flags(opts or {})
   local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
+  local popup_close = sketchybar_cmd("--set control_center popup.drawing=off")
+  local trigger_space_mode_refresh = sketchybar_cmd("--trigger space_mode_refresh")
+  local sketchybar_reload = sketchybar_cmd("--reload")
+  local function close_after(command)
+    if not command or command == "" then
+      return popup_close
+    end
+    return command .. "; " .. popup_close
+  end
 
   -- Header
   table.insert(items, {
@@ -286,7 +302,6 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
       label = { string = "Space Layout", font = font_bold, color = tc("BLUE") },
       ["label.padding_left"] = 8,
       ["label.padding_right"] = 8,
-      ["label.padding_top"] = 4,
       background = { drawing = false },
     })
 
@@ -306,7 +321,7 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
         ["icon.padding_right"] = 6,
         ["label.padding_left"] = 4,
         ["label.padding_right"] = 8,
-        click_script = layout.cmd .. "; sketchybar --trigger space_mode_refresh; sketchybar --set control_center popup.drawing=off",
+        click_script = string.format("%s; %s; %s", layout.cmd, trigger_space_mode_refresh, popup_close),
         background = { drawing = false },
       })
     end
@@ -350,7 +365,7 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
         ["icon.padding_right"] = 6,
         ["label.padding_left"] = 4,
         ["label.padding_right"] = 8,
-        click_script = op.cmd .. "; sketchybar --set control_center popup.drawing=off",
+        click_script = close_after(op.cmd),
         background = { drawing = false },
       })
     end
@@ -378,9 +393,11 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     local toggle_action = path_exists(toggle_script) and (shell_quote(toggle_script) .. " toggle")
       or ("bash " .. shell_quote(CONFIG_DIR .. "/bin/open_control_panel.sh"))
     local update_action = string.format(
-      "if pgrep -x skhd >/dev/null 2>&1; then sketchybar --set $NAME label='%s' icon.color=%s; else sketchybar --set $NAME label='%s' icon.color=%s; fi",
+      "if pgrep -x skhd >/dev/null 2>&1; then %s --set $NAME label='%s' icon.color=%s; else %s --set $NAME label='%s' icon.color=%s; fi",
+      shell_quote(SKETCHYBAR_BIN),
       shortcuts_on_label,
       tc("GREEN"),
+      shell_quote(SKETCHYBAR_BIN),
       shortcuts_off_label,
       tc("RED")
     )
@@ -393,7 +410,7 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
       ["icon.padding_right"] = 6,
       ["label.padding_left"] = 4,
       ["label.padding_right"] = 8,
-      click_script = toggle_action .. "; " .. update_action .. "; sketchybar --set control_center popup.drawing=off",
+      click_script = string.format("%s; %s; %s", toggle_action, update_action, popup_close),
       background = { drawing = false },
     })
   end
@@ -424,13 +441,29 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
   local services = {}
   if wm.mode ~= "disabled" then
     if wm.has_yabai or wm.required then
-      table.insert(services, { name = "Yabai", proc = "yabai", restart = "yabai --restart-service" })
+      table.insert(services, {
+        name = "Yabai",
+        proc = "yabai",
+        restart = shell_quote(YABAI_CONTROL) .. " restart",
+      })
     end
     if wm.has_skhd or wm.required then
-      table.insert(services, { name = "skhd", proc = "skhd", restart = "skhd --restart-service" })
+      local skhd_restart = nil
+      if path_exists(TOGGLE_SHORTCUTS) then
+        skhd_restart = shell_quote(TOGGLE_SHORTCUTS) .. " restart"
+      elseif path_exists(TOGGLE_SHORTCUTS_FALLBACK) then
+        skhd_restart = string.format(
+          "%s off; %s on",
+          shell_quote(TOGGLE_SHORTCUTS_FALLBACK),
+          shell_quote(TOGGLE_SHORTCUTS_FALLBACK)
+        )
+      else
+        skhd_restart = "skhd --restart-service"
+      end
+      table.insert(services, { name = "skhd", proc = "skhd", restart = skhd_restart })
     end
   end
-  table.insert(services, { name = "SketchyBar", proc = "sketchybar", restart = "sketchybar --reload" })
+  table.insert(services, { name = "SketchyBar", proc = "sketchybar", restart = sketchybar_reload })
 
   for _, svc in ipairs(services) do
     local running = nil
@@ -452,7 +485,7 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
       ["icon.padding_right"] = 6,
       ["label.padding_left"] = 4,
       ["label.padding_right"] = 8,
-      click_script = svc.restart .. "; sketchybar --set control_center popup.drawing=off",
+      click_script = close_after(svc.restart),
       background = { drawing = false },
     })
   end
@@ -490,7 +523,7 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     ["icon.padding_right"] = 6,
     ["label.padding_left"] = 4,
     ["label.padding_right"] = 8,
-    click_script = "open -a 'Activity Monitor'; sketchybar --set control_center popup.drawing=off",
+    click_script = close_after("open -a 'Activity Monitor'"),
     background = { drawing = false },
   })
 
@@ -504,7 +537,7 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
       ["icon.padding_right"] = 6,
       ["label.padding_left"] = 4,
       ["label.padding_right"] = 8,
-      click_script = process_manager_cmd .. " cleanup-mounts; sketchybar --set control_center popup.drawing=off",
+      click_script = close_after(process_manager_cmd .. " cleanup-mounts"),
       background = { drawing = false },
     })
   end
@@ -530,7 +563,6 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     ["icon.padding_right"] = 6,
     ["label.padding_left"] = 4,
     ["label.padding_right"] = 8,
-    ["label.padding_bottom"] = 4,
     click_script = "open ~/src",
     background = { drawing = false },
   })

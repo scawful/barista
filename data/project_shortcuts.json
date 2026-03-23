@@ -1,0 +1,20 @@
+[
+  {
+    "id": "oracle",
+    "label": "Oracle",
+    "icon": "󰊕",
+    "icon_color": "0xffcba6f7",
+    "label_color": "0xffdfc9f7",
+    "action": "/Users/scawful/src/lab/cortex/bin/cortex-cli oracle",
+    "order": 10
+  },
+  {
+    "id": "premia_v2",
+    "label": "Premia v2",
+    "icon": "󰃬",
+    "icon_color": "0xff94e2d5",
+    "label_color": "0xffc7eee8",
+    "action": "/Users/scawful/src/lab/premia/build/bin/premia",
+    "order": 20
+  }
+]

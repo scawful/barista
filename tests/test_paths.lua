@@ -35,9 +35,13 @@ run_test("resolve_code_dir: default fallback", function()
 end)
 
 run_test("resolve_code_dir: reads state.paths.code_dir", function()
-  local state = { paths = { code_dir = "/custom/code" } }
+  local custom_root = string.format("/tmp/barista_paths_%d", os.time())
+  local ok = os.execute(string.format("mkdir -p %q", custom_root .. "/lab"))
+  assert_true(ok == 0 or ok == true, "create custom code dir")
+  local state = { paths = { code_dir = custom_root } }
   local result = paths.resolve_code_dir(state)
-  assert_equal(result, "/custom/code", "state override")
+  assert_equal(result, custom_root, "state override")
+  os.execute(string.format("rm -rf %q", custom_root))
 end)
 
 run_test("build_paths_table: has expected keys", function()

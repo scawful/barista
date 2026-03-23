@@ -5,13 +5,17 @@ local M = {}
 
 --- Write a list of item names to a file, one per line.
 local function write_list(path, items)
+  local seen = {}
   local fh = io.open(path, "w")
   if not fh then
     print("submenu_registry: cannot write " .. path)
     return
   end
   for _, name in ipairs(items) do
-    fh:write(name .. "\n")
+    if type(name) == "string" and name ~= "" and not seen[name] then
+      seen[name] = true
+      fh:write(name .. "\n")
+    end
   end
   fh:close()
 end

@@ -37,6 +37,7 @@ cmake --build build
 ## Docs
 
 - `docs/INDEX.md` - Documentation map
+- `docs/STATE_SCHEMA.md` - Runtime state.json keys and schema
 - `docs/BUILD.md` - Build details
 - `docs/guides/QUICK_START.md` - Quick start walkthrough
 - `docs/guides/UPDATE_GUIDE.md` - Update procedures

@@ -45,19 +45,25 @@ local default_state = {
     bar_border_color = "0x00000000",
     clock_font_style = "Semibold",
     widget_scale = 1.0,
+    auto_more_space_scaling = true,
+    more_space_widget_scale_boost = 0.08,
     widget_corner_radius = 6,
-    popup_padding = 8,
+    popup_padding = 6,
     popup_corner_radius = 8,
     popup_border_width = 2,
     popup_border_color = "0x60cdd6f4",
-    popup_bg_color = "0xC021162F",
+    popup_bg_color = "0xF021162F",
     popup_item_height = 0,
     popup_item_corner_radius = 4,
+    menu_padding = 6,
     menu_font_style = "Bold",
     menu_header_font_style = "Bold",
-    menu_font_size_offset = 1,
+    menu_font_size_offset = 0,
+    menu_item_height = 23,
+    menu_header_height = 25,
+    menu_item_corner_radius = 6,
     menu_label_color = "0xffe8edf7",
-    menu_popup_bg_color = "0xE021162F",
+    menu_popup_bg_color = "0xF221162F",
     hover_color = "0x40f5c2e7",
     hover_border_color = "0x60cdd6f4",
     hover_border_width = 1,
@@ -66,6 +72,9 @@ local default_state = {
     submenu_hover_color = "0x80cba6f7",
     submenu_idle_color = "0x00000000",
     submenu_close_delay = 0.25,
+    submenu_hover_corner_radius = 6,
+    submenu_hover_padding_left = 4,
+    submenu_hover_padding_right = 4,
     group_bg_color = "0x30313244",
     group_border_color = "0x20585b70",
     group_border_width = 1,
@@ -131,6 +140,12 @@ local default_state = {
       sections = {},
       hover = {},
     },
+    apps = {
+      enabled = true,
+      file = "data/project_shortcuts.json",
+      default_action = "terminal",
+      items = {},
+    },
     work = {
       google_apps = {},
       apps_file = "data/work_apps.local.json",
@@ -166,10 +181,16 @@ local function sanitize_state(data)
   if type(data.menus) ~= "table" then data.menus = {} end
   if type(data.menus.apple) ~= "table" then data.menus.apple = {} end
   if type(data.menus.work) ~= "table" then data.menus.work = {} end
+  local apps_menu = type(data.menus.apps) == "table" and data.menus.apps or {}
+  local legacy_projects_menu = type(data.menus.projects) == "table" and data.menus.projects or {}
+  apps_menu = merge_defaults(apps_menu, legacy_projects_menu)
+  data.menus.apps = apps_menu
+  data.menus.projects = apps_menu
   if type(data.menus.apple.items) ~= "table" then data.menus.apple.items = {} end
   if type(data.menus.apple.custom) ~= "table" then data.menus.apple.custom = {} end
   if type(data.menus.apple.sections) ~= "table" then data.menus.apple.sections = {} end
   if type(data.menus.apple.hover) ~= "table" then data.menus.apple.hover = {} end
+  if type(data.menus.apps.items) ~= "table" then data.menus.apps.items = {} end
   if type(data.menus.work.google_apps) ~= "table" then data.menus.work.google_apps = {} end
 
   -- Handle space_icons

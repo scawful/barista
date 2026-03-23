@@ -1,6 +1,7 @@
 local menu = {}
 local json = require("json")
 local menu_renderer = require("menu_renderer")
+local locator = require("tool_locator")
 
 local unpack = table.unpack or _G.unpack
 
@@ -26,78 +27,8 @@ local function apply_menu_template(value, ctx)
   return expanded
 end
 
-local function expand_path(path)
-  if type(path) ~= "string" or path == "" then
-    return nil
-  end
-  if path:sub(1, 2) == "~/" then
-    return (os.getenv("HOME") or "") .. path:sub(2)
-  end
-  return path
-end
-
--- PERF: Lua-native file checks with caching avoid forking subprocesses per path
-local _path_cache = {}
 local function path_exists(path, want_dir)
-  if not path or path == "" then
-    return false
-  end
-  local cache_key = (want_dir and "d:" or "f:") .. path
-  if _path_cache[cache_key] ~= nil then
-    return _path_cache[cache_key]
-  end
-  local result
-  if want_dir then
-    local ok = os.execute(string.format("test -d %q", path))
-    result = ok == true or ok == 0
-  else
-    local f = io.open(path, "r")
-    if f then
-      f:close()
-      result = true
-    else
-      result = false
-    end
-  end
-  _path_cache[cache_key] = result
-  return result
-end
-
-local function path_is_executable(path)
-  if not path or path == "" then
-    return false
-  end
-  local cache_key = "x:" .. path
-  if _path_cache[cache_key] ~= nil then
-    return _path_cache[cache_key]
-  end
-  local f = io.open(path, "r")
-  if not f then
-    _path_cache[cache_key] = false
-    return false
-  end
-  f:close()
-  local ok = os.execute(string.format("test -x %q", path))
-  local result = ok == true or ok == 0
-  _path_cache[cache_key] = result
-  return result
-end
-
-local function command_path(command)
-  if not command or command == "" then
-    return nil
-  end
-  local handle = io.popen(string.format("command -v %q 2>/dev/null", command))
-  if not handle then
-    return nil
-  end
-  local result = handle:read("*a") or ""
-  handle:close()
-  result = result:gsub("%s+$", "")
-  if result == "" then
-    return nil
-  end
-  return result
+  return locator.path_exists(path, want_dir)
 end
 
 local function open_terminal(command)
@@ -112,121 +43,35 @@ local function shell_quote(value)
 end
 
 local function resolve_code_dir(ctx)
-  return (ctx.paths and ctx.paths.code_dir) or (os.getenv("BARISTA_CODE_DIR") or (os.getenv("HOME") .. "/src"))
+  return locator.resolve_code_dir(ctx)
 end
 
 local function resolve_path(ctx, candidates, want_dir)
-  local fallback = nil
-  for _, candidate in ipairs(candidates or {}) do
-    if candidate and candidate ~= "" then
-      fallback = fallback or candidate
-      if path_exists(candidate, want_dir) then
-        return candidate
-      end
-    end
-  end
-  return fallback
+  return locator.resolve_path(candidates, want_dir)
 end
 
 local function resolve_afs_root(ctx)
-  local code_dir = resolve_code_dir(ctx)
-  return resolve_path(ctx, {
-    ctx.paths and ctx.paths.afs or nil,
-    os.getenv("AFS_ROOT"),
-    code_dir .. "/lab/afs",
-    code_dir .. "/afs",
-  }, true)
+  return select(1, locator.resolve_afs_root(ctx))
 end
 
 local function resolve_afs_studio_root(ctx, afs_root)
-  local code_dir = resolve_code_dir(ctx)
-  return resolve_path(ctx, {
-    ctx.paths and ctx.paths.afs_studio or nil,
-    os.getenv("AFS_STUDIO_ROOT"),
-    afs_root and (afs_root .. "/apps/studio") or nil,
-    code_dir .. "/lab/afs/apps/studio",
-    code_dir .. "/lab/afs_studio",
-    code_dir .. "/afs/apps/studio",
-    code_dir .. "/afs_studio",
-  }, true)
+  return select(1, locator.resolve_afs_studio_root(ctx, afs_root))
 end
 
 local function resolve_stemforge_app(ctx)
-  local code_dir = resolve_code_dir(ctx)
-  return resolve_path(ctx, {
-    ctx.paths and ctx.paths.stemforge_app or nil,
-    code_dir .. "/tools/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app",
-    code_dir .. "/tools/stemforge/build/StemForge_artefacts/Debug/Standalone/StemForge.app",
-    code_dir .. "/lab/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app",
-    code_dir .. "/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app",
-  }, true)
+  return select(1, locator.resolve_stemforge_app(ctx))
 end
 
 local function resolve_stem_sampler_app(ctx)
-  local code_dir = resolve_code_dir(ctx)
-  return resolve_path(ctx, {
-    ctx.paths and ctx.paths.stem_sampler_app or nil,
-    os.getenv("STEM_SAMPLER_APP"),
-    code_dir .. "/tools/stemsampler/StemSampler.app",
-    code_dir .. "/tools/stem_sampler/StemSampler.app",
-    os.getenv("HOME") .. "/Applications/StemSampler.app",
-    "/Applications/StemSampler.app",
-  }, true)
+  return select(1, locator.resolve_stem_sampler_app(ctx))
 end
 
 local function resolve_yaze_app(ctx)
-  local code_dir = resolve_code_dir(ctx)
-  local yaze_dir = os.getenv("BARISTA_YAZE_DIR")
-    or (ctx.paths and ctx.paths.yaze)
-    or (code_dir .. "/yaze")
-  local nightly_prefix = os.getenv("BARISTA_YAZE_NIGHTLY_PREFIX")
-    or os.getenv("YAZE_NIGHTLY_PREFIX")
-    or ((os.getenv("HOME") or "") .. "/.local/yaze/nightly")
-  return resolve_path(ctx, {
-    ctx.paths and ctx.paths.yaze_app or nil,
-    os.getenv("BARISTA_YAZE_APP") or os.getenv("YAZE_APP"),
-    nightly_prefix .. "/current/yaze.app",
-    nightly_prefix .. "/yaze.app",
-    os.getenv("HOME") .. "/Applications/Yaze Nightly.app",
-    os.getenv("HOME") .. "/Applications/yaze nightly.app",
-    os.getenv("HOME") .. "/applications/Yaze Nightly.app",
-    os.getenv("HOME") .. "/applications/yaze nightly.app",
-    "/Applications/Yaze Nightly.app",
-    "/Applications/yaze nightly.app",
-    yaze_dir and (yaze_dir .. "/build_ai/bin/Debug/yaze.app") or nil,
-    yaze_dir and (yaze_dir .. "/build_ai/bin/Release/yaze.app") or nil,
-    yaze_dir and (yaze_dir .. "/build_ai/bin/yaze.app") or nil,
-    yaze_dir and (yaze_dir .. "/build/bin/Release/yaze.app") or nil,
-    yaze_dir and (yaze_dir .. "/build/bin/Debug/yaze.app") or nil,
-    yaze_dir and (yaze_dir .. "/build/bin/yaze.app") or nil,
-    code_dir .. "/hobby/yaze/build_ai/bin/Debug/yaze.app",
-    code_dir .. "/hobby/yaze/build_ai/bin/Release/yaze.app",
-    code_dir .. "/hobby/yaze/build_ai/bin/yaze.app",
-    code_dir .. "/hobby/yaze/build/bin/Release/yaze.app",
-    code_dir .. "/hobby/yaze/build/bin/Debug/yaze.app",
-    code_dir .. "/hobby/yaze/build/bin/yaze.app",
-  }, true)
+  return select(1, locator.resolve_yaze_app(ctx))
 end
 
 local function resolve_yaze_launcher()
-  local override = os.getenv("BARISTA_YAZE_LAUNCHER") or os.getenv("YAZE_LAUNCHER")
-  if override and override ~= "" then
-    local expanded = expand_path(override)
-    if expanded and path_is_executable(expanded) then
-      return expanded
-    end
-    local resolved = command_path(override)
-    if resolved then
-      return resolved
-    end
-  end
-
-  local resolved = command_path("yaze-nightly")
-  if resolved then
-    return resolved
-  end
-
-  return nil
+  return select(1, locator.resolve_yaze_launcher())
 end
 
 local function afs_cli(afs_root, args)
@@ -288,8 +133,7 @@ local function rom_hacking_items(ctx)
   if ctx.integrations and ctx.integrations.yaze then
     return ctx.integrations.yaze.create_menu_items(ctx)
   end
-  local yaze_repo = (ctx.paths and ctx.paths.yaze)
-    or os.getenv("BARISTA_YAZE_DIR")
+  local yaze_repo = select(1, locator.resolve_yaze_dir(ctx))
     or (resolve_code_dir(ctx) .. "/yaze")
   local repo_ok = path_exists(yaze_repo, true)
   local yaze_app = resolve_yaze_app(ctx)
@@ -370,6 +214,41 @@ end
 -- === MAIN RENDER FUNCTION === --
 
 function menu.render_all_menus(ctx)
+  local function list_from_set(set)
+    local items = {}
+    for name, enabled in pairs(set or {}) do
+      if enabled then
+        table.insert(items, name)
+      end
+    end
+    table.sort(items)
+    return items
+  end
+
+  local metadata = {
+    popup_parents = {},
+    submenu_parents = {},
+  }
+
+  local function remember(list_name, value)
+    if type(value) ~= "string" or value == "" then
+      return
+    end
+    metadata[list_name][value] = true
+  end
+
+  local function merge_metadata(extra)
+    if type(extra) ~= "table" then
+      return
+    end
+    for _, name in ipairs(extra.popup_parents or {}) do
+      remember("popup_parents", name)
+    end
+    for _, name in ipairs(extra.submenu_parents or {}) do
+      remember("submenu_parents", name)
+    end
+  end
+
   local appearance = ctx.appearance or {}
   local popup_border_width = appearance.popup_border_width or 2
   local popup_corner_radius = appearance.popup_corner_radius or 4
@@ -385,7 +264,7 @@ function menu.render_all_menus(ctx)
     local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
     local scripts_dir = (ctx.scripts and ctx.scripts.yabai_control and ctx.scripts.yabai_control:match("^(.+)/[^/]+$")) or (CONFIG_DIR .. "/scripts")
 
-    apple_menu_enhanced.setup({
+    local enhanced_meta = apple_menu_enhanced.setup({
       sbar = ctx.sbar,
       theme = ctx.theme,
       settings = ctx.settings,
@@ -406,7 +285,11 @@ function menu.render_all_menus(ctx)
       popup_toggle_action = ctx.popup_toggle_action,
       popup_toggle_script = ctx.popup_toggle_script,
     })
-    return
+    merge_metadata(enhanced_meta)
+    return {
+      popup_parents = list_from_set(metadata.popup_parents),
+      submenu_parents = list_from_set(metadata.submenu_parents),
+    }
   end
 
   -- Fallback to standard menu rendering
@@ -449,6 +332,7 @@ function menu.render_all_menus(ctx)
     }
   })
   ctx.subscribe_popup_autoclose("apple_menu")
+  remember("popup_parents", "apple_menu")
   
   local apple_menu_items = {}
 
@@ -471,17 +355,31 @@ function menu.render_all_menus(ctx)
   end
 
   if studio_root then
-    local studio_bin = resolve_path(ctx, {
-      studio_root .. "/build/afs_studio",
-      studio_root .. "/build/bin/afs_studio",
-    }, false)
+    local studio_bin = select(1, locator.resolve_afs_studio_binary(studio_root))
     local studio_action
     if studio_bin and studio_bin ~= "" then
-      studio_action = open_terminal(shell_quote(studio_bin))
+      if studio_bin:match("%.app/?$") then
+        studio_action = string.format("open %s", shell_quote(studio_bin))
+      else
+        studio_action = open_terminal(shell_quote(studio_bin))
+      end
     elseif afs_root then
       studio_action = open_terminal(afs_cli(afs_root, "studio run --build"))
     else
-      studio_action = open_terminal(string.format("cd %s && cmake --build build --target afs_studio && ./build/afs_studio", shell_quote(studio_root)))
+      if locator.afs_studio_layout(studio_root) == "suite" then
+        local build_dir = locator.afs_build_dir(studio_root)
+        studio_action = open_terminal(string.format(
+          "cd %s && cmake --build %s --target afs-studio && ./%s/apps/studio/afs-studio",
+          shell_quote(studio_root),
+          build_dir,
+          build_dir
+        ))
+      else
+        studio_action = open_terminal(string.format(
+          "cd %s && cmake --build build --target afs_studio && ./build/afs_studio",
+          shell_quote(studio_root)
+        ))
+      end
     end
     table.insert(apple_menu_items, {
       type = "item",
@@ -491,10 +389,7 @@ function menu.render_all_menus(ctx)
       action = studio_action,
     })
 
-    local labeler_bin = resolve_path(ctx, {
-      studio_root .. "/build/afs_labeler",
-      studio_root .. "/build/bin/afs_labeler",
-    }, false)
+    local labeler_bin = select(1, locator.resolve_afs_labeler_binary(studio_root))
     local labeler_csv = os.getenv("AFS_LABELER_CSV")
     local labeler_cmd
     if labeler_bin and labeler_bin ~= "" then
@@ -503,7 +398,20 @@ function menu.render_all_menus(ctx)
         labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
       end
     else
-      labeler_cmd = string.format("cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler", shell_quote(studio_root))
+      if locator.afs_studio_layout(studio_root) == "suite" then
+        local build_dir = locator.afs_build_dir(studio_root)
+        labeler_cmd = string.format(
+          "cd %s && cmake --build %s --target afs-labeler && ./%s/apps/studio/afs-labeler",
+          shell_quote(studio_root),
+          build_dir,
+          build_dir
+        )
+      else
+        labeler_cmd = string.format(
+          "cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler",
+          shell_quote(studio_root)
+        )
+      end
       if labeler_csv and labeler_csv ~= "" then
         labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
       end
@@ -588,6 +496,11 @@ function menu.render_all_menus(ctx)
   })
 
   render_menu_items("apple_menu", apple_menu_items)
+  merge_metadata(renderer.get_metadata and renderer.get_metadata() or nil)
+  return {
+    popup_parents = list_from_set(metadata.popup_parents),
+    submenu_parents = list_from_set(metadata.submenu_parents),
+  }
 end
 
 menu.rom_hacking_items = rom_hacking_items

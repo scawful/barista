@@ -1,6 +1,8 @@
 -- Bar appearance and defaults configuration.
 -- Takes state, theme, state_module, and associated_displays; returns bar config, defaults, and helpers.
 
+local display_profile = require("display_profile")
+
 local function parse_color(value)
   if type(value) == "string" then
     local num = tonumber(value)
@@ -17,14 +19,31 @@ local function clamp(value, min_value, max_value)
   return value
 end
 
+local function truthy(value, default_value)
+  if value == nil then return default_value end
+  if type(value) == "boolean" then return value end
+  if type(value) == "number" then return value ~= 0 end
+  if type(value) == "string" then
+    local normalized = value:lower()
+    if normalized == "0" or normalized == "false" or normalized == "off" or normalized == "no" or normalized == "disabled" then
+      return false
+    end
+    if normalized == "1" or normalized == "true" or normalized == "on" or normalized == "yes" or normalized == "enabled" then
+      return true
+    end
+  end
+  return default_value
+end
+
 local function font_string(family, style, size)
   return string.format("%s:%s:%0.1f", family, style, size)
 end
 
 -- Compute bar dimensions, appearance, defaults, and helpers.
 -- state_module: module with get_appearance(state, key, default)
-function compute(state, theme, state_module, associated_displays)
+function compute(state, theme, state_module, associated_displays, detected_display_profile)
   local bar_height = state_module.get_appearance(state, "bar_height", 28)
+  local configured_bar_height = bar_height
   local bar_corner_radius = state_module.get_appearance(state, "corner_radius", 0)
   local bar_color = parse_color(state_module.get_appearance(state, "bar_color", theme.bar.bg))
   local bar_blur_radius = tonumber(state_module.get_appearance(state, "blur_radius", 30))
@@ -35,8 +54,26 @@ function compute(state, theme, state_module, associated_displays)
   local bar_border_width = tonumber(state_module.get_appearance(state, "bar_border_width", 0)) or 0
   local bar_border_color = parse_color(state_module.get_appearance(state, "bar_border_color", "0x00000000"))
   local clock_font_style = state_module.get_appearance(state, "clock_font_style", "Semibold")
-  local widget_scale = tonumber(state_module.get_appearance(state, "widget_scale", 1.0)) or 1.0
-  widget_scale = clamp(widget_scale, 0.85, 1.25)
+  local widget_scale_base = tonumber(state_module.get_appearance(state, "widget_scale", 1.0)) or 1.0
+  local auto_more_space_scaling = truthy(state_module.get_appearance(state, "auto_more_space_scaling", true), true)
+  local more_space_widget_scale_boost = tonumber(state_module.get_appearance(state, "more_space_widget_scale_boost", 0.08)) or 0.08
+  more_space_widget_scale_boost = clamp(more_space_widget_scale_boost, 0, 0.20)
+
+  local display_scaling = detected_display_profile
+  if display_scaling == nil and auto_more_space_scaling then
+    display_scaling = display_profile.detect()
+  end
+
+  local effective_more_space_boost = 0
+  if auto_more_space_scaling and display_scaling and display_scaling.more_space_active then
+    effective_more_space_boost = more_space_widget_scale_boost
+    local top_inset = tonumber(display_scaling.top_inset) or 0
+    if top_inset > bar_height then
+      bar_height = top_inset
+    end
+  end
+
+  local widget_scale = clamp(widget_scale_base + effective_more_space_boost, 0.85, 1.25)
 
   local popup_padding = tonumber(state_module.get_appearance(state, "popup_padding", 8)) or 8
   local popup_corner_radius = tonumber(state_module.get_appearance(state, "popup_corner_radius", 6)) or 6
@@ -138,6 +175,7 @@ function compute(state, theme, state_module, associated_displays)
 
   return {
     bar_height = bar_height,
+    configured_bar_height = configured_bar_height,
     bar = {
       position = "top",
       height = bar_height,
@@ -179,6 +217,10 @@ function compute(state, theme, state_module, associated_displays)
     parse_color = parse_color,
     settings = settings,
     widget_height = widget_height,
+    widget_scale = widget_scale,
+    widget_scale_base = widget_scale_base,
+    more_space_widget_scale_boost = effective_more_space_boost,
+    display_profile = display_scaling,
     widget_corner_radius = widget_corner_radius,
     item_padding = item_padding,
     icon_padding = icon_padding,

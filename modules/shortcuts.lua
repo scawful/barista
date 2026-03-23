@@ -3,145 +3,14 @@
 -- Non-conflicting shortcuts for global operations
 
 local shortcuts = {}
-local HOME = os.getenv("HOME")
-local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
+local binary_resolver = require("binary_resolver")
+local paths_module = require("paths")
+local locator = require("tool_locator")
 
-local function expand_path(path)
-  if type(path) ~= "string" or path == "" then
-    return nil
-  end
-  if path:sub(1, 2) == "~/" then
-    return HOME .. path:sub(2)
-  end
-  return path
-end
-
-local function read_state_scripts_dir()
-  local ok, json = pcall(require, "json")
-  if not ok then
-    return nil
-  end
-
-  local state_file = CONFIG_DIR .. "/state.json"
-  local file = io.open(state_file, "r")
-  if not file then
-    return nil
-  end
-
-  local contents = file:read("*a")
-  file:close()
-
-  local ok_decode, data = pcall(json.decode, contents)
-  if not ok_decode or type(data) ~= "table" then
-    return nil
-  end
-
-  if type(data.paths) ~= "table" then
-    return nil
-  end
-
-  local candidate = data.paths.scripts_dir or data.paths.scripts
-  return expand_path(candidate)
-end
-
-local function read_state_code_dir()
-  local ok, json = pcall(require, "json")
-  if not ok then
-    return nil
-  end
-
-  local state_file = CONFIG_DIR .. "/state.json"
-  local file = io.open(state_file, "r")
-  if not file then
-    return nil
-  end
-
-  local contents = file:read("*a")
-  file:close()
-
-  local ok_decode, data = pcall(json.decode, contents)
-  if not ok_decode or type(data) ~= "table" then
-    return nil
-  end
-
-  if type(data.paths) ~= "table" then
-    return nil
-  end
-
-  local candidate = data.paths.code_dir or data.paths.code
-  return expand_path(candidate)
-end
-
-local function read_state_integrations()
-  local ok, json = pcall(require, "json")
-  if not ok then
-    return {}
-  end
-
-  local state_file = CONFIG_DIR .. "/state.json"
-  local file = io.open(state_file, "r")
-  if not file then
-    return {}
-  end
-
-  local contents = file:read("*a")
-  file:close()
-
-  local ok_decode, data = pcall(json.decode, contents)
-  if not ok_decode or type(data) ~= "table" then
-    return {}
-  end
-
-  if type(data.integrations) ~= "table" then
-    return {}
-  end
-
-  return data.integrations
-end
-
-local function read_state_modes()
-  local ok, json = pcall(require, "json")
-  if not ok then
-    return {}
-  end
-
-  local state_file = CONFIG_DIR .. "/state.json"
-  local file = io.open(state_file, "r")
-  if not file then
-    return {}
-  end
-
-  local contents = file:read("*a")
-  file:close()
-
-  local ok_decode, data = pcall(json.decode, contents)
-  if not ok_decode or type(data) ~= "table" then
-    return {}
-  end
-
-  if type(data.modes) ~= "table" then
-    return {}
-  end
-
-  return data.modes
-end
-
-local function command_path(command)
-  if not command or command == "" then
-    return nil
-  end
-  local handle = io.popen(string.format("command -v %q 2>/dev/null", command))
-  if not handle then
-    return nil
-  end
-  local result = handle:read("*a") or ""
-  handle:close()
-  result = result:gsub("%s+$", "")
-  if result == "" then
-    return nil
-  end
-  return result
-end
+local HOME = os.getenv("HOME") or ""
+local CONFIG_DIR = locator.resolve_config_dir()
+local runtime_state = locator.load_state(CONFIG_DIR) or {}
+local SKETCHYBAR_BIN = binary_resolver.resolve_sketchybar_bin()
 
 local function service_running(name)
   if not name or name == "" then
@@ -156,64 +25,6 @@ local function service_running(name)
   return result:match("1") ~= nil
 end
 
-local function normalize_mode(mode)
-  if not mode or mode == "" then
-    return "auto"
-  end
-  mode = tostring(mode):lower()
-  if mode == "off" or mode == "false" or mode == "none" or mode == "disable" or mode == "disabled" then
-    return "disabled"
-  end
-  if mode == "optional" or mode == "opt" then
-    return "optional"
-  end
-  if mode == "required" or mode == "require" or mode == "enabled" or mode == "enable" or mode == "on" then
-    return "required"
-  end
-  return mode
-end
-
-local function resolve_window_manager_mode()
-  local mode = os.getenv("BARISTA_WINDOW_MANAGER_MODE")
-  if not mode or mode == "" then
-    local modes = read_state_modes()
-    mode = modes.window_manager
-  end
-  return normalize_mode(mode)
-end
-
-local function window_manager_enabled()
-  local mode = resolve_window_manager_mode()
-  local has_yabai = command_path("yabai") ~= nil
-  if mode == "disabled" then
-    return false
-  end
-  if mode == "optional" then
-    return service_running("yabai")
-  end
-  if mode == "required" then
-    return has_yabai
-  end
-  return has_yabai
-end
-
-local function path_is_executable(path)
-  if not path or path == "" then
-    return false
-  end
-  local ok = os.execute(string.format("test -x %q", path))
-  return ok == true or ok == 0
-end
-
-local function path_exists(path, want_dir)
-  if not path or path == "" then
-    return false
-  end
-  local flag = want_dir and "-d" or "-e"
-  local ok = os.execute(string.format("test %s %q", flag, path))
-  return ok == true or ok == 0
-end
-
 local function shell_quote(value)
   return string.format("%q", tostring(value))
 end
@@ -225,189 +36,27 @@ local function open_terminal(command)
   return string.format("osascript -e 'tell application \"Terminal\" to do script %q'", command)
 end
 
-local function resolve_code_dir()
-  local candidate = read_state_code_dir() or os.getenv("BARISTA_CODE_DIR") or (HOME .. "/src")
-  candidate = expand_path(candidate) or (HOME .. "/src")
-  local fallback = HOME .. "/src"
-  if candidate and candidate:match("/Code/?$") and path_exists(fallback, true) then
-    return fallback
+local function resolve_window_manager_mode()
+  local mode = os.getenv("BARISTA_WINDOW_MANAGER_MODE")
+  if not mode or mode == "" then
+    mode = runtime_state.modes and runtime_state.modes.window_manager
   end
-  if candidate and not path_exists(candidate, true) and path_exists(fallback, true) then
-    return fallback
+  return binary_resolver.normalize_window_manager_mode(mode)
+end
+
+local function window_manager_enabled()
+  local mode = resolve_window_manager_mode()
+  local has_yabai = locator.command_path("yabai") ~= nil
+  if mode == "disabled" then
+    return false
   end
-  if candidate and not path_exists(candidate .. "/lab", true) and path_exists(fallback .. "/lab", true) then
-    return fallback
+  if mode == "optional" then
+    return service_running("yabai")
   end
-  return candidate
-end
-
-local function resolve_path(candidates, want_dir)
-  local fallback = nil
-  local max_index = 0
-  for index in pairs(candidates or {}) do
-    if type(index) == "number" and index > max_index then
-      max_index = index
-    end
+  if mode == "required" then
+    return has_yabai
   end
-  for i = 1, max_index do
-    local candidate = candidates[i]
-    if candidate and candidate ~= "" then
-      candidate = expand_path(candidate)
-      fallback = fallback or candidate
-      if path_exists(candidate, want_dir) then
-        return candidate, true
-      end
-    end
-  end
-  return fallback, false
-end
-
-local function resolve_executable_path(candidates)
-  local fallback = nil
-  local max_index = 0
-  for index in pairs(candidates or {}) do
-    if type(index) == "number" and index > max_index then
-      max_index = index
-    end
-  end
-  for i = 1, max_index do
-    local candidate = candidates[i]
-    if candidate and candidate ~= "" then
-      candidate = expand_path(candidate)
-      fallback = fallback or candidate
-      if path_is_executable(candidate) then
-        return candidate, true
-      end
-    end
-  end
-  return fallback, false
-end
-
-local function resolve_afs_root(code_dir)
-  return resolve_path({
-    os.getenv("AFS_ROOT"),
-    code_dir and (code_dir .. "/lab/afs") or nil,
-    code_dir and (code_dir .. "/afs") or nil,
-  }, true)
-end
-
-local function resolve_afs_studio_root(code_dir, afs_root)
-  return resolve_path({
-    os.getenv("AFS_STUDIO_ROOT"),
-    afs_root and (afs_root .. "/apps/studio") or nil,
-    code_dir and (code_dir .. "/lab/afs/apps/studio") or nil,
-    code_dir and (code_dir .. "/lab/afs_studio") or nil,
-    code_dir and (code_dir .. "/afs/apps/studio") or nil,
-    code_dir and (code_dir .. "/afs_studio") or nil,
-  }, true)
-end
-
-local function resolve_afs_browser_app(code_dir)
-  return resolve_path({
-    os.getenv("AFS_BROWSER_APP"),
-    code_dir and (code_dir .. "/lab/afs_suite/build_ai/apps/browser/afs-browser.app") or nil,
-    code_dir and (code_dir .. "/lab/afs_suite/build/apps/browser/afs-browser.app") or nil,
-    code_dir and (code_dir .. "/lab/afs_suite/build/apps/browser/Debug/afs-browser.app") or nil,
-    code_dir and (code_dir .. "/lab/afs_suite/build/apps/browser/Release/afs-browser.app") or nil,
-  }, true)
-end
-
-local function resolve_stemforge_app(code_dir)
-  return resolve_path({
-    os.getenv("STEMFORGE_APP"),
-    code_dir and (code_dir .. "/tools/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app") or nil,
-    code_dir and (code_dir .. "/tools/stemforge/build/StemForge_artefacts/Debug/Standalone/StemForge.app") or nil,
-    code_dir and (code_dir .. "/lab/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app") or nil,
-    code_dir and (code_dir .. "/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app") or nil,
-    HOME .. "/Applications/StemForge.app",
-    "/Applications/StemForge.app",
-  }, true)
-end
-
-local function resolve_stem_sampler_app(code_dir)
-  return resolve_path({
-    os.getenv("STEM_SAMPLER_APP"),
-    code_dir and (code_dir .. "/tools/stemsampler/StemSampler.app") or nil,
-    code_dir and (code_dir .. "/tools/stem_sampler/StemSampler.app") or nil,
-    HOME .. "/Applications/StemSampler.app",
-    "/Applications/StemSampler.app",
-  }, true)
-end
-
-local function resolve_yaze_app(code_dir)
-  local yaze_dir = os.getenv("BARISTA_YAZE_DIR")
-  local yaze_app = os.getenv("BARISTA_YAZE_APP") or os.getenv("YAZE_APP")
-  local nightly_prefix = os.getenv("BARISTA_YAZE_NIGHTLY_PREFIX")
-    or os.getenv("YAZE_NIGHTLY_PREFIX")
-    or (HOME .. "/.local/yaze/nightly")
-  return resolve_path({
-    yaze_app,
-    nightly_prefix .. "/current/yaze.app",
-    nightly_prefix .. "/yaze.app",
-    HOME .. "/Applications/Yaze Nightly.app",
-    HOME .. "/Applications/yaze nightly.app",
-    HOME .. "/applications/Yaze Nightly.app",
-    HOME .. "/applications/yaze nightly.app",
-    "/Applications/Yaze Nightly.app",
-    "/Applications/yaze nightly.app",
-    yaze_dir and (yaze_dir .. "/build_ai/bin/Debug/yaze.app") or nil,
-    yaze_dir and (yaze_dir .. "/build_ai/bin/Release/yaze.app") or nil,
-    yaze_dir and (yaze_dir .. "/build_ai/bin/yaze.app") or nil,
-    yaze_dir and (yaze_dir .. "/build/bin/Release/yaze.app") or nil,
-    yaze_dir and (yaze_dir .. "/build/bin/Debug/yaze.app") or nil,
-    yaze_dir and (yaze_dir .. "/build/bin/yaze.app") or nil,
-    code_dir and (code_dir .. "/hobby/yaze/build_ai/bin/Debug/yaze.app") or nil,
-    code_dir and (code_dir .. "/hobby/yaze/build_ai/bin/Release/yaze.app") or nil,
-    code_dir and (code_dir .. "/yaze/build_ai/bin/Debug/yaze.app") or nil,
-    code_dir and (code_dir .. "/yaze/build_ai/bin/Release/yaze.app") or nil,
-    code_dir and (code_dir .. "/hobby/yaze/build_ai/bin/yaze.app") or nil,
-    code_dir and (code_dir .. "/yaze/build_ai/bin/yaze.app") or nil,
-    code_dir and (code_dir .. "/hobby/yaze/build/bin/yaze.app") or nil,
-    code_dir and (code_dir .. "/yaze/build/bin/yaze.app") or nil,
-  }, true)
-end
-
-local function resolve_yaze_launcher()
-  local override = os.getenv("BARISTA_YAZE_LAUNCHER") or os.getenv("YAZE_LAUNCHER")
-  if override and override ~= "" then
-    local expanded = expand_path(override)
-    if expanded and path_is_executable(expanded) then
-      return expanded
-    end
-    local resolved = command_path(override)
-    if resolved then
-      return resolved
-    end
-  end
-
-  local resolved = command_path("yaze-nightly")
-  if resolved then
-    return resolved
-  end
-
-  return nil
-end
-
-local function resolve_sys_manual_binary(code_dir)
-  return resolve_executable_path({
-    code_dir and (code_dir .. "/lab/sys_manual/build/sys_manual") or nil,
-    code_dir and (code_dir .. "/sys_manual/build/sys_manual") or nil,
-    "/Applications/sys_manual.app/Contents/MacOS/sys_manual",
-  })
-end
-
-local function resolve_help_center_bin()
-  return resolve_executable_path({
-    CONFIG_DIR .. "/gui/bin/help_center",
-    CONFIG_DIR .. "/build/bin/help_center",
-  })
-end
-
-local function resolve_icon_browser_bin()
-  return resolve_executable_path({
-    CONFIG_DIR .. "/gui/bin/icon_browser",
-    CONFIG_DIR .. "/build/bin/icon_browser",
-  })
+  return has_yabai
 end
 
 local function afs_cli(afs_root, args)
@@ -421,90 +70,84 @@ local function afs_cli(afs_root, args)
   )
 end
 
-local function resolve_cortex_cli()
-  local override = os.getenv("CORTEX_CLI") or os.getenv("CORTEX_CLI_PATH")
-  if override and override ~= "" then
-    override = expand_path(override)
-    if path_is_executable(override) then
-      return override
-    end
-  end
-
-  local resolved = command_path("cortex-cli")
-  if resolved then
-    return resolved
-  end
-
-  local code_dir = resolve_code_dir()
-  local candidates = {
-    code_dir .. "/lab/cortex/bin/cortex-cli",
-    code_dir .. "/cortex/bin/cortex-cli",
-    HOME .. "/.local/bin/cortex-cli",
-  }
-  for _, candidate in ipairs(candidates) do
-    if path_is_executable(candidate) then
-      return candidate
-    end
-  end
-
-  return nil
+local function build_suite_command(studio_root, target_name, binary_name)
+  local build_dir = locator.afs_build_dir(studio_root)
+  return string.format(
+    "cd %s && cmake --build %s --target %s && ./%s/apps/studio/%s",
+    shell_quote(studio_root),
+    build_dir,
+    target_name,
+    build_dir,
+    binary_name
+  )
 end
 
-local function scripts_available(path)
-  if not path or path == "" then
-    return false
-  end
-  local probe = io.open(path .. "/yabai_control.sh", "r")
-  if probe then
-    probe:close()
-    return true
-  end
-  probe = io.open(path .. "/toggle_shortcuts.sh", "r")
-  if probe then
-    probe:close()
-    return true
-  end
-  return false
+local function build_legacy_command(studio_root, target_name, binary_name)
+  return string.format(
+    "cd %s && cmake --build build --target %s && ./build/%s",
+    shell_quote(studio_root),
+    target_name,
+    binary_name
+  )
 end
 
-local function resolve_scripts_dir()
-  local override = os.getenv("BARISTA_SCRIPTS_DIR")
-  if override and override ~= "" then
-    return expand_path(override)
+local function afs_studio_command(afs_root, studio_root)
+  if afs_root then
+    return afs_cli(afs_root, "studio run --build")
   end
-
-  local state_override = read_state_scripts_dir()
-  if state_override and state_override ~= "" and scripts_available(state_override) then
-    return state_override
+  if not studio_root or studio_root == "" then
+    return ""
   end
-  local config_scripts = CONFIG_DIR .. "/scripts"
-  if scripts_available(config_scripts) then
-    return config_scripts
+  if locator.afs_studio_layout(studio_root) == "suite" then
+    return build_suite_command(studio_root, "afs-studio", "afs-studio")
   end
-  local legacy_scripts = HOME .. "/.config/scripts"
-  if scripts_available(legacy_scripts) then
-    return legacy_scripts
-  end
-  return config_scripts
+  return build_legacy_command(studio_root, "afs_studio", "afs_studio")
 end
 
-local SCRIPTS_DIR = resolve_scripts_dir()
-local CORTEX_CLI = resolve_cortex_cli() or "cortex-cli"
-local CODE_DIR = resolve_code_dir()
-local AFS_ROOT = select(1, resolve_afs_root(CODE_DIR))
-local AFS_STUDIO_ROOT = select(1, resolve_afs_studio_root(CODE_DIR, AFS_ROOT))
-local AFS_BROWSER_APP = select(1, resolve_afs_browser_app(CODE_DIR))
-local STEMFORGE_APP = select(1, resolve_stemforge_app(CODE_DIR))
-local STEM_SAMPLER_APP = select(1, resolve_stem_sampler_app(CODE_DIR))
-local YAZE_APP, YAZE_OK = resolve_yaze_app(CODE_DIR)
-local YAZE_LAUNCHER = resolve_yaze_launcher()
-local SYS_MANUAL_BIN, SYS_MANUAL_OK = resolve_sys_manual_binary(CODE_DIR)
-local HELP_CENTER_BIN, HELP_CENTER_OK = resolve_help_center_bin()
-local ICON_BROWSER_BIN, ICON_BROWSER_OK = resolve_icon_browser_bin()
+local function afs_labeler_command(studio_root)
+  if not studio_root or studio_root == "" then
+    return ""
+  end
+
+  local command
+  if locator.afs_studio_layout(studio_root) == "suite" then
+    command = build_suite_command(studio_root, "afs-labeler", "afs-labeler")
+  else
+    command = build_legacy_command(studio_root, "afs_labeler", "afs_labeler")
+  end
+
+  local labeler_csv = os.getenv("AFS_LABELER_CSV")
+  if labeler_csv and labeler_csv ~= "" then
+    command = command .. " --csv " .. shell_quote(labeler_csv)
+  end
+  return command
+end
+
+local SCRIPTS_DIR = paths_module.resolve_scripts_dir(CONFIG_DIR, runtime_state)
+local shared_opts = {
+  config_dir = CONFIG_DIR,
+  code_dir = runtime_state.paths and (runtime_state.paths.code_dir or runtime_state.paths.code) or nil,
+  state = runtime_state,
+}
+local CODE_DIR = locator.resolve_code_dir(shared_opts)
+shared_opts.code_dir = CODE_DIR
+
+local AFS_ROOT = select(1, locator.resolve_afs_root(shared_opts))
+local AFS_STUDIO_ROOT = select(1, locator.resolve_afs_studio_root(shared_opts, AFS_ROOT))
+local AFS_STUDIO_LAUNCHER = select(1, locator.resolve_afs_studio_launcher(shared_opts))
+local AFS_BROWSER_APP = select(1, locator.resolve_afs_browser_app(shared_opts))
+local STEMFORGE_APP = select(1, locator.resolve_stemforge_app(shared_opts))
+local STEM_SAMPLER_APP = select(1, locator.resolve_stem_sampler_app(shared_opts))
+local YAZE_APP, YAZE_OK = locator.resolve_yaze_app(shared_opts)
+local YAZE_LAUNCHER = select(1, locator.resolve_yaze_launcher())
+local SYS_MANUAL_BIN, SYS_MANUAL_OK = locator.resolve_sys_manual_binary(shared_opts)
+local HELP_CENTER_BIN, HELP_CENTER_OK = locator.resolve_help_center_bin(CONFIG_DIR)
+local ICON_BROWSER_BIN, ICON_BROWSER_OK = locator.resolve_icon_browser_bin(CONFIG_DIR)
+local CORTEX_CLI = select(1, locator.resolve_cortex_cli(shared_opts)) or "cortex-cli"
 
 local function integration_flag(name)
-  local integrations = read_state_integrations()
-  local entry = integrations[name]
+  local integrations = runtime_state.integrations
+  local entry = type(integrations) == "table" and integrations[name] or nil
   if type(entry) ~= "table" or entry.enabled == nil then
     return nil
   end
@@ -537,7 +180,7 @@ local function help_center_action()
     return shell_quote(HELP_CENTER_BIN)
   end
   local fallback_doc = CONFIG_DIR .. "/docs/features/ICONS_AND_SHORTCUTS.md"
-  if path_exists(fallback_doc, false) then
+  if locator.path_exists(fallback_doc, false) then
     return open_path_command(fallback_doc)
   end
   return ""
@@ -548,7 +191,7 @@ local function icon_browser_action()
     return shell_quote(ICON_BROWSER_BIN)
   end
   local fallback_doc = CONFIG_DIR .. "/docs/features/ICON_REFERENCE.md"
-  if path_exists(fallback_doc, false) then
+  if locator.path_exists(fallback_doc, false) then
     return open_path_command(fallback_doc)
   end
   return ""
@@ -561,81 +204,38 @@ local function sys_manual_action()
   return ""
 end
 
-local function afs_browser_command()
-  if not AFS_ROOT or AFS_ROOT == "" then
-    return ""
-  end
-  return string.format("cd %s && python3 -m tui.app", shell_quote(AFS_ROOT))
-end
-
-local function afs_studio_command()
-  if AFS_ROOT then
-    return afs_cli(AFS_ROOT, "studio run --build")
-  end
-  if AFS_STUDIO_ROOT then
-    return string.format(
-      "cd %s && cmake --build build --target afs_studio && ./build/afs_studio",
-      shell_quote(AFS_STUDIO_ROOT)
-    )
-  end
-  return ""
-end
-
-local function afs_labeler_command()
-  local studio_root = AFS_STUDIO_ROOT
-  if not studio_root or studio_root == "" then
-    studio_root = select(1, resolve_afs_studio_root(CODE_DIR, AFS_ROOT))
-  end
-  local labeler_bin, labeler_bin_ok = resolve_path({
-    studio_root and (studio_root .. "/build/afs_labeler") or nil,
-    studio_root and (studio_root .. "/build/bin/afs_labeler") or nil,
-  }, false)
-  local labeler_csv = os.getenv("AFS_LABELER_CSV")
-  local labeler_cmd = ""
-  if labeler_bin_ok and labeler_bin then
-    labeler_cmd = shell_quote(labeler_bin)
-  elseif studio_root then
-    labeler_cmd = string.format(
-      "cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler",
-      shell_quote(studio_root)
-    )
-  end
-  if labeler_cmd ~= "" and labeler_csv and labeler_csv ~= "" then
-    labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
-  end
-  return labeler_cmd
-end
-
 local function afs_studio_action()
-  local studio_bin, studio_bin_ok = resolve_path({
-    AFS_STUDIO_ROOT and (AFS_STUDIO_ROOT .. "/build/afs_studio") or nil,
-    AFS_STUDIO_ROOT and (AFS_STUDIO_ROOT .. "/build/bin/afs_studio") or nil,
-  }, false)
+  if AFS_STUDIO_LAUNCHER and AFS_STUDIO_LAUNCHER ~= "" then
+    return shell_quote(AFS_STUDIO_LAUNCHER)
+  end
+
+  local studio_bin, studio_bin_ok = locator.resolve_afs_studio_binary(AFS_STUDIO_ROOT)
   if studio_bin_ok and studio_bin then
+    if studio_bin:match("%.app/?$") then
+      return open_path_command(studio_bin)
+    end
     return shell_quote(studio_bin)
   end
-  local cmd = afs_studio_command()
-  if cmd ~= "" then
-    return open_terminal(cmd)
+
+  local command = afs_studio_command(AFS_ROOT, AFS_STUDIO_ROOT)
+  if command ~= "" then
+    return open_terminal(command)
   end
   return ""
 end
 
 local function afs_labeler_action()
-  local studio_root = AFS_STUDIO_ROOT
-  if not studio_root or studio_root == "" then
-    studio_root = select(1, resolve_afs_studio_root(CODE_DIR, AFS_ROOT))
-  end
-  local labeler_bin, labeler_bin_ok = resolve_path({
-    studio_root and (studio_root .. "/build/afs_labeler") or nil,
-    studio_root and (studio_root .. "/build/bin/afs_labeler") or nil,
-  }, false)
+  local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(AFS_STUDIO_ROOT)
   if labeler_bin_ok and labeler_bin then
+    if labeler_bin:match("%.app/?$") then
+      return open_path_command(labeler_bin)
+    end
     return shell_quote(labeler_bin)
   end
-  local cmd = afs_labeler_command()
-  if cmd ~= "" then
-    return open_terminal(cmd)
+
+  local command = afs_labeler_command(AFS_STUDIO_ROOT)
+  if command ~= "" then
+    return open_terminal(command)
   end
   return ""
 end
@@ -819,7 +419,7 @@ shortcuts.actions = {
   reload_sketchybar = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh --reload-only",
   rebuild_and_reload = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh",
   open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh",
-  toggle_control_center = "/opt/homebrew/opt/sketchybar/bin/sketchybar --set control_center popup.drawing=toggle",
+  toggle_control_center = string.format("%q --set control_center popup.drawing=toggle", SKETCHYBAR_BIN),
   open_help_center = help_center_action(),
   open_icon_browser = icon_browser_action(),
   open_sys_manual = sys_manual_action(),

@@ -16,21 +16,8 @@ static const char *IDLE_BG = "0x00000000";
 
 /* Hardcoded fallback list (used when dynamic list file is missing) */
 static const char *FALLBACK_SUBMENUS[] = {
-  "menu.control_center.app",
-  "menu.windows.section",
-  "menu.control_center.spaces",
-  "menu.control_center.layouts",
-  "menu.yabai.section",
-  "menu.sketchybar.styles",
-  "menu.sketchybar.tools",
-  "menu.rom.section",
-  "menu.emacs.section",
-  "menu.halext.section",
-  "menu.apps.section",
-  "menu.dev.section",
-  "menu.help.section",
-  "menu.agents.section",
-  "menu.debug.section"
+  "yaze.recent_roms",
+  "emacs.recent_org"
 };
 static const size_t FALLBACK_COUNT = sizeof(FALLBACK_SUBMENUS) / sizeof(FALLBACK_SUBMENUS[0]);
 
@@ -39,12 +26,14 @@ static const size_t FALLBACK_COUNT = sizeof(FALLBACK_SUBMENUS) / sizeof(FALLBACK
 static char dynamic_names[MAX_DYNAMIC_SUBMENUS][256];
 static const char *SUBMENUS[MAX_DYNAMIC_SUBMENUS];
 static size_t SUBMENU_COUNT = 0;
+static int dynamic_list_found = 0;
 
 static void load_submenu_list(const char *tmpdir) {
   char list_path[PATH_MAX];
   snprintf(list_path, sizeof(list_path), "%s/sketchybar_submenu_list", tmpdir);
   FILE *fp = fopen(list_path, "r");
   if (fp) {
+    dynamic_list_found = 1;
     char line[256];
     while (SUBMENU_COUNT < MAX_DYNAMIC_SUBMENUS && fgets(line, sizeof(line), fp)) {
       line[strcspn(line, "\n\r")] = '\0';
@@ -55,7 +44,7 @@ static void load_submenu_list(const char *tmpdir) {
     }
     fclose(fp);
   }
-  if (SUBMENU_COUNT == 0) {
+  if (SUBMENU_COUNT == 0 && !dynamic_list_found) {
     /* Fallback to hardcoded list */
     for (size_t i = 0; i < FALLBACK_COUNT && i < MAX_DYNAMIC_SUBMENUS; i++) {
       SUBMENUS[i] = FALLBACK_SUBMENUS[i];
@@ -69,6 +58,9 @@ static char state_file[PATH_MAX];
 static char parent_state_file[PATH_MAX];
 static char pid_file[PATH_MAX];  // Track pending close PIDs
 static const char *PARENT_POPUP = "apple_menu";  // Main menu that contains submenus
+static int HOVER_CORNER_RADIUS = 6;
+static int HOVER_PADDING_LEFT = 4;
+static int HOVER_PADDING_RIGHT = 4;
 
 static void run_cmd(const char *fmt, ...) {
   char buffer[1024];
@@ -246,6 +238,29 @@ int main(void) {
     double parsed = atof(delay_env);
     if (parsed > 0.0) CLOSE_DELAY = parsed;
   }
+  const char *hover_bg_env = getenv("SUBMENU_HOVER_BG");
+  if (hover_bg_env && hover_bg_env[0] != '\0') {
+    HOVER_BG = hover_bg_env;
+  }
+  const char *idle_bg_env = getenv("SUBMENU_IDLE_BG");
+  if (idle_bg_env && idle_bg_env[0] != '\0') {
+    IDLE_BG = idle_bg_env;
+  }
+  const char *corner_env = getenv("SUBMENU_HOVER_CORNER_RADIUS");
+  if (corner_env && corner_env[0] != '\0') {
+    int parsed = atoi(corner_env);
+    if (parsed >= 0) HOVER_CORNER_RADIUS = parsed;
+  }
+  const char *padding_left_env = getenv("SUBMENU_HOVER_PADDING_LEFT");
+  if (padding_left_env && padding_left_env[0] != '\0') {
+    int parsed = atoi(padding_left_env);
+    if (parsed >= 0) HOVER_PADDING_LEFT = parsed;
+  }
+  const char *padding_right_env = getenv("SUBMENU_HOVER_PADDING_RIGHT");
+  if (padding_right_env && padding_right_env[0] != '\0') {
+    int parsed = atoi(padding_right_env);
+    if (parsed >= 0) HOVER_PADDING_RIGHT = parsed;
+  }
 
   const char *name = getenv("NAME");
   if (!name || name[0] == '\0') {
@@ -260,9 +275,9 @@ int main(void) {
     record_active(name);
     record_parent_open();  // Lock parent popup from closing
     run_cmd("sketchybar --set %s popup.drawing=on background.drawing=on "
-            "background.color=%s background.corner_radius=6 "
-            "background.padding_left=4 background.padding_right=4",
-            name, HOVER_BG);
+            "background.color=%s background.corner_radius=%d "
+            "background.padding_left=%d background.padding_right=%d",
+            name, HOVER_BG, HOVER_CORNER_RADIUS, HOVER_PADDING_LEFT, HOVER_PADDING_RIGHT);
     return 0;
   }
 

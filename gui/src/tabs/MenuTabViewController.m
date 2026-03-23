@@ -11,6 +11,12 @@
 @property (strong) NSTextField *workAppsFileField;
 @property (strong) NSButton *applyWorkAppsButton;
 @property (strong) NSButton *openWorkAppsFileButton;
+@property (strong) NSButton *projectShortcutsToggle;
+@property (strong) NSPopUpButton *projectDefaultActionPopup;
+@property (strong) NSTextField *projectFileField;
+@property (strong) NSButton *applyProjectsButton;
+@property (strong) NSButton *discoverProjectsButton;
+@property (strong) NSButton *openProjectsFileButton;
 @end
 
 @implementation MenuTabViewController
@@ -27,11 +33,15 @@
 
   self.tools = @[
     @{@"key": @"afs_browser", @"label": @"AFS Browser", @"icon": @"󰈙", @"default_enabled": @YES},
+    @{@"key": @"afs_context", @"label": @"AFS Context Query", @"icon": @"󰊕", @"default_enabled": @YES},
+    @{@"key": @"afs_scratchpad", @"label": @"AFS Scratchpad", @"icon": @"󰏫", @"default_enabled": @NO},
     @{@"key": @"afs_studio", @"label": @"AFS Studio", @"icon": @"󰆍", @"default_enabled": @YES},
     @{@"key": @"afs_labeler", @"label": @"AFS Labeler", @"icon": @"󰓹", @"default_enabled": @YES},
     @{@"key": @"stemforge", @"label": @"StemForge", @"icon": @"󰎈", @"default_enabled": @YES},
     @{@"key": @"stem_sampler", @"label": @"StemSampler", @"icon": @"󰎈", @"default_enabled": @YES},
     @{@"key": @"yaze", @"label": @"Yaze", @"icon": @"󰯙", @"default_enabled": @(yazeDefaultEnabled)},
+    @{@"key": @"mesen_oos", @"label": @"Mesen2 OoS", @"icon": @"󰁆", @"default_enabled": @YES},
+    @{@"key": @"oracle_agent_manager", @"label": @"Agent Manager", @"icon": @"󰒋", @"default_enabled": @NO},
     @{@"key": @"cortex_toggle", @"label": @"Cortex Dashboard", @"icon": @"󰕮", @"default_enabled": @YES},
     @{@"key": @"cortex_hub", @"label": @"Cortex Hub", @"icon": @"󰣖", @"default_enabled": @YES},
     @{@"key": @"help_center", @"label": @"Help Center", @"icon": @"󰘥", @"default_enabled": @YES},
@@ -60,7 +70,7 @@
 
   // Title
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  title.stringValue = @"Apple Menu Tools";
+  title.stringValue = @"Apple Menu Popups";
   title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
   title.bordered = NO;
   title.editable = NO;
@@ -68,12 +78,14 @@
   [rootStack addView:title inGravity:NSStackViewGravityTop];
 
   NSTextField *hint = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  hint.stringValue = @"Toggle items, edit labels/icons, and set order (lower numbers appear first).";
+  hint.stringValue = @"Popup sections are grouped rows inside the Apple menu. Legacy submenus are hover-open fly-outs used by a few older integrations.\nToggle items, edit labels/icons, and set order here; use the sections below for web apps and local apps.";
   hint.font = [NSFont systemFontOfSize:13];
   hint.textColor = [NSColor secondaryLabelColor];
   hint.bordered = NO;
   hint.editable = NO;
   hint.backgroundColor = [NSColor clearColor];
+  hint.usesSingleLineMode = NO;
+  hint.lineBreakMode = NSLineBreakByWordWrapping;
   [rootStack addView:hint inGravity:NSStackViewGravityTop];
 
   // Options row
@@ -109,7 +121,7 @@
   [rootStack addView:workAppsSection inGravity:NSStackViewGravityTop];
 
   NSTextField *workAppsTitle = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  workAppsTitle.stringValue = @"Work Google Apps";
+  workAppsTitle.stringValue = @"Web App Shortcuts";
   workAppsTitle.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
   workAppsTitle.bordered = NO;
   workAppsTitle.editable = NO;
@@ -117,7 +129,7 @@
   [workAppsSection addView:workAppsTitle inGravity:NSStackViewGravityTop];
 
   NSTextField *workAppsHint = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  workAppsHint.stringValue = @"Set workspace domain + data file path, then apply and open the JSON file to customize links.";
+  workAppsHint.stringValue = @"These are web links inside a popup section. Set the workspace domain, choose the JSON source, then open it to edit labels, icons, and URLs.";
   workAppsHint.font = [NSFont systemFontOfSize:12];
   workAppsHint.textColor = [NSColor secondaryLabelColor];
   workAppsHint.bordered = NO;
@@ -183,6 +195,119 @@
   [workActionsRow addView:self.openWorkAppsFileButton inGravity:NSStackViewGravityLeading];
 
   [rootStack setCustomSpacing:24 afterView:workAppsSection];
+
+  // Apps controls
+  NSStackView *projectsSection = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  projectsSection.orientation = NSUserInterfaceLayoutOrientationVertical;
+  projectsSection.spacing = 10;
+  [rootStack addView:projectsSection inGravity:NSStackViewGravityTop];
+
+  NSTextField *projectsTitle = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  projectsTitle.stringValue = @"Apps";
+  projectsTitle.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
+  projectsTitle.bordered = NO;
+  projectsTitle.editable = NO;
+  projectsTitle.backgroundColor = [NSColor clearColor];
+  [projectsSection addView:projectsTitle inGravity:NSStackViewGravityTop];
+
+  NSTextField *projectsHint = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  projectsHint.stringValue = @"These rows render in the Apps popup section. The JSON file is the source of truth; Refresh Apps re-detects launcher targets from apps and tools found on this machine.";
+  projectsHint.font = [NSFont systemFontOfSize:12];
+  projectsHint.textColor = [NSColor secondaryLabelColor];
+  projectsHint.bordered = NO;
+  projectsHint.editable = NO;
+  projectsHint.backgroundColor = [NSColor clearColor];
+  [projectsSection addView:projectsHint inGravity:NSStackViewGravityTop];
+
+  NSStackView *projectsOptionsRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  projectsOptionsRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  projectsOptionsRow.spacing = 16;
+  [projectsSection addView:projectsOptionsRow inGravity:NSStackViewGravityTop];
+
+  id projectsEnabledValue = [config valueForKeyPath:@"menus.apps.enabled" defaultValue:nil];
+  if (!projectsEnabledValue) {
+    projectsEnabledValue = [config valueForKeyPath:@"menus.projects.enabled" defaultValue:@YES];
+  }
+  BOOL projectsEnabled = [projectsEnabledValue boolValue];
+  self.projectShortcutsToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
+  [self.projectShortcutsToggle setButtonType:NSButtonTypeSwitch];
+  self.projectShortcutsToggle.title = @"Enable apps section";
+  self.projectShortcutsToggle.state = projectsEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+  [projectsOptionsRow addView:self.projectShortcutsToggle inGravity:NSStackViewGravityLeading];
+
+  NSTextField *projectActionLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  projectActionLabel.stringValue = @"Fallback Path Action";
+  projectActionLabel.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
+  projectActionLabel.bordered = NO;
+  projectActionLabel.editable = NO;
+  projectActionLabel.backgroundColor = [NSColor clearColor];
+  [projectsOptionsRow addView:projectActionLabel inGravity:NSStackViewGravityLeading];
+
+  self.projectDefaultActionPopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+  [self.projectDefaultActionPopup addItemsWithTitles:@[@"Terminal", @"Finder", @"VS Code"]];
+  [self.projectDefaultActionPopup.widthAnchor constraintEqualToConstant:120].active = YES;
+  [projectsOptionsRow addView:self.projectDefaultActionPopup inGravity:NSStackViewGravityLeading];
+
+  NSString *projectAction = [config valueForKeyPath:@"menus.apps.default_action" defaultValue:nil];
+  if (projectAction.length == 0) {
+    projectAction = [config valueForKeyPath:@"menus.projects.default_action" defaultValue:@"terminal"] ?: @"terminal";
+  }
+  if ([projectAction isEqualToString:@"finder"] || [projectAction isEqualToString:@"open"]) {
+    [self.projectDefaultActionPopup selectItemAtIndex:1];
+  } else if ([projectAction isEqualToString:@"code"]) {
+    [self.projectDefaultActionPopup selectItemAtIndex:2];
+  } else {
+    [self.projectDefaultActionPopup selectItemAtIndex:0];
+  }
+
+  NSStackView *projectFileRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  projectFileRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  projectFileRow.spacing = 10;
+  [projectsSection addView:projectFileRow inGravity:NSStackViewGravityTop];
+
+  NSTextField *projectFileLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  projectFileLabel.stringValue = @"Launchers JSON";
+  projectFileLabel.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
+  projectFileLabel.bordered = NO;
+  projectFileLabel.editable = NO;
+  projectFileLabel.backgroundColor = [NSColor clearColor];
+  [projectFileLabel.widthAnchor constraintEqualToConstant:130].active = YES;
+  [projectFileRow addView:projectFileLabel inGravity:NSStackViewGravityLeading];
+
+  self.projectFileField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  self.projectFileField.placeholderString = @"data/project_shortcuts.json";
+  NSString *appsFile = [config valueForKeyPath:@"menus.apps.file" defaultValue:nil];
+  if (appsFile.length == 0) {
+    appsFile = [config valueForKeyPath:@"menus.projects.file" defaultValue:@"data/project_shortcuts.json"] ?: @"data/project_shortcuts.json";
+  }
+  self.projectFileField.stringValue = appsFile;
+  [self.projectFileField.widthAnchor constraintEqualToConstant:320].active = YES;
+  [projectFileRow addView:self.projectFileField inGravity:NSStackViewGravityLeading];
+
+  NSStackView *projectActionsRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  projectActionsRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  projectActionsRow.spacing = 10;
+  [projectsSection addView:projectActionsRow inGravity:NSStackViewGravityTop];
+
+  self.applyProjectsButton = [[NSButton alloc] initWithFrame:NSZeroRect];
+  self.applyProjectsButton.title = @"Apply Apps Settings";
+  self.applyProjectsButton.target = self;
+  self.applyProjectsButton.action = @selector(applyProjectShortcuts:);
+  [projectActionsRow addView:self.applyProjectsButton inGravity:NSStackViewGravityLeading];
+
+  self.discoverProjectsButton = [[NSButton alloc] initWithFrame:NSZeroRect];
+  self.discoverProjectsButton.title = @"Refresh Apps";
+  self.discoverProjectsButton.target = self;
+  self.discoverProjectsButton.action = @selector(discoverProjectShortcuts:);
+  [projectActionsRow addView:self.discoverProjectsButton inGravity:NSStackViewGravityLeading];
+
+  self.openProjectsFileButton = [[NSButton alloc] initWithFrame:NSZeroRect];
+  self.openProjectsFileButton.title = @"Open JSON";
+  self.openProjectsFileButton.target = self;
+  self.openProjectsFileButton.action = @selector(openProjectShortcutsFile:);
+  [projectActionsRow addView:self.openProjectsFileButton inGravity:NSStackViewGravityLeading];
+
+  [rootStack setCustomSpacing:24 afterView:projectsSection];
 
   // Tools Grid
   NSGridView *grid = [[NSGridView alloc] initWithFrame:NSZeroRect];
@@ -293,6 +418,31 @@
   return [config.configPath stringByAppendingPathComponent:trimmed];
 }
 
+- (NSString *)resolveConfigRelativePath:(NSString *)rawPath config:(ConfigurationManager *)config {
+  NSString *trimmed = [self trimmedString:rawPath ?: @""];
+  if (trimmed.length == 0) {
+    return nil;
+  }
+  if ([trimmed hasPrefix:@"~/"]) {
+    return [NSHomeDirectory() stringByAppendingPathComponent:[trimmed substringFromIndex:2]];
+  }
+  if ([trimmed hasPrefix:@"/"]) {
+    return trimmed;
+  }
+  return [config.configPath stringByAppendingPathComponent:trimmed];
+}
+
+- (NSString *)selectedProjectActionValue {
+  switch (self.projectDefaultActionPopup.indexOfSelectedItem) {
+    case 1:
+      return @"finder";
+    case 2:
+      return @"code";
+    default:
+      return @"terminal";
+  }
+}
+
 - (void)applyWorkApps:(NSButton *)sender {
   (void)sender;
   ConfigurationManager *config = [ConfigurationManager sharedManager];
@@ -348,6 +498,71 @@
 
   NSURL *fileURL = [NSURL fileURLWithPath:resolvedPath];
   [[NSWorkspace sharedWorkspace] openURL:fileURL];
+}
+
+- (void)applyProjectShortcuts:(NSButton *)sender {
+  (void)sender;
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *projectsFile = [self trimmedString:self.projectFileField.stringValue ?: @""];
+  if (projectsFile.length == 0) {
+    projectsFile = @"data/project_shortcuts.json";
+    self.projectFileField.stringValue = projectsFile;
+  }
+
+  NSNumber *appsEnabled = @(self.projectShortcutsToggle.state == NSControlStateValueOn);
+  NSString *defaultAction = [self selectedProjectActionValue];
+  [config setValue:appsEnabled forKeyPath:@"menus.apps.enabled"];
+  [config setValue:projectsFile forKeyPath:@"menus.apps.file"];
+  [config setValue:defaultAction forKeyPath:@"menus.apps.default_action"];
+  [config setValue:appsEnabled forKeyPath:@"menus.projects.enabled"];
+  [config setValue:projectsFile forKeyPath:@"menus.projects.file"];
+  [config setValue:defaultAction forKeyPath:@"menus.projects.default_action"];
+  [config reloadSketchyBar];
+}
+
+- (void)openProjectShortcutsFile:(NSButton *)sender {
+  (void)sender;
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *projectsFile = [self trimmedString:self.projectFileField.stringValue ?: @""];
+  if (projectsFile.length == 0) {
+    projectsFile = @"data/project_shortcuts.json";
+    self.projectFileField.stringValue = projectsFile;
+  }
+
+  NSString *resolvedPath = [self resolveConfigRelativePath:projectsFile config:config];
+  if (!resolvedPath.length) {
+    return;
+  }
+
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSString *dir = [resolvedPath stringByDeletingLastPathComponent];
+  [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+  if (![fm fileExistsAtPath:resolvedPath]) {
+    [@"[]\n" writeToFile:resolvedPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  }
+
+  NSURL *fileURL = [NSURL fileURLWithPath:resolvedPath];
+  [[NSWorkspace sharedWorkspace] openURL:fileURL];
+}
+
+- (void)discoverProjectShortcuts:(NSButton *)sender {
+  (void)sender;
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *projectsFile = [self trimmedString:self.projectFileField.stringValue ?: @""];
+  if (projectsFile.length == 0) {
+    projectsFile = @"data/project_shortcuts.json";
+    self.projectFileField.stringValue = projectsFile;
+  }
+
+  [self applyProjectShortcuts:nil];
+  [config runScript:@"discover_project_shortcuts.sh" arguments:@[
+    @"--state", config.statePath ?: @"",
+    @"--output", projectsFile
+  ]];
+
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    [config reloadSketchyBar];
+  });
 }
 
 - (void)toggleShowMissing:(NSButton *)sender {

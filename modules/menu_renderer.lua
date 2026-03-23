@@ -1,4 +1,5 @@
 local menu_renderer = {}
+local menu_style = require("menu_style")
 
 local unpack = table.unpack or _G.unpack
 
@@ -20,50 +21,45 @@ function menu_renderer.create(ctx)
   local post_config_delay = ctx.post_config_delay or 1.0
   local config_dir = ctx.paths and ctx.paths.config_dir or nil
   local associated_displays = ctx.associated_displays or "all"
-  local appearance = ctx.appearance or {}
-  local popup_padding = tonumber(appearance.popup_padding) or 6
-  local popup_item_height = tonumber(appearance.popup_item_height) or 0
-  if popup_item_height <= 0 then
-    popup_item_height = math.max(widget_height - 10, 16)
+  local style = menu_style.compute(ctx)
+  local popup_padding = style.popup_padding
+  local popup_item_height = style.item_height
+  local popup_header_height = style.header_height
+  local popup_item_corner_radius = style.item_corner_radius
+  local popup_border_width = style.popup_border_width
+  local popup_corner_radius = style.popup_corner_radius
+  local popup_border_color = style.popup_border_color
+  local popup_bg_color = style.popup_bg_color
+  local menu_label_color = style.label_color
+  local menu_font_small = style.font_small
+  local menu_font_header = style.font_header
+  local submenu_hover_script = ctx.SUBMENU_HOVER_SCRIPT or ""
+  if submenu_hover_script ~= "" and ctx.env_prefix and style.submenu_hover_env then
+    submenu_hover_script = ctx.env_prefix(style.submenu_hover_env) .. submenu_hover_script
   end
-  local popup_item_corner_radius = tonumber(appearance.popup_item_corner_radius) or 4
-  local popup_border_width = tonumber(appearance.popup_border_width) or 2
-  local popup_corner_radius = tonumber(appearance.popup_corner_radius) or 6
-  local popup_border_color = appearance.popup_border_color or theme.WHITE
-  local popup_bg_color = appearance.menu_popup_bg_color or appearance.popup_bg_color or theme.bar.bg
-  local menu_label_color = appearance.menu_label_color or theme.WHITE
+  local metadata = { popup_parents = {}, submenu_parents = {} }
 
-  local function resolved_style(style_name, fallback)
-    local raw = tostring(style_name or fallback or "Regular")
-    local normalized = raw:sub(1, 1):upper() .. raw:sub(2):lower()
-    if settings.font.style_map[normalized] then
-      return settings.font.style_map[normalized]
-    end
-    if settings.font.style_map[fallback] then
-      return settings.font.style_map[fallback]
-    end
-    return settings.font.style_map["Regular"] or "Regular"
+  local function remember(target, name)
+    if type(name) ~= "string" or name == "" then return end
+    target[name] = true
   end
 
-  local menu_font_size_offset = tonumber(appearance.menu_font_size_offset) or 1
-  local menu_font_size = math.max((settings.font.sizes.small or 12) + menu_font_size_offset, 10)
-  local menu_font_style = resolved_style(appearance.menu_font_style or "Bold", "Semibold")
-  local menu_header_style = resolved_style(appearance.menu_header_font_style or "Bold", "Bold")
-  local menu_font_small
-  local menu_font_header
-  if type(ctx.font_string) == "function" then
-    menu_font_small = ctx.font_string(settings.font.text, menu_font_style, menu_font_size)
-    menu_font_header = ctx.font_string(settings.font.text, menu_header_style, menu_font_size)
-  else
-    menu_font_small = string.format("%s:%s:%0.1f", settings.font.text, menu_font_style, menu_font_size)
-    menu_font_header = string.format("%s:%s:%0.1f", settings.font.text, menu_header_style, menu_font_size)
+  local function list_from_set(set)
+    local items = {}
+    for name, enabled in pairs(set or {}) do
+      if enabled then
+        table.insert(items, name)
+      end
+    end
+    table.sort(items)
+    return items
   end
 
   local function menu_entry_padding()
-    local icon_left = math.max(popup_padding - 2, 2)
-    local icon_right = popup_padding
-    local label_left = popup_padding
-    local label_right = popup_padding
+    local icon_left = style.padding.icon_left
+    local icon_right = style.padding.icon_right
+    local label_left = style.padding.label_left
+    local label_right = style.padding.label_right
     return {
       icon_left = icon_left,
       icon_right = icon_right,
@@ -73,14 +69,7 @@ function menu_renderer.create(ctx)
   end
 
   local function popup_background()
-    return {
-      border_width = popup_border_width,
-      corner_radius = popup_corner_radius,
-      border_color = popup_border_color,
-      color = popup_bg_color,
-      padding_left = popup_padding,
-      padding_right = popup_padding,
-    }
+    return style.popup_background()
   end
 
   local function popup_toggle(item_name)
@@ -155,7 +144,11 @@ function menu_renderer.create(ctx)
       ["label.font"] = menu_font_header,
       ["label.color"] = theme.DARK_WHITE,
       ["icon.drawing"] = false,
-      background = { drawing = false },
+      background = {
+        drawing = false,
+        corner_radius = popup_item_corner_radius,
+        height = popup_header_height,
+      },
       ["label.padding_left"] = padding.label_left,
       ["label.padding_right"] = padding.label_right,
     })
@@ -243,6 +236,7 @@ function menu_renderer.create(ctx)
     
     -- Create popup container item (separate item, not nested)
     local popup_item_name = "popup." .. popup_name
+    remember(metadata.popup_parents, popup_item_name)
     sbar.add("item", popup_item_name, {
       position = "left",
       icon = "",
@@ -314,7 +308,7 @@ function menu_renderer.create(ctx)
       position = "popup." .. popup,
       icon = entry.icon or "",
       label = string.format("%s  %s", entry.label, arrow),
-      script = ctx.SUBMENU_HOVER_SCRIPT,
+      script = submenu_hover_script,
       click_script = popup_toggle(),
       ["icon.padding_left"] = padding.icon_left,
       ["icon.padding_right"] = padding.icon_right,
@@ -330,6 +324,7 @@ function menu_renderer.create(ctx)
         background = popup_background()
       }
     })
+    remember(metadata.submenu_parents, parent)
     shell_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited mouse.exited.global", post_config_delay, sketchybar_bin, parent))
     renderer(parent, entry.items or {})
   end
@@ -337,6 +332,12 @@ function menu_renderer.create(ctx)
   return {
     render = render_menu_items,
     appearance_action = appearance_action,
+    get_metadata = function()
+      return {
+        popup_parents = list_from_set(metadata.popup_parents),
+        submenu_parents = list_from_set(metadata.submenu_parents),
+      }
+    end,
   }
 end
 

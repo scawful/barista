@@ -9,6 +9,8 @@
 - [BUILD.md](BUILD.md) - Build instructions
 - [CHANGELOG.md](CHANGELOG.md) - Version history
 - [PERFORMANCE_AUDIT.md](PERFORMANCE_AUDIT.md) - Performance analysis and mitigations
+- [STATE_SCHEMA.md](STATE_SCHEMA.md) - Runtime `state.json` schema and key reference
+- [GLOSSARY.md](GLOSSARY.md) - Shared UI and menu terminology
 
 ---
 
@@ -33,6 +35,14 @@ User-facing setup and usage guides.
 | [WORK_MACHINE_GEMINI.md](guides/WORK_MACHINE_GEMINI.md) | Work-machine, Gemini-first upgrade path |
 | [CONFIG_OVERRIDES.md](guides/CONFIG_OVERRIDES.md) | Programmatic configuration overrides |
 | [barista-verify.sh](../scripts/barista-verify.sh) | Smoke test and validation tool |
+
+### reference/
+Cross-cutting configuration reference.
+
+| Document | Description |
+|----------|-------------|
+| [STATE_SCHEMA.md](STATE_SCHEMA.md) | Top-level and nested `state.json` keys used by Barista runtime |
+| [GLOSSARY.md](GLOSSARY.md) | Shared terms for popups, sections, fly-outs, app shortcuts, and spaces |
 
 ### architecture/
 System design and technical documentation.

@@ -28,6 +28,9 @@ Options:
   --popup-bg <hex>      Popup background color
   --popup-item-height <int> Popup row height (0 = auto)
   --popup-item-radius <int> Popup item corner radius
+  --menu-padding <int>  Apple-menu popup section padding
+  --menu-item-height <int> Apple-menu popup row height (0 = auto)
+  --menu-header-height <int> Apple-menu section header height (0 = auto)
   --hover-color <hex>   Hover highlight color
   --hover-border-color <hex> Hover border color
   --hover-border-width <int> Hover border width
@@ -141,6 +144,21 @@ while [[ $# -gt 0 ]]; do
     --popup-item-radius)
       [[ -n "${2:-}" ]] || { usage; exit 1; }
       updates+=("popup_item_corner_radius" "int" "$2")
+      shift 2
+      ;;
+    --menu-padding)
+      [[ -n "${2:-}" ]] || { usage; exit 1; }
+      updates+=("menu_padding" "int" "$2")
+      shift 2
+      ;;
+    --menu-item-height)
+      [[ -n "${2:-}" ]] || { usage; exit 1; }
+      updates+=("menu_item_height" "int" "$2")
+      shift 2
+      ;;
+    --menu-header-height)
+      [[ -n "${2:-}" ]] || { usage; exit 1; }
+      updates+=("menu_header_height" "int" "$2")
       shift 2
       ;;
     --hover-color)

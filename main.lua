@@ -4,6 +4,7 @@
 local sbar = require("sketchybar")
 local theme = require("theme")
 local utf8 = require("utf8")
+local unpack = table.unpack or _G.unpack
 
 -- Load modules
 local HOME = os.getenv("HOME")
@@ -188,6 +189,22 @@ if cortex_enabled then
   else print("Barista: cortex integration enabled but module not found") end
 end
 
+local janice_enabled = integration_enabled("janice")
+local janice_module  = nil
+if janice_enabled then
+  local ok, mod = pcall(require, "janice")
+  if ok then janice_module = mod
+  else print("Barista: janice integration enabled but module not found") end
+end
+
+local premia_enabled = integration_enabled("premia")
+local premia_module  = nil
+if premia_enabled then
+  local ok, mod = pcall(require, "premia")
+  if ok then premia_module = mod
+  else print("Barista: premia integration enabled but module not found") end
+end
+
 local control_center_enabled = integration_enabled("control_center") or cortex_enabled
 local control_center_module = nil
 if control_center_enabled then
@@ -261,6 +278,8 @@ local integrations = {
   emacs  = emacs_enabled  and emacs_module  or nil,
   halext = halext_enabled  and halext_module or nil,
   cortex = cortex_module,
+  janice = janice_module,
+  premia = premia_module,
   control_center = control_center_module,
 }
 
@@ -367,7 +386,7 @@ local function init_spaces()
 end
 
 barista_context.init_spaces = init_spaces
-barista_context.widget_factory = widgets_module.create_factory(sbar, theme, bc.settings, state)
+barista_context.widget_factory = widgets_module.create_factory(sbar, theme, bc.settings, state, bc)
 
 -----------------------------------------------------------------------
 -- Begin configuration
@@ -382,7 +401,6 @@ sbar.add("item", "popup_manager", {
   drawing = false,
   script = POPUP_MANAGER_SCRIPT,
 })
-shell_utils.shell_exec(string.format("sleep %.1f; %s --subscribe popup_manager space_change display_changed display_added display_removed system_woke front_app_switched", POST_CONFIG_DELAY, SKETCHYBAR_BIN))
 
 -- Bar configuration
 sbar.bar(bc.bar)
@@ -396,7 +414,7 @@ end
 sbar.default(bc.defaults)
 
 -- Render All Menus (System, Workspace, Window)
-menu_module.render_all_menus(barista_context)
+local menu_metadata = menu_module.render_all_menus(barista_context) or {}
 
 -- Register left and right bar items
 -----------------------------------------------------------------------
@@ -434,28 +452,29 @@ process_layout(items_right.get_layout(barista_context), barista_context)
 
 -- Write dynamic popup/submenu lists for C helpers (replaces hardcoded lists)
 local submenu_registry = require("submenu_registry")
+local popup_manager_items = {
+  "front_app",
+  "clock",
+  "system_info",
+  "volume",
+  "battery",
+  unpack(menu_metadata.popup_parents or {}),
+}
+if control_center_module then
+  table.insert(popup_manager_items, "control_center")
+end
 submenu_registry.register(
   -- Popup parents (items with popup.drawing=toggle)
-  { "apple_menu", "front_app", "clock", "system_info", "yabai_status" },
-  -- Submenu sections (items inside apple_menu popup that have their own popups)
-  {
-    "menu.control_center.app",
-    "menu.windows.section",
-    "menu.control_center.spaces",
-    "menu.control_center.layouts",
-    "menu.yabai.section",
-    "menu.sketchybar.styles",
-    "menu.sketchybar.tools",
-    "menu.rom.section",
-    "menu.emacs.section",
-    "menu.halext.section",
-    "menu.apps.section",
-    "menu.dev.section",
-    "menu.help.section",
-    "menu.agents.section",
-    "menu.debug.section",
-  }
+  popup_manager_items,
+  -- Submenu sections (items inside menu popups that have their own popups)
+  menu_metadata.submenu_parents or {}
 )
+
+shell_utils.shell_exec(string.format(
+  "sleep %.1f; %s --subscribe popup_manager space_change display_changed display_added display_removed system_woke front_app_switched",
+  POST_CONFIG_DELAY,
+  SKETCHYBAR_BIN
+))
 
 -- End configuration
 sbar.end_config()

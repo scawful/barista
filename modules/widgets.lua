@@ -4,16 +4,20 @@
 local widgets = {}
 
 -- Widget factory for creating common widgets
-function widgets.create_factory(sbar, theme, settings, state_data)
+function widgets.create_factory(sbar, theme, settings, state_data, metrics)
   local factory = {}
-
-  -- Helper to scale values based on widget_scale
-  local function scaled(value, scale)
-    return math.floor(value * scale + 0.5)
+  local appearance = state_data.appearance or {}
+  local widget_metrics = metrics or {}
+  local widget_height = widget_metrics.widget_height or math.max((appearance.bar_height or 28) - 5, 18)
+  local widget_corner_radius = widget_metrics.widget_corner_radius
+  if widget_corner_radius == nil then
+    local corner_radius = appearance.corner_radius or 0
+    widget_corner_radius = corner_radius > 0 and math.max(corner_radius - 1, 4) or 6
   end
+  local item_padding = widget_metrics.item_padding or 5
+  local clock_font_style = appearance.clock_font_style or "Semibold"
 
   local function popup_background()
-    local appearance = state_data.appearance or {}
     local padding = appearance.popup_padding or 8
     return {
       border_width = appearance.popup_border_width or 2,
@@ -47,21 +51,6 @@ function widgets.create_factory(sbar, theme, settings, state_data)
 
   -- Create a standard widget with common properties
   function factory.create(name, config)
-    local widget_scale = state_data.appearance.widget_scale or 1.0
-    local bar_height = state_data.appearance.bar_height or 28
-    local corner_radius = state_data.appearance.corner_radius or 0
-    local widget_corner_radius = corner_radius > 0 and math.max(corner_radius - 1, 4) or 6
-
-    local icon_font_size = math.max(scaled(16, widget_scale), 12)
-    local label_font_size = math.max(scaled(14, widget_scale), 11)
-    local item_padding = math.max(scaled(5, widget_scale), 4)
-
-    local base_widget_height = math.max(bar_height - 5, 18)
-    local widget_height = math.max(
-      scaled(base_widget_height, widget_scale),
-      16
-    )
-
     local defaults = {
       position = config.position or "right",
       icon = config.icon or "",
@@ -117,16 +106,6 @@ function widgets.create_factory(sbar, theme, settings, state_data)
 
   -- Create a clock widget
   function factory.create_clock(config)
-    local widget_scale = state_data.appearance.widget_scale or 1.0
-    local bar_height = state_data.appearance.bar_height or 28
-    local corner_radius = state_data.appearance.corner_radius or 0
-    local widget_corner_radius = corner_radius > 0 and math.max(corner_radius - 1, 4) or 6
-    local clock_font_style = state_data.appearance.clock_font_style or "Semibold"
-
-    local base_widget_height = math.max(bar_height - 5, 18)
-    local widget_height = math.max(scaled(base_widget_height, widget_scale), 16)
-    local number_font_size = math.max(scaled(14, widget_scale), 11)
-
     local defaults = {
       position = "right",
       icon = "",
@@ -141,7 +120,7 @@ function widgets.create_factory(sbar, theme, settings, state_data)
         "%s:%s:%0.1f",
         settings.font.numbers,
         settings.font.style_map[clock_font_style] or "Semibold",
-        number_font_size
+        settings.font.sizes.numbers
       ),
     }
 
@@ -155,14 +134,6 @@ function widgets.create_factory(sbar, theme, settings, state_data)
 
   -- Create a battery widget
   function factory.create_battery(config)
-    local widget_scale = state_data.appearance.widget_scale or 1.0
-    local bar_height = state_data.appearance.bar_height or 28
-    local corner_radius = state_data.appearance.corner_radius or 0
-    local widget_corner_radius = corner_radius > 0 and math.max(corner_radius - 1, 4) or 6
-
-    local base_widget_height = math.max(bar_height - 5, 18)
-    local widget_height = math.max(scaled(base_widget_height, widget_scale), 16)
-
     local defaults = {
       position = "right",
       drawing = state_data.widgets.battery ~= false,
@@ -184,14 +155,6 @@ function widgets.create_factory(sbar, theme, settings, state_data)
 
   -- Create a volume widget
   function factory.create_volume(config)
-    local widget_scale = state_data.appearance.widget_scale or 1.0
-    local bar_height = state_data.appearance.bar_height or 28
-    local corner_radius = state_data.appearance.corner_radius or 0
-    local widget_corner_radius = corner_radius > 0 and math.max(corner_radius - 1, 4) or 6
-
-    local base_widget_height = math.max(bar_height - 5, 18)
-    local widget_height = math.max(scaled(base_widget_height, widget_scale), 16)
-
     local defaults = {
       position = "right",
       drawing = state_data.widgets.volume ~= false,
@@ -212,14 +175,6 @@ function widgets.create_factory(sbar, theme, settings, state_data)
 
   -- Create a system info widget with popup
   function factory.create_system_info(config)
-    local widget_scale = state_data.appearance.widget_scale or 1.0
-    local bar_height = state_data.appearance.bar_height or 28
-    local corner_radius = state_data.appearance.corner_radius or 0
-    local widget_corner_radius = corner_radius > 0 and math.max(corner_radius - 1, 4) or 6
-
-    local base_widget_height = math.max(bar_height - 5, 18)
-    local widget_height = math.max(scaled(base_widget_height, widget_scale), 16)
-
     local defaults = {
       position = "right",
       icon = "󰍛",
@@ -247,14 +202,6 @@ function widgets.create_factory(sbar, theme, settings, state_data)
 
   -- Create network widget
   function factory.create_network(config)
-    local widget_scale = state_data.appearance.widget_scale or 1.0
-    local bar_height = state_data.appearance.bar_height or 28
-    local corner_radius = state_data.appearance.corner_radius or 0
-    local widget_corner_radius = corner_radius > 0 and math.max(corner_radius - 1, 4) or 6
-
-    local base_widget_height = math.max(bar_height - 5, 18)
-    local widget_height = math.max(scaled(base_widget_height, widget_scale), 16)
-
     local defaults = {
       position = "right",
       icon = "󰓅",

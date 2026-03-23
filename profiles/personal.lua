@@ -21,6 +21,7 @@ profile.integrations = {
   nerv = true,        -- NERV transfer queue status
   halext_org = true,  -- Halext-org dashboard widget
   workspace = true,   -- Workspace status
+  premia = true,      -- Premia v2 finance platform
 }
 
 -- Window manager mode (expects yabai/skhd for personal setup)

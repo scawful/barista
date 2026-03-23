@@ -201,6 +201,13 @@ local function get_layout(ctx)
       table.insert(layout, { type = "item", name = item_name, props = popup_item, attach_hover = true })
     end
 
+    if cc_widget.script and cc_widget.script ~= "" then
+      table.insert(layout, {
+        action = "exec",
+        cmd = string.format("sleep %.1f; NAME=%s %s", POST_CONFIG_DELAY, control_center_item_name, cc_widget.script),
+      })
+    end
+
     table.insert(layout, { action = "exec", cmd = string.format("sleep %.1f; %s --subscribe control_center mouse.entered mouse.exited space_change space_mode_refresh system_woke", POST_CONFIG_DELAY, SKETCHYBAR_BIN) })
     table.insert(layout, { action = "subscribe_popup_autoclose", name = "control_center" })
     table.insert(layout, { action = "attach_hover", name = "control_center" })

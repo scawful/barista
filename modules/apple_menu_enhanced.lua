@@ -1,87 +1,27 @@
 local apple_menu = {}
+local binary_resolver = require("binary_resolver")
+local menu_style = require("menu_style")
+local locator = require("tool_locator")
+local project_shortcuts_module = require("project_shortcuts")
 local shortcuts_ok, shortcuts = pcall(require, "shortcuts")
 if not shortcuts_ok then
   shortcuts = nil
 end
 
 local function expand_path(path)
-  if type(path) ~= "string" or path == "" then
-    return nil
-  end
-  if path:sub(1, 2) == "~/" then
-    return (os.getenv("HOME") or "") .. path:sub(2)
-  end
-  return path
+  return locator.expand_path(path)
 end
 
--- PERF: Lua-native file checks avoid forking subprocesses per path.
--- path_exists for files uses io.open (zero forks); directory checks still use os.execute.
--- Results are cached to avoid repeated checks on the same path.
-local _path_cache = {}
 local function path_exists(path, want_dir)
-  if not path or path == "" then
-    return false
-  end
-  local cache_key = (want_dir and "d:" or "f:") .. path
-  if _path_cache[cache_key] ~= nil then
-    return _path_cache[cache_key]
-  end
-  local result
-  if want_dir then
-    local ok = os.execute(string.format("test -d %q", path))
-    result = ok == true or ok == 0
-  else
-    local f = io.open(path, "r")
-    if f then
-      f:close()
-      result = true
-    else
-      result = false
-    end
-  end
-  _path_cache[cache_key] = result
-  return result
+  return locator.path_exists(path, want_dir)
 end
 
 local function path_is_executable(path)
-  if not path or path == "" then
-    return false
-  end
-  local cache_key = "x:" .. path
-  if _path_cache[cache_key] ~= nil then
-    return _path_cache[cache_key]
-  end
-  local f = io.open(path, "r")
-  if not f then
-    _path_cache[cache_key] = false
-    return false
-  end
-  f:close()
-  local ok = os.execute(string.format("test -x %q", path))
-  local result = ok == true or ok == 0
-  _path_cache[cache_key] = result
-  return result
+  return locator.path_is_executable(path)
 end
 
 local function shell_quote(value)
   return string.format("%q", tostring(value))
-end
-
-local function command_path(command)
-  if not command or command == "" then
-    return nil
-  end
-  local handle = io.popen(string.format("command -v %q 2>/dev/null", command))
-  if not handle then
-    return nil
-  end
-  local result = handle:read("*a") or ""
-  handle:close()
-  result = result:gsub("%s+$", "")
-  if result == "" then
-    return nil
-  end
-  return result
 end
 
 local function env_prefix(vars)
@@ -124,51 +64,15 @@ local function font_string(ctx, family, style, size)
 end
 
 local function resolve_code_dir(ctx)
-  local home = os.getenv("HOME") or ""
-  local candidate = (ctx.paths and ctx.paths.code_dir)
-    or os.getenv("BARISTA_CODE_DIR")
-    or (home .. "/src")
-  candidate = expand_path(candidate)
-  local fallback = home .. "/src"
-  if candidate and candidate:match("/Code/?$") and path_exists(fallback, true) then
-    return fallback
-  end
-  if candidate and not path_exists(candidate, true) then
-    if path_exists(fallback, true) then
-      return fallback
-    end
-    return candidate
-  end
-  if candidate and not path_exists(candidate .. "/lab", true) and path_exists(fallback .. "/lab", true) then
-    return fallback
-  end
-  return candidate
+  return locator.resolve_code_dir(ctx)
 end
 
 local function resolve_config_dir(ctx)
-  local home = os.getenv("HOME") or ""
-  return (ctx.paths and ctx.paths.config_dir)
-    or ctx.config_dir
-    or os.getenv("BARISTA_CONFIG_DIR")
-    or (home .. "/.config/sketchybar")
+  return locator.resolve_config_dir(ctx)
 end
 
 local function load_state(config_dir)
-  local ok, json = pcall(require, "json")
-  if not ok then
-    return nil
-  end
-  local file = io.open(config_dir .. "/state.json", "r")
-  if not file then
-    return nil
-  end
-  local contents = file:read("*a")
-  file:close()
-  local ok_decode, data = pcall(json.decode, contents)
-  if not ok_decode or type(data) ~= "table" then
-    return nil
-  end
-  return data
+  return locator.load_state(config_dir)
 end
 
 local function resolve_menu_data_path(config_dir, raw_path)
@@ -203,8 +107,8 @@ local function load_json_array_file(path)
   return data
 end
 
-local function read_menu_config(config_dir)
-  local state = load_state(config_dir)
+local function read_menu_config(config_dir, state_override)
+  local state = type(state_override) == "table" and state_override or load_state(config_dir)
   local menu_state = state and state.menus and state.menus.apple or {}
   local work_state = state and state.menus and state.menus.work or {}
   local items = type(menu_state.items) == "table" and menu_state.items or {}
@@ -233,216 +137,54 @@ local function read_menu_config(config_dir)
 end
 
 local function resolve_path(ctx, candidates, want_dir)
-  local fallback = nil
-  local max_index = 0
-  for index in pairs(candidates or {}) do
-    if type(index) == "number" and index > max_index then
-      max_index = index
-    end
-  end
-  for i = 1, max_index do
-    local candidate = candidates[i]
-    if candidate and candidate ~= "" then
-      candidate = expand_path(candidate)
-      fallback = fallback or candidate
-      if path_exists(candidate, want_dir) then
-        return candidate, true
-      end
-    end
-  end
-  return fallback, false
+  return locator.resolve_path(candidates, want_dir)
 end
 
 local function resolve_executable_path(candidates)
-  local fallback = nil
-  local max_index = 0
-  for index in pairs(candidates or {}) do
-    if type(index) == "number" and index > max_index then
-      max_index = index
-    end
-  end
-  for i = 1, max_index do
-    local candidate = candidates[i]
-    if candidate and candidate ~= "" then
-      candidate = expand_path(candidate)
-      fallback = fallback or candidate
-      if path_is_executable(candidate) then
-        return candidate, true
-      end
-    end
-  end
-  return fallback, false
+  return locator.resolve_executable_path(candidates)
 end
 
 local function resolve_afs_root(ctx)
-  local code_dir = resolve_code_dir(ctx)
-  return resolve_path(ctx, {
-    ctx.paths and ctx.paths.afs or nil,
-    os.getenv("AFS_ROOT"),
-    code_dir .. "/lab/afs",
-    code_dir .. "/afs",
-  }, true)
+  return locator.resolve_afs_root(ctx)
 end
 
 local function resolve_afs_studio_root(ctx, afs_root)
-  local code_dir = resolve_code_dir(ctx)
-  return resolve_path(ctx, {
-    ctx.paths and ctx.paths.afs_studio or nil,
-    os.getenv("AFS_STUDIO_ROOT"),
-    afs_root and (afs_root .. "/apps/studio") or nil,
-    code_dir .. "/lab/afs_suite",
-    code_dir .. "/lab/afs/apps/studio",
-    code_dir .. "/lab/afs_studio",
-    code_dir .. "/afs/apps/studio",
-    code_dir .. "/afs_studio",
-  }, true)
+  return locator.resolve_afs_studio_root(ctx, afs_root)
 end
 
 local function resolve_afs_browser_app(ctx)
-  local code_dir = resolve_code_dir(ctx)
-  return resolve_path(ctx, {
-    ctx.paths and ctx.paths.afs_browser_app or nil,
-    os.getenv("AFS_BROWSER_APP"),
-    code_dir .. "/lab/afs_suite/build_ai/apps/browser/afs-browser.app",
-    code_dir .. "/lab/afs_suite/build/apps/browser/afs-browser.app",
-    code_dir .. "/lab/afs_suite/build/apps/browser/Debug/afs-browser.app",
-    code_dir .. "/lab/afs_suite/build/apps/browser/Release/afs-browser.app",
-  }, true)
+  return locator.resolve_afs_browser_app(ctx)
 end
 
 local function resolve_stemforge_app(ctx)
-  local code_dir = resolve_code_dir(ctx)
-  return resolve_path(ctx, {
-    ctx.paths and ctx.paths.stemforge_app or nil,
-    os.getenv("STEMFORGE_APP"),
-    code_dir .. "/tools/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app",
-    code_dir .. "/tools/stemforge/build_ai/StemForge_artefacts/Release/Standalone/StemForge.app",
-    code_dir .. "/tools/stemforge/build/StemForge_artefacts/Debug/Standalone/StemForge.app",
-    code_dir .. "/lab/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app",
-    code_dir .. "/stemforge/build/StemForge_artefacts/Release/Standalone/StemForge.app",
-    os.getenv("HOME") .. "/Applications/StemForge.app",
-    "/Applications/StemForge.app",
-  }, true)
+  return locator.resolve_stemforge_app(ctx)
 end
 
 local function resolve_stem_sampler_app(ctx)
-  local code_dir = resolve_code_dir(ctx)
-  return resolve_path(ctx, {
-    ctx.paths and ctx.paths.stem_sampler_app or nil,
-    os.getenv("STEM_SAMPLER_APP"),
-    code_dir .. "/tools/stem-sampler/StemSampler.app",
-    code_dir .. "/tools/stemsampler/StemSampler.app",
-    code_dir .. "/tools/stem_sampler/StemSampler.app",
-    os.getenv("HOME") .. "/Applications/StemSampler.app",
-    "/Applications/StemSampler.app",
-  }, true)
+  return locator.resolve_stem_sampler_app(ctx)
 end
 
 local function resolve_yaze_app(ctx)
-  local code_dir = resolve_code_dir(ctx)
-  local yaze_dir = os.getenv("BARISTA_YAZE_DIR")
-    or (ctx.paths and ctx.paths.yaze)
-    or (code_dir .. "/yaze")
-  local nightly_prefix = os.getenv("BARISTA_YAZE_NIGHTLY_PREFIX")
-    or os.getenv("YAZE_NIGHTLY_PREFIX")
-    or ((os.getenv("HOME") or "") .. "/.local/yaze/nightly")
-  return resolve_path(ctx, {
-    ctx.paths and ctx.paths.yaze_app or nil,
-    os.getenv("BARISTA_YAZE_APP") or os.getenv("YAZE_APP"),
-    nightly_prefix .. "/current/yaze.app",
-    nightly_prefix .. "/yaze.app",
-    (os.getenv("HOME") or "") .. "/Applications/Yaze Nightly.app",
-    (os.getenv("HOME") or "") .. "/Applications/yaze nightly.app",
-    (os.getenv("HOME") or "") .. "/applications/Yaze Nightly.app",
-    (os.getenv("HOME") or "") .. "/applications/yaze nightly.app",
-    "/Applications/Yaze Nightly.app",
-    "/Applications/yaze nightly.app",
-    -- AI builds (Stable/Preferred) - Debug/Release variants for Multi-Config
-    yaze_dir and (yaze_dir .. "/build_ai/bin/Debug/yaze.app") or nil,
-    yaze_dir and (yaze_dir .. "/build_ai/bin/Release/yaze.app") or nil,
-    code_dir .. "/hobby/yaze/build_ai/bin/Debug/yaze.app",
-    code_dir .. "/hobby/yaze/build_ai/bin/Release/yaze.app",
-    code_dir .. "/yaze/build_ai/bin/Debug/yaze.app",
-    code_dir .. "/yaze/build_ai/bin/Release/yaze.app",
-
-    -- Fallbacks
-    yaze_dir and (yaze_dir .. "/build_ai/bin/yaze.app") or nil,
-    code_dir .. "/hobby/yaze/build_ai/bin/yaze.app",
-    code_dir .. "/yaze/build_ai/bin/yaze.app",
-    
-    -- Legacy/Standard builds
-    yaze_dir and (yaze_dir .. "/build/bin/Release/yaze.app") or nil,
-    yaze_dir and (yaze_dir .. "/build/bin/yaze.app") or nil,
-    code_dir .. "/hobby/yaze/build/bin/Release/yaze.app",
-    code_dir .. "/hobby/yaze/build/bin/yaze.app",
-    code_dir .. "/yaze/build/bin/yaze.app",
-  }, true)
+  return locator.resolve_yaze_app(ctx)
 end
 
 local function resolve_yaze_launcher()
-  local override = os.getenv("BARISTA_YAZE_LAUNCHER") or os.getenv("YAZE_LAUNCHER")
-  if override and override ~= "" then
-    override = expand_path(override)
-    if path_is_executable(override) then
-      return override, true
-    end
-    local resolved = command_path(override)
-    if resolved then
-      return resolved, true
-    end
-  end
-
-  local resolved = command_path("yaze-nightly")
-  if resolved then
-    return resolved, true
-  end
-
-  return nil, false
+  return locator.resolve_yaze_launcher()
 end
 local function resolve_sys_manual_binary(ctx)
-  local code_dir = resolve_code_dir(ctx)
-  return resolve_executable_path({
-    code_dir .. "/lab/sys_manual/build/sys_manual",
-    code_dir .. "/sys_manual/build/sys_manual",
-    "/Applications/sys_manual.app/Contents/MacOS/sys_manual",
-  })
+  return locator.resolve_sys_manual_binary(ctx)
 end
 
 local function resolve_mesen_run(ctx)
-  return resolve_executable_path({
-    (os.getenv("HOME") or "") .. "/bin/mesen-run",
-    (os.getenv("HOME") or "") .. "/.local/bin/mesen-run",
-  })
+  return locator.resolve_mesen_run(ctx)
 end
 
 local function resolve_oracle_agent_manager(ctx)
-  local code_dir = resolve_code_dir(ctx)
-  return resolve_executable_path({
-    code_dir .. "/hobby/oracle-agent-manager/mesen2ctl",
-    code_dir .. "/hobby/oracle-agent-manager/build/mesen2ctl",
-  })
+  return locator.resolve_oracle_agent_manager(ctx)
 end
 
 local function resolve_cortex_cli(ctx)
-  local override = os.getenv("CORTEX_CLI") or os.getenv("CORTEX_CLI_PATH")
-  if override and override ~= "" then
-    override = expand_path(override)
-    if path_is_executable(override) then
-      return override, true
-    end
-  end
-
-  local resolved = command_path("cortex-cli")
-  if resolved then
-    return resolved, true
-  end
-
-  local code_dir = resolve_code_dir(ctx)
-  return resolve_executable_path({
-    code_dir .. "/lab/cortex/bin/cortex-cli",
-    code_dir .. "/cortex/bin/cortex-cli",
-    (os.getenv("HOME") or "") .. "/.local/bin/cortex-cli",
-  })
+  return locator.resolve_cortex_cli(ctx)
 end
 
 local function afs_cli(afs_root, args)
@@ -501,7 +243,8 @@ function apple_menu.setup(ctx)
   local widget_height = ctx.widget_height
   local associated_displays = ctx.associated_displays or "all"
   local config_dir = resolve_config_dir(ctx)
-  local menu_config = read_menu_config(config_dir)
+  local state = type(ctx.state) == "table" and ctx.state or load_state(config_dir)
+  local menu_config = read_menu_config(config_dir, state)
 
   local function resolved_style(style_name, fallback)
     local raw = tostring(style_name or fallback or "Regular")
@@ -515,23 +258,13 @@ function apple_menu.setup(ctx)
     return settings.font.style_map["Regular"] or "Regular"
   end
 
-  local menu_font_size_offset = tonumber((ctx.appearance and ctx.appearance.menu_font_size_offset) or 1) or 1
-  local menu_font_size = math.max((settings.font.sizes.small or 12) + menu_font_size_offset, 10)
-  local menu_font_style = resolved_style((ctx.appearance and ctx.appearance.menu_font_style) or "Bold", "Semibold")
-  local menu_header_style = resolved_style((ctx.appearance and ctx.appearance.menu_header_font_style) or "Bold", "Bold")
-  local font_small = font_string(ctx, settings.font.text, menu_font_style, menu_font_size)
-  local font_bold = font_string(ctx, settings.font.text, menu_header_style, menu_font_size)
-
-  local popup_border_width = (ctx.appearance and ctx.appearance.popup_border_width) or 2
-  local popup_corner_radius = (ctx.appearance and ctx.appearance.popup_corner_radius) or 8
-  local popup_border_color = (ctx.appearance and ctx.appearance.popup_border_color) or theme.WHITE
-  local popup_bg_color = (ctx.appearance and (ctx.appearance.menu_popup_bg_color or ctx.appearance.popup_bg_color)) or theme.BG_PRI_COLR or theme.bar.bg
-  local popup_padding = (ctx.appearance and ctx.appearance.popup_padding) or 8
-  local popup_item_height = tonumber((ctx.appearance and ctx.appearance.popup_item_height) or 0) or 0
-  if popup_item_height <= 0 then
-    popup_item_height = math.max(widget_height - 6, 20)
-  end
-  local popup_item_corner_radius = tonumber((ctx.appearance and ctx.appearance.popup_item_corner_radius) or 6) or 6
+  local style = menu_style.compute(ctx)
+  local font_small = style.font_small
+  local font_bold = style.font_header
+  local popup_item_height = style.item_height
+  local popup_header_height = style.header_height
+  local popup_item_corner_radius = style.item_corner_radius
+  local popup_padding = style.padding or {}
   local function popup_toggle(item_name)
     if type(ctx.popup_toggle_action) == "function" then
       return ctx.popup_toggle_action(item_name)
@@ -558,12 +291,12 @@ function apple_menu.setup(ctx)
     click_script = popup_toggle(),
     popup = {
       background = {
-        border_width = popup_border_width,
-        corner_radius = popup_corner_radius,
-        border_color = popup_border_color,
-        color = popup_bg_color,
-        padding_left = popup_padding,
-        padding_right = popup_padding,
+        border_width = style.popup_border_width,
+        corner_radius = style.popup_corner_radius,
+        border_color = style.popup_border_color,
+        color = style.popup_bg_color,
+        padding_left = style.popup_padding,
+        padding_right = style.popup_padding,
       },
     },
   })
@@ -615,6 +348,7 @@ function apple_menu.setup(ctx)
   end
 
   local code_dir = resolve_code_dir(ctx)
+  local project_shortcuts = project_shortcuts_module.load(config_dir, code_dir, state)
   local show_missing = os.getenv("BARISTA_SHOW_MISSING_TOOLS") == "1"
   if type(menu_config.show_missing) == "boolean" then
     show_missing = menu_config.show_missing
@@ -647,6 +381,14 @@ function apple_menu.setup(ctx)
       return tonumber(value)
     end
     return nil
+  end
+
+  local function normalize_section_id(value)
+    local section_id = tostring(value or ""):lower()
+    if section_id == "" or section_id == "projects" then
+      return "apps"
+    end
+    return section_id
   end
 
   local terminal_defaults = {}
@@ -694,8 +436,8 @@ function apple_menu.setup(ctx)
       position = "popup.apple_menu",
       icon = { drawing = false },
       label = { string = "───────────────", font = font_small, color = theme.DARK_WHITE },
-      ["label.padding_left"] = 8,
-      ["label.padding_right"] = 8,
+      ["label.padding_left"] = popup_padding.label_left or 6,
+      ["label.padding_right"] = popup_padding.label_right or 6,
       background = { drawing = false },
     })
   end
@@ -706,13 +448,13 @@ function apple_menu.setup(ctx)
       position = "popup.apple_menu",
       icon = { drawing = false },
       label = { string = label, font = font_bold, color = meta.color or theme.WHITE },
-      ["label.padding_left"] = 10,
-      ["label.padding_right"] = 10,
+      ["label.padding_left"] = popup_padding.label_left or 6,
+      ["label.padding_right"] = popup_padding.label_right or 6,
       background = {
         drawing = true,
         color = meta.bg_color or theme.BG_SEC_COLR or theme.bar.bg,
         corner_radius = popup_item_corner_radius,
-        height = item_height,
+        height = popup_header_height,
       },
     })
   end
@@ -744,10 +486,10 @@ function apple_menu.setup(ctx)
       label = { string = label, font = font_small, color = label_color },
       click_script = wrap_action(ctx, "apple_menu", entry.name, action),
       script = hover_script_cmd,
-      ["icon.padding_left"] = 10,
-      ["icon.padding_right"] = 6,
-      ["label.padding_left"] = 4,
-      ["label.padding_right"] = 8,
+      ["icon.padding_left"] = popup_padding.icon_left or 4,
+      ["icon.padding_right"] = popup_padding.icon_right or 6,
+      ["label.padding_left"] = popup_padding.label_left or 6,
+      ["label.padding_right"] = popup_padding.label_right or 6,
       background = {
         drawing = false,
         corner_radius = popup_item_corner_radius,
@@ -761,6 +503,7 @@ function apple_menu.setup(ctx)
 
   local afs_root, afs_ok = resolve_afs_root(ctx)
   local studio_root, studio_ok = resolve_afs_studio_root(ctx, afs_root)
+  local studio_launcher, studio_launcher_ok = locator.resolve_afs_studio_launcher(ctx)
   local afs_browser_app, afs_browser_ok = resolve_afs_browser_app(ctx)
   local stemforge_app, stemforge_ok = resolve_stemforge_app(ctx)
   local stem_sampler_app, stem_sampler_ok = resolve_stem_sampler_app(ctx)
@@ -783,7 +526,6 @@ function apple_menu.setup(ctx)
   }, false)
   local help_center_action = ""
   local help_center_available = false
-  local code_dir = resolve_code_dir(ctx)
   local env_prefix = string.format(
     "BARISTA_CONFIG_DIR=%s BARISTA_CODE_DIR=%s",
     shell_quote(config_dir),
@@ -844,16 +586,14 @@ function apple_menu.setup(ctx)
     oam_action = terminal_action("oracle.agent_manager", shell_quote(oam_bin))
   end
 
+  local yaze_dir = select(1, locator.resolve_yaze_dir(ctx)) or (code_dir .. "/yaze")
   local afs_action = afs_browser_app and string.format("open %s", shell_quote(afs_browser_app)) or ""
-  local studio_bin, studio_bin_ok = resolve_path(ctx, {
-    studio_root and (studio_root .. "/build_ai/apps/studio/afs-studio.app") or nil,
-    studio_root and (studio_root .. "/build_ai/apps/studio/afs-studio") or nil,
-    studio_root and (studio_root .. "/build/apps/studio/afs-studio.app") or nil,
-    studio_root and (studio_root .. "/build/apps/studio/afs-studio") or nil,
-  }, false)
+  local studio_bin, studio_bin_ok = locator.resolve_afs_studio_binary(studio_root)
   local studio_action
   local studio_cmd
-  if studio_bin_ok and studio_bin then
+  if studio_launcher_ok and studio_launcher then
+    studio_action = shell_quote(studio_launcher)
+  elseif studio_bin_ok and studio_bin then
     if studio_bin:match("%.app/?$") then
       studio_action = string.format("open %s", shell_quote(studio_bin))
     else
@@ -863,22 +603,27 @@ function apple_menu.setup(ctx)
     if afs_root then
       studio_cmd = afs_cli(afs_root, "studio run --build")
     elseif studio_root then
-      studio_cmd = string.format(
-        "cd %s && cmake --build build_ai --target afs-studio && ./build_ai/apps/studio/afs-studio",
-        shell_quote(studio_root)
-      )
+      local build_dir = locator.afs_build_dir(studio_root)
+      if locator.afs_studio_layout(studio_root) == "suite" then
+        studio_cmd = string.format(
+          "cd %s && cmake --build %s --target afs-studio && ./%s/apps/studio/afs-studio",
+          shell_quote(studio_root),
+          build_dir,
+          build_dir
+        )
+      else
+        studio_cmd = string.format(
+          "cd %s && cmake --build build --target afs_studio && ./build/afs_studio",
+          shell_quote(studio_root)
+        )
+      end
     end
     studio_action = terminal_action("afs_studio", studio_cmd)
   end
-  local studio_available = studio_ok and (studio_bin_ok or studio_cmd ~= nil)
-  local studio_blocked = studio_ok and studio_cmd ~= nil and studio_action == nil
+  local studio_available = studio_ok and (studio_launcher_ok or studio_bin_ok or studio_cmd ~= nil)
+  local studio_blocked = studio_ok and not studio_launcher_ok and studio_cmd ~= nil and studio_action == nil
 
-  local labeler_bin, labeler_bin_ok = resolve_path(ctx, {
-    studio_root and (studio_root .. "/build_ai/apps/studio/afs-labeler.app") or nil,
-    studio_root and (studio_root .. "/build_ai/apps/studio/afs-labeler") or nil,
-    studio_root and (studio_root .. "/build/apps/studio/afs-labeler.app") or nil,
-    studio_root and (studio_root .. "/build/apps/studio/afs-labeler") or nil,
-  }, false)
+  local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(studio_root)
   local labeler_csv = os.getenv("AFS_LABELER_CSV")
   local labeler_cmd
   local labeler_action
@@ -889,7 +634,20 @@ function apple_menu.setup(ctx)
     end
     labeler_action = labeler_cmd
   elseif studio_root then
-    labeler_cmd = string.format("cd %s && cmake --build build_ai --target afs-labeler && ./build_ai/apps/studio/afs-labeler", shell_quote(studio_root))
+    local build_dir = locator.afs_build_dir(studio_root)
+    if locator.afs_studio_layout(studio_root) == "suite" then
+      labeler_cmd = string.format(
+        "cd %s && cmake --build %s --target afs-labeler && ./%s/apps/studio/afs-labeler",
+        shell_quote(studio_root),
+        build_dir,
+        build_dir
+      )
+    else
+      labeler_cmd = string.format(
+        "cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler",
+        shell_quote(studio_root)
+      )
+    end
     if labeler_csv and labeler_csv ~= "" then
       labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
     end
@@ -898,6 +656,7 @@ function apple_menu.setup(ctx)
 
   local cortex_toggle = cortex_cli_ok and (shell_quote(cortex_cli) .. " toggle") or ""
   local cortex_hub = cortex_cli_ok and (shell_quote(cortex_cli) .. " hub") or ""
+  local sketchybar_bin = binary_resolver.resolve_sketchybar_bin()
   local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
 
   -- AFS context helpers
@@ -920,7 +679,7 @@ function apple_menu.setup(ctx)
       label = "AFS Browser",
       icon = "󰈙",
       icon_color = tc("SAPPHIRE"),
-      section = "core",
+      section = "apps",
       action = afs_action or "",
       shortcut_action = "launch_afs_browser",
       available = afs_browser_ok,
@@ -934,7 +693,7 @@ function apple_menu.setup(ctx)
       section = "afs",
       action = afs_query_action,
       available = afs_root ~= nil,
-      default_enabled = afs_root ~= nil,
+      default_enabled = false,
     },
     {
       id = "afs_scratchpad",
@@ -951,19 +710,19 @@ function apple_menu.setup(ctx)
       label = "AFS Studio",
       icon = "󰆍",
       icon_color = tc("LAVENDER"),
-      section = "afs",
+      section = "apps",
       action = studio_action or "",
       shortcut_action = "launch_afs_studio",
       available = studio_available,
       blocked = studio_blocked,
-      default_enabled = false,
+      default_enabled = true,
     },
     {
       id = "afs_labeler",
       label = "AFS Labeler",
       icon = "󰓹",
       icon_color = tc("TEAL"),
-      section = "afs",
+      section = "apps",
       action = labeler_action or "",
       shortcut_action = "launch_afs_labeler",
       available = studio_ok and labeler_cmd ~= nil,
@@ -997,7 +756,7 @@ function apple_menu.setup(ctx)
       label = "Yaze",
       icon = "󰯙",
       icon_color = tc("YELLOW"),
-      section = "core",
+      section = "apps",
       action = yaze_launcher_ok and shell_quote(yaze_launcher) or (yaze_app and string.format("open %s", shell_quote(yaze_app)) or ""),
       -- Default to enabled if we found it
       available = yaze_available,
@@ -1022,7 +781,7 @@ function apple_menu.setup(ctx)
       label = "Mesen2 OoS",
       icon = "󰁆",
       icon_color = tc("RED"),
-      section = "core",
+      section = "apps",
       action = mesen_run_action,
       available = mesen_run_ok,
       default_enabled = true,
@@ -1039,12 +798,11 @@ function apple_menu.setup(ctx)
     },
     {
       id = "cortex_toggle",
-      label = "Cortex Dashboard",
+      label = "Cortex",
       icon = "󰕮",
       icon_color = tc("MAUVE", "LAVENDER"),
-      section = "controls",
-      action = cortex_toggle,
-      shortcut_action = "toggle_cortex",
+      section = "apps",
+      action = cortex_hub,
       available = cortex_cli_ok,
       default_enabled = true,
     },
@@ -1119,7 +877,7 @@ function apple_menu.setup(ctx)
       icon = "󰑐",
       icon_color = tc("YELLOW"),
       section = "controls",
-      action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload",
+      action = string.format("%q --reload", sketchybar_bin),
       shortcut_action = "reload_sketchybar",
       available = true,
       default_enabled = true,
@@ -1127,9 +885,10 @@ function apple_menu.setup(ctx)
   }
 
   local sections = {
+    apps = { id = "apps", label = "Apps", icon = "󰀻", color = tc("MAUVE", "LAVENDER"), order = 0 },
     core = { id = "core", label = "Core Tools", icon = "󰯙", color = tc("GREEN"), order = 1 },
     controls = { id = "controls", label = "Controls", icon = "󰒓", color = tc("SKY"), order = 2 },
-    work = { id = "work", label = "Work Apps", icon = "󰖟", color = tc("BLUE"), order = 3 },
+    work = { id = "work", label = "Web Apps", icon = "󰖟", color = tc("BLUE"), order = 3 },
     support = { id = "support", label = "Support", icon = "󰘥", color = tc("LAVENDER"), order = 4 },
     afs = { id = "afs", label = "AFS Tools", icon = "󰈙", color = tc("SAPPHIRE"), order = 5 },
     audio = { id = "audio", label = "Audio", icon = "󰎈", color = tc("PEACH"), order = 6 },
@@ -1138,7 +897,12 @@ function apple_menu.setup(ctx)
 
   for section_id, override in pairs(menu_config.sections or {}) do
     if type(override) == "table" then
-      local section = sections[section_id] or { id = section_id, label = section_id, order = 99 }
+      local normalized_section_id = normalize_section_id(section_id)
+      local section = sections[normalized_section_id] or {
+        id = normalized_section_id,
+        label = normalized_section_id,
+        order = 99,
+      }
       if override.label and override.label ~= "" then
         section.label = override.label
       end
@@ -1152,7 +916,7 @@ function apple_menu.setup(ctx)
       if order ~= nil then
         section.order = order
       end
-      sections[section_id] = section
+      sections[normalized_section_id] = section
     end
   end
 
@@ -1196,7 +960,7 @@ function apple_menu.setup(ctx)
         missing = missing,
         order = order,
         default_index = index,
-        section = override.section or item.section or "controls",
+        section = normalize_section_id(override.section or item.section or "controls"),
       })
     end
   end
@@ -1220,9 +984,30 @@ function apple_menu.setup(ctx)
             missing = false,
             order = normalize_order(custom.order) or (2000 + index),
             default_index = 1000 + index,
-            section = custom.section or "custom",
+            section = normalize_section_id(custom.section or "custom"),
           })
         end
+      end
+    end
+  end
+
+  if project_shortcuts.enabled then
+    for index, project in ipairs(project_shortcuts.items or {}) do
+      if project.available or show_missing then
+        table.insert(rendered, {
+          id = project.id,
+          name = "menu.tools.project." .. project.id,
+          label = project.label,
+          icon = project.icon,
+          icon_color = project.icon_color,
+          label_color = project.label_color,
+          action = project.action,
+          shortcut = project.shortcut,
+          missing = not project.available,
+          order = project.order or (1300 + index),
+          default_index = 1100 + index,
+          section = normalize_section_id(project.section or "apps"),
+        })
       end
     end
   end
@@ -1250,7 +1035,7 @@ function apple_menu.setup(ctx)
             missing = false,
             order = normalize_order(app.order) or (1500 + index),
             default_index = 1200 + index,
-            section = app.section or "work",
+            section = normalize_section_id(app.section or "work"),
           })
         end
       end
@@ -1283,6 +1068,11 @@ function apple_menu.setup(ctx)
     end
     add_item(entry)
   end
+
+  return {
+    popup_parents = { "apple_menu" },
+    submenu_parents = {},
+  }
 end
 
 return apple_menu

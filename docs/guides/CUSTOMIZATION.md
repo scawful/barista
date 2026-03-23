@@ -17,11 +17,18 @@ Ways to tailor the bar without editing core Lua.
 Location: `~/.config/sketchybar/state.json` (or `$BARISTA_CONFIG_DIR/state.json`).
 
 - **widgets** – Turn items on/off: `system_info`, `clock`, `volume`, `battery`, `network`, etc.
-- **appearance** – Bar height, padding, colors, fonts, hover animation, popup styling. See `modules/state.lua` defaults for keys (e.g. `bar_height`, `hover_animation_duration`, `font_icon`).
+- **appearance** – Bar height, padding, colors, fonts, hover animation, popup styling, and scaling. `widget_scale` is the manual baseline; `auto_more_space_scaling` and `more_space_widget_scale_boost` let Barista automatically raise the effective bar height and grow items when the built-in display is using macOS "More Space". Menu density is separate now: use `menu_item_height`, `menu_header_height`, and `menu_padding` to tune popup sections without changing the bar itself. `submenu_close_delay` still applies to legacy fly-out submenus.
 - **icons** – Override icons by name (e.g. `apple`, `clock`, `volume`).
+- **modes** – Persist runtime switches like `window_manager` and `runtime_backend`.
+- **paths** – Override runtime paths such as `scripts_dir` and `code_dir`.
+- **menus** – Configure Apple-menu popup sections, app shortcuts, web app shortcuts, per-item enablement, and custom entries.
+- **spaces** – Control spaces widget behavior such as creator button placement, right-click close behavior, reorder mode, and swap indicator visibility.
+- **integrations** – Enable or disable optional integrations and store integration-specific settings.
 - **profile** – Current profile name; can be set by the GUI/TUI or `set_mode.sh`.
 
 The Control Panel (GUI) and TUI write to `state.json`; edits are applied on the next SketchyBar reload.
+For the current schema and nested keys, see [STATE_SCHEMA.md](../STATE_SCHEMA.md).
+For the shared terms used in the panel and docs, see [GLOSSARY.md](../GLOSSARY.md).
 
 ## barista_config.lua
 

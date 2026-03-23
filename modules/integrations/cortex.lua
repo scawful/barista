@@ -181,22 +181,20 @@ cortex.notifications = {
   restart = "com.scawful.cortex.restart",
 }
 
--- Post distributed notification via Swift
+-- Post distributed notification via JXA to avoid depending on the Swift REPL.
 local function post_notification(name)
-  local swift_cmd = string.format([[
-swift - <<'EOF' 2>/dev/null
-import Foundation
-let center = DistributedNotificationCenter.default()
-center.postNotificationName(
-    Notification.Name("%s"),
-    object: nil,
-    userInfo: nil,
-    deliverImmediately: true
+  local script = string.format([[
+osascript -l JavaScript <<'EOF' >/dev/null 2>&1
+ObjC.import('Foundation')
+$.NSDistributedNotificationCenter.defaultCenter.postNotificationNameObjectUserInfoDeliverImmediately(
+  %q,
+  null,
+  null,
+  true
 )
-Thread.sleep(forTimeInterval: 0.05)
 EOF
 ]], name)
-  os.execute(swift_cmd)
+  os.execute(script)
 end
 
 -- Check if Cortex is running
@@ -224,9 +222,14 @@ function cortex.start()
   end
 
   cortex.refresh_config()
+  local cli = cortex.config.cli_path
+  if path_is_executable(cli) then
+    os.execute(string.format("%q start >/dev/null 2>&1", cli))
+    return true, "Started"
+  end
   local bin = cortex.config.bin_path
   if path_is_executable(bin) then
-    os.execute(string.format("%q &", bin))
+    os.execute(string.format("nohup %q >/tmp/cortex.log 2>&1 </dev/null &", bin))
     return true, "Started"
   end
   return false, "Binary not found"

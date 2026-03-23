@@ -63,3 +63,70 @@ run_test("create_widget: show_label=false hides label", function()
   local widget = control_center.create_widget({ show_label = false })
   assert_equal(widget.label.drawing, false, "label hidden")
 end)
+
+local function test_theme()
+  return {
+    WHITE = "0xffffffff",
+    LAVENDER = "0xffb4befe",
+    BLUE = "0xff89b4fa",
+    SAPPHIRE = "0xff74c7ec",
+    GREEN = "0xffa6e3a1",
+    TEAL = "0xff94e2d5",
+    YELLOW = "0xfff9e2af",
+    RED = "0xfff38ba8",
+  }
+end
+
+local function test_settings()
+  return {
+    font = {
+      text = "Source Code Pro",
+      style_map = {
+        Semibold = "Semibold",
+        Bold = "Bold",
+      },
+      sizes = {
+        small = 11,
+      },
+    },
+  }
+end
+
+local function test_font_string(family, style, size)
+  return string.format("%s:%s:%s", family, style, size)
+end
+
+local function find_item(items, name)
+  for _, item in ipairs(items) do
+    if item.name == name then
+      return item
+    end
+  end
+  return nil
+end
+
+run_test("create_popup_items: disabled mode shows notice", function()
+  local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
+    window_manager_mode = "disabled",
+  })
+  local notice = find_item(items, "cc.window_manager.notice")
+  assert_type(notice, "table", "notice item exists")
+  assert_equal(notice.label.string, "Window manager disabled", "notice label")
+  assert_nil(find_item(items, "cc.layout.float"), "layout controls hidden")
+end)
+
+run_test("create_popup_items: service rows close popup after action", function()
+  local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {})
+  local sketchybar = find_item(items, "cc.svc.sketchybar")
+  assert_type(sketchybar, "table", "sketchybar service item")
+  assert_true(sketchybar.click_script:match("%-%-reload") ~= nil, "reload action present")
+  assert_true(sketchybar.click_script:match("popup%.drawing=off") ~= nil, "popup close action present")
+end)
+
+run_test("create_popup_items: shortcut toggle updates label and closes popup", function()
+  local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {})
+  local toggle = find_item(items, "cc.yabai.shortcuts")
+  assert_type(toggle, "table", "shortcut toggle item")
+  assert_true(toggle.click_script:match("toggle_yabai_shortcuts%.sh") ~= nil or toggle.click_script:match("toggle_shortcuts%.sh") ~= nil, "toggle script present")
+  assert_true(toggle.click_script:match("popup%.drawing=off") ~= nil, "popup close action present")
+end)

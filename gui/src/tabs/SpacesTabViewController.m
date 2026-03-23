@@ -6,6 +6,11 @@
 @property (strong) NSTextField *iconField;
 @property (strong) NSTextField *iconPreview;
 @property (strong) NSSegmentedControl *modeSelector;
+@property (strong) NSPopUpButton *creatorModePopup;
+@property (strong) NSPopUpButton *rightClickPopup;
+@property (strong) NSPopUpButton *reorderModePopup;
+@property (strong) NSButton *contextMenuToggle;
+@property (strong) NSButton *swapIndicatorToggle;
 @property (strong) NSButton *applyButton;
 @property (strong) NSButton *clearModeButton;
 @property (strong) NSButton *resetModesButton;
@@ -32,7 +37,7 @@
 
   // Title
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  title.stringValue = @"Space Customization";
+  title.stringValue = @"Spaces Widget";
   title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
   title.bordered = NO;
   title.editable = NO;
@@ -158,7 +163,7 @@
   [rootStack addView:self.modeSelector inGravity:NSStackViewGravityTop];
 
   NSTextField *descLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  descLabel.stringValue = @"• Float: Windows can be moved and resized freely\n• BSP: Binary space partitioning (tiling)\n• Stack: Windows stacked on top of each other";
+  descLabel.stringValue = @"Each space chip can have its own icon and layout mode.\n• Float: Windows can be moved and resized freely\n• BSP: Binary space partitioning (tiling)\n• Stack: Windows stacked on top of each other";
   descLabel.font = [NSFont systemFontOfSize:13];
   descLabel.bordered = NO;
   descLabel.editable = NO;
@@ -167,6 +172,90 @@
   [rootStack addView:descLabel inGravity:NSStackViewGravityTop];
 
   [rootStack setCustomSpacing:40 afterView:descLabel];
+
+  // Widget behavior section
+  NSTextField *behaviorSectionLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  behaviorSectionLabel.stringValue = @"WIDGET BEHAVIOR";
+  behaviorSectionLabel.font = [NSFont systemFontOfSize:12 weight:NSFontWeightBold];
+  behaviorSectionLabel.textColor = [NSColor secondaryLabelColor];
+  behaviorSectionLabel.bordered = NO;
+  behaviorSectionLabel.editable = NO;
+  behaviorSectionLabel.backgroundColor = [NSColor clearColor];
+  [rootStack addView:behaviorSectionLabel inGravity:NSStackViewGravityTop];
+
+  NSStackView *creatorRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  creatorRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  creatorRow.spacing = 12;
+  [rootStack addView:creatorRow inGravity:NSStackViewGravityTop];
+
+  NSTextField *creatorLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  creatorLabel.stringValue = @"Create Button:";
+  creatorLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+  creatorLabel.bordered = NO;
+  creatorLabel.editable = NO;
+  creatorLabel.backgroundColor = [NSColor clearColor];
+  [creatorLabel.widthAnchor constraintEqualToConstant:140].active = YES;
+  [creatorRow addView:creatorLabel inGravity:NSStackViewGravityLeading];
+
+  self.creatorModePopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+  [self.creatorModePopup addItemsWithTitles:@[@"Every Display", @"Active Display", @"Primary Display"]];
+  [self.creatorModePopup.widthAnchor constraintEqualToConstant:180].active = YES;
+  [creatorRow addView:self.creatorModePopup inGravity:NSStackViewGravityLeading];
+
+  NSStackView *rightClickRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  rightClickRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  rightClickRow.spacing = 12;
+  [rootStack addView:rightClickRow inGravity:NSStackViewGravityTop];
+
+  NSTextField *rightClickLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  rightClickLabel.stringValue = @"Close Action:";
+  rightClickLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+  rightClickLabel.bordered = NO;
+  rightClickLabel.editable = NO;
+  rightClickLabel.backgroundColor = [NSColor clearColor];
+  [rightClickLabel.widthAnchor constraintEqualToConstant:140].active = YES;
+  [rightClickRow addView:rightClickLabel inGravity:NSStackViewGravityLeading];
+
+  self.rightClickPopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+  [self.rightClickPopup addItemsWithTitles:@[@"Confirm Before Close", @"Close Immediately", @"Never Close"]];
+  [self.rightClickPopup.widthAnchor constraintEqualToConstant:200].active = YES;
+  [rightClickRow addView:self.rightClickPopup inGravity:NSStackViewGravityLeading];
+
+  NSStackView *reorderRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  reorderRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  reorderRow.spacing = 12;
+  [rootStack addView:reorderRow inGravity:NSStackViewGravityTop];
+
+  NSTextField *reorderLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  reorderLabel.stringValue = @"Reorder Controls:";
+  reorderLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+  reorderLabel.bordered = NO;
+  reorderLabel.editable = NO;
+  reorderLabel.backgroundColor = [NSColor clearColor];
+  [reorderLabel.widthAnchor constraintEqualToConstant:140].active = YES;
+  [reorderRow addView:reorderLabel inGravity:NSStackViewGravityLeading];
+
+  self.reorderModePopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+  [self.reorderModePopup addItemsWithTitles:@[@"Popup Menu", @"Shift-click", @"Off"]];
+  [self.reorderModePopup.widthAnchor constraintEqualToConstant:180].active = YES;
+  [reorderRow addView:self.reorderModePopup inGravity:NSStackViewGravityLeading];
+
+  NSStackView *toggleRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  toggleRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  toggleRow.spacing = 20;
+  [rootStack addView:toggleRow inGravity:NSStackViewGravityTop];
+
+  self.contextMenuToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
+  [self.contextMenuToggle setButtonType:NSButtonTypeSwitch];
+  self.contextMenuToggle.title = @"Open popup menu on right click";
+  [toggleRow addView:self.contextMenuToggle inGravity:NSStackViewGravityLeading];
+
+  self.swapIndicatorToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
+  [self.swapIndicatorToggle setButtonType:NSButtonTypeSwitch];
+  self.swapIndicatorToggle.title = @"Show swap indicator";
+  [toggleRow addView:self.swapIndicatorToggle inGravity:NSStackViewGravityLeading];
+
+  [rootStack setCustomSpacing:40 afterView:toggleRow];
 
   // Action Buttons
   NSStackView *buttonRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
@@ -177,7 +266,7 @@
   self.applyButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.applyButton setButtonType:NSButtonTypeMomentaryPushIn];
   [self.applyButton setBezelStyle:NSBezelStyleRounded];
-  self.applyButton.title = @"Apply to Space";
+  self.applyButton.title = @"Apply Space + Widget Settings";
   self.applyButton.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
   self.applyButton.target = self;
   self.applyButton.action = @selector(applySettings:);
@@ -201,6 +290,7 @@
   [buttonRow addView:self.resetModesButton inGravity:NSStackViewGravityLeading];
 
   [self loadSpaceSettings];
+  [self loadBehaviorSettings];
 }
 
 - (void)spaceChanged:(id)sender {
@@ -272,6 +362,43 @@
   }
 }
 
+- (void)loadBehaviorSettings {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+
+  NSString *creatorMode = [config valueForKeyPath:@"spaces.creator_mode" defaultValue:@"per_display"] ?: @"per_display";
+  if ([creatorMode isEqualToString:@"active"]) {
+    [self.creatorModePopup selectItemAtIndex:1];
+  } else if ([creatorMode isEqualToString:@"primary"]) {
+    [self.creatorModePopup selectItemAtIndex:2];
+  } else {
+    [self.creatorModePopup selectItemAtIndex:0];
+  }
+
+  NSString *closeMode = [config valueForKeyPath:@"spaces.right_click_close" defaultValue:@"confirm"] ?: @"confirm";
+  if ([closeMode isEqualToString:@"direct"]) {
+    [self.rightClickPopup selectItemAtIndex:1];
+  } else if ([closeMode isEqualToString:@"off"]) {
+    [self.rightClickPopup selectItemAtIndex:2];
+  } else {
+    [self.rightClickPopup selectItemAtIndex:0];
+  }
+
+  NSString *reorderMode = [config valueForKeyPath:@"spaces.reorder_mode" defaultValue:@"menu"] ?: @"menu";
+  if ([reorderMode isEqualToString:@"modifiers"]) {
+    [self.reorderModePopup selectItemAtIndex:1];
+  } else if ([reorderMode isEqualToString:@"off"]) {
+    [self.reorderModePopup selectItemAtIndex:2];
+  } else {
+    [self.reorderModePopup selectItemAtIndex:0];
+  }
+
+  BOOL contextMenuEnabled = [[config valueForKeyPath:@"spaces.context_menu_on_right_click" defaultValue:@YES] boolValue];
+  self.contextMenuToggle.state = contextMenuEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+
+  BOOL swapIndicatorEnabled = [[config valueForKeyPath:@"spaces.swap_indicator" defaultValue:@YES] boolValue];
+  self.swapIndicatorToggle.state = swapIndicatorEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+}
+
 - (void)applySettings:(id)sender {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
 
@@ -289,6 +416,35 @@
   NSString *keyPath = [NSString stringWithFormat:@"space_modes.%ld", (long)self.currentSpace];
   [config setValue:mode forKeyPath:keyPath];
 
+  NSString *creatorMode = @"per_display";
+  if (self.creatorModePopup.indexOfSelectedItem == 1) {
+    creatorMode = @"active";
+  } else if (self.creatorModePopup.indexOfSelectedItem == 2) {
+    creatorMode = @"primary";
+  }
+  [config setValue:creatorMode forKeyPath:@"spaces.creator_mode"];
+
+  NSString *closeMode = @"confirm";
+  if (self.rightClickPopup.indexOfSelectedItem == 1) {
+    closeMode = @"direct";
+  } else if (self.rightClickPopup.indexOfSelectedItem == 2) {
+    closeMode = @"off";
+  }
+  [config setValue:closeMode forKeyPath:@"spaces.right_click_close"];
+
+  NSString *reorderMode = @"menu";
+  NSNumber *modifierReorderEnabled = @NO;
+  if (self.reorderModePopup.indexOfSelectedItem == 1) {
+    reorderMode = @"modifiers";
+    modifierReorderEnabled = @YES;
+  } else if (self.reorderModePopup.indexOfSelectedItem == 2) {
+    reorderMode = @"off";
+  }
+  [config setValue:reorderMode forKeyPath:@"spaces.reorder_mode"];
+  [config setValue:modifierReorderEnabled forKeyPath:@"spaces.modifier_reorder_enabled"];
+  [config setValue:@(self.contextMenuToggle.state == NSControlStateValueOn) forKeyPath:@"spaces.context_menu_on_right_click"];
+  [config setValue:@(self.swapIndicatorToggle.state == NSControlStateValueOn) forKeyPath:@"spaces.swap_indicator"];
+
   NSString *script = [[config.configPath stringByAppendingPathComponent:@"plugins"] stringByAppendingPathComponent:@"set_space_mode.sh"];
   if ([[NSFileManager defaultManager] fileExistsAtPath:script]) {
     [config runScript:@"set_space_mode.sh" arguments:@[[NSString stringWithFormat:@"%ld", (long)self.currentSpace], mode]];
@@ -298,7 +454,7 @@
 
   self.applyButton.title = @"✓ Applied!";
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-    self.applyButton.title = @"Apply to Current Space";
+    self.applyButton.title = @"Apply Space + Widget Settings";
   });
 }
 

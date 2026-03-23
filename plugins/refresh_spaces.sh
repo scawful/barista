@@ -10,6 +10,24 @@ ACTIVE_CACHE_FILE="${CONFIG_DIR}/.spaces_active_cache"
 LOCK_DIR="${CONFIG_DIR}/.refresh_spaces.lock"
 ICON_CACHE_DIR="${CONFIG_DIR}/cache/space_icons"
 
+space_items_present() {
+  [ -n "${ALL_SPACES_DATA:-}" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  command -v sketchybar >/dev/null 2>&1 || return 1
+
+  local found_space=0
+  local space_index=""
+  while IFS= read -r space_index; do
+    [ -n "$space_index" ] || continue
+    found_space=1
+    if ! sketchybar --query "space.$space_index" >/dev/null 2>&1; then
+      return 1
+    fi
+  done < <(printf '%s' "$ALL_SPACES_DATA" | jq -r '.[].index // empty' 2>/dev/null)
+
+  [ "$found_space" -eq 1 ]
+}
+
 # Simple lock to avoid overlapping refreshes from rapid display events
 # Auto-recover stale locks older than 10 seconds (e.g. from killed processes)
 if [ -d "$LOCK_DIR" ]; then
@@ -49,13 +67,15 @@ if [ -n "$current_display_state$current_space_state" ]; then
   combined_state="${current_display_state}|${current_space_state}"
   cached_state="$(cat "$CACHE_FILE" 2>/dev/null || true)"
   if [ "$combined_state" = "$cached_state" ]; then
-    cached_active_state="$(cat "$ACTIVE_CACHE_FILE" 2>/dev/null || true)"
-    if [ -n "$current_active_state" ] && [ "$current_active_state" != "$cached_active_state" ]; then
-      printf '%s' "$current_active_state" >"$ACTIVE_CACHE_FILE" || true
-      sketchybar --trigger space_change >/dev/null 2>&1 || true
-      sketchybar --trigger space_mode_refresh >/dev/null 2>&1 || true
+    if space_items_present; then
+      cached_active_state="$(cat "$ACTIVE_CACHE_FILE" 2>/dev/null || true)"
+      if [ -n "$current_active_state" ] && [ "$current_active_state" != "$cached_active_state" ]; then
+        printf '%s' "$current_active_state" >"$ACTIVE_CACHE_FILE" || true
+        sketchybar --trigger space_change >/dev/null 2>&1 || true
+        sketchybar --trigger space_mode_refresh >/dev/null 2>&1 || true
+      fi
+      exit 0
     fi
-    exit 0
   fi
   cached_space_state=""
   case "$cached_state" in

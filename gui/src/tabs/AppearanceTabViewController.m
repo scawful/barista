@@ -24,6 +24,12 @@
 @property (strong) NSTextField *menuHeaderFontStyleField;
 @property (strong) NSSlider *menuFontOffsetSlider;
 @property (strong) NSTextField *menuFontOffsetValueLabel;
+@property (strong) NSSlider *menuRowHeightSlider;
+@property (strong) NSTextField *menuRowHeightValueLabel;
+@property (strong) NSSlider *menuPaddingSlider;
+@property (strong) NSTextField *menuPaddingValueLabel;
+@property (strong) NSSlider *submenuDelaySlider;
+@property (strong) NSTextField *submenuDelayValueLabel;
 @property (strong) NSSlider *menuPopupOpacitySlider;
 @property (strong) NSTextField *menuPopupOpacityValueLabel;
 @property (strong) NSSlider *menuBorderContrastSlider;
@@ -399,6 +405,99 @@
   [rootStack addView:menuOffsetRow inGravity:NSStackViewGravityTop];
   [self updateMenuFontOffsetLabel];
 
+  NSStackView *menuRowHeightRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  menuRowHeightRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  menuRowHeightRow.spacing = 12;
+
+  NSTextField *menuRowHeightLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  menuRowHeightLabel.stringValue = @"Popup Row Height:";
+  menuRowHeightLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+  menuRowHeightLabel.bordered = NO;
+  menuRowHeightLabel.editable = NO;
+  menuRowHeightLabel.backgroundColor = [NSColor clearColor];
+  [menuRowHeightRow addView:menuRowHeightLabel inGravity:NSStackViewGravityLeading];
+
+  self.menuRowHeightValueLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  self.menuRowHeightValueLabel.bordered = NO;
+  self.menuRowHeightValueLabel.editable = NO;
+  self.menuRowHeightValueLabel.backgroundColor = [NSColor clearColor];
+  self.menuRowHeightValueLabel.alignment = NSTextAlignmentRight;
+  [self.menuRowHeightValueLabel.widthAnchor constraintEqualToConstant:70].active = YES;
+  [menuRowHeightRow addView:self.menuRowHeightValueLabel inGravity:NSStackViewGravityLeading];
+
+  self.menuRowHeightSlider = [[NSSlider alloc] initWithFrame:NSZeroRect];
+  self.menuRowHeightSlider.minValue = 0;
+  self.menuRowHeightSlider.maxValue = 36;
+  self.menuRowHeightSlider.doubleValue = [[config valueForKeyPath:@"appearance.menu_item_height" defaultValue:@0] doubleValue];
+  self.menuRowHeightSlider.target = self;
+  self.menuRowHeightSlider.action = @selector(sliderChanged:);
+  [self.menuRowHeightSlider.widthAnchor constraintEqualToConstant:260].active = YES;
+  [menuRowHeightRow addView:self.menuRowHeightSlider inGravity:NSStackViewGravityLeading];
+  [rootStack addView:menuRowHeightRow inGravity:NSStackViewGravityTop];
+  [self updateMenuRowHeightLabel];
+
+  NSStackView *menuPaddingRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  menuPaddingRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  menuPaddingRow.spacing = 12;
+
+  NSTextField *menuPaddingLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  menuPaddingLabel.stringValue = @"Popup Padding:";
+  menuPaddingLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+  menuPaddingLabel.bordered = NO;
+  menuPaddingLabel.editable = NO;
+  menuPaddingLabel.backgroundColor = [NSColor clearColor];
+  [menuPaddingRow addView:menuPaddingLabel inGravity:NSStackViewGravityLeading];
+
+  self.menuPaddingValueLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  self.menuPaddingValueLabel.bordered = NO;
+  self.menuPaddingValueLabel.editable = NO;
+  self.menuPaddingValueLabel.backgroundColor = [NSColor clearColor];
+  self.menuPaddingValueLabel.alignment = NSTextAlignmentRight;
+  [self.menuPaddingValueLabel.widthAnchor constraintEqualToConstant:60].active = YES;
+  [menuPaddingRow addView:self.menuPaddingValueLabel inGravity:NSStackViewGravityLeading];
+
+  self.menuPaddingSlider = [[NSSlider alloc] initWithFrame:NSZeroRect];
+  self.menuPaddingSlider.minValue = 4;
+  self.menuPaddingSlider.maxValue = 16;
+  self.menuPaddingSlider.doubleValue = [[config valueForKeyPath:@"appearance.menu_padding" defaultValue:@8] doubleValue];
+  self.menuPaddingSlider.target = self;
+  self.menuPaddingSlider.action = @selector(sliderChanged:);
+  [self.menuPaddingSlider.widthAnchor constraintEqualToConstant:260].active = YES;
+  [menuPaddingRow addView:self.menuPaddingSlider inGravity:NSStackViewGravityLeading];
+  [rootStack addView:menuPaddingRow inGravity:NSStackViewGravityTop];
+  [self updateMenuPaddingLabel];
+
+  NSStackView *submenuDelayRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  submenuDelayRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  submenuDelayRow.spacing = 12;
+
+  NSTextField *submenuDelayLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  submenuDelayLabel.stringValue = @"Legacy Fly-out Delay:";
+  submenuDelayLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+  submenuDelayLabel.bordered = NO;
+  submenuDelayLabel.editable = NO;
+  submenuDelayLabel.backgroundColor = [NSColor clearColor];
+  [submenuDelayRow addView:submenuDelayLabel inGravity:NSStackViewGravityLeading];
+
+  self.submenuDelayValueLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  self.submenuDelayValueLabel.bordered = NO;
+  self.submenuDelayValueLabel.editable = NO;
+  self.submenuDelayValueLabel.backgroundColor = [NSColor clearColor];
+  self.submenuDelayValueLabel.alignment = NSTextAlignmentRight;
+  [self.submenuDelayValueLabel.widthAnchor constraintEqualToConstant:60].active = YES;
+  [submenuDelayRow addView:self.submenuDelayValueLabel inGravity:NSStackViewGravityLeading];
+
+  self.submenuDelaySlider = [[NSSlider alloc] initWithFrame:NSZeroRect];
+  self.submenuDelaySlider.minValue = 0.05;
+  self.submenuDelaySlider.maxValue = 0.60;
+  self.submenuDelaySlider.doubleValue = [[config valueForKeyPath:@"appearance.submenu_close_delay" defaultValue:@0.25] doubleValue];
+  self.submenuDelaySlider.target = self;
+  self.submenuDelaySlider.action = @selector(sliderChanged:);
+  [self.submenuDelaySlider.widthAnchor constraintEqualToConstant:260].active = YES;
+  [submenuDelayRow addView:self.submenuDelaySlider inGravity:NSStackViewGravityLeading];
+  [rootStack addView:submenuDelayRow inGravity:NSStackViewGravityTop];
+  [self updateSubmenuDelayLabel];
+
   NSString *menuPopupHex = [config valueForKeyPath:@"appearance.menu_popup_bg_color" defaultValue:@"0xE021162F"];
   NSColor *menuPopupColor = [self colorFromHexString:menuPopupHex];
   CGFloat popupAlpha = menuPopupColor ? menuPopupColor.alphaComponent : 0.88;
@@ -530,6 +629,12 @@
     [self updateWidgetCornerLabel];
   } else if (sender == self.menuFontOffsetSlider) {
     [self updateMenuFontOffsetLabel];
+  } else if (sender == self.menuRowHeightSlider) {
+    [self updateMenuRowHeightLabel];
+  } else if (sender == self.menuPaddingSlider) {
+    [self updateMenuPaddingLabel];
+  } else if (sender == self.submenuDelaySlider) {
+    [self updateSubmenuDelayLabel];
   } else if (sender == self.menuPopupOpacitySlider) {
     [self updateMenuPopupOpacityLabel];
   } else if (sender == self.menuBorderContrastSlider) {
@@ -560,6 +665,19 @@
 
 - (void)updateMenuFontOffsetLabel {
   self.menuFontOffsetValueLabel.stringValue = [NSString stringWithFormat:@"%d", (int)self.menuFontOffsetSlider.doubleValue];
+}
+
+- (void)updateMenuRowHeightLabel {
+  int value = (int)self.menuRowHeightSlider.doubleValue;
+  self.menuRowHeightValueLabel.stringValue = value <= 0 ? @"Auto" : [NSString stringWithFormat:@"%d px", value];
+}
+
+- (void)updateMenuPaddingLabel {
+  self.menuPaddingValueLabel.stringValue = [NSString stringWithFormat:@"%d px", (int)self.menuPaddingSlider.doubleValue];
+}
+
+- (void)updateSubmenuDelayLabel {
+  self.submenuDelayValueLabel.stringValue = [NSString stringWithFormat:@"%.2fs", self.submenuDelaySlider.doubleValue];
 }
 
 - (void)updateMenuPopupOpacityLabel {
@@ -694,6 +812,9 @@
   }
 
   [config setValue:@((int)self.menuFontOffsetSlider.doubleValue) forKeyPath:@"appearance.menu_font_size_offset"];
+  [config setValue:@((int)self.menuRowHeightSlider.doubleValue) forKeyPath:@"appearance.menu_item_height"];
+  [config setValue:@((int)self.menuPaddingSlider.doubleValue) forKeyPath:@"appearance.menu_padding"];
+  [config setValue:@(self.submenuDelaySlider.doubleValue) forKeyPath:@"appearance.submenu_close_delay"];
 
   NSString *menuPopupHexCurrent = [config valueForKeyPath:@"appearance.menu_popup_bg_color" defaultValue:@"0xE021162F"];
   NSColor *menuPopupBase = [self colorFromHexString:menuPopupHexCurrent];

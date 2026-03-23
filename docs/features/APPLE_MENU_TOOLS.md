@@ -1,7 +1,15 @@
 # Apple Menu Tools
 
-Barista renders a tools-only Apple menu popover (not the macOS system menu).
-Use it for quick access to apps, utilities, and Barista controls.
+Barista renders a tools-only Apple menu popup (not the macOS system menu).
+Use it for quick access to your apps, web shortcuts, and Barista controls.
+
+## Terms
+
+- `Menu popup`: the full Apple menu opened from the bar.
+- `Popup section`: a grouped block of rows inside that menu.
+- `Legacy fly-out submenu`: an older hover-open nested popup still used by a few integrations.
+
+Use `popup section` by default when talking about Apple-menu grouping.
 
 ## Source of truth
 
@@ -11,11 +19,13 @@ Use it for quick access to apps, utilities, and Barista controls.
 
 ## Sections
 
+- Apps
 - AFS Tools
 - Audio
-- Apps
-- Cortex
-- Barista
+- Core Tools
+- Controls
+- Web Apps
+- Support
 - Custom
 
 ## Configuration (state.json)
@@ -46,15 +56,32 @@ menus.apple.hover = {
   "border_color": "0xffcdd6f4",
   "border_width": 2
 }
+menus.apps = {
+  "enabled": true,
+  "file": "data/project_shortcuts.json",
+  "default_action": "terminal"
+}
 ```
 
 ## Core item IDs
 
 - `afs_browser`, `afs_studio`, `afs_labeler`
+- `afs_context`, `afs_scratchpad`
 - `stemforge`, `stem_sampler`
-- `yaze`
+- `yaze`, `mesen_oos`, `oracle_agent_manager`
 - `cortex_toggle`, `cortex_hub`
 - `help_center`, `sys_manual`, `icon_browser`, `keyboard_overlay`, `barista_config`, `reload_bar`
+
+## App shortcuts
+
+- App shortcuts are loaded from `menus.apps.file`, which defaults to `data/project_shortcuts.json`.
+- Relative `path` values are resolved from your workspace root (`~/src` unless `paths.code_dir` overrides it).
+- `default_action` controls how a path-based row opens when the JSON entry only provides a `path`:
+  - `terminal`
+  - `finder`
+  - `code`
+- The Menu tab in the control panel can refresh this file from your local workspace with `Refresh Apps`.
+- `menus.projects` is still accepted as a legacy alias, but `menus.apps` is the preferred key now.
 
 ## Behavior notes
 
@@ -65,6 +92,8 @@ menus.apple.hover = {
 - Shortcut glyphs are sourced from `modules/shortcuts.lua` (per-action) and rendered in the menu.
 - Hover styles can be overridden via `menus.apple.hover` or env vars:
   `POPUP_HOVER_COLOR`, `POPUP_HOVER_BORDER_COLOR`, `POPUP_HOVER_BORDER_WIDTH`.
+- Popup section density is controlled by `appearance.menu_item_height`, `appearance.menu_header_height`, and `appearance.menu_padding`.
+- Legacy fly-out submenu timing is controlled by `appearance.submenu_close_delay`.
 
 ## AFS app resolution
 

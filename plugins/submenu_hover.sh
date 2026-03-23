@@ -6,6 +6,9 @@ _d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/l
 
 HOVER_BG="${SUBMENU_HOVER_BG:-0x80cba6f7}"
 IDLE_BG="${SUBMENU_IDLE_BG:-0x00000000}"
+HOVER_CORNER_RADIUS="${SUBMENU_HOVER_CORNER_RADIUS:-6}"
+HOVER_PADDING_LEFT="${SUBMENU_HOVER_PADDING_LEFT:-4}"
+HOVER_PADDING_RIGHT="${SUBMENU_HOVER_PADDING_RIGHT:-4}"
 
 case "${SENDER:-}" in
   "mouse.entered")
@@ -13,7 +16,9 @@ case "${SENDER:-}" in
       popup.drawing=on \
       background.drawing=on \
       background.color="$HOVER_BG" \
-      background.corner_radius=6
+      background.corner_radius="$HOVER_CORNER_RADIUS" \
+      background.padding_left="$HOVER_PADDING_LEFT" \
+      background.padding_right="$HOVER_PADDING_RIGHT"
     ;;
   "mouse.exited"|"mouse.exited.global")
     sketchybar --set "$NAME" \

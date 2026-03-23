@@ -16,6 +16,25 @@ SPACE_MANAGER_BIN="$CONFIG_DIR/bin/space_manager"
 MAX_SPACE_QUERY_ATTEMPTS=3
 SPACE_QUERY_DELAY=0.05
 
+resolve_space_item_height() {
+  local bar_height=""
+  if command -v sketchybar >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    bar_height="$(sketchybar --query bar 2>/dev/null | jq -r '.height // empty' 2>/dev/null || true)"
+  fi
+  if [ -z "$bar_height" ] && [ -f "$STATE_FILE" ] && command -v jq >/dev/null 2>&1; then
+    bar_height="$(jq -r '.appearance.bar_height // empty' "$STATE_FILE" 2>/dev/null || true)"
+  fi
+  if [ -z "$bar_height" ] || ! [ "$bar_height" -eq "$bar_height" ] 2>/dev/null; then
+    bar_height=28
+  fi
+
+  local space_height=$((bar_height - 8))
+  if [ "$space_height" -lt 20 ]; then
+    space_height=20
+  fi
+  printf '%s' "$space_height"
+}
+
 normalize_creator_mode() {
   case "$1" in
     primary|active|per_display)
@@ -158,6 +177,7 @@ schedule_spaces_retry() {
 }
 
 CREATOR_MODE="$(resolve_creator_mode)"
+SPACE_ITEM_HEIGHT="$(resolve_space_item_height)"
 
 RAW_SPACES_DATA=""
 if command -v yabai >/dev/null 2>&1; then
@@ -386,7 +406,7 @@ for entry in "${SPACE_LINES[@]}"; do
                           background.drawing=off \
                           background.color=0x00000000 \
                           background.corner_radius=8 \
-                          background.height=20 \
+                          background.height="$SPACE_ITEM_HEIGHT" \
                           script="$CONFIG_DIR/plugins/space.sh" \
                           click_script="$click_action")
   SB_ARGS+=(--subscribe "$item" mouse.entered mouse.exited space_change space_mode_refresh)
@@ -561,7 +581,9 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ]; then
       for entry in "${SPACE_LINES[@]-}"; do
         space_index="${entry##* }"
         click_action="$(space_click_action "$space_index")"
-        FAST_ARGS+=(--set "space.$space_index" click_script="$click_action")
+        FAST_ARGS+=(--set "space.$space_index"
+          click_script="$click_action"
+          background.height="$SPACE_ITEM_HEIGHT")
         if [ -x "$SPACE_ACTION_SCRIPT" ]; then
           FAST_ARGS+=(--set "space.$space_index.menu.close" click_script="$(space_menu_action "menu-close" "$space_index")")
           FAST_ARGS+=(--set "space.$space_index.menu.left" click_script="$(space_menu_action "move-left" "$space_index")")
@@ -592,12 +614,14 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ]; then
             display="$creator_target"
             ignore_association="$creator_ignore_association"
             space="$creator_space"
-            click_script="$creator_cmd")
+            click_script="$creator_cmd"
+            background.height="$SPACE_ITEM_HEIGHT")
         else
           FAST_ARGS+=(--set "$creator_item"
             display="$creator_target"
             ignore_association="$creator_ignore_association"
-            click_script="$creator_cmd")
+            click_script="$creator_cmd"
+            background.height="$SPACE_ITEM_HEIGHT")
         fi
       done
 
@@ -653,7 +677,7 @@ for creator_target in "${CREATOR_TARGETS[@]-}"; do
                   background.drawing=off \
                   background.color="0x00000000" \
                   background.corner_radius=8 \
-                  background.height=20 \
+                  background.height="$SPACE_ITEM_HEIGHT" \
                   script="$CONFIG_DIR/plugins/space_creator.sh" \
                   click_script="$creator_cmd")
   if [ -n "$creator_space" ]; then

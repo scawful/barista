@@ -11,6 +11,17 @@ Barista is a curated configuration for [SketchyBar](https://github.com/FelixKrat
 - **Modular Architecture**: Lua-based configuration system decomposed for high performance and testability.
 - **Integrations**: Optional support for Yabai (tiling), Skhd (hotkeys), Journal (org-mode capture/inbox), NERV (transfer queue + host monitoring), and Halext-org (task dashboard). Integrations are toggled per profile.
 
+## Product Boundary
+
+Barista is the ambient menu bar layer.
+
+- Barista owns glanceable status, popup sections, quick launch, and one-click entry into deeper tools.
+- Cortex owns the native host/runtime, notifications, secrets, and module shell.
+- Oracle inside Cortex owns persistent AI sessions, agent modes, provider/model routing, and Zelda-first AI work.
+- Janice Studio owns cross-device persona/avatar and model-fleet workflows.
+
+Barista may launch Oracle, Janice Studio, or Cortex, but it should not duplicate Oracle's AI settings, Janice Studio's model hub behavior, or Cortex host logic.
+
 ## Quick Install
 
 To install Barista and its dependencies:
@@ -76,6 +87,8 @@ Optionally pass the target dir (default: `~/.config/sketchybar`). If the runtime
 
 ### Configuration
 Edit `~/.config/sketchybar/state.json` to toggle widgets and appearance, or use `barista_config.lua` for overrides that survive the GUI. See [docs/guides/CUSTOMIZATION.md](docs/guides/CUSTOMIZATION.md) for state.json, profiles, themes, and fonts; [docs/STATE_SCHEMA.md](docs/STATE_SCHEMA.md) for the live runtime key schema; [docs/architecture/SKETCHYBAR_LAYOUT.md](docs/architecture/SKETCHYBAR_LAYOUT.md) for which file defines each bar item. To validate theme files: `lua scripts/validate_theme.lua [theme_name]`.
+
+For the stricter ownership split between Barista, Cortex, and Oracle, see [../cortex/docs/PRODUCT_BOUNDARY.md](../cortex/docs/PRODUCT_BOUNDARY.md).
 
 ```json
 {

@@ -24,7 +24,7 @@ Location: `~/.config/sketchybar/state.json` (or `$BARISTA_CONFIG_DIR/state.json`
 - **menus** – Configure Apple-menu popup sections, app shortcuts, web app shortcuts, per-item enablement, and custom entries.
 - **spaces** – Control spaces widget behavior such as creator button placement, right-click close behavior, reorder mode, and swap indicator visibility.
 - **integrations** – Enable or disable optional integrations and store integration-specific settings.
-- **profile** – Current profile name; can be set by the GUI/TUI or `set_mode.sh`.
+- **profile** – Current profile name; can be set by the GUI/TUI, `set_mode.sh`, env (`BARISTA_PROFILE` / `SKETCHYBAR_PROFILE`), or a machine-local default in `barista_config.lua`.
 
 The Control Panel (GUI) and TUI write to `state.json`; edits are applied on the next SketchyBar reload.
 For the current schema and nested keys, see [STATE_SCHEMA.md](../STATE_SCHEMA.md).
@@ -32,7 +32,7 @@ For the shared terms used in the panel and docs, see [GLOSSARY.md](../GLOSSARY.m
 
 ## barista_config.lua
 
-For overrides that should **not** be overwritten by the GUI/TUI, use `~/.config/sketchybar/barista_config.lua`. It is loaded after state and profile and deep-merged into state. Supports Lua logic (e.g. hostname-based settings). See [CONFIG_OVERRIDES.md](CONFIG_OVERRIDES.md).
+For overrides that should **not** be overwritten by the GUI/TUI, use `~/.config/sketchybar/barista_config.lua`. It is loaded after state and profile and deep-merged into state. Barista also consults `barista_config.lua.profile` as a machine-local fallback when `state.json` does not already choose a profile. Supports Lua logic (e.g. hostname-based settings). See [CONFIG_OVERRIDES.md](CONFIG_OVERRIDES.md).
 
 ## Profiles
 

@@ -1,6 +1,17 @@
 {
   "keymap": [
     {
+      "section": "Oracle Workbench",
+      "items": [
+        { "keys": "SPC o w o", "description": "Open the Oracle workbench in Emacs" },
+        { "keys": "SPC o w b", "description": "Quick build + reload the Oracle ROM" },
+        { "keys": "SPC o w v", "description": "Run the Oracle verify build" },
+        { "keys": "SPC o w m", "description": "Jump into the Maku Tree debug session" },
+        { "keys": "SPC o w 4", "description": "Jump into the D4 / Zora Temple session" },
+        { "keys": "SPC o w 6", "description": "Jump into the D6 entrance session" }
+      ]
+    },
+    {
       "section": "Project Navigation",
       "items": [
         { "keys": "⌃⌥O", "description": "Open Oracle of Secrets" },
@@ -35,16 +46,23 @@
     }
   ],
   "actions": [
-    { "id": "reload_bar", "title": "Reload SketchyBar", "selector": "reloadBar:" },
-    { "id": "launch_yaze", "title": "Launch YAZE", "selector": "launchYaze:" },
-    { "id": "focus_emacs", "title": "Focus Emacs", "selector": "focusEmacsSpace:" },
-    { "id": "syshelp_panel", "title": "Toggle Syshelp Panel", "selector": "openKeyboardOverlay:" },
-    { "id": "syshelp_cli", "title": "Open syshelp", "selector": "openSysManual:" },
-    { "id": "whichkey_toggle", "title": "Toggle WhichKey HUD", "command": "/opt/homebrew/opt/sketchybar/bin/sketchybar --trigger whichkey_toggle" },
-    { "id": "open_control_panel", "title": "Open Control Panel", "selector": "openControlPanel:" }
+    { "id": "oracle_dashboard", "title": "Open Oracle Workbench", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench dashboard" },
+    { "id": "oracle_quick", "title": "Oracle Quick Build", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench quick-build" },
+    { "id": "oracle_verify", "title": "Oracle Verify Build", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench verify" },
+    { "id": "oracle_maku", "title": "Oracle Maku Session", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench session maku" },
+    { "id": "oracle_d6", "title": "Oracle D6 Session", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench session d6" },
+    { "id": "reload_bar", "title": "Reload SketchyBar" },
+    { "id": "launch_yaze", "title": "Launch YAZE" },
+    { "id": "focus_emacs", "title": "Focus Emacs" },
+    { "id": "syshelp_panel", "title": "Toggle Syshelp Panel" },
+    { "id": "syshelp_cli", "title": "Open syshelp" },
+    { "id": "whichkey_toggle", "title": "Toggle WhichKey HUD" },
+    { "id": "open_control_panel", "title": "Open Control Panel" }
   ],
   "docs": [
-    { "id": "oracle", "title": "Oracle Workflow", "path": "~/src/hobby/oracle-of-secrets/Docs/oracle.org" },
-    { "id": "handoff", "title": "Handoff Notes", "path": "~/.config/sketchybar/HANDOFF.md" }
+    { "id": "oracle_handoff", "title": "Oracle Handoff", "path": "~/src/hobby/oracle-of-secrets/.context/scratchpad/agent_handoff.md" },
+    { "id": "oracle_workflow", "title": "Oracle Workflow Plan", "path": "~/src/hobby/oracle-of-secrets/Docs/Planning/Plans/development_workflow_alignment_2026-03-28.md" },
+    { "id": "oracle_runbook", "title": "Oracle Runbook", "path": "~/src/hobby/oracle-of-secrets/RUNBOOK.md" },
+    { "id": "oracle_tracker", "title": "Oracle Tracker", "path": "~/src/hobby/oracle-of-secrets/oracle.org" }
   ]
 }

@@ -3,6 +3,9 @@
 Barista renders a tools-only Apple menu popup (not the macOS system menu).
 Use it for quick access to your apps, web shortcuts, and Barista controls.
 
+Barista's `Apps` popup is an ambient launcher surface.
+Persistent AI work, sessions, provider/model routing, and agent behavior belong to Oracle inside Cortex, not to the Apple menu.
+
 ## Terms
 
 - `Menu popup`: the full Apple menu opened from the bar.
@@ -49,6 +52,16 @@ menus.apple.custom = [
     "order": 2010,
     "enabled": true,
     "section": "custom"
+  },
+  {
+    "label": "Project Group",
+    "section": "custom",
+    "items": [
+      { "label": "Workbench", "command": "/Users/you/bin/my-workbench" },
+      { "type": "separator" },
+      { "type": "header", "label": "Docs" },
+      { "label": "Runbook", "path": "~/src/project/RUNBOOK.md" }
+    ]
   }
 ]
 menus.apple.hover = {
@@ -93,7 +106,9 @@ menus.apps = {
 - Hover styles can be overridden via `menus.apple.hover` or env vars:
   `POPUP_HOVER_COLOR`, `POPUP_HOVER_BORDER_COLOR`, `POPUP_HOVER_BORDER_WIDTH`.
 - Popup section density is controlled by `appearance.menu_item_height`, `appearance.menu_header_height`, and `appearance.menu_padding`.
+- `menus.apple.custom[].items` can define nested rows using `type = "header"`, `type = "separator"`, or standard action rows with `label`, `command`/`action`, `url`, `icon`, and `shortcut`.
 - Legacy fly-out submenu timing is controlled by `appearance.submenu_close_delay`.
+- Top-level popups still use the display-aware toggle path; nested submenu rows now use a direct SketchyBar toggle so fly-outs feel faster.
 
 ## AFS app resolution
 
@@ -117,6 +132,7 @@ menus.apps = {
 
 - The menu uses `cortex-cli` for toggle + hub actions.
 - Provide it via `PATH` or set `CORTEX_CLI` / `CORTEX_CLI_PATH`.
+- Barista may launch `Oracle` or `Cortex Hub`, but it should not become a second Oracle settings or session surface.
 
 ## Reload
 

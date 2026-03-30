@@ -1,12 +1,12 @@
 [
   {
-    "id": "oracle",
-    "label": "Oracle",
-    "icon": "󰊕",
-    "icon_color": "0xffcba6f7",
-    "label_color": "0xffdfc9f7",
-    "action": "/Users/scawful/src/lab/cortex/bin/cortex-cli oracle",
-    "order": 10
+    "id": "janice_studio",
+    "label": "Janice Studio",
+    "icon": "󰭹",
+    "icon_color": "0xfff5c2e7",
+    "label_color": "0xfff8d6ee",
+    "action": "open -b com.scawful.ModelHub.mac || open /Users/scawful/src/lab/janice-studio/ModelHub.xcodeproj",
+    "order": 20
   },
   {
     "id": "premia_v2",
@@ -15,6 +15,6 @@
     "icon_color": "0xff94e2d5",
     "label_color": "0xffc7eee8",
     "action": "/Users/scawful/src/lab/premia/build/bin/premia",
-    "order": 20
+    "order": 30
   }
 ]

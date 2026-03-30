@@ -37,15 +37,33 @@ function profile.load(profile_name)
 end
 
 -- Get profile name from state or environment
-function profile.get_selected_profile(state)
-  -- Priority: state.json > environment variable > default
-  if state and state.profile then
+function profile.get_selected_profile(state, opts)
+  opts = type(opts) == "table" and opts or {}
+
+  local function present(value)
+    return type(value) == "string" and value ~= ""
+  end
+
+  local function env_value(name)
+    if type(opts.env) == "table" then
+      return opts.env[name]
+    end
+    return os.getenv(name)
+  end
+
+  -- Priority: state.json > environment variable > local config override > default
+  if state and present(state.profile) then
     return state.profile
   end
 
-  local env_profile = os.getenv("SKETCHYBAR_PROFILE")
-  if env_profile and env_profile ~= "" then
+  local env_profile = env_value("BARISTA_PROFILE") or env_value("SKETCHYBAR_PROFILE")
+  if present(env_profile) then
     return env_profile
+  end
+
+  local config = opts.config
+  if type(config) == "table" and present(config.profile) then
+    return config.profile
   end
 
   return "minimal"  -- Default

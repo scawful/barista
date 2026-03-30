@@ -17,6 +17,45 @@ run_test("get_selected_profile: state.profile overrides", function()
   assert_equal(result, "custom", "state override")
 end)
 
+run_test("get_selected_profile: BARISTA_PROFILE env overrides default", function()
+  local result = profile.get_selected_profile({}, {
+    env = {
+      BARISTA_PROFILE = "personal",
+    }
+  })
+  assert_equal(result, "personal", "BARISTA_PROFILE env override")
+end)
+
+run_test("get_selected_profile: SKETCHYBAR_PROFILE env fallback still works", function()
+  local result = profile.get_selected_profile({}, {
+    env = {
+      SKETCHYBAR_PROFILE = "work",
+    }
+  })
+  assert_equal(result, "work", "SKETCHYBAR_PROFILE env fallback")
+end)
+
+run_test("get_selected_profile: local config profile used when state/env unset", function()
+  local result = profile.get_selected_profile({}, {
+    config = {
+      profile = "personal",
+    }
+  })
+  assert_equal(result, "personal", "config profile override")
+end)
+
+run_test("get_selected_profile: state still beats env and local config", function()
+  local result = profile.get_selected_profile({ profile = "girlfriend" }, {
+    env = {
+      BARISTA_PROFILE = "work",
+    },
+    config = {
+      profile = "personal",
+    }
+  })
+  assert_equal(result, "girlfriend", "state should win")
+end)
+
 run_test("merge_config: nil profile returns base", function()
   local base = { widgets = { clock = true } }
   local result = profile.merge_config(base, nil)

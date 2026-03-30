@@ -82,7 +82,30 @@ local EVENT_DIR  = CONFIG_DIR .. "/helpers/event_providers"
 
 -- Load state and profile
 local state = state_module.load()
-local profile_name = profile_module.get_selected_profile(state)
+local user_config_path = CONFIG_DIR .. "/barista_config.lua"
+
+local function load_user_config(path)
+  local chunk = loadfile(path)
+  if not chunk then
+    return nil
+  end
+
+  local ok, user_config = pcall(chunk)
+  if not ok then
+    print("Warning: Error executing barista_config.lua: " .. tostring(user_config))
+    return nil
+  end
+
+  if type(user_config) == "table" then
+    return user_config
+  end
+
+  print("Warning: barista_config.lua did not return a table")
+  return nil
+end
+
+local user_config = load_user_config(user_config_path)
+local profile_name = profile_module.get_selected_profile(state, { config = user_config })
 local user_profile = profile_module.load(profile_name)
 
 if user_profile then
@@ -91,25 +114,18 @@ if user_profile then
 end
 
 -- Load user configuration overrides if they exist
-local user_config_path = CONFIG_DIR .. "/barista_config.lua"
-local user_config_chunk = loadfile(user_config_path)
-if user_config_chunk then
-  local ok, user_config = pcall(user_config_chunk)
-  if ok and type(user_config) == "table" then
-    print("Applying user configuration from barista_config.lua")
-    local function merge_tables(target, source)
-      for k, v in pairs(source) do
-        if type(v) == "table" and type(target[k]) == "table" then
-          merge_tables(target[k], v)
-        else
-          target[k] = v
-        end
+if user_config then
+  print("Applying user configuration from barista_config.lua")
+  local function merge_tables(target, source)
+    for k, v in pairs(source) do
+      if type(v) == "table" and type(target[k]) == "table" then
+        merge_tables(target[k], v)
+      else
+        target[k] = v
       end
     end
-    merge_tables(state, user_config)
-  elseif not ok then
-    print("Warning: Error executing barista_config.lua: " .. tostring(user_config))
   end
+  merge_tables(state, user_config)
 end
 
 -- Resolve directories and binaries
@@ -221,14 +237,22 @@ if not shell_utils.file_exists(POPUP_TOGGLE_SCRIPT) then
 end
 local POPUP_TOGGLE_AVAILABLE = shell_utils.file_exists(POPUP_TOGGLE_SCRIPT)
 
-local function popup_toggle_action(item_name)
+local function direct_popup_toggle(item_name)
+  if item_name and item_name ~= "" then
+    return string.format("%q --set %s popup.drawing=toggle", SKETCHYBAR_BIN, item_name)
+  end
+  return [[sketchybar -m --set $NAME popup.drawing=toggle]]
+end
+
+local function popup_toggle_action(item_name, opts)
+  opts = type(opts) == "table" and opts or {}
+  if opts.direct or opts.focus_display == false or opts.origin == "submenu" then
+    return direct_popup_toggle(item_name)
+  end
   if POPUP_TOGGLE_AVAILABLE then
     return shell_utils.call_script(POPUP_TOGGLE_SCRIPT, item_name or "$NAME")
   end
-  if item_name and item_name ~= "" then
-    return string.format("%s --set %s popup.drawing=toggle", SKETCHYBAR_BIN, item_name)
-  end
-  return [[sketchybar -m --set $NAME popup.drawing=toggle]]
+  return direct_popup_toggle(item_name)
 end
 
 -- Hover helpers

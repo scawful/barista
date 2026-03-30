@@ -72,9 +72,9 @@ function menu_renderer.create(ctx)
     return style.popup_background()
   end
 
-  local function popup_toggle(item_name)
+  local function popup_toggle(item_name, opts)
     if type(ctx.popup_toggle_action) == "function" then
-      return ctx.popup_toggle_action(item_name)
+      return ctx.popup_toggle_action(item_name, opts)
     end
     if item_name and item_name ~= "" then
       return string.format("sketchybar -m --set %s popup.drawing=toggle", item_name)
@@ -256,7 +256,7 @@ function menu_renderer.create(ctx)
     end
     
     -- Create clickable menu item that opens the popup
-    local click_action = popup_toggle(popup_item_name)
+    local click_action = popup_toggle(popup_item_name, { direct = true, origin = "submenu" })
     
     sbar.add("item", entry.name, {
       position = "popup." .. popup,
@@ -309,7 +309,7 @@ function menu_renderer.create(ctx)
       icon = entry.icon or "",
       label = string.format("%s  %s", entry.label, arrow),
       script = submenu_hover_script,
-      click_script = popup_toggle(),
+      click_script = popup_toggle(parent, { direct = true, origin = "submenu" }),
       ["icon.padding_left"] = padding.icon_left,
       ["icon.padding_right"] = padding.icon_right,
       ["label.padding_left"] = padding.label_left,

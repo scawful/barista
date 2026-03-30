@@ -104,6 +104,13 @@ def command_action(command: str, *args: str) -> str:
         parts.append(shlex.quote(arg))
     return " ".join(parts)
 
+def bundle_action(bundle_id: str, fallback: Path | None = None) -> str:
+    parts = ["open", "-b", shlex.quote(bundle_id)]
+    command = " ".join(parts)
+    if fallback and fallback.exists():
+        return f"{command} || open {shlex.quote(str(fallback))}"
+    return command
+
 def add_entry(item_id: str, label: str, icon: str, icon_color: str, label_color: str, action: str):
     if not action:
         return
@@ -123,16 +130,23 @@ cortex_cli = resolve_command([
     "cortex-cli",
 ])
 
+janice_repo = resolve_path([
+    code_dir / "lab/janice-studio",
+    Path.home() / "src/lab/janice-studio",
+])
+janice_fallback = None
+if janice_repo:
+    janice_project = janice_repo / "ModelHub.xcodeproj"
+    janice_fallback = janice_project if janice_project.exists() else janice_repo
+
 premia_command = resolve_command([
     code_dir / "lab/premia/build/bin/premia",
     code_dir / "lab/premia/build/Release/premia",
     "premia",
 ])
 
-oracle_action = command_action(cortex_cli, "oracle") if cortex_cli else ""
-
-add_entry("oracle", "Oracle", "󰊕", "0xffcba6f7", "0xffdfc9f7",
-          oracle_action)
+add_entry("janice_studio", "Janice Studio", "󰭹", "0xfff5c2e7", "0xfff8d6ee",
+          bundle_action("com.scawful.ModelHub.mac", janice_fallback))
 add_entry("premia_v2", "Premia v2", "󰃬", "0xff94e2d5", "0xffc7eee8",
           command_action(premia_command) if premia_command else "")
 

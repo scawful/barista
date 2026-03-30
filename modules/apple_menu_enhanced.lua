@@ -1,4 +1,5 @@
 local apple_menu = {}
+local apple_menu_model = require("apple_menu_model")
 local binary_resolver = require("binary_resolver")
 local menu_style = require("menu_style")
 local locator = require("tool_locator")
@@ -171,12 +172,13 @@ end
 local function resolve_yaze_launcher()
   return locator.resolve_yaze_launcher()
 end
-local function resolve_sys_manual_binary(ctx)
-  return locator.resolve_sys_manual_binary(ctx)
-end
 
 local function resolve_mesen_run(ctx)
   return locator.resolve_mesen_run(ctx)
+end
+
+local function resolve_sys_manual_binary(ctx)
+  return locator.resolve_sys_manual_binary(ctx)
 end
 
 local function resolve_oracle_agent_manager(ctx)
@@ -265,9 +267,9 @@ function apple_menu.setup(ctx)
   local popup_header_height = style.header_height
   local popup_item_corner_radius = style.item_corner_radius
   local popup_padding = style.padding or {}
-  local function popup_toggle(item_name)
+  local function popup_toggle(item_name, opts)
     if type(ctx.popup_toggle_action) == "function" then
-      return ctx.popup_toggle_action(item_name)
+      return ctx.popup_toggle_action(item_name, opts)
     end
     if item_name and item_name ~= "" then
       return string.format("sketchybar -m --set %s popup.drawing=toggle", item_name)
@@ -373,24 +375,6 @@ function apple_menu.setup(ctx)
     return nil
   end
 
-  local function normalize_order(value)
-    if type(value) == "number" then
-      return value
-    end
-    if type(value) == "string" then
-      return tonumber(value)
-    end
-    return nil
-  end
-
-  local function normalize_section_id(value)
-    local section_id = tostring(value or ""):lower()
-    if section_id == "" or section_id == "projects" then
-      return "apps"
-    end
-    return section_id
-  end
-
   local terminal_defaults = {}
 
   local function terminal_allowed(item_id)
@@ -431,9 +415,57 @@ function apple_menu.setup(ctx)
     return open_terminal(command)
   end
 
-  local function add_separator(index)
-    sbar.add("item", string.format("menu.tools.sep.%d", index), {
-      position = "popup.apple_menu",
+  local popup_parents = { apple_menu = true }
+  local submenu_parents = {}
+
+  local function remember_popup(name)
+    if type(name) == "string" and name ~= "" then
+      popup_parents[name] = true
+    end
+  end
+
+  local function remember_submenu(name)
+    if type(name) == "string" and name ~= "" then
+      submenu_parents[name] = true
+    end
+  end
+
+  local function list_popup_parents()
+    local items = {}
+    for name in pairs(popup_parents) do
+      table.insert(items, name)
+    end
+    table.sort(items)
+    return items
+  end
+
+  local function list_submenu_parents()
+    local items = {}
+    for name in pairs(submenu_parents) do
+      table.insert(items, name)
+    end
+    table.sort(items)
+    return items
+  end
+
+  local function popup_key(name)
+    return tostring(name or "apple_menu"):gsub("[^%w]+", "_")
+  end
+
+  local function popup_background()
+    return {
+      border_width = style.popup_border_width,
+      corner_radius = style.popup_corner_radius,
+      border_color = style.popup_border_color,
+      color = style.popup_bg_color,
+      padding_left = style.popup_padding,
+      padding_right = style.popup_padding,
+    }
+  end
+
+  local function add_separator(popup_name, index)
+    sbar.add("item", string.format("menu.tools.sep.%s.%d", popup_key(popup_name), index), {
+      position = "popup." .. popup_name,
       icon = { drawing = false },
       label = { string = "───────────────", font = font_small, color = theme.DARK_WHITE },
       ["label.padding_left"] = popup_padding.label_left or 6,
@@ -442,10 +474,10 @@ function apple_menu.setup(ctx)
     })
   end
 
-  local function add_header(meta, index)
+  local function add_header(popup_name, meta, index)
     local label = meta.label or ""
-    sbar.add("item", string.format("menu.tools.header.%s.%d", meta.id or "section", index), {
-      position = "popup.apple_menu",
+    sbar.add("item", string.format("menu.tools.header.%s.%s.%d", popup_key(popup_name), meta.id or "section", index), {
+      position = "popup." .. popup_name,
       icon = { drawing = false },
       label = { string = label, font = font_bold, color = meta.color or theme.WHITE },
       ["label.padding_left"] = popup_padding.label_left or 6,
@@ -459,7 +491,9 @@ function apple_menu.setup(ctx)
     })
   end
 
-  local function add_item(entry)
+  local render_popup_items
+
+  local function add_item(popup_name, entry, parent_popup)
     local muted = entry.missing or entry.blocked
     local shortcut = entry.shortcut
     if (not shortcut or shortcut == "") and entry.shortcut_action and shortcuts and shortcuts.get_symbol then
@@ -480,11 +514,23 @@ function apple_menu.setup(ctx)
       local fallback = ctx.call_script and ctx.call_script(launcher, "--panel") or ""
       action = fallback
     end
-    sbar.add("item", entry.name, {
-      position = "popup.apple_menu",
+    local click_script = wrap_action(ctx, parent_popup or popup_name, entry.name, action)
+    local popup_config = nil
+    if entry.submenu and entry.items and #entry.items > 0 then
+      remember_popup(entry.name)
+      remember_submenu(entry.name)
+      click_script = popup_toggle(entry.name, { direct = true, origin = "submenu" })
+      label = string.format("%s  %s", label, entry.arrow_icon or "󰅂")
+      popup_config = {
+        align = "right",
+        background = popup_background(),
+      }
+    end
+    local item_config = {
+      position = "popup." .. popup_name,
       icon = { string = entry.icon or "", color = icon_color },
       label = { string = label, font = font_small, color = label_color },
-      click_script = wrap_action(ctx, "apple_menu", entry.name, action),
+      click_script = click_script,
       script = hover_script_cmd,
       ["icon.padding_left"] = popup_padding.icon_left or 4,
       ["icon.padding_right"] = popup_padding.icon_right or 6,
@@ -495,9 +541,31 @@ function apple_menu.setup(ctx)
         corner_radius = popup_item_corner_radius,
         height = item_height,
       },
-    })
+    }
+    if popup_config then
+      item_config.popup = popup_config
+    end
+    sbar.add("item", entry.name, item_config)
     if ctx.attach_hover then
       ctx.attach_hover(entry.name)
+    end
+    if popup_config then
+      render_popup_items(entry.name, entry.items, entry.name)
+    end
+  end
+
+  render_popup_items = function(popup_name, entries, parent_popup)
+    local section_index = 1
+    for _, entry in ipairs(entries or {}) do
+      if entry.type == "header" then
+        add_header(popup_name, entry, section_index)
+        section_index = section_index + 1
+      elseif entry.type == "separator" then
+        add_separator(popup_name, section_index)
+        section_index = section_index + 1
+      else
+        add_item(popup_name, entry, parent_popup)
+      end
     end
   end
 
@@ -573,6 +641,7 @@ function apple_menu.setup(ctx)
     sys_manual_action = shell_quote(sys_manual_bin)
     sys_manual_available = true
   end
+  local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
 
   local mesen_run_bin, mesen_run_ok = resolve_mesen_run(ctx)
   local mesen_run_action = ""
@@ -587,6 +656,24 @@ function apple_menu.setup(ctx)
   end
 
   local yaze_dir = select(1, locator.resolve_yaze_dir(ctx)) or (code_dir .. "/yaze")
+  local oracle_menu_module = ctx.integrations and ctx.integrations.oracle or nil
+  if not oracle_menu_module then
+    local ok_oracle, oracle_module = pcall(require, "oracle")
+    if ok_oracle then
+      oracle_menu_module = oracle_module
+    end
+  end
+  local oracle_apple_entry = nil
+  if ctx.integration_flags and ctx.integration_flags.oracle == false then
+    oracle_menu_module = nil
+  end
+  if oracle_menu_module and type(oracle_menu_module.create_apple_menu_entry) == "function" then
+    oracle_apple_entry = oracle_menu_module.create_apple_menu_entry(ctx, {
+      section = "apps",
+      icon_color = tc("GREEN"),
+      order = 1008,
+    })
+  end
   local afs_action = afs_browser_app and string.format("open %s", shell_quote(afs_browser_app)) or ""
   local studio_bin, studio_bin_ok = locator.resolve_afs_studio_binary(studio_root)
   local studio_action
@@ -657,7 +744,6 @@ function apple_menu.setup(ctx)
   local cortex_toggle = cortex_cli_ok and (shell_quote(cortex_cli) .. " toggle") or ""
   local cortex_hub = cortex_cli_ok and (shell_quote(cortex_cli) .. " hub") or ""
   local sketchybar_bin = binary_resolver.resolve_sketchybar_bin()
-  local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
 
   -- AFS context helpers
   local afs_context_root = os.getenv("AFS_CONTEXT_ROOT")
@@ -761,7 +847,8 @@ function apple_menu.setup(ctx)
       -- Default to enabled if we found it
       available = yaze_available,
       default_enabled = true,
-      submenu = yaze_enabled and {
+      popup = "yaze.tools",
+      items = yaze_enabled and {
         {
           name = "yaze.repo",
           label = "Open Repo",
@@ -884,6 +971,10 @@ function apple_menu.setup(ctx)
     },
   }
 
+  if oracle_apple_entry then
+    table.insert(base_items, oracle_apple_entry)
+  end
+
   local sections = {
     apps = { id = "apps", label = "Apps", icon = "󰀻", color = tc("MAUVE", "LAVENDER"), order = 0 },
     core = { id = "core", label = "Core Tools", icon = "󰯙", color = tc("GREEN"), order = 1 },
@@ -895,183 +986,35 @@ function apple_menu.setup(ctx)
     custom = { id = "custom", label = "Custom", icon = "󰘥", color = tc("LAVENDER"), order = 7 },
   }
 
-  for section_id, override in pairs(menu_config.sections or {}) do
-    if type(override) == "table" then
-      local normalized_section_id = normalize_section_id(section_id)
-      local section = sections[normalized_section_id] or {
-        id = normalized_section_id,
-        label = normalized_section_id,
-        order = 99,
-      }
-      if override.label and override.label ~= "" then
-        section.label = override.label
-      end
-      if override.icon and override.icon ~= "" then
-        section.icon = override.icon
-      end
-      if override.color and override.color ~= "" then
-        section.color = override.color
-      end
-      local order = normalize_order(override.order)
-      if order ~= nil then
-        section.order = order
-      end
-      sections[normalized_section_id] = section
-    end
-  end
-
-  local rendered = {}
-  for index, item in ipairs(base_items) do
-    local override = menu_config.items[item.id] or {}
-    local enabled_override = normalize_bool(override.enabled)
-    local should_show = false
-    local missing = false
-
-    if enabled_override == false then
-      should_show = false
-    elseif item.blocked then
-      should_show = true
-    elseif enabled_override == true then
-      should_show = true
-      missing = not item.available
-    else
-      if item.default_enabled == false then
-        should_show = false
-      elseif item.available then
-        should_show = true
-      elseif show_missing then
-        should_show = true
-        missing = true
-      end
-    end
-
-    if should_show then
-      local order = normalize_order(override.order) or item.order or (1000 + index)
-      table.insert(rendered, {
-        id = item.id,
-        name = "menu.tools." .. item.id,
-        label = override.label or item.label,
-        icon = override.icon or item.icon,
-        icon_color = override.icon_color or override.color or item.icon_color,
-        label_color = override.label_color or item.label_color,
-        action = item.action,
-        shortcut = override.shortcut or item.shortcut,
-        shortcut_action = override.shortcut_action or item.shortcut_action,
-        missing = missing,
-        order = order,
-        default_index = index,
-        section = normalize_section_id(override.section or item.section or "controls"),
-      })
-    end
-  end
-
-  for index, custom in ipairs(menu_config.custom or {}) do
-    if type(custom) == "table" then
-      local enabled_override = normalize_bool(custom.enabled)
-      if enabled_override ~= false then
-        local label = custom.label or custom.title or ("Custom " .. index)
-        local action = custom.command or custom.action or ""
-        if label ~= "" and action ~= "" then
-          table.insert(rendered, {
-            id = "custom_" .. index,
-            name = "menu.tools.custom." .. index,
-            label = label,
-            icon = custom.icon or "",
-            icon_color = custom.icon_color or custom.color,
-            label_color = custom.label_color,
-            action = action,
-            shortcut = custom.shortcut,
-            missing = false,
-            order = normalize_order(custom.order) or (2000 + index),
-            default_index = 1000 + index,
-            section = normalize_section_id(custom.section or "custom"),
-          })
-        end
-      end
-    end
-  end
-
-  if project_shortcuts.enabled then
-    for index, project in ipairs(project_shortcuts.items or {}) do
-      if project.available or show_missing then
-        table.insert(rendered, {
-          id = project.id,
-          name = "menu.tools.project." .. project.id,
-          label = project.label,
-          icon = project.icon,
-          icon_color = project.icon_color,
-          label_color = project.label_color,
-          action = project.action,
-          shortcut = project.shortcut,
-          missing = not project.available,
-          order = project.order or (1300 + index),
-          default_index = 1100 + index,
-          section = normalize_section_id(project.section or "apps"),
-        })
-      end
-    end
-  end
-
-  for index, app in ipairs(menu_config.work_google_apps or {}) do
-    if type(app) == "table" then
-      local enabled = normalize_bool(app.enabled)
-      if enabled ~= false then
-        local label = app.label or app.title or app.name or ("Work App " .. index)
-        local action = app.command or app.action or ""
-        local url = app.url
-        if (not action or action == "") and type(url) == "string" and url ~= "" then
-          action = string.format("open %s", shell_quote(url))
-        end
-        if label ~= "" and action ~= "" then
-          table.insert(rendered, {
-            id = app.id or ("work_google_" .. index),
-            name = "menu.tools.work." .. index,
-            label = label,
-            icon = app.icon or "󰊯",
-            icon_color = app.icon_color or app.color or theme.BLUE,
-            label_color = app.label_color,
-            action = action,
-            shortcut = app.shortcut,
-            missing = false,
-            order = normalize_order(app.order) or (1500 + index),
-            default_index = 1200 + index,
-            section = normalize_section_id(app.section or "work"),
-          })
-        end
-      end
-    end
-  end
-
-  table.sort(rendered, function(a, b)
-    local section_a = sections[a.section] and sections[a.section].order or 99
-    local section_b = sections[b.section] and sections[b.section].order or 99
-    if section_a ~= section_b then
-      return section_a < section_b
-    end
-    if a.order == b.order then
-      return a.default_index < b.default_index
-    end
-    return a.order < b.order
-  end)
+  local menu_model = apple_menu_model.build({
+    base_items = base_items,
+    sections = sections,
+    menu_config = menu_config,
+    project_shortcuts = project_shortcuts,
+    show_missing = show_missing,
+    theme = theme,
+  })
+  local rendered = menu_model.rendered
+  sections = menu_model.sections
 
   local current_section = nil
   local section_index = 1
   for _, entry in ipairs(rendered) do
     if entry.section ~= current_section then
       if current_section ~= nil then
-        add_separator(section_index)
+        add_separator("apple_menu", section_index)
         section_index = section_index + 1
       end
-      add_header(sections[entry.section] or { id = entry.section, label = entry.section }, section_index)
+      add_header("apple_menu", sections[entry.section] or { id = entry.section, label = entry.section }, section_index)
       section_index = section_index + 1
       current_section = entry.section
     end
-    add_item(entry)
+    add_item("apple_menu", entry)
   end
 
   return {
-    popup_parents = { "apple_menu" },
-    submenu_parents = {},
+    popup_parents = list_popup_parents(),
+    submenu_parents = list_submenu_parents(),
   }
 end
 

@@ -135,6 +135,7 @@ Supported keys used by the Apple menu:
 - `items.<id>.label_color`
 - `items.<id>.order`
 - `custom[]`
+- `custom[].items[]`
 - `hover.color`
 - `hover.border_color`
 - `hover.border_width`
@@ -144,6 +145,17 @@ Supported keys used by the Apple menu:
 - `sections.<section_id>.order`
 
 This config controls Apple-menu popup sections. Legacy fly-out submenu behavior is driven mostly by `appearance.submenu_*`.
+
+Each `menus.apple.custom[]` entry can be either:
+
+- a single action row with `label`, `command`/`action`, optional `icon`, `shortcut`, and `section`
+- a nested fly-out group with `items[]`
+
+Nested `items[]` rows support:
+
+- `type = "header"`
+- `type = "separator"`
+- standard rows with `label`, `command`/`action`, `url`, `icon`, `shortcut`, and optional nested `items[]`
 
 ### `menus.apps`
 

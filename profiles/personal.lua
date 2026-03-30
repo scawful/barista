@@ -14,6 +14,7 @@ profile.author = "scawful"
 -- Integration toggles
 profile.integrations = {
   yaze = true,        -- ROM hacking with Yaze
+  oracle = true,      -- Oracle cockpit + shortcuts
   emacs = true,       -- Personal Emacs org-mode workflows
   halext = false,     -- halext-org (when ready)
   cortex = true,      -- Cortex + AFS quick actions

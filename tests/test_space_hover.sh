@@ -63,4 +63,11 @@ if grep -Fq $'trigger\tspace_visual_refresh' "$LOG_FILE"; then
   exit 1
 fi
 
+rm -f "$LOG_FILE"
+env "${COMMON_ENV[@]}" SENDER="mouse.exited" "$SCRIPT"
+if [ -s "$LOG_FILE" ]; then
+  echo "FAIL: mouse.exited without cached state should no-op instead of forcing a visual refresh" >&2
+  exit 1
+fi
+
 echo "PASS: space hover restores cached visual state"

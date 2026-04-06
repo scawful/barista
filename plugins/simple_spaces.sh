@@ -77,18 +77,34 @@ ensure_bar_snapshot_loaded() {
   [ -n "$JQ_BIN" ] || return 0
   BAR_QUERY_JSON="$("$SKETCHYBAR_BIN" --query bar 2>/dev/null || true)"
   [ -n "$BAR_QUERY_JSON" ] || return 0
-  BAR_HEIGHT_SNAPSHOT="$(printf '%s' "$BAR_QUERY_JSON" | "$JQ_BIN" -r '.height // empty' 2>/dev/null || true)"
-  BAR_ITEMS_SNAPSHOT="$(printf '%s' "$BAR_QUERY_JSON" | "$JQ_BIN" -r '.items[]' 2>/dev/null || true)"
-  BAR_ITEMS_LOOKUP=$'\n'"$BAR_ITEMS_SNAPSHOT"$'\n'
-  local item
+  BAR_HEIGHT_SNAPSHOT=""
+  BAR_ITEMS_SNAPSHOT=""
+  local item line_type line_value
   local count=0
-  while IFS= read -r item; do
-    case "$item" in
+  while IFS=$'\t' read -r line_type line_value; do
+    case "$line_type" in
+      H)
+        BAR_HEIGHT_SNAPSHOT="$line_value"
+        ;;
+      I)
+        item="$line_value"
+        if [ -n "$BAR_ITEMS_SNAPSHOT" ]; then
+          BAR_ITEMS_SNAPSHOT+=$'\n'
+        fi
+        BAR_ITEMS_SNAPSHOT+="$item"
+        ;;
+      *)
+        continue
+        ;;
+    esac
+    case "${item:-}" in
       space.[0-9]*)
         count=$((count + 1))
         ;;
     esac
-  done <<< "$BAR_ITEMS_SNAPSHOT"
+    item=""
+  done < <(printf '%s' "$BAR_QUERY_JSON" | "$JQ_BIN" -r '("H\t" + ((.height // empty) | tostring)), (.items[]? | "I\t" + .)' 2>/dev/null || true)
+  BAR_ITEMS_LOOKUP=$'\n'"$BAR_ITEMS_SNAPSHOT"$'\n'
   BAR_SPACE_ITEM_COUNT="$count"
 }
 
@@ -265,7 +281,8 @@ load_cached_space_icons() {
         continue
         ;;
     esac
-    cache_value="$(cat "$cache_file" 2>/dev/null || true)"
+    cache_value=""
+    IFS= read -r cache_value < "$cache_file" || true
     [ -n "$cache_value" ] || continue
     CACHED_SPACE_ICONS[$cache_name]="$cache_value"
   done
@@ -318,14 +335,57 @@ write_space_metrics() {
   } > "$SPACE_METRICS_FILE" 2>/dev/null || true
 }
 
-spaces_payload_valid() {
+parse_spaces_payload() {
   local payload="${1:-}"
+  local parse_output=""
+  local record_type="" field1="" field2="" field3="" field4=""
+  local display_ids_csv=""
+
   [ -n "$payload" ] || return 1
-  if [ -n "$JQ_BIN" ]; then
-    printf '%s' "$payload" | "$JQ_BIN" -e 'length > 0' >/dev/null 2>&1
-    return $?
-  fi
-  return 0
+  [ -n "$JQ_BIN" ] || return 1
+
+  parse_output="$(printf '%s\n' "$payload" | "$JQ_BIN" -r '
+    . as $spaces
+    | if (($spaces | type) != "array") or (($spaces | length) == 0) then
+        empty
+      else
+        ("A\t" + (($spaces | map(select(."has-focus" == true) | .display | tostring)[0]) // "")),
+        ("D\t" + ($spaces | map(.display | tostring) | unique | sort | join(","))),
+        ($spaces | sort_by(.display, .index)[] | ["S", (.display | tostring), (.index | tostring), ((."is-visible" // false) | tostring), ((."has-focus" // false) | tostring)] | @tsv)
+      end
+  ' 2>/dev/null || true)"
+  [ -n "$parse_output" ] || return 1
+
+  SPACE_LINES=()
+  DISPLAY_IDS=()
+  VISIBLE_SPACE_LINES=()
+  ACTIVE_DISPLAY_CACHE=""
+
+  while IFS=$'\t' read -r record_type field1 field2 field3 field4; do
+    case "$record_type" in
+      A)
+        ACTIVE_DISPLAY_CACHE="$field1"
+        ;;
+      D)
+        display_ids_csv="$field1"
+        if [ -n "$display_ids_csv" ]; then
+          IFS=',' read -r -a DISPLAY_IDS <<< "$display_ids_csv"
+        fi
+        ;;
+      S)
+        [ -n "$field1" ] || continue
+        SPACE_LINES+=("$field1 $field2")
+        if [ "$field3" = "true" ]; then
+          VISIBLE_SPACE_LINES+=("$field1 $field2")
+        fi
+        if [ "$field4" = "true" ] && [ -z "$ACTIVE_DISPLAY_CACHE" ]; then
+          ACTIVE_DISPLAY_CACHE="$field1"
+        fi
+        ;;
+    esac
+  done <<< "$parse_output"
+
+  [ "${#SPACE_LINES[@]}" -gt 0 ]
 }
 
 get_active_display() {
@@ -361,50 +421,26 @@ SIMPLE_SPACES_START_MS="$(now_ms)"
 initialize_action_prefixes
 
 RAW_SPACES_DATA=""
+SPACE_PARSE_OK=0
 if [ -n "$YABAI_BIN" ]; then
-    for ((attempt=1; attempt<=MAX_SPACE_QUERY_ATTEMPTS; attempt++)); do
-      RAW_SPACES_DATA=$("$YABAI_BIN" -m query --spaces 2>/dev/null || true)
-      if spaces_payload_valid "$RAW_SPACES_DATA"; then
-        break
-      fi
-      sleep "$SPACE_QUERY_DELAY"
-    done
+  for ((attempt=1; attempt<=MAX_SPACE_QUERY_ATTEMPTS; attempt++)); do
+    RAW_SPACES_DATA=$("$YABAI_BIN" -m query --spaces 2>/dev/null || true)
+    if [ -n "$JQ_BIN" ] && parse_spaces_payload "$RAW_SPACES_DATA"; then
+      SPACE_PARSE_OK=1
+      break
+    fi
+    sleep "$SPACE_QUERY_DELAY"
+  done
 else
-    echo "ERROR: yabai not found." >&2
-    exit 1
+  echo "ERROR: yabai not found." >&2
+  exit 1
 fi
 
-if ! spaces_payload_valid "$RAW_SPACES_DATA"; then
+if [ "$SPACE_PARSE_OK" -ne 1 ]; then
   schedule_spaces_retry
   exit 0
 fi
 rm -f "$RETRY_FILE" 2>/dev/null || true
-
-declare -a SPACE_LINES=()
-declare -a DISPLAY_IDS=()
-declare -a VISIBLE_SPACE_LINES=()
-if [ -n "$RAW_SPACES_DATA" ] && [ -n "$JQ_BIN" ]; then
-  while IFS=$'\t' read -r display space_index is_visible has_focus; do
-    [ -n "$display" ] || continue
-    SPACE_LINES+=("$display $space_index")
-    seen=0
-    for existing_display in "${DISPLAY_IDS[@]-}"; do
-      if [ "$existing_display" = "$display" ]; then
-        seen=1
-        break
-      fi
-    done
-    if [ "$seen" -eq 0 ]; then
-      DISPLAY_IDS+=("$display")
-    fi
-    if [ "$is_visible" = "true" ]; then
-      VISIBLE_SPACE_LINES+=("$display $space_index")
-    fi
-    if [ "$has_focus" = "true" ] && [ -z "$ACTIVE_DISPLAY_CACHE" ]; then
-      ACTIVE_DISPLAY_CACHE="$display"
-    fi
-  done < <(printf '%s\n' "$RAW_SPACES_DATA" | "$JQ_BIN" -r 'sort_by(.display, .index)[] | [(.display|tostring), (.index|tostring), ((."is-visible" // false)|tostring), ((."has-focus" // false)|tostring)] | @tsv')
-fi
 
 if [ ${#SPACE_LINES[@]} -eq 0 ]; then
   # Fallback if yabai returns nothing but runs

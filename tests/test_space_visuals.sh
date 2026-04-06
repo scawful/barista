@@ -213,6 +213,9 @@ run_visual "space_active_refresh" \
 [ "$(count_yabai_line "-m query --windows")" = "0" ] || { echo "FAIL: focused active-space refresh should not query all windows" >&2; exit 1; }
 [ "$(count_sketchybar_line $'query\tbar')" = "1" ] || { echo "FAIL: focused active-space refresh should reuse cached space-item lookup instead of querying the full bar again" >&2; exit 1; }
 
+run_visual "forced"
+[ "$(count_visual_events)" = "3" ] || { echo "FAIL: forced script runs should be ignored because explicit refresh paths already exist" >&2; exit 1; }
+
 rm -f "$CONFIG_DIR/cache/space_visuals/last_front_app_refresh_ms" "$CONFIG_DIR/cache/space_visuals/last_authoritative_refresh_ms"
 mkdir "$CONFIG_DIR/.space_visuals.lock"
 run_visual "manual"
@@ -230,9 +233,17 @@ run_visual "front_app_switched" \
 [ "$(count_visual_events)" = "4" ] || { echo "FAIL: front_app debounce should suppress the second rapid refresh" >&2; exit 1; }
 
 run_visual "space_topology_refresh" \
+  BARISTA_ALL_SPACES_DATA='[{"display":1,"index":1,"is-visible":true,"has-focus":true,"type":"bsp"},{"display":1,"index":2,"is-visible":false,"has-focus":false,"type":"bsp"}]' \
   BARISTA_SPACE_FRONT_APP_COOLDOWN_MS=5000 \
   BARISTA_SPACE_FRONT_APP_DEBOUNCE_MS=0
 [ "$(count_visual_events)" = "5" ] || { echo "FAIL: topology refresh should be recorded" >&2; exit 1; }
+[ "$(count_sketchybar_line $'query\tbar')" = "1" ] || { echo "FAIL: topology refresh with shared spaces payload should reuse the topology item set instead of querying the full bar again" >&2; exit 1; }
+
+run_visual "startup_sync" \
+  BARISTA_SPACE_STARTUP_SYNC_COOLDOWN_MS=5000 \
+  BARISTA_SPACE_FRONT_APP_COOLDOWN_MS=5000 \
+  BARISTA_SPACE_FRONT_APP_DEBOUNCE_MS=0
+[ "$(count_visual_events)" = "5" ] || { echo "FAIL: startup_sync should be skipped when a recent authoritative topology refresh already ran" >&2; exit 1; }
 
 run_visual "front_app_switched" \
   BARISTA_SPACE_FRONT_APP_COOLDOWN_MS=5000 \

@@ -17,6 +17,10 @@ SPACE_VISUALS_SCRIPT="${CONFIG_DIR}/plugins/space_visuals.sh"
 BARISTA_REASON="${BARISTA_REASON:-}"
 SPACE_METRICS_FILE=""
 EXTERNAL_BAR_HEIGHT_CACHE_FILE="${CONFIG_DIR}/cache/external_bar_height"
+BAR_SPACE_ITEMS_LOOKUP=""
+BAR_SPACE_ITEMS_LOADED=0
+CURRENT_SPACES_COUNT="0"
+CURRENT_SPACE_INDEXES_CSV=""
 
 create_metrics_file() {
   [ -n "$SPACE_METRICS_FILE" ] && return 0
@@ -55,15 +59,15 @@ update_external_bar_if_needed() {
 }
 
 now_ms() {
+  if command -v perl >/dev/null 2>&1; then
+    perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)'
+    return
+  fi
   if command -v python3 >/dev/null 2>&1; then
     python3 - <<'PY'
 import time
 print(time.time_ns() // 1_000_000)
 PY
-    return
-  fi
-  if command -v perl >/dev/null 2>&1; then
-    perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)'
     return
   fi
   date +%s | awk '{print $1 "000"}'
@@ -97,18 +101,25 @@ record_perf() {
   local build_ms="0"
   local decision_ms="0"
   local visual_call_ms="${2:-0}"
+  local line key value
 
   if [ -n "$SPACE_METRICS_FILE" ] && [ -f "$SPACE_METRICS_FILE" ]; then
-    strategy="$(awk -F= '$1 == "strategy" { print $2; exit }' "$SPACE_METRICS_FILE" 2>/dev/null || echo full_rebuild)"
-    added="$(awk -F= '$1 == "added" { print $2; exit }' "$SPACE_METRICS_FILE" 2>/dev/null || echo 0)"
-    removed="$(awk -F= '$1 == "removed" { print $2; exit }' "$SPACE_METRICS_FILE" 2>/dev/null || echo 0)"
-    updated="$(awk -F= '$1 == "updated" { print $2; exit }' "$SPACE_METRICS_FILE" 2>/dev/null || echo 0)"
-    topology_ms="$(awk -F= '$1 == "topology_ms" { print $2; exit }' "$SPACE_METRICS_FILE" 2>/dev/null || echo 0)"
-    prepare_ms="$(awk -F= '$1 == "prepare_ms" { print $2; exit }' "$SPACE_METRICS_FILE" 2>/dev/null || echo 0)"
-    apply_ms="$(awk -F= '$1 == "apply_ms" { print $2; exit }' "$SPACE_METRICS_FILE" 2>/dev/null || echo 0)"
-    discovery_ms="$(awk -F= '$1 == "discovery_ms" { print $2; exit }' "$SPACE_METRICS_FILE" 2>/dev/null || echo 0)"
-    build_ms="$(awk -F= '$1 == "build_ms" { print $2; exit }' "$SPACE_METRICS_FILE" 2>/dev/null || echo 0)"
-    decision_ms="$(awk -F= '$1 == "decision_ms" { print $2; exit }' "$SPACE_METRICS_FILE" 2>/dev/null || echo 0)"
+    while IFS= read -r line || [ -n "$line" ]; do
+      key="${line%%=*}"
+      value="${line#*=}"
+      case "$key" in
+        strategy) strategy="$value" ;;
+        added) added="$value" ;;
+        removed) removed="$value" ;;
+        updated) updated="$value" ;;
+        topology_ms) topology_ms="$value" ;;
+        prepare_ms) prepare_ms="$value" ;;
+        apply_ms) apply_ms="$value" ;;
+        discovery_ms) discovery_ms="$value" ;;
+        build_ms) build_ms="$value" ;;
+        decision_ms) decision_ms="$value" ;;
+      esac
+    done < "$SPACE_METRICS_FILE"
   fi
   added="$(normalize_int "$added")"
   removed="$(normalize_int "$removed")"
@@ -182,28 +193,38 @@ trigger_space_mode_refresh() {
   "$SKETCHYBAR_BIN" --trigger space_mode_refresh >/dev/null 2>&1 || true
 }
 
-trigger_space_change_if_needed() {
+trigger_space_active_refresh_if_needed() {
   [ "$BARISTA_REASON" = "space_changed" ] || return 0
   [ -n "$SKETCHYBAR_BIN" ] || return 0
-  "$SKETCHYBAR_BIN" --trigger space_change >/dev/null 2>&1 || true
+  "$SKETCHYBAR_BIN" --trigger space_active_refresh >/dev/null 2>&1 || true
 }
 
 space_items_present() {
-  [ -n "${ALL_SPACES_DATA:-}" ] || return 1
-  [ -n "$JQ_BIN" ] || return 1
   [ -n "$SKETCHYBAR_BIN" ] || return 1
+  [ -n "$CURRENT_SPACE_INDEXES_CSV" ] || return 1
 
-  local bar_items found_space=0
+  local found_space=0
   local space_index=""
-  bar_items="$("$SKETCHYBAR_BIN" --query bar 2>/dev/null | "$JQ_BIN" -r '.items[] | select(test("^space\\.[0-9]+$"))' 2>/dev/null || true)"
-  [ -n "$bar_items" ] || return 1
-  while IFS= read -r space_index; do
+  if [ "$BAR_SPACE_ITEMS_LOADED" -eq 0 ]; then
+    BAR_SPACE_ITEMS_LOADED=1
+    if [ -n "$JQ_BIN" ]; then
+      local bar_items=""
+      bar_items="$("$SKETCHYBAR_BIN" --query bar 2>/dev/null | "$JQ_BIN" -r '.items[] | select(test("^space\\.[0-9]+$"))' 2>/dev/null || true)"
+      if [ -n "$bar_items" ]; then
+        BAR_SPACE_ITEMS_LOOKUP=$'\n'"$bar_items"$'\n'
+      fi
+    fi
+  fi
+  [ -n "$BAR_SPACE_ITEMS_LOOKUP" ] || return 1
+  IFS=',' read -r -a current_space_indexes <<< "$CURRENT_SPACE_INDEXES_CSV"
+  for space_index in "${current_space_indexes[@]}"; do
     [ -n "$space_index" ] || continue
     found_space=1
-    if ! printf '%s\n' "$bar_items" | grep -Fxq "space.$space_index"; then
-      return 1
-    fi
-  done < <(printf '%s' "$ALL_SPACES_DATA" | "$JQ_BIN" -r '.[].index // empty' 2>/dev/null)
+    case "$BAR_SPACE_ITEMS_LOOKUP" in
+      *$'\n'"space.$space_index"$'\n'*) ;;
+      *) return 1 ;;
+    esac
+  done
 
   [ "$found_space" -eq 1 ]
 }
@@ -238,9 +259,16 @@ current_active_state=""
 if [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ]; then
   ALL_SPACES_DATA="$("$YABAI_BIN" -m query --spaces 2>/dev/null || true)"
   if [ -n "$ALL_SPACES_DATA" ]; then
-    current_display_state="$(printf '%s' "$ALL_SPACES_DATA" | "$JQ_BIN" -r '[.[].display] | unique | sort | join(",")' 2>/dev/null || true)"
-    current_space_state="$(printf '%s' "$ALL_SPACES_DATA" | "$JQ_BIN" -r '[.[] | "\(.display)-\(.index)"] | sort | join(",")' 2>/dev/null || true)"
-    current_active_state="$(printf '%s' "$ALL_SPACES_DATA" | "$JQ_BIN" -r '[.[] | select(."is-visible" == true) | "\(.display):\(.index)"] | sort | join(",")' 2>/dev/null || true)"
+    current_state_values="$(printf '%s' "$ALL_SPACES_DATA" | "$JQ_BIN" -r '[
+      ([.[].display] | unique | sort | join(",")),
+      ([.[] | "\(.display)-\(.index)"] | sort | join(",")),
+      ([.[] | select(."is-visible" == true) | "\(.display):\(.index)"] | sort | join(",")),
+      (length | tostring),
+      ([.[].index | tostring] | join(","))
+    ] | @tsv' 2>/dev/null || true)"
+    if [ -n "$current_state_values" ]; then
+      IFS=$'\t' read -r current_display_state current_space_state current_active_state CURRENT_SPACES_COUNT CURRENT_SPACE_INDEXES_CSV <<< "$current_state_values"
+    fi
   fi
 fi
 
@@ -249,12 +277,19 @@ if [ -n "$current_display_state$current_space_state" ]; then
   cached_state="$(cat "$CACHE_FILE" 2>/dev/null || true)"
   if [ "$combined_state" = "$cached_state" ]; then
     if space_items_present; then
-      spaces_count="$(printf '%s' "$ALL_SPACES_DATA" | "$JQ_BIN" -r 'length' 2>/dev/null || echo 0)"
+      spaces_count="${CURRENT_SPACES_COUNT:-0}"
       cached_active_state="$(cat "$ACTIVE_CACHE_FILE" 2>/dev/null || true)"
       if [ -n "$current_active_state" ] && [ "$current_active_state" != "$cached_active_state" ]; then
         printf '%s' "$current_active_state" >"$ACTIVE_CACHE_FILE" || true
-        trigger_space_change_if_needed
+        trigger_space_active_refresh_if_needed
+        visual_refresh_start_ms="$(now_ms)"
         refresh_space_visuals "space_active_refresh" "$ALL_SPACES_DATA"
+        visual_refresh_duration_ms=$(( $(now_ms) - visual_refresh_start_ms ))
+        if [ "$visual_refresh_duration_ms" -lt 0 ]; then
+          visual_refresh_duration_ms=0
+        fi
+        record_perf "$spaces_count" "$visual_refresh_duration_ms"
+        exit 0
       fi
       record_perf "$spaces_count"
       exit 0
@@ -278,7 +313,7 @@ fi
 create_metrics_file
 BARISTA_SPACE_METRICS_FILE="$SPACE_METRICS_FILE" "$CONFIG_DIR/plugins/simple_spaces.sh"
 
-trigger_space_change_if_needed
+trigger_space_active_refresh_if_needed
 trigger_space_mode_refresh
 visual_refresh_start_ms="$(now_ms)"
 refresh_space_visuals "${SENDER:-${BARISTA_REASON:-space_topology_refresh}}" "${ALL_SPACES_DATA:-}"
@@ -287,7 +322,7 @@ if [ "$visual_refresh_duration_ms" -lt 0 ]; then
   visual_refresh_duration_ms=0
 fi
 
-spaces_count="$(printf '%s' "${ALL_SPACES_DATA:-[]}" | "$JQ_BIN" -r 'length' 2>/dev/null || echo 0)"
+spaces_count="${CURRENT_SPACES_COUNT:-0}"
 record_perf "$spaces_count" "$visual_refresh_duration_ms"
 
 bar_height="${1:-}"

@@ -40,7 +40,7 @@ dismiss_all() {
 }
 
 case "${SENDER:-}" in
-  "space_change"|"display_changed"|"display_added"|"display_removed"|"system_woke"|"front_app_switched")
+  "space_active_refresh"|"space_change"|"display_changed"|"display_added"|"display_removed"|"system_woke"|"front_app_switched")
     dismiss_all
     ;;
 esac

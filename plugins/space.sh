@@ -57,21 +57,17 @@ restore_cached_style() {
 }
 
 restore_visual_state() {
-  if restore_cached_style; then
-    return 0
-  fi
-
-  [ -n "$SKETCHYBAR_BIN" ] || return 0
-  "$SKETCHYBAR_BIN" --trigger space_visual_refresh >/dev/null 2>&1 || true
+  restore_cached_style || true
 }
 
 case "${SENDER:-}" in
   mouse.entered)
-    cache_current_style || true
-    "$SKETCHYBAR_BIN" --set "$NAME" \
-      background.drawing=on \
-      background.color="$HOVER_BG" \
-      icon.color="$IDLE_ICON_COLOR"
+    if cache_current_style; then
+      "$SKETCHYBAR_BIN" --set "$NAME" \
+        background.drawing=on \
+        background.color="$HOVER_BG" \
+        icon.color="$IDLE_ICON_COLOR"
+    fi
     ;;
   mouse.exited)
     restore_visual_state

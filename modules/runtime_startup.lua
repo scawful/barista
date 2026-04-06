@@ -112,7 +112,7 @@ function runtime_startup.build_space_visual_refresh(delay_seconds, script_path, 
   local scripts = scripts_dir or ""
 
   return string.format(
-    "sleep %.1f; NAME=space_runtime SENDER=manual CONFIG_DIR=%q SCRIPTS_DIR=%q %q >/dev/null 2>&1 || true",
+    "sleep %.1f; NAME=space_runtime SENDER=startup_sync CONFIG_DIR=%q SCRIPTS_DIR=%q %q >/dev/null 2>&1 || true",
     delay,
     config,
     scripts,

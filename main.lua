@@ -467,6 +467,7 @@ local registry_duration_ms = 0
 sbar.begin_config()
 trace_startup("main:begin_config")
 shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event space_change >/dev/null 2>&1 || true")
+shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event space_active_refresh >/dev/null 2>&1 || true")
 shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event space_mode_refresh >/dev/null 2>&1 || true")
 shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event space_visual_refresh >/dev/null 2>&1 || true")
 shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event display_changed >/dev/null 2>&1 || true")
@@ -484,6 +485,7 @@ sbar.add("item", "popup_manager", {
 sbar.add("item", "space_runtime", {
   position = "left",
   drawing = false,
+  updates = false,
   script = SPACE_VISUALS_SCRIPT,
 })
 
@@ -586,7 +588,7 @@ submenu_registry.register(
 registry_duration_ms = runtime_startup.current_time_ms() - registry_start_ms
 
 shell_utils.shell_exec(string.format(
-  "sleep %.1f; %s --subscribe popup_manager space_change display_changed display_added display_removed system_woke front_app_switched",
+  "sleep %.1f; %s --subscribe popup_manager space_active_refresh display_changed display_added display_removed system_woke front_app_switched",
   POST_CONFIG_DELAY,
   SKETCHYBAR_BIN
 ))

@@ -25,14 +25,17 @@ SPACE_VISUALS_LOCK_DIR="$CONFIG_DIR/.space_visuals.lock"
 SPACE_VISUALS_LOCK_STALE_SECONDS=5
 FRONT_APP_COOLDOWN_MS="${BARISTA_SPACE_FRONT_APP_COOLDOWN_MS:-1200}"
 FRONT_APP_DEBOUNCE_MS="${BARISTA_SPACE_FRONT_APP_DEBOUNCE_MS:-250}"
+STARTUP_SYNC_COOLDOWN_MS="${BARISTA_SPACE_STARTUP_SYNC_COOLDOWN_MS:-4000}"
 LAST_AUTHORITATIVE_REFRESH_FILE="$SPACE_VISUALS_STATE_DIR/last_authoritative_refresh_ms"
 LAST_FRONT_APP_REFRESH_FILE="$SPACE_VISUALS_STATE_DIR/last_front_app_refresh_ms"
 SPACE_ITEM_LOOKUP_FILE="$SPACE_VISUALS_STATE_DIR/space_items"
 STATE_SPACE_MAPS_LOADED=0
 SPACE_ITEM_LOOKUP_LOADED=0
+CACHED_SPACE_ICONS_LOADED=0
 
 declare -a STATE_DEFAULT_ICONS
 declare -a STATE_SPACE_MODES
+declare -a CACHED_SPACE_ICONS
 declare -a SPACE_APP_BY_INDEX
 declare -a SPACE_APP_LOADED
 declare -a SPACE_ITEM_PRESENT
@@ -46,6 +49,10 @@ ACTIVE_EMPTY_ICON="•"
 LAST_SELECTED_SPACE_FILE="$SPACE_VISUALS_STATE_DIR/last_selected_space"
 
 now_ms() {
+  if command -v perl >/dev/null 2>&1; then
+    perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)'
+    return
+  fi
   if command -v python3 >/dev/null 2>&1; then
     python3 - <<'PY'
 import time
@@ -53,11 +60,38 @@ print(time.time_ns() // 1_000_000)
 PY
     return
   fi
-  if command -v perl >/dev/null 2>&1; then
-    perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)'
-    return
-  fi
   date +%s | awk '{print $1 "000"}'
+}
+
+read_file_value() {
+  local path="${1:-}"
+  local value=""
+  [ -n "$path" ] || return 0
+  [ -f "$path" ] || return 0
+  IFS= read -r value < "$path" || true
+  printf '%s' "$value"
+}
+
+load_cached_space_icons() {
+  [ "$CACHED_SPACE_ICONS_LOADED" -eq 0 ] || return 0
+  CACHED_SPACE_ICONS_LOADED=1
+  [ -d "$ICON_CACHE_DIR" ] || return 0
+
+  local cache_file cache_name cache_value
+  shopt -s nullglob
+  for cache_file in "$ICON_CACHE_DIR"/*; do
+    [ -f "$cache_file" ] || continue
+    cache_name="${cache_file##*/}"
+    case "$cache_name" in
+      ''|*[!0-9]*)
+        continue
+        ;;
+    esac
+    cache_value="$(read_file_value "$cache_file")"
+    [ -n "$cache_value" ] || continue
+    CACHED_SPACE_ICONS[$cache_name]="$cache_value"
+  done
+  shopt -u nullglob
 }
 
 record_perf() {
@@ -76,8 +110,8 @@ record_perf() {
 read_cached_icon() {
   local space_index="${1:-}"
   [ -n "$space_index" ] || return 0
-  [ -f "$ICON_CACHE_DIR/$space_index" ] || return 0
-  cat "$ICON_CACHE_DIR/$space_index" 2>/dev/null || true
+  load_cached_space_icons
+  printf '%s' "${CACHED_SPACE_ICONS[$space_index]-}"
 }
 
 write_cached_icon() {
@@ -101,8 +135,7 @@ read_cached_app_glyph() {
   [ -n "$app_name" ] || return 0
   cache_key="$(app_cache_key "$app_name")"
   [ -n "$cache_key" ] || return 0
-  [ -f "$APP_GLYPH_CACHE_DIR/$cache_key" ] || return 0
-  cat "$APP_GLYPH_CACHE_DIR/$cache_key" 2>/dev/null || true
+  read_file_value "$APP_GLYPH_CACHE_DIR/$cache_key"
 }
 
 write_cached_app_glyph() {
@@ -119,9 +152,7 @@ write_cached_app_glyph() {
 
 read_ms_file() {
   local path="${1:-}"
-  [ -n "$path" ] || return 0
-  [ -f "$path" ] || return 0
-  cat "$path" 2>/dev/null || true
+  read_file_value "$path"
 }
 
 write_ms_file() {
@@ -173,12 +204,22 @@ should_skip_front_app_refresh() {
   return 1
 }
 
+should_skip_startup_sync() {
+  local sender="${SENDER:-}"
+  local last_authoritative
+  [ "$sender" = "startup_sync" ] || return 1
+
+  last_authoritative="$(read_ms_file "$LAST_AUTHORITATIVE_REFRESH_FILE")"
+  [ -n "$last_authoritative" ] || return 1
+  [ $((START_MS - last_authoritative)) -lt "$STARTUP_SYNC_COOLDOWN_MS" ]
+}
+
 mark_sender_refresh() {
   case "${SENDER:-}" in
     front_app_switched)
       write_ms_file "$LAST_FRONT_APP_REFRESH_FILE" "$START_MS"
       ;;
-    space_topology_refresh|space_active_refresh|space_visual_refresh|display_changed|display_added|display_removed|manual)
+    space_topology_refresh|space_active_refresh|space_visual_refresh|display_changed|display_added|display_removed|manual|startup_sync)
       write_ms_file "$LAST_AUTHORITATIVE_REFRESH_FILE" "$START_MS"
       ;;
   esac
@@ -318,6 +359,10 @@ resolve_visible_space_app() {
 
 START_MS="$(now_ms)"
 
+if [ "${SENDER:-}" = "forced" ]; then
+  exit 0
+fi
+
 load_state_space_maps() {
   [ "$STATE_SPACE_MAPS_LOADED" -eq 0 ] || return 0
   STATE_SPACE_MAPS_LOADED=1
@@ -346,7 +391,7 @@ load_space_item_lookup() {
     refresh_lookup=1
   else
     case "${SENDER:-}" in
-      manual|space_topology_refresh|display_changed|display_added|display_removed)
+      manual|startup_sync|space_topology_refresh|display_changed|display_added|display_removed)
         refresh_lookup=1
         ;;
     esac
@@ -354,8 +399,13 @@ load_space_item_lookup() {
 
   if [ "$refresh_lookup" -eq 1 ]; then
     mkdir -p "$SPACE_VISUALS_STATE_DIR" 2>/dev/null || true
-    "$SKETCHYBAR_BIN" --query bar 2>/dev/null | "$JQ_BIN" -r '.items[] | select(startswith("space."))' \
-      > "$SPACE_ITEM_LOOKUP_FILE" 2>/dev/null || true
+    if [ -n "$BARISTA_ALL_SPACES_DATA" ] && [ "${SENDER:-}" != "manual" ] && [ "${SENDER:-}" != "startup_sync" ] && [ "${SENDER:-}" != "space_visual_refresh" ]; then
+      printf '%s\n' "$BARISTA_ALL_SPACES_DATA" | "$JQ_BIN" -r '.[] | select(.index != null) | "space.\(.index)"' \
+        > "$SPACE_ITEM_LOOKUP_FILE" 2>/dev/null || true
+    else
+      "$SKETCHYBAR_BIN" --query bar 2>/dev/null | "$JQ_BIN" -r '.items[] | select(startswith("space."))' \
+        > "$SPACE_ITEM_LOOKUP_FILE" 2>/dev/null || true
+    fi
   fi
 
   [ -f "$SPACE_ITEM_LOOKUP_FILE" ] || return 0
@@ -376,6 +426,10 @@ if ! acquire_visual_lock; then
 fi
 
 if should_skip_front_app_refresh; then
+  exit 0
+fi
+
+if should_skip_startup_sync; then
   exit 0
 fi
 

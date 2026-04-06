@@ -149,7 +149,11 @@ if find "$CONFIG_DIR" -maxdepth 1 -name '.space_topology_metrics.*' | grep -q .;
 fi
 [ "$(wc -l < "$EXTERNAL_BAR_LOG" | tr -d ' ')" = "1" ] || { echo "FAIL: active-only refresh should not reapply unchanged external bar height" >&2; exit 1; }
 [ "$(wc -l < "$VISUAL_ENV_LOG" | tr -d ' ')" = "2" ] || { echo "FAIL: active-only refresh should invoke space_visuals once" >&2; exit 1; }
-grep -Fqx -- '--trigger space_change' "$CALLS_LOG" || { echo "FAIL: active-only refresh should emit space_change when the focused space changes" >&2; exit 1; }
+grep -Fqx -- '--trigger space_active_refresh' "$CALLS_LOG" || { echo "FAIL: active-only refresh should emit space_active_refresh when the focused space changes" >&2; exit 1; }
+if grep -Fqx -- '--trigger space_change' "$CALLS_LOG"; then
+  echo "FAIL: active-only refresh should not fall back to the legacy space_change trigger" >&2
+  exit 1
+fi
 if grep -Fqx -- '--trigger space_mode_refresh' "$CALLS_LOG"; then
   echo "FAIL: active-only refresh should not emit redundant space_mode_refresh" >&2
   exit 1

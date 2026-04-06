@@ -89,7 +89,7 @@ run_test("runtime_startup.build_space_visual_refresh: triggers one delayed autho
   )
   assert_true(command:find("sleep 0%.8;", 1) ~= nil, "command should include sync delay")
   assert_true(command:find("NAME=space_runtime", 1, true) ~= nil, "command should target the hidden runtime item context")
-  assert_true(command:find("SENDER=manual", 1, true) ~= nil, "command should run the authoritative pass directly")
+  assert_true(command:find("SENDER=startup_sync", 1, true) ~= nil, "command should run the authoritative startup-sync pass directly")
   assert_true(command:find("/plugins/space_visuals.sh", 1, true) ~= nil, "command should execute the space visuals script")
   assert_true(command:find(">/dev/null 2>&1 || true", 1, true) ~= nil, "command should stay best-effort")
 end)

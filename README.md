@@ -208,6 +208,12 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **Cached Prep Reads:** full-rebuild prep now also reuses one display-state snapshot and one signature-cache read instead of re-querying yabai/displays or rescanning `.spaces_signatures` multiple times.
 - **Cheaper Full Rebuild Prep:** when a reload starts from an empty `space.*` snapshot, `plugins/simple_spaces.sh` now skips diff-signature work entirely and bulk-loads cached space icons once instead of reading one cache file per space.
 - **Cheaper Spaces Build Loop:** `plugins/simple_spaces.sh` now resolves space/creator action prefixes once per run, reuses the preloaded icon cache for both full and incremental item assembly, and uses the cheaper shell clock path for its phase timing.
+- **Cheaper Spaces Wrapper Path:** `plugins/refresh_spaces.sh` now derives display/space/active signatures and space count in one jq pass, caches the live `space.*` item lookup for active-only checks, parses topology metrics in one shell read, and uses the cheaper shell clock path for its own timing.
+- **Cheaper Spaces Discovery Path:** `plugins/simple_spaces.sh` now parses the bar snapshot in one jq pass and reads cached icon files with shell builtins instead of spawning a `cat` per icon file.
+- **Single-Pass Spaces Query Parse:** `plugins/simple_spaces.sh` now validates and parses the `yabai query --spaces` payload in one jq pass, so the retry loop no longer pays for a separate JSON validation subprocess before building the discovery arrays.
+- **No More Forced Space Visual Passes:** the hidden `space_runtime` item now keeps `updates=false`, `space_visuals.sh` ignores autonomous `forced` runs, and `space.sh` no longer falls back to a full visual refresh when hover-state restore has no cached style to restore.
+- **Dedicated Active-Space Event:** active-space updates now use `space_active_refresh` instead of the legacy broad `space_change` fan-out, so the active-space path only wakes the popup manager and control-center consumers that still need it.
+- **Startup Visual Sync Cooldown:** the delayed `startup_sync` visual pass now uses its own cooldown window and skips itself when a recent authoritative topology refresh already settled the spaces strip, so reload no longer pays for a redundant second full visual pass.
 - **Tuning:** See [docs/PERFORMANCE_AUDIT.md](docs/PERFORMANCE_AUDIT.md) for the active runtime model and performance checklist.
 
 ## Testing

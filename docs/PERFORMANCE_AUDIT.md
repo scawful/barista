@@ -63,6 +63,13 @@ Following the initial audit, the active runtime path was tightened again in Apri
     - full-rebuild prep now bulk-loads cached space icons once per run instead of probing one cache file per space during the item-build loop
     - `simple_spaces.sh` now prefers the cheaper Perl timing path before `python3`, so phase metrics no longer add as much timestamp-process overhead to the topology hot path
     - the space/creator click-action prefixes are now resolved once per run, and both full and incremental item loops reuse the preloaded icon cache directly instead of rechecking script paths or cache files per space
+    - `simple_spaces.sh` now parses bar height and item membership in one jq pass over the shared bar snapshot instead of separate jq probes, and it now reads cached icon files with shell builtins instead of one `cat` subprocess per icon file
+    - `simple_spaces.sh` now validates and parses the shared `yabai query --spaces` payload in one jq pass, so discovery no longer burns an extra jq subprocess just to confirm the payload is non-empty before parsing it again
+    - the hidden `space_runtime` item now keeps `updates=false`, so SketchyBar does not autonomously force the visual batch script between the explicit topology/manual refresh paths
+    - `space_visuals.sh` now ignores `SENDER=forced` runs, and `space.sh` no longer falls back to a full `space_visual_refresh` when there is no cached hover state to restore
+    - active-space updates now trigger the dedicated `space_active_refresh` event instead of the legacy broad `space_change` event, so the active refresh path only wakes popup-manager/control-center consumers that still use active-space signals
+    - the Triforce anchor no longer subscribes to space/display churn events that it does not actually handle
+    - the delayed startup visual sync now runs as `startup_sync` and uses its own wider cooldown window, so it skips itself when a recent authoritative topology refresh already settled the spaces strip while still preserving the recovery path when topology did not run
     - `space_visuals.sh` now coalesces overlapping runs and cools down `front_app_switched` updates immediately after authoritative refreshes
     - `front_app_switched` now has a focused-space fast path: `space_visuals.sh` delegates current-space resolution to `scripts/front_app_context.sh`, updates only the focused visible space, and skips the full `yabai --windows` snapshot
     - `space_visuals.sh` now caches the `space.*` item lookup under `cache/space_visuals/space_items` and reuses it on the focused-space fast path, avoiding a full `sketchybar --query bar` on repeated `front_app_switched` visual refreshes
@@ -116,6 +123,9 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
     - `space_topology_refresh` now records pure `simple_spaces.sh` topology time from the child metrics file instead of the entire `refresh_spaces.sh` runtime; the remaining orchestration is tracked separately as `space_refresh_overhead`
     - topology metrics temp files are now created lazily and live in `TMPDIR` instead of cluttering the Barista config/repo directory
     - `refresh_spaces.sh` now caches the last applied external-bar height and skips re-running `yabai -m config external_bar ...` on unchanged active-only refreshes
+    - `refresh_spaces.sh` now derives display state, space topology state, active-space state, space count, and desired space indexes from one jq pass over the shared `yabai query --spaces` payload instead of multiple independent jq calls
+    - active-only `space_items_present` checks now reuse one cached bar snapshot lookup instead of piping the bar item list through `grep` for each desired space index
+    - `refresh_spaces.sh` now parses child topology metrics with one shell read instead of a stack of `awk` probes, and it now prefers the cheaper Perl timing path before `python3` for its own wrapper timing
     - `runtime_daemon.stop_runtime_context_daemon()` now clears the whole runtime-context family on restart, including stale helper daemon and refresh children, so live focused-space probes no longer inherit orphaned runtime/query processes across reloads
     - `runtime_context.sh daemon` now launches `runtime_context_helper daemon` directly instead of backgrounding a shell function, removing the redundant nested shell layer from the live runtime path
     - topology and visual refresh durations are logged separately

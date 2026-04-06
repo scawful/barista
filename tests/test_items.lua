@@ -469,6 +469,23 @@ local function test_items_left_reuses_oracle_and_control_center_status()
   assert_type(received_control_center_widget_status, "table", "control_center widget should receive shared status")
   assert_type(received_control_center_popup_flags, "table", "control_center popup should receive shared flags")
   assert_equal(received_control_center_popup_flags.mode, "required", "control_center popup should reuse window manager flags")
+  local found_triforce_subscription = false
+  local found_control_center_subscription = false
+  for _, entry in ipairs(layout) do
+    if entry.action == "exec" and type(entry.cmd) == "string" then
+      if entry.cmd:find("--subscribe triforce system_woke", 1, true) ~= nil then
+        found_triforce_subscription = true
+        assert_true(entry.cmd:find("space_change", 1, true) == nil, "triforce should not subscribe to the legacy active-space event")
+        assert_true(entry.cmd:find("space_mode_refresh", 1, true) == nil, "triforce should not subscribe to space_mode_refresh")
+      elseif entry.cmd:find("--subscribe control_center", 1, true) ~= nil then
+        found_control_center_subscription = true
+        assert_true(entry.cmd:find("space_active_refresh", 1, true) ~= nil, "control_center should subscribe to the dedicated active-space event")
+        assert_true(entry.cmd:find(" space_change", 1, true) == nil, "control_center should not subscribe to the legacy space_change event")
+      end
+    end
+  end
+  assert_true(found_triforce_subscription, "triforce subscription should be present")
+  assert_true(found_control_center_subscription, "control_center subscription should be present")
   print("  items_left shared model/state test passed!")
 end
 

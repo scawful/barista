@@ -172,7 +172,7 @@ for entry in "${SPACE_LINES[@]}"; do
                            background.height="$SPACE_ITEM_HEIGHT" \
                            script="$CONFIG_DIR/plugins/space.sh" \
                            click_script="$FOCUS_SCRIPT $space_index" \
-             --subscribe "$item" mouse.entered mouse.exited space_change space_mode_refresh >/dev/null 2>&1
+             --subscribe "$item" mouse.entered mouse.exited >/dev/null 2>&1
 
   sketchybar --move "$item" after "$effective_anchor" >/dev/null 2>&1
 

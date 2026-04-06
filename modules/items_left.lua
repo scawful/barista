@@ -110,7 +110,7 @@ local function get_layout(ctx)
       table.insert(layout, {
         action = "exec",
         cmd = string.format(
-          "sleep %.1f; %s --subscribe %s system_woke space_change space_mode_refresh display_changed display_added display_removed",
+          "sleep %.1f; %s --subscribe %s system_woke",
           POST_CONFIG_DELAY,
           SKETCHYBAR_BIN,
           triforce_name
@@ -384,7 +384,7 @@ local function get_layout(ctx)
 
     table.insert(layout, {
       action = "exec",
-      cmd = string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited space_change space_mode_refresh system_woke",
+      cmd = string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited space_active_refresh space_mode_refresh system_woke",
                           POST_CONFIG_DELAY, SKETCHYBAR_BIN, control_center_item_name)
     })
     table.insert(layout, { action = "subscribe_popup_autoclose", name = control_center_item_name })

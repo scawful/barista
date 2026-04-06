@@ -167,8 +167,9 @@ record_perf() {
 
 refresh_space_visuals() {
   local sender="${1:-space_visual_refresh}"
+  local spaces_data="${2:-}"
   if [ -x "$SPACE_VISUALS_SCRIPT" ]; then
-    NAME="space_runtime" SENDER="$sender" \
+    NAME="space_runtime" SENDER="$sender" BARISTA_ALL_SPACES_DATA="$spaces_data" \
       "$SPACE_VISUALS_SCRIPT" >/dev/null 2>&1 || true
   else
     [ -n "$SKETCHYBAR_BIN" ] || return 0
@@ -253,8 +254,7 @@ if [ -n "$current_display_state$current_space_state" ]; then
       if [ -n "$current_active_state" ] && [ "$current_active_state" != "$cached_active_state" ]; then
         printf '%s' "$current_active_state" >"$ACTIVE_CACHE_FILE" || true
         trigger_space_change_if_needed
-        trigger_space_mode_refresh
-        refresh_space_visuals "space_active_refresh"
+        refresh_space_visuals "space_active_refresh" "$ALL_SPACES_DATA"
       fi
       record_perf "$spaces_count"
       exit 0
@@ -281,7 +281,7 @@ BARISTA_SPACE_METRICS_FILE="$SPACE_METRICS_FILE" "$CONFIG_DIR/plugins/simple_spa
 trigger_space_change_if_needed
 trigger_space_mode_refresh
 visual_refresh_start_ms="$(now_ms)"
-refresh_space_visuals "${SENDER:-${BARISTA_REASON:-space_topology_refresh}}"
+refresh_space_visuals "${SENDER:-${BARISTA_REASON:-space_topology_refresh}}" "${ALL_SPACES_DATA:-}"
 visual_refresh_duration_ms=$(( $(now_ms) - visual_refresh_start_ms ))
 if [ "$visual_refresh_duration_ms" -lt 0 ]; then
   visual_refresh_duration_ms=0

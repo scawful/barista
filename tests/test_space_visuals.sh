@@ -45,6 +45,14 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "query" ] && [ "${3:-}" = "--spaces" ]; t
   exit 0
 fi
 if [ "${1:-}" = "-m" ] && [ "${2:-}" = "query" ] && [ "${3:-}" = "--windows" ]; then
+  if [ "${4:-}" = "--space" ]; then
+    if [ "${5:-}" = "1" ]; then
+      printf '[{"space":1,"app":"FocusApp","has-focus":true,"is-minimized":false,"id":10}]\n'
+      exit 0
+    fi
+    printf '[]\n'
+    exit 0
+  fi
   printf '[{"space":1,"app":"FocusApp","has-focus":true,"is-minimized":false,"id":10}]\n'
   exit 0
 fi
@@ -183,6 +191,8 @@ run_visual "manual"
 [ "$(count_visual_events)" = "1" ] || { echo "FAIL: manual refresh should log exactly one event" >&2; exit 1; }
 [ "$("$BIN_DIR/sketchybar" --query space.2 | jq -r '.icon.value')" != "bsp" ] || { echo "FAIL: space_modes must not leak into space icons" >&2; exit 1; }
 [ "$(count_sketchybar_line $'query\tbar')" = "1" ] || { echo "FAIL: first authoritative refresh should query the bar exactly once to build the space-item cache" >&2; exit 1; }
+[ "$(count_yabai_line "-m query --windows")" = "0" ] || { echo "FAIL: authoritative refresh should not query the full windows snapshot" >&2; exit 1; }
+[ "$(count_yabai_line "-m query --windows --space 1")" = "1" ] || { echo "FAIL: authoritative refresh should resolve the visible space app from a scoped window query" >&2; exit 1; }
 
 : > "$YABAI_LOG"
 run_visual "front_app_switched" \
@@ -194,30 +204,39 @@ run_visual "front_app_switched" \
 [ "$(count_yabai_line "-m query --windows")" = "0" ] || { echo "FAIL: focused front_app refresh should not query all windows" >&2; exit 1; }
 [ "$(count_sketchybar_line $'query\tbar')" = "1" ] || { echo "FAIL: focused front_app refresh should reuse cached space-item lookup instead of querying the full bar again" >&2; exit 1; }
 
+: > "$YABAI_LOG"
+run_visual "space_active_refresh" \
+  BARISTA_SPACE_FRONT_APP_COOLDOWN_MS=0 \
+  BARISTA_SPACE_FRONT_APP_DEBOUNCE_MS=0
+[ "$(count_visual_events)" = "3" ] || { echo "FAIL: focused active-space refresh should be recorded" >&2; exit 1; }
+[ "$(count_yabai_line "-m query --spaces")" = "0" ] || { echo "FAIL: focused active-space refresh should not query all spaces" >&2; exit 1; }
+[ "$(count_yabai_line "-m query --windows")" = "0" ] || { echo "FAIL: focused active-space refresh should not query all windows" >&2; exit 1; }
+[ "$(count_sketchybar_line $'query\tbar')" = "1" ] || { echo "FAIL: focused active-space refresh should reuse cached space-item lookup instead of querying the full bar again" >&2; exit 1; }
+
 rm -f "$CONFIG_DIR/cache/space_visuals/last_front_app_refresh_ms" "$CONFIG_DIR/cache/space_visuals/last_authoritative_refresh_ms"
 mkdir "$CONFIG_DIR/.space_visuals.lock"
 run_visual "manual"
-[ "$(count_visual_events)" = "2" ] || { echo "FAIL: locked refresh should not add a visual event" >&2; exit 1; }
+[ "$(count_visual_events)" = "3" ] || { echo "FAIL: locked refresh should not add a visual event" >&2; exit 1; }
 rmdir "$CONFIG_DIR/.space_visuals.lock"
 
 run_visual "front_app_switched" \
   BARISTA_SPACE_FRONT_APP_COOLDOWN_MS=0 \
   BARISTA_SPACE_FRONT_APP_DEBOUNCE_MS=5000
-[ "$(count_visual_events)" = "3" ] || { echo "FAIL: first front_app_switched should be recorded when cooldown is disabled" >&2; exit 1; }
+[ "$(count_visual_events)" = "4" ] || { echo "FAIL: first front_app_switched should be recorded when cooldown is disabled" >&2; exit 1; }
 
 run_visual "front_app_switched" \
   BARISTA_SPACE_FRONT_APP_COOLDOWN_MS=0 \
   BARISTA_SPACE_FRONT_APP_DEBOUNCE_MS=5000
-[ "$(count_visual_events)" = "3" ] || { echo "FAIL: front_app debounce should suppress the second rapid refresh" >&2; exit 1; }
+[ "$(count_visual_events)" = "4" ] || { echo "FAIL: front_app debounce should suppress the second rapid refresh" >&2; exit 1; }
 
 run_visual "space_topology_refresh" \
   BARISTA_SPACE_FRONT_APP_COOLDOWN_MS=5000 \
   BARISTA_SPACE_FRONT_APP_DEBOUNCE_MS=0
-[ "$(count_visual_events)" = "4" ] || { echo "FAIL: topology refresh should be recorded" >&2; exit 1; }
+[ "$(count_visual_events)" = "5" ] || { echo "FAIL: topology refresh should be recorded" >&2; exit 1; }
 
 run_visual "front_app_switched" \
   BARISTA_SPACE_FRONT_APP_COOLDOWN_MS=5000 \
   BARISTA_SPACE_FRONT_APP_DEBOUNCE_MS=0
-[ "$(count_visual_events)" = "4" ] || { echo "FAIL: cooldown should suppress front_app refresh after topology refresh" >&2; exit 1; }
+[ "$(count_visual_events)" = "5" ] || { echo "FAIL: cooldown should suppress front_app refresh after topology refresh" >&2; exit 1; }
 
 printf 'test_space_visuals.sh: ok\n'

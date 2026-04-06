@@ -62,6 +62,10 @@ Following the initial audit, the active runtime path was tightened again in Apri
     - `space_visuals.sh` now coalesces overlapping runs and cools down `front_app_switched` updates immediately after authoritative refreshes
     - `front_app_switched` now has a focused-space fast path: `space_visuals.sh` delegates current-space resolution to `scripts/front_app_context.sh`, updates only the focused visible space, and skips the full `yabai --windows` snapshot
     - `space_visuals.sh` now caches the `space.*` item lookup under `cache/space_visuals/space_items` and reuses it on the focused-space fast path, avoiding a full `sketchybar --query bar` on repeated `front_app_switched` visual refreshes
+    - `refresh_spaces.sh` now passes the already-fetched spaces payload into `space_visuals.sh`, so authoritative visual refreshes reuse the same `yabai query --spaces` result instead of querying spaces twice
+    - `space_active_refresh` now uses the same focused-space fast path as `front_app_switched`, so an active-space-only refresh no longer falls back to the full spaces + windows snapshot path when the focused-space helper already has the answer
+    - pure active-space refreshes no longer emit a redundant `space_mode_refresh`; the existing `space_change` event is enough for the active-path listeners and cuts orchestration overhead on space switches
+    - authoritative visual refreshes now resolve app state with scoped `yabai query --windows --space <index>` calls for visible spaces instead of taking one global window snapshot for every space
     - the active spaces scripts (`refresh_spaces.sh`, `simple_spaces.sh`, `space_visuals.sh`) now all accept injected `BARISTA_*_BIN` overrides so shell smoke tests exercise the same runtime boundary deterministically
     - startup now schedules one delayed direct `space_visuals.sh` pass after the runtime subscriptions are back up, so the spaces strip settles to the real focused space after reload instead of relying only on the first topology-driven pass or the event/subscription race
 *   **Result:**

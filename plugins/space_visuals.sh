@@ -14,6 +14,7 @@ SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-$(command -v sketchybar 2>/dev/null ||
 PERF_STATS_BIN="$CONFIG_DIR/bin/barista-stats.sh"
 ICON_SCRIPT="$SCRIPTS_DIR/app_icon.sh"
 FRONT_APP_CONTEXT_SCRIPT="${BARISTA_FRONT_APP_CONTEXT_SCRIPT:-$SCRIPTS_DIR/front_app_context.sh}"
+BARISTA_ALL_SPACES_DATA="${BARISTA_ALL_SPACES_DATA:-}"
 STATE_FILE="${STATE_FILE:-$CONFIG_DIR/state.json}"
 ICON_CACHE_DIR="$CONFIG_DIR/cache/space_icons"
 APP_GLYPH_CACHE_DIR="$CONFIG_DIR/cache/app_glyphs"
@@ -33,6 +34,7 @@ SPACE_ITEM_LOOKUP_LOADED=0
 declare -a STATE_DEFAULT_ICONS
 declare -a STATE_SPACE_MODES
 declare -a SPACE_APP_BY_INDEX
+declare -a SPACE_APP_LOADED
 declare -a SPACE_ITEM_PRESENT
 
 IDLE_BG="0x00000000"
@@ -216,12 +218,18 @@ resolve_app_glyph() {
   fi
 }
 
-refresh_single_visible_space_from_front_app() {
+refresh_single_visible_space_from_focus_context() {
   local sender="${SENDER:-}"
   local app_name="" current_space_index="" current_space_visible="false"
   local item default_icon cached_icon icon_value last_selected_space
 
-  [ "$sender" = "front_app_switched" ] || return 1
+  case "$sender" in
+    front_app_switched|space_active_refresh)
+      ;;
+    *)
+      return 1
+      ;;
+  esac
   [ -x "$FRONT_APP_CONTEXT_SCRIPT" ] || return 1
   [ -n "$SKETCHYBAR_BIN" ] || return 1
 
@@ -231,7 +239,13 @@ refresh_single_visible_space_from_front_app() {
       space_index) current_space_index="$value" ;;
       space_visible) current_space_visible="$value" ;;
     esac
-  done < <("$FRONT_APP_CONTEXT_SCRIPT" --mode focused-space --app "${INFO:-}" 2>/dev/null || true)
+  done < <(
+    if [ "$sender" = "front_app_switched" ] && [ -n "${INFO:-}" ]; then
+      "$FRONT_APP_CONTEXT_SCRIPT" --mode focused-space --app "${INFO:-}" 2>/dev/null || true
+    else
+      "$FRONT_APP_CONTEXT_SCRIPT" --mode focused-space 2>/dev/null || true
+    fi
+  )
 
   [ -n "$app_name" ] || return 1
   [ -n "$current_space_index" ] || return 1
@@ -275,6 +289,31 @@ refresh_single_visible_space_from_front_app() {
 
   record_perf "$START_MS" "1" "1"
   return 0
+}
+
+resolve_visible_space_app() {
+  local space_index="${1:-}"
+  local windows_json="" app_name=""
+
+  [ -n "$space_index" ] || return 0
+  if [ "${SPACE_APP_LOADED[$space_index]-0}" = "1" ]; then
+    printf '%s' "${SPACE_APP_BY_INDEX[$space_index]-}"
+    return 0
+  fi
+
+  SPACE_APP_LOADED[$space_index]=1
+  [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ] || return 0
+
+  windows_json="$(run_with_timeout 1 "$YABAI_BIN" -m query --windows --space "$space_index" 2>/dev/null || true)"
+  [ -n "$windows_json" ] || return 0
+
+  app_name="$(printf '%s\n' "$windows_json" | "$JQ_BIN" -r '
+    map(select(."is-minimized" == false))
+    | sort_by((if .["has-focus"] == true then 0 else 1 end), -(.id // 0))
+    | .[0].app // empty
+  ' 2>/dev/null || true)"
+  SPACE_APP_BY_INDEX[$space_index]="$app_name"
+  printf '%s' "$app_name"
 }
 
 START_MS="$(now_ms)"
@@ -342,28 +381,17 @@ fi
 
 mark_sender_refresh
 
-if refresh_single_visible_space_from_front_app; then
+if refresh_single_visible_space_from_focus_context; then
   exit 0
 fi
 
 [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ] || exit 0
 
-ALL_SPACES_DATA="$(run_with_timeout 1 "$YABAI_BIN" -m query --spaces 2>/dev/null || true)"
-[ -n "$ALL_SPACES_DATA" ] || exit 0
-
-ALL_WINDOWS_DATA="$(run_with_timeout 1 "$YABAI_BIN" -m query --windows 2>/dev/null || true)"
-if [ -n "$ALL_WINDOWS_DATA" ]; then
-  while IFS=$'\t' read -r space_index app_name; do
-    [ -n "$space_index" ] || continue
-    SPACE_APP_BY_INDEX[$space_index]="$app_name"
-  done < <(printf '%s\n' "$ALL_WINDOWS_DATA" | "$JQ_BIN" -r '
-    map(select(."is-minimized" == false and (.space // 0) > 0))
-    | sort_by(.space, (if .["has-focus"] == true then 0 else 1 end), -(.id // 0))
-    | group_by(.space)
-    | map(.[0] | [(.space | tostring), (.app // "")] | @tsv)
-    | .[]
-  ' 2>/dev/null || true)
+ALL_SPACES_DATA="$BARISTA_ALL_SPACES_DATA"
+if [ -z "$ALL_SPACES_DATA" ]; then
+  ALL_SPACES_DATA="$(run_with_timeout 1 "$YABAI_BIN" -m query --spaces 2>/dev/null || true)"
 fi
+[ -n "$ALL_SPACES_DATA" ] || exit 0
 
 load_space_item_lookup
 
@@ -374,8 +402,6 @@ declare -a FAST_ARGS=()
 spaces_count=0
 visible_count=0
 focused_space_index=""
-windows_snapshot_available=0
-[ -n "$ALL_WINDOWS_DATA" ] && windows_snapshot_available=1
 
 while IFS=' ' read -r space_index _display is_visible has_focus space_type; do
   [ -n "$space_index" ] || continue
@@ -390,13 +416,17 @@ while IFS=' ' read -r space_index _display is_visible has_focus space_type; do
   if [ -n "$default_icon" ]; then
     icon_value="$default_icon"
   else
-    app_name="${SPACE_APP_BY_INDEX[$space_index]-}"
-    if [ -n "$app_name" ]; then
-      icon_value="$(resolve_app_glyph "$app_name")"
-      if [ -n "$icon_value" ]; then
-        write_cached_icon "$space_index" "$icon_value"
+    if [ "$is_visible" = "true" ]; then
+      app_name="$(resolve_visible_space_app "$space_index")"
+      if [ -n "$app_name" ]; then
+        icon_value="$(resolve_app_glyph "$app_name")"
+        if [ -n "$icon_value" ]; then
+          write_cached_icon "$space_index" "$icon_value"
+        fi
       fi
-    elif [ "$windows_snapshot_available" -eq 0 ] && [ -n "$cached_icon" ]; then
+    fi
+
+    if [ -z "$icon_value" ] && [ -n "$cached_icon" ]; then
       icon_value="$cached_icon"
     fi
   fi

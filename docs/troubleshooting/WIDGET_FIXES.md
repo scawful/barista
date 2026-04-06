@@ -108,6 +108,10 @@ Legacy note: the old `plugins/yabai_status.sh` widget path is retired from the l
 - Space highlighting now follows the actually focused space, not every visible space and not the last stale fast-path selection.
 - The `front_app_switched` fast path now depends on a fresh `focused-space` record instead of reusing stale cached front-app state.
 - `space_visuals.sh` now caches the `space.*` item lookup under `cache/space_visuals/space_items` and reuses it on the `front_app_switched` fast path, so focused visual refreshes do not query the full bar again once topology has already established the active space items.
+- `refresh_spaces.sh` now hands its current spaces payload directly to `space_visuals.sh`, so topology-triggered visual refreshes no longer pay for a second `yabai query --spaces`.
+- `space_active_refresh` now shares the focused-space fast path with `front_app_switched`, so an active-space-only refresh does not fall back to the full spaces/windows snapshot path.
+- `refresh_spaces.sh` no longer emits a redundant `space_mode_refresh` on pure active-space changes; `space_change` already covers the active-path listeners.
+- `space_visuals.sh` now resolves visible-space apps with scoped `yabai query --windows --space <index>` calls instead of a single global window snapshot, which materially reduces the visual-refresh hot path while keeping visible-space icons current.
 - `plugins/space.sh` now caches and restores each item’s real pre-hover colors instead of trusting SketchyBar’s `SELECTED` flag on `mouse.exited`; that prevents multi-display visible spaces from repainting themselves as selected and fighting the centralized `space_visuals.sh` pass.
 - `Ghostty` now resolves to a terminal glyph instead of the retired `F02A0` codepoint.
 - Lowercase app names that show up in yabai output now resolve correctly too (`ghostty`, `spotify`, `firefox`, `messages`, `antigravity`, `cursor`).

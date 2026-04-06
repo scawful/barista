@@ -38,19 +38,22 @@ CACHED_SPACE_PROPS=""
 CACHED_CREATOR_PROPS=""
 FULL_REBUILD_DISCOVERY_END_MS=""
 FULL_REBUILD_BUILD_END_MS=""
+SPACE_ACTION_PREFIX=""
+CREATOR_ACTION_PREFIX=""
+CREATOR_ACTION_FALLBACK=""
 
 declare -a CACHED_SPACE_ICONS
 
 now_ms() {
+  if command -v perl >/dev/null 2>&1; then
+    perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)'
+    return
+  fi
   if command -v python3 >/dev/null 2>&1; then
     python3 - <<'PY'
 import time
 print(time.time_ns() // 1_000_000)
 PY
-    return
-  fi
-  if command -v perl >/dev/null 2>&1; then
-    perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)'
     return
   fi
   date +%s | awk '{print $1 "000"}'
@@ -165,10 +168,27 @@ resolve_diff_updates_enabled() {
   [ "$(normalize_bool "${enabled:-true}")" = "true" ]
 }
 
+initialize_action_prefixes() {
+  if [ -x "$SPACE_ACTION_SCRIPT" ]; then
+    SPACE_ACTION_PREFIX="$SPACE_ACTION_SCRIPT click --space "
+    CREATOR_ACTION_PREFIX="$SPACE_ACTION_SCRIPT create --display "
+    CREATOR_ACTION_FALLBACK=""
+    return 0
+  fi
+
+  SPACE_ACTION_PREFIX=""
+  CREATOR_ACTION_PREFIX=""
+  if [ -x "$SPACE_MANAGER_BIN" ]; then
+    CREATOR_ACTION_FALLBACK="$SPACE_MANAGER_BIN create"
+    return 0
+  fi
+  CREATOR_ACTION_FALLBACK=""
+}
+
 space_click_action() {
   local space_index="${1:-}"
-  if [ -x "$SPACE_ACTION_SCRIPT" ]; then
-    printf '%s click --space %s' "$SPACE_ACTION_SCRIPT" "$space_index"
+  if [ -n "$SPACE_ACTION_PREFIX" ]; then
+    printf '%s%s' "$SPACE_ACTION_PREFIX" "$space_index"
     return 0
   fi
   printf '%s %s' "$FOCUS_SCRIPT" "$space_index"
@@ -176,12 +196,12 @@ space_click_action() {
 
 creator_click_action() {
   local target_display="${1:-active}"
-  if [ -x "$SPACE_ACTION_SCRIPT" ]; then
-    printf '%s create --display %s' "$SPACE_ACTION_SCRIPT" "$target_display"
+  if [ -n "$CREATOR_ACTION_PREFIX" ]; then
+    printf '%s%s' "$CREATOR_ACTION_PREFIX" "$target_display"
     return 0
   fi
-  if [ -x "$SPACE_MANAGER_BIN" ]; then
-    printf '%s create' "$SPACE_MANAGER_BIN"
+  if [ -n "$CREATOR_ACTION_FALLBACK" ]; then
+    printf '%s' "$CREATOR_ACTION_FALLBACK"
     return 0
   fi
   printf '%s' 'yabai -m space --create'
@@ -250,13 +270,6 @@ load_cached_space_icons() {
     CACHED_SPACE_ICONS[$cache_name]="$cache_value"
   done
   shopt -u nullglob
-}
-
-cached_space_icon() {
-  local space_index="${1:-}"
-  [ -n "$space_index" ] || return 0
-  load_cached_space_icons
-  printf '%s' "${CACHED_SPACE_ICONS[$space_index]-}"
 }
 
 count_desired_space_items() {
@@ -345,6 +358,7 @@ schedule_spaces_retry() {
 CREATOR_MODE="$(resolve_creator_mode)"
 SPACE_ITEM_HEIGHT="$(resolve_space_item_height)"
 SIMPLE_SPACES_START_MS="$(now_ms)"
+initialize_action_prefixes
 
 RAW_SPACES_DATA=""
 if [ -n "$YABAI_BIN" ]; then
@@ -567,6 +581,7 @@ if [ -d "$ICON_CACHE_DIR" ]; then
 fi
 
 FULL_REBUILD_DISCOVERY_END_MS="$(now_ms)"
+load_cached_space_icons
 
 rebuild_creator_items_only() {
   local anchor_item="${1:-}"
@@ -640,11 +655,9 @@ apply_incremental_space_items() {
     fi
 
     icon="$space_index"
-    if [ -f "$ICON_CACHE_DIR/$space_index" ]; then
-      cached_icon="$(cat "$ICON_CACHE_DIR/$space_index" 2>/dev/null || true)"
-      if [ -n "$cached_icon" ]; then
-        icon="$cached_icon"
-      fi
+    cached_icon="${CACHED_SPACE_ICONS[$space_index]-}"
+    if [ -n "$cached_icon" ]; then
+      icon="$cached_icon"
     fi
     click_action="$(space_click_action "$space_index")"
 
@@ -746,7 +759,7 @@ for entry in "${SPACE_LINES[@]}"; do
   fi
 
   icon="$space_index"
-  cached_icon="$(cached_space_icon "$space_index")"
+  cached_icon="${CACHED_SPACE_ICONS[$space_index]-}"
   if [ -n "$cached_icon" ]; then
     icon="$cached_icon"
   fi

@@ -61,6 +61,8 @@ Following the initial audit, the active runtime path was tightened again in Apri
     - diff-path prep now reads `.spaces_signatures` once into cached shell variables instead of rescanning it with multiple `awk` processes
     - full-rebuild prep now skips diff-signature computation entirely when the current bar snapshot has no `space.*` items, avoiding work that cannot produce an incremental update on cold reloads
     - full-rebuild prep now bulk-loads cached space icons once per run instead of probing one cache file per space during the item-build loop
+    - `simple_spaces.sh` now prefers the cheaper Perl timing path before `python3`, so phase metrics no longer add as much timestamp-process overhead to the topology hot path
+    - the space/creator click-action prefixes are now resolved once per run, and both full and incremental item loops reuse the preloaded icon cache directly instead of rechecking script paths or cache files per space
     - `space_visuals.sh` now coalesces overlapping runs and cools down `front_app_switched` updates immediately after authoritative refreshes
     - `front_app_switched` now has a focused-space fast path: `space_visuals.sh` delegates current-space resolution to `scripts/front_app_context.sh`, updates only the focused visible space, and skips the full `yabai --windows` snapshot
     - `space_visuals.sh` now caches the `space.*` item lookup under `cache/space_visuals/space_items` and reuses it on the focused-space fast path, avoiding a full `sketchybar --query bar` on repeated `front_app_switched` visual refreshes

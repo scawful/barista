@@ -207,6 +207,7 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **Prep-Path Reuse:** `plugins/simple_spaces.sh` now reuses one state-file read, one bar snapshot, and one sorted pass over yabai space data across the full-rebuild preparation path.
 - **Cached Prep Reads:** full-rebuild prep now also reuses one display-state snapshot and one signature-cache read instead of re-querying yabai/displays or rescanning `.spaces_signatures` multiple times.
 - **Cheaper Full Rebuild Prep:** when a reload starts from an empty `space.*` snapshot, `plugins/simple_spaces.sh` now skips diff-signature work entirely and bulk-loads cached space icons once instead of reading one cache file per space.
+- **Cheaper Spaces Build Loop:** `plugins/simple_spaces.sh` now resolves space/creator action prefixes once per run, reuses the preloaded icon cache for both full and incremental item assembly, and uses the cheaper shell clock path for its phase timing.
 - **Tuning:** See [docs/PERFORMANCE_AUDIT.md](docs/PERFORMANCE_AUDIT.md) for the active runtime model and performance checklist.
 
 ## Testing

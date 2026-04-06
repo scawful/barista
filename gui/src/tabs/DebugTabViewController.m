@@ -1,7 +1,7 @@
 #import "ConfigurationManager.h"
-#import <Cocoa/Cocoa.h>
+#import "BaristaTabBaseViewController.h"
 
-@interface DebugTabViewController : NSViewController
+@interface DebugTabViewController : BaristaTabBaseViewController
 @property (strong) NSButton *verboseToggle;
 @property (strong) NSButton *hotloadToggle;
 @property (strong) NSButton *menuHoverToggle;
@@ -12,147 +12,150 @@
 
 @implementation DebugTabViewController
 
-- (void)loadView {
-  self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
-}
-
 - (void)viewDidLoad {
   [super viewDidLoad];
 
-  CGFloat x = 60;
-  CGFloat y = 680;
-  CGFloat leftMargin = 40;
+  NSStackView *rootStack = nil;
+  [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(28, 34, 34, 34) spacing:20];
 
-  // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y + 20, 400, 30)];
-  title.stringValue = @"Debug & Diagnostics";
-  title.font = [NSFont systemFontOfSize:20 weight:NSFontWeightBold];
-  title.bordered = NO;
-  title.editable = NO;
-  title.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:title];
-  y -= 40;
+  [rootStack addView:[self titleLabel:@"Debug & Diagnostics"] inGravity:NSStackViewGravityTop];
+  [rootStack addView:[self helperLabel:@"Keep raw diagnostics contained here. Use these controls when you are validating runtime behavior, debugging menu cache issues, or restarting window-manager helpers."] inGravity:NSStackViewGravityTop];
 
-  NSTextField *togglesTitle = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y, 300, 24)];
-  togglesTitle.stringValue = @"Runtime Toggles";
-  togglesTitle.font = [NSFont boldSystemFontOfSize:16];
-  togglesTitle.editable = NO;
-  togglesTitle.bezeled = NO;
-  togglesTitle.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:togglesTitle];
+  NSStackView *runtimeSection = nil;
+  NSBox *runtimeBox = [self sectionBoxWithTitle:@"Runtime Toggles"
+                                       subtitle:@"Low-level switches for verbose logging, hotload behavior, popup debugging, and refresh cadence."
+                                    contentStack:&runtimeSection];
+  [rootStack addView:runtimeBox inGravity:NSStackViewGravityTop];
+  [runtimeBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
-  y -= 40;
-  self.verboseToggle = [[NSButton alloc] initWithFrame:NSMakeRect(x, y, 260, 24)];
+  self.verboseToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   self.verboseToggle.buttonType = NSButtonTypeSwitch;
   self.verboseToggle.title = @"Verbose logging";
   self.verboseToggle.identifier = @"verbose_logging";
   self.verboseToggle.target = self;
   self.verboseToggle.action = @selector(toggleDebugOption:);
-  [self.view addSubview:self.verboseToggle];
+  [runtimeSection addView:self.verboseToggle inGravity:NSStackViewGravityTop];
 
-  y -= 30;
-  self.hotloadToggle = [[NSButton alloc] initWithFrame:NSMakeRect(x, y, 260, 24)];
+  self.hotloadToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   self.hotloadToggle.buttonType = NSButtonTypeSwitch;
   self.hotloadToggle.title = @"Enable hotload";
   self.hotloadToggle.identifier = @"hotload_enabled";
   self.hotloadToggle.target = self;
   self.hotloadToggle.action = @selector(toggleDebugOption:);
-  [self.view addSubview:self.hotloadToggle];
+  [runtimeSection addView:self.hotloadToggle inGravity:NSStackViewGravityTop];
 
-  y -= 30;
-  self.menuHoverToggle = [[NSButton alloc] initWithFrame:NSMakeRect(x, y, 260, 24)];
+  self.menuHoverToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   self.menuHoverToggle.buttonType = NSButtonTypeSwitch;
   self.menuHoverToggle.title = @"Popup hover outline";
   self.menuHoverToggle.identifier = @"popup_debug";
   self.menuHoverToggle.target = self;
   self.menuHoverToggle.action = @selector(toggleDebugOption:);
-  [self.view addSubview:self.menuHoverToggle];
+  [runtimeSection addView:self.menuHoverToggle inGravity:NSStackViewGravityTop];
 
-  y -= 60;
-  NSTextField *refreshLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y, 200, 24)];
-  refreshLabel.stringValue = @"Widget Refresh (ms):";
-  refreshLabel.editable = NO;
-  refreshLabel.bezeled = NO;
-  refreshLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:refreshLabel];
+  NSStackView *refreshRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  refreshRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  refreshRow.spacing = 12;
+  [runtimeSection addView:refreshRow inGravity:NSStackViewGravityTop];
 
-  self.refreshSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(x + 200, y, 200, 24)];
+  NSTextField *refreshLabel = [self fieldLabel:@"Widget refresh"];
+  [refreshRow addView:refreshLabel inGravity:NSStackViewGravityLeading];
+
+  self.refreshSlider = [[NSSlider alloc] initWithFrame:NSZeroRect];
   self.refreshSlider.minValue = 100;
   self.refreshSlider.maxValue = 2000;
   self.refreshSlider.target = self;
   self.refreshSlider.action = @selector(refreshChanged:);
-  [self.view addSubview:self.refreshSlider];
+  [self.refreshSlider.widthAnchor constraintGreaterThanOrEqualToConstant:220].active = YES;
+  [refreshRow addView:self.refreshSlider inGravity:NSStackViewGravityLeading];
 
-  self.refreshLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(x + 420, y, 80, 24)];
+  self.refreshLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.refreshLabel.editable = NO;
   self.refreshLabel.bezeled = NO;
   self.refreshLabel.backgroundColor = [NSColor clearColor];
   self.refreshLabel.stringValue = @"500 ms";
-  [self.view addSubview:self.refreshLabel];
+  [self.refreshLabel.widthAnchor constraintEqualToConstant:80].active = YES;
+  [refreshRow addView:self.refreshLabel inGravity:NSStackViewGravityLeading];
 
-  CGFloat buttonY = 320;
-  NSButton *rebuildButton = [[NSButton alloc] initWithFrame:NSMakeRect(x, buttonY + 120, 200, 32)];
+  NSStackView *opsSection = nil;
+  NSBox *opsBox = [self sectionBoxWithTitle:@"Panel Operations"
+                                   subtitle:@"Actions that rebuild, inspect, or clear local runtime state."
+                                contentStack:&opsSection];
+  [rootStack addView:opsBox inGravity:NSStackViewGravityTop];
+  [opsBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+
+  NSStackView *opsButtons = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  opsButtons.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  opsButtons.spacing = 12;
+  [opsSection addView:opsButtons inGravity:NSStackViewGravityTop];
+
+  NSButton *rebuildButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [rebuildButton setButtonType:NSButtonTypeMomentaryPushIn];
   [rebuildButton setBezelStyle:NSBezelStyleRounded];
   rebuildButton.title = @"Rebuild & Reload";
   rebuildButton.target = self;
   rebuildButton.action = @selector(rebuildAndReload:);
-  [self.view addSubview:rebuildButton];
+  [opsButtons addView:rebuildButton inGravity:NSStackViewGravityLeading];
 
-  NSButton *logsButton = [[NSButton alloc] initWithFrame:NSMakeRect(x, buttonY + 70, 200, 32)];
+  NSButton *logsButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [logsButton setButtonType:NSButtonTypeMomentaryPushIn];
   [logsButton setBezelStyle:NSBezelStyleRounded];
   logsButton.title = @"Open Logs";
   logsButton.target = self;
   logsButton.action = @selector(openLogs:);
-  [self.view addSubview:logsButton];
+  [opsButtons addView:logsButton inGravity:NSStackViewGravityLeading];
 
-  NSButton *flushButton = [[NSButton alloc] initWithFrame:NSMakeRect(x, buttonY + 20, 200, 32)];
+  NSButton *flushButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [flushButton setButtonType:NSButtonTypeMomentaryPushIn];
   [flushButton setBezelStyle:NSBezelStyleRounded];
   flushButton.title = @"Flush Menu Cache";
   flushButton.target = self;
   flushButton.action = @selector(flushMenuCache:);
-  [self.view addSubview:flushButton];
+  [opsButtons addView:flushButton inGravity:NSStackViewGravityLeading];
 
-  NSTextField *wmTitle = [[NSTextField alloc] initWithFrame:NSMakeRect(x, 300, 300, 24)];
-  wmTitle.stringValue = @"Window Manager";
-  wmTitle.font = [NSFont boldSystemFontOfSize:16];
-  wmTitle.editable = NO;
-  wmTitle.bezeled = NO;
-  wmTitle.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:wmTitle];
+  NSStackView *wmSection = nil;
+  NSBox *wmBox = [self sectionBoxWithTitle:@"Window Manager"
+                                  subtitle:@"Run health checks or restart yabai/skhd helpers when the bar and spaces drift out of sync."
+                               contentStack:&wmSection];
+  [rootStack addView:wmBox inGravity:NSStackViewGravityTop];
+  [wmBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
-  NSButton *doctorButton = [[NSButton alloc] initWithFrame:NSMakeRect(x, 260, 200, 32)];
+  NSStackView *wmButtons = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  wmButtons.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  wmButtons.spacing = 12;
+  [wmSection addView:wmButtons inGravity:NSStackViewGravityTop];
+
+  NSButton *doctorButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [doctorButton setButtonType:NSButtonTypeMomentaryPushIn];
   [doctorButton setBezelStyle:NSBezelStyleRounded];
   doctorButton.title = @"Run Yabai Doctor";
   doctorButton.target = self;
   doctorButton.action = @selector(runYabaiDoctor:);
-  [self.view addSubview:doctorButton];
+  [wmButtons addView:doctorButton inGravity:NSStackViewGravityLeading];
 
-  NSButton *restartYabaiButton = [[NSButton alloc] initWithFrame:NSMakeRect(x, 220, 200, 32)];
+  NSButton *restartYabaiButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [restartYabaiButton setButtonType:NSButtonTypeMomentaryPushIn];
   [restartYabaiButton setBezelStyle:NSBezelStyleRounded];
   restartYabaiButton.title = @"Restart Yabai";
   restartYabaiButton.target = self;
   restartYabaiButton.action = @selector(restartYabai:);
-  [self.view addSubview:restartYabaiButton];
+  [wmButtons addView:restartYabaiButton inGravity:NSStackViewGravityLeading];
 
-  NSButton *restartShortcutsButton = [[NSButton alloc] initWithFrame:NSMakeRect(x, 180, 200, 32)];
+  NSButton *restartShortcutsButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [restartShortcutsButton setButtonType:NSButtonTypeMomentaryPushIn];
   [restartShortcutsButton setBezelStyle:NSBezelStyleRounded];
   restartShortcutsButton.title = @"Restart Shortcuts";
   restartShortcutsButton.target = self;
   restartShortcutsButton.action = @selector(restartShortcuts:);
-  [self.view addSubview:restartShortcutsButton];
+  [wmButtons addView:restartShortcutsButton inGravity:NSStackViewGravityLeading];
 
-  self.statusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(x, 140, 900, 24)];
+  self.statusLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.statusLabel.editable = NO;
   self.statusLabel.bezeled = NO;
   self.statusLabel.backgroundColor = [NSColor clearColor];
   self.statusLabel.stringValue = @"Ready.";
-  [self.view addSubview:self.statusLabel];
+  self.statusLabel.font = [NSFont systemFontOfSize:12];
+  self.statusLabel.textColor = [NSColor secondaryLabelColor];
+  [rootStack addView:self.statusLabel inGravity:NSStackViewGravityTop];
 
   [self loadDebugDefaults];
 }
@@ -192,7 +195,7 @@
 
   if ([sender.identifier isEqualToString:@"hotload_enabled"]) {
     NSTask *task = [[NSTask alloc] init];
-    task.launchPath = @"/opt/homebrew/opt/sketchybar/bin/sketchybar";
+    task.launchPath = [self.config resolveSketchyBarBinary];
     task.arguments = @[@"--hotload", enabled ? @"on" : @"off"];
     [task launch];
   }

@@ -1,6 +1,6 @@
-#import <Cocoa/Cocoa.h>
+#import "BaristaTabBaseViewController.h"
 
-@interface DebugTabViewController : NSViewController
+@interface DebugTabViewController : BaristaTabBaseViewController
 @property (strong) NSButton *verboseToggle;
 @property (strong) NSButton *hotloadToggle;
 @property (strong) NSButton *menuHoverToggle;

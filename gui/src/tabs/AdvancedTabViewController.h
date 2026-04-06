@@ -1,6 +1,6 @@
-#import <Cocoa/Cocoa.h>
+#import "BaristaTabBaseViewController.h"
 
-@interface AdvancedTabViewController : NSViewController <NSTextViewDelegate>
+@interface AdvancedTabViewController : BaristaTabBaseViewController <NSTextViewDelegate>
 @property (strong) NSTextView *jsonEditor;
 @property (strong) NSButton *saveButton;
 @property (strong) NSButton *reloadButton;

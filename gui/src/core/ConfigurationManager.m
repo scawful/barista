@@ -1,4 +1,6 @@
 #import <Cocoa/Cocoa.h>
+#import <limits.h>
+#import <stdio.h>
 
 // MARK: - Configuration Manager (Shared Singleton)
 
@@ -9,10 +11,14 @@
 @property (copy, nonatomic) NSString *codePath;
 @property (strong, nonatomic) NSMutableDictionary *state;
 @property (strong, nonatomic) dispatch_block_t reloadWorkItem;
+@property (copy, nonatomic) NSString *sketchyBarBinaryPath;
+@property (assign, nonatomic) NSUInteger batchDepth;
+@property (assign, nonatomic) BOOL batchDirty;
 
 + (instancetype)sharedManager;
 - (BOOL)loadState;
 - (BOOL)saveState;
+- (void)performBatchUpdates:(dispatch_block_t)updates;
 - (id)valueForKeyPath:(NSString *)keyPath defaultValue:(id)defaultValue;
 - (void)setValue:(id)value forKeyPath:(NSString *)keyPath;
 - (void)reloadSketchyBar;
@@ -147,6 +153,55 @@
   self.codePath = [self resolveCodePath];
 }
 
+- (NSString *)resolveSketchyBarBinary {
+  NSArray<NSString *> *envKeys = @[@"BARISTA_SKETCHYBAR_BIN", @"SKETCHYBAR_BIN"];
+  NSFileManager *fm = [NSFileManager defaultManager];
+  for (NSString *key in envKeys) {
+    NSString *candidate = [[[NSProcessInfo processInfo] environment] objectForKey:key];
+    if ([candidate isKindOfClass:[NSString class]] && candidate.length > 0
+        && [fm isExecutableFileAtPath:candidate]) {
+      return candidate;
+    }
+  }
+
+  FILE *handle = popen("command -v sketchybar 2>/dev/null", "r");
+  if (handle) {
+    char buffer[PATH_MAX] = {0};
+    if (fgets(buffer, sizeof(buffer), handle) != NULL) {
+      NSString *candidate = [[NSString stringWithUTF8String:buffer]
+        stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+      pclose(handle);
+      if (candidate.length > 0 && [fm isExecutableFileAtPath:candidate]) {
+        return candidate;
+      }
+    } else {
+      pclose(handle);
+    }
+  }
+
+  NSArray<NSString *> *fallbacks = @[
+    @"/opt/homebrew/opt/sketchybar/bin/sketchybar",
+    @"/opt/homebrew/bin/sketchybar",
+    @"/usr/local/opt/sketchybar/bin/sketchybar",
+    @"/usr/local/bin/sketchybar"
+  ];
+  for (NSString *candidate in fallbacks) {
+    if ([fm isExecutableFileAtPath:candidate]) {
+      return candidate;
+    }
+  }
+
+  return @"sketchybar";
+}
+
+- (void)markStateDirty {
+  if (self.batchDepth > 0) {
+    self.batchDirty = YES;
+    return;
+  }
+  [self saveState];
+}
+
 - (BOOL)loadState {
   NSData *data = [NSData dataWithContentsOfFile:self.statePath];
   if (!data) {
@@ -170,10 +225,22 @@
 }
 
 - (BOOL)saveState {
-  // Atomic write: write to temp file, then rename
-  NSString *tempPath = [self.statePath stringByAppendingString:@".tmp"];
-  
+  NSString *stateDir = [self.statePath stringByDeletingLastPathComponent];
+  NSFileManager *fm = [NSFileManager defaultManager];
   NSError *error = nil;
+  if (stateDir.length > 0) {
+    [fm createDirectoryAtPath:stateDir withIntermediateDirectories:YES attributes:nil error:&error];
+    if (error) {
+      NSLog(@"Failed to create state directory %@: %@", stateDir, error);
+      return NO;
+    }
+  }
+
+  NSString *tempPath = [stateDir stringByAppendingPathComponent:
+    [NSString stringWithFormat:@".%@.%@.tmp",
+                              [self.statePath lastPathComponent],
+                              [[NSUUID UUID] UUIDString]]];
+
   NSData *data = [NSJSONSerialization dataWithJSONObject:self.state
                                                  options:NSJSONWritingPrettyPrinted
                                                    error:&error];
@@ -185,17 +252,41 @@
   if (![data writeToFile:tempPath atomically:YES]) {
     return NO;
   }
-  
-  // Atomic rename
-  NSFileManager *fm = [NSFileManager defaultManager];
-  if (![fm moveItemAtPath:tempPath toPath:self.statePath error:&error]) {
-    NSLog(@"Failed to rename temp file: %@", error);
+
+  NSURL *stateURL = [NSURL fileURLWithPath:self.statePath];
+  NSURL *tempURL = [NSURL fileURLWithPath:tempPath];
+  BOOL stateExists = [fm fileExistsAtPath:self.statePath];
+  if (stateExists) {
+    if (![fm replaceItemAtURL:stateURL withItemAtURL:tempURL backupItemName:nil options:0 resultingItemURL:nil error:&error]) {
+      NSLog(@"Failed to replace state file: %@", error);
+      [fm removeItemAtPath:tempPath error:nil];
+      return NO;
+    }
+  } else if (![fm moveItemAtURL:tempURL toURL:stateURL error:&error]) {
+    NSLog(@"Failed to move state file into place: %@", error);
     [fm removeItemAtPath:tempPath error:nil];
     return NO;
   }
 
   [self refreshPaths];
   return YES;
+}
+
+- (void)performBatchUpdates:(dispatch_block_t)updates {
+  self.batchDepth += 1;
+  @try {
+    if (updates) {
+      updates();
+    }
+  } @finally {
+    if (self.batchDepth > 0) {
+      self.batchDepth -= 1;
+    }
+    if (self.batchDepth == 0 && self.batchDirty) {
+      self.batchDirty = NO;
+      [self saveState];
+    }
+  }
 }
 
 - (id)valueForKeyPath:(NSString *)keyPath defaultValue:(id)defaultValue {
@@ -217,8 +308,13 @@
     current = current[key];
   }
 
+  id existing = current[components.lastObject];
+  if ((existing == value) || [existing isEqual:value]) {
+    return;
+  }
+
   current[components.lastObject] = value;
-  [self saveState];
+  [self markStateDirty];
 }
 
 - (void)removeValueForKeyPath:(NSString *)keyPath {
@@ -235,8 +331,12 @@
     current = current[key];
   }
 
+  if (!current[components.lastObject]) {
+    return;
+  }
+
   [current removeObjectForKey:components.lastObject];
-  [self saveState];
+  [self markStateDirty];
 }
 
 - (void)reloadSketchyBar {
@@ -247,8 +347,27 @@
 
   __weak typeof(self) weakSelf = self;
   dispatch_block_t work = dispatch_block_create(0, ^{
-    system("/opt/homebrew/opt/sketchybar/bin/sketchybar --reload");
     __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (strongSelf) {
+      if (!strongSelf.sketchyBarBinaryPath.length) {
+        strongSelf.sketchyBarBinaryPath = [strongSelf resolveSketchyBarBinary];
+      }
+
+      NSTask *task = [[NSTask alloc] init];
+      if ([strongSelf.sketchyBarBinaryPath hasPrefix:@"/"]) {
+        task.launchPath = strongSelf.sketchyBarBinaryPath;
+        task.arguments = @[@"--reload"];
+      } else {
+        task.launchPath = @"/usr/bin/env";
+        task.arguments = @[strongSelf.sketchyBarBinaryPath, @"--reload"];
+      }
+
+      @try {
+        [task launch];
+      } @catch (NSException *exception) {
+        NSLog(@"Failed to reload SketchyBar: %@", exception);
+      }
+    }
     if (strongSelf) {
       strongSelf.reloadWorkItem = nil;
     }

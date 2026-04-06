@@ -1,6 +1,6 @@
-#import <Cocoa/Cocoa.h>
+#import "BaristaTabBaseViewController.h"
 
-@interface SpacesTabViewController : NSViewController
+@interface SpacesTabViewController : BaristaTabBaseViewController
 @property (strong) NSPopUpButton *spaceSelector;
 @property (strong) NSTextField *iconField;
 @property (strong) NSTextField *iconPreview;

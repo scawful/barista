@@ -1,7 +1,8 @@
+#import "IntegrationsTabViewController.h"
 #import "ConfigurationManager.h"
-#import <Cocoa/Cocoa.h>
+#import "BaristaCommandBus.h"
 
-@interface IntegrationsTabViewController : NSViewController <NSTextFieldDelegate>
+@interface IntegrationsTabViewController ()
 @property (strong) NSScrollView *scrollView;
 @property (strong) NSView *contentView;
 @property (strong) NSButton *yazeToggle;
@@ -15,24 +16,6 @@
 @property (strong) NSSecureTextField *halextApiKeyField;
 @property (strong) NSTextField *halextStatus;
 @property (strong) NSButton *halextTestButton;
-@property (strong) NSButton *cortexToggle;
-@property (strong) NSButton *cortexWidgetToggle;
-@property (strong) NSPopUpButton *cortexLabelModeMenu;
-@property (strong) NSTextField *cortexLabelPrefixField;
-@property (strong) NSTextField *cortexUpdateFreqField;
-@property (strong) NSTextField *cortexCacheTtlField;
-@property (strong) NSPopUpButton *cortexPositionMenu;
-@property (strong) NSTextField *cortexLabelTemplateField;
-@property (strong) NSTextField *cortexActiveIconField;
-@property (strong) NSTextField *cortexInactiveIconField;
-@property (strong) NSTextField *cortexActiveIconPreview;
-@property (strong) NSTextField *cortexInactiveIconPreview;
-@property (strong) NSColorWell *cortexActiveColorWell;
-@property (strong) NSTextField *cortexActiveColorHexField;
-@property (strong) NSColorWell *cortexInactiveColorWell;
-@property (strong) NSTextField *cortexInactiveColorHexField;
-@property (strong) NSColorWell *cortexLabelColorWell;
-@property (strong) NSTextField *cortexLabelColorHexField;
 @end
 
 @implementation IntegrationsTabViewController
@@ -156,30 +139,13 @@
   return nil;
 }
 
-- (void)loadView {
-  self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
-}
-
 - (void)viewDidLoad {
   [super viewDidLoad];
 
   ConfigurationManager *config = [ConfigurationManager sharedManager];
 
-  self.scrollView = [[NSScrollView alloc] initWithFrame:self.view.bounds];
-  self.scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  self.scrollView.hasVerticalScroller = YES;
-  self.scrollView.autohidesScrollers = YES;
-  self.scrollView.borderType = NSNoBorder;
-  self.scrollView.drawsBackground = NO;
-  [self.view addSubview:self.scrollView];
-
-  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
-  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  rootStack.alignment = NSLayoutAttributeLeading;
-  rootStack.spacing = 30;
-  rootStack.edgeInsets = NSEdgeInsetsMake(30, 40, 40, 40);
-  self.scrollView.documentView = rootStack;
-  [rootStack.widthAnchor constraintEqualToAnchor:self.scrollView.widthAnchor].active = YES;
+  NSStackView *rootStack = nil;
+  self.scrollView = [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(28, 34, 34, 34) spacing:22];
 
   // Title
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
@@ -190,12 +156,23 @@
   title.backgroundColor = [NSColor clearColor];
   [rootStack addView:title inGravity:NSStackViewGravityTop];
 
+  NSTextField *subtitle = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  subtitle.stringValue = @"Keep external tools connected without turning this panel into a second application launcher. Toggle integration presence, verify paths, and jump out when you need the real tool.";
+  subtitle.font = [NSFont systemFontOfSize:12.5];
+  subtitle.textColor = [NSColor secondaryLabelColor];
+  subtitle.bordered = NO;
+  subtitle.editable = NO;
+  subtitle.backgroundColor = [NSColor clearColor];
+  subtitle.usesSingleLineMode = NO;
+  subtitle.lineBreakMode = NSLineBreakByWordWrapping;
+  [rootStack addView:subtitle inGravity:NSStackViewGravityTop];
+
   // MARK: Yaze Integration
   NSBox *yazeBox = [[NSBox alloc] initWithFrame:NSZeroRect];
   yazeBox.title = @"Yaze (ROM Hacking Tool)";
   yazeBox.titlePosition = NSAtTop;
   [rootStack addView:yazeBox inGravity:NSStackViewGravityTop];
-  [yazeBox.widthAnchor constraintEqualToConstant:700].active = YES;
+  [yazeBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
   NSStackView *yazeStack = [[NSStackView alloc] initWithFrame:NSInsetRect(yazeBox.bounds, 20, 20)];
   yazeStack.orientation = NSUserInterfaceLayoutOrientationVertical;
@@ -248,7 +225,7 @@
   emacsBox.title = @"Emacs";
   emacsBox.titlePosition = NSAtTop;
   [rootStack addView:emacsBox inGravity:NSStackViewGravityTop];
-  [emacsBox.widthAnchor constraintEqualToConstant:700].active = YES;
+  [emacsBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
   NSStackView *emacsStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
   emacsStack.orientation = NSUserInterfaceLayoutOrientationVertical;
@@ -284,84 +261,12 @@
 
   [self updateEmacsStatus];
 
-  // MARK: Cortex Integration
-  NSBox *cortexBox = [[NSBox alloc] initWithFrame:NSZeroRect];
-  cortexBox.title = @"Cortex (AFS / Training)";
-  cortexBox.titlePosition = NSAtTop;
-  [rootStack addView:cortexBox inGravity:NSStackViewGravityTop];
-  [cortexBox.widthAnchor constraintEqualToConstant:700].active = YES;
-
-  NSStackView *cortexStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
-  cortexStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  cortexStack.alignment = NSLayoutAttributeLeading;
-  cortexStack.spacing = 16;
-  cortexStack.edgeInsets = NSEdgeInsetsMake(15, 20, 15, 20);
-  cortexBox.contentView = cortexStack;
-
-  self.cortexToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
-  [self.cortexToggle setButtonType:NSButtonTypeSwitch];
-  self.cortexToggle.title = @"Enable Cortex Integration";
-  self.cortexToggle.target = self;
-  self.cortexToggle.action = @selector(cortexToggled:);
-  BOOL cortexEnabled = [[config valueForKeyPath:@"integrations.cortex.enabled" defaultValue:@NO] boolValue];
-  self.cortexToggle.state = cortexEnabled ? NSControlStateValueOn : NSControlStateValueOff;
-  [cortexStack addView:self.cortexToggle inGravity:NSStackViewGravityTop];
-
-  self.cortexWidgetToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
-  [self.cortexWidgetToggle setButtonType:NSButtonTypeSwitch];
-  self.cortexWidgetToggle.title = @"Show Cortex Widget";
-  self.cortexWidgetToggle.target = self;
-  self.cortexWidgetToggle.action = @selector(cortexWidgetToggled:);
-  BOOL cortexWidgetEnabled = [[config valueForKeyPath:@"integrations.cortex.widget.enabled" defaultValue:@YES] boolValue];
-  self.cortexWidgetToggle.state = cortexWidgetEnabled ? NSControlStateValueOn : NSControlStateValueOff;
-  [cortexStack addView:self.cortexWidgetToggle inGravity:NSStackViewGravityTop];
-
-  NSGridView *cortexGrid = [[NSGridView alloc] initWithFrame:NSZeroRect];
-  cortexGrid.rowSpacing = 10;
-  cortexGrid.columnSpacing = 12;
-  [cortexStack addView:cortexGrid inGravity:NSStackViewGravityTop];
-
-  NSTextField *modeLabel = [self label:@"Label Mode:"];
-  self.cortexLabelModeMenu = [[NSPopUpButton alloc] initWithFrame:NSZeroRect];
-  [self.cortexLabelModeMenu addItemsWithTitles:@[@"Training", @"AFS", @"Status", @"None"]];
-  self.cortexLabelModeMenu.target = self;
-  self.cortexLabelModeMenu.action = @selector(cortexLabelModeChanged:);
-  [self.cortexLabelModeMenu.widthAnchor constraintEqualToConstant:180].active = YES;
-  NSString *labelMode = [config valueForKeyPath:@"integrations.cortex.widget.label_mode" defaultValue:@"training"];
-  [self.cortexLabelModeMenu selectItemAtIndex:([labelMode isEqualToString:@"afs"] ? 1 : ([labelMode isEqualToString:@"status"] ? 2 : ([labelMode isEqualToString:@"none"] ? 3 : 0)))];
-  [cortexGrid addRowWithViews:@[modeLabel, self.cortexLabelModeMenu]];
-
-  NSTextField *prefixLabel = [self label:@"Prefix:"];
-  self.cortexLabelPrefixField = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  self.cortexLabelPrefixField.placeholderString = @"AFS";
-  self.cortexLabelPrefixField.target = self;
-  self.cortexLabelPrefixField.action = @selector(cortexFieldChanged:);
-  [self.cortexLabelPrefixField.widthAnchor constraintEqualToConstant:180].active = YES;
-  self.cortexLabelPrefixField.stringValue = [config valueForKeyPath:@"integrations.cortex.widget.label_prefix" defaultValue:@"AFS"] ?: @"";
-  [cortexGrid addRowWithViews:@[prefixLabel, self.cortexLabelPrefixField]];
-
-  NSTextField *freqLabel = [self label:@"Update (sec):"];
-  self.cortexUpdateFreqField = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  self.cortexUpdateFreqField.target = self;
-  self.cortexUpdateFreqField.action = @selector(cortexFieldChanged:);
-  [self.cortexUpdateFreqField.widthAnchor constraintEqualToConstant:80].active = YES;
-  self.cortexUpdateFreqField.stringValue = [NSString stringWithFormat:@"%@", [config valueForKeyPath:@"integrations.cortex.widget.update_freq" defaultValue:@180]];
-  [cortexGrid addRowWithViews:@[freqLabel, self.cortexUpdateFreqField]];
-
-  NSTextField *cacheLabel = [self label:@"Cache TTL:"];
-  self.cortexCacheTtlField = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  self.cortexCacheTtlField.target = self;
-  self.cortexCacheTtlField.action = @selector(cortexFieldChanged:);
-  [self.cortexCacheTtlField.widthAnchor constraintEqualToConstant:80].active = YES;
-  self.cortexCacheTtlField.stringValue = [NSString stringWithFormat:@"%@", [config valueForKeyPath:@"integrations.cortex.widget.cache_ttl" defaultValue:@180]];
-  [cortexGrid addRowWithViews:@[cacheLabel, self.cortexCacheTtlField]];
-
   // MARK: halext-org Integration
   NSBox *halextBox = [[NSBox alloc] initWithFrame:NSZeroRect];
   halextBox.title = @"halext-org Server (Tasks, Calendar, LLM)";
   halextBox.titlePosition = NSAtTop;
   [rootStack addView:halextBox inGravity:NSStackViewGravityTop];
-  [halextBox.widthAnchor constraintEqualToConstant:700].active = YES;
+  [halextBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
   NSStackView *halextStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
   halextStack.orientation = NSUserInterfaceLayoutOrientationVertical;
@@ -386,14 +291,21 @@
 
   NSTextField *serverLabel = [self label:@"Server URL:"];
   self.halextServerField = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  [self.halextServerField.widthAnchor constraintEqualToConstant:400].active = YES;
+  [self.halextServerField.widthAnchor constraintGreaterThanOrEqualToConstant:200].active = YES;
+  [self.halextServerField setContentHuggingPriority:200 forOrientation:NSLayoutConstraintOrientationHorizontal];
   self.halextServerField.stringValue = [config valueForKeyPath:@"integrations.halext.server_url" defaultValue:@""];
   [halextGrid addRowWithViews:@[serverLabel, self.halextServerField]];
 
   NSTextField *apiKeyLabel = [self label:@"API Key:"];
   self.halextApiKeyField = [[NSSecureTextField alloc] initWithFrame:NSZeroRect];
-  [self.halextApiKeyField.widthAnchor constraintEqualToConstant:400].active = YES;
+  [self.halextApiKeyField.widthAnchor constraintGreaterThanOrEqualToConstant:200].active = YES;
+  [self.halextApiKeyField setContentHuggingPriority:200 forOrientation:NSLayoutConstraintOrientationHorizontal];
   [halextGrid addRowWithViews:@[apiKeyLabel, self.halextApiKeyField]];
+
+  NSString *savedApiKey = [config valueForKeyPath:@"integrations.halext.api_key" defaultValue:@""];
+  if (savedApiKey.length > 0 && ![savedApiKey isEqualToString:@"*** stored in keychain ***"]) {
+    self.halextApiKeyField.stringValue = savedApiKey;
+  }
 
   self.halextStatus = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.halextStatus.stringValue = @"Status: Not configured";
@@ -430,7 +342,7 @@
   quickBox.title = @"Developer Quick Actions";
   quickBox.titlePosition = NSAtTop;
   [rootStack addView:quickBox inGravity:NSStackViewGravityTop];
-  [quickBox.widthAnchor constraintEqualToConstant:700].active = YES;
+  [quickBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
   NSStackView *quickStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
   quickStack.orientation = NSUserInterfaceLayoutOrientationVertical;
@@ -444,7 +356,7 @@
   row1.spacing = 12;
   [quickStack addView:row1 inGravity:NSStackViewGravityTop];
 
-  for (NSString *title in @[@"Open AFS Repo", @"Launch AFS TUI", @"Open Cortex Repo"]) {
+  for (NSString *title in @[@"Open AFS Repo", @"Launch AFS TUI"]) {
     NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
     [btn setButtonType:NSButtonTypeMomentaryPushIn];
     [btn setBezelStyle:NSBezelStyleRounded];
@@ -452,7 +364,6 @@
     btn.target = self;
     if ([title containsString:@"AFS Repo"]) btn.action = @selector(openHafsRepo:);
     else if ([title containsString:@"TUI"]) btn.action = @selector(openHafsTui:);
-    else btn.action = @selector(openCortexRepo:);
     [row1 addView:btn inGravity:NSStackViewGravityLeading];
   }
 
@@ -461,14 +372,13 @@
   row2.spacing = 12;
   [quickStack addView:row2 inGravity:NSStackViewGravityTop];
 
-  for (NSString *title in @[@"Open halext-org Repo", @"Open Cortex App"]) {
+  for (NSString *title in @[@"Open halext-org Repo"]) {
     NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
     [btn setButtonType:NSButtonTypeMomentaryPushIn];
     [btn setBezelStyle:NSBezelStyleRounded];
     btn.title = title;
     btn.target = self;
     if ([title containsString:@"halext"]) btn.action = @selector(openHalextRepo:);
-    else btn.action = @selector(openCortexApp:);
     [row2 addView:btn inGravity:NSStackViewGravityLeading];
   }
 }
@@ -488,207 +398,23 @@
   BOOL enabled = sender.state == NSControlStateValueOn;
   ConfigurationManager *config = [ConfigurationManager sharedManager];
   [config setValue:@(enabled) forKeyPath:@"integrations.yaze.enabled"];
+  [self.commandBus reloadSketchyBar];
 }
 
 - (void)emacsToggled:(NSButton *)sender {
   BOOL enabled = sender.state == NSControlStateValueOn;
   ConfigurationManager *config = [ConfigurationManager sharedManager];
   [config setValue:@(enabled) forKeyPath:@"integrations.emacs.enabled"];
+  [self.commandBus reloadSketchyBar];
 }
 
 - (void)halextToggled:(NSButton *)sender {
   BOOL enabled = sender.state == NSControlStateValueOn;
   ConfigurationManager *config = [ConfigurationManager sharedManager];
   [config setValue:@(enabled) forKeyPath:@"integrations.halext.enabled"];
+  [self.commandBus reloadSketchyBar];
 }
 
-- (void)cortexToggled:(NSButton *)sender {
-  BOOL enabled = sender.state == NSControlStateValueOn;
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  [config setValue:@(enabled) forKeyPath:@"integrations.cortex.enabled"];
-  [config reloadSketchyBar];
-}
-
-- (void)cortexWidgetToggled:(NSButton *)sender {
-  BOOL enabled = sender.state == NSControlStateValueOn;
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  [config setValue:@(enabled) forKeyPath:@"integrations.cortex.widget.enabled"];
-  [config reloadSketchyBar];
-}
-
-- (void)cortexLabelModeChanged:(NSPopUpButton *)sender {
-  NSString *mode = @"training";
-  switch (sender.indexOfSelectedItem) {
-    case 1: mode = @"afs"; break;
-    case 2: mode = @"status"; break;
-    case 3: mode = @"none"; break;
-    default: mode = @"training"; break;
-  }
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  [config setValue:mode forKeyPath:@"integrations.cortex.widget.label_mode"];
-  [config reloadSketchyBar];
-}
-
-- (void)cortexFieldChanged:(id)sender {
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  if (sender == self.cortexLabelPrefixField) {
-    NSString *value = [self.cortexLabelPrefixField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    [config setValue:value forKeyPath:@"integrations.cortex.widget.label_prefix"];
-    [config reloadSketchyBar];
-    return;
-  }
-  if (sender == self.cortexUpdateFreqField) {
-    NSInteger value = self.cortexUpdateFreqField.integerValue;
-    if (value > 0) {
-      [config setValue:@(value) forKeyPath:@"integrations.cortex.widget.update_freq"];
-      [config reloadSketchyBar];
-    }
-    return;
-  }
-  if (sender == self.cortexCacheTtlField) {
-    NSInteger value = self.cortexCacheTtlField.integerValue;
-    if (value >= 0) {
-      [config setValue:@(value) forKeyPath:@"integrations.cortex.widget.cache_ttl"];
-      [config reloadSketchyBar];
-    }
-    return;
-  }
-}
-
-- (NSFont *)preferredIconFontWithSize:(CGFloat)size {
-  NSArray<NSString *> *candidates = @[
-    @"Hack Nerd Font",
-    @"JetBrainsMono Nerd Font",
-    @"FiraCode Nerd Font",
-    @"SFMono Nerd Font",
-    @"Symbols Nerd Font",
-    @"MesloLGS NF"
-  ];
-  for (NSString *name in candidates) {
-    NSFont *font = [NSFont fontWithName:name size:size];
-    if (font) {
-      return font;
-    }
-  }
-  return [NSFont monospacedSystemFontOfSize:size weight:NSFontWeightRegular];
-}
-
-- (NSColor *)colorFromHexString:(NSString *)hexString {
-  if (!hexString || hexString.length < 8) return nil;
-  NSString *hex = [hexString hasPrefix:@"0x"] ? [hexString substringFromIndex:2] : hexString;
-  if (hex.length != 8) return nil;
-
-  unsigned int alpha, red, green, blue;
-  NSScanner *scanner = [NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(0, 2)]];
-  [scanner scanHexInt:&alpha];
-  scanner = [NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(2, 2)]];
-  [scanner scanHexInt:&red];
-  scanner = [NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(4, 2)]];
-  [scanner scanHexInt:&green];
-  scanner = [NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(6, 2)]];
-  [scanner scanHexInt:&blue];
-
-  return [NSColor colorWithCalibratedRed:red/255.0 green:green/255.0 blue:blue/255.0 alpha:alpha/255.0];
-}
-
-- (NSString *)hexStringFromColor:(NSColor *)color {
-  NSColor *rgbColor = [color colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
-  int alpha = (int)(rgbColor.alphaComponent * 255);
-  int red = (int)(rgbColor.redComponent * 255);
-  int green = (int)(rgbColor.greenComponent * 255);
-  int blue = (int)(rgbColor.blueComponent * 255);
-  return [NSString stringWithFormat:@"0x%02X%02X%02X%02X", alpha, red, green, blue];
-}
-
-- (void)cortexPositionChanged:(NSPopUpButton *)sender {
-  NSString *position = sender.indexOfSelectedItem == 0 ? @"left" : @"right";
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  [config setValue:position forKeyPath:@"integrations.cortex.widget.position"];
-  [config reloadSketchyBar];
-}
-
-- (void)cortexStyleFieldChanged:(id)sender {
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  if (sender == self.cortexLabelTemplateField) {
-    NSString *value = [self.cortexLabelTemplateField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    [config setValue:value forKeyPath:@"integrations.cortex.widget.label_template"];
-    [config reloadSketchyBar];
-    return;
-  }
-  if (sender == self.cortexActiveIconField) {
-    NSString *value = [self.cortexActiveIconField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    [config setValue:value forKeyPath:@"integrations.cortex.widget.icon_active"];
-    self.cortexActiveIconPreview.stringValue = value ?: @"";
-    [config reloadSketchyBar];
-    return;
-  }
-  if (sender == self.cortexInactiveIconField) {
-    NSString *value = [self.cortexInactiveIconField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    [config setValue:value forKeyPath:@"integrations.cortex.widget.icon_inactive"];
-    self.cortexInactiveIconPreview.stringValue = value ?: @"";
-    [config reloadSketchyBar];
-    return;
-  }
-}
-
-- (void)cortexColorChanged:(NSColorWell *)sender {
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  if (sender == self.cortexActiveColorWell) {
-    NSString *hex = [self hexStringFromColor:sender.color];
-    self.cortexActiveColorHexField.stringValue = hex;
-    [config setValue:hex forKeyPath:@"integrations.cortex.widget.color_active"];
-  } else if (sender == self.cortexInactiveColorWell) {
-    NSString *hex = [self hexStringFromColor:sender.color];
-    self.cortexInactiveColorHexField.stringValue = hex;
-    [config setValue:hex forKeyPath:@"integrations.cortex.widget.color_inactive"];
-  } else if (sender == self.cortexLabelColorWell) {
-    NSString *hex = [self hexStringFromColor:sender.color];
-    self.cortexLabelColorHexField.stringValue = hex;
-    [config setValue:hex forKeyPath:@"integrations.cortex.widget.label_color"];
-  }
-  [config reloadSketchyBar];
-}
-
-- (void)controlTextDidChange:(NSNotification *)notification {
-  id field = notification.object;
-  if (field == self.cortexActiveIconField) {
-    self.cortexActiveIconPreview.stringValue = self.cortexActiveIconField.stringValue ?: @"";
-    return;
-  }
-  if (field == self.cortexInactiveIconField) {
-    self.cortexInactiveIconPreview.stringValue = self.cortexInactiveIconField.stringValue ?: @"";
-    return;
-  }
-
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  if (field == self.cortexActiveColorHexField) {
-    NSColor *color = [self colorFromHexString:self.cortexActiveColorHexField.stringValue];
-    if (color) {
-      self.cortexActiveColorWell.color = color;
-      [config setValue:[self hexStringFromColor:color] forKeyPath:@"integrations.cortex.widget.color_active"];
-      [config reloadSketchyBar];
-    }
-    return;
-  }
-  if (field == self.cortexInactiveColorHexField) {
-    NSColor *color = [self colorFromHexString:self.cortexInactiveColorHexField.stringValue];
-    if (color) {
-      self.cortexInactiveColorWell.color = color;
-      [config setValue:[self hexStringFromColor:color] forKeyPath:@"integrations.cortex.widget.color_inactive"];
-      [config reloadSketchyBar];
-    }
-    return;
-  }
-  if (field == self.cortexLabelColorHexField) {
-    NSColor *color = [self colorFromHexString:self.cortexLabelColorHexField.stringValue];
-    if (color) {
-      self.cortexLabelColorWell.color = color;
-      [config setValue:[self hexStringFromColor:color] forKeyPath:@"integrations.cortex.widget.label_color"];
-      [config reloadSketchyBar];
-    }
-    return;
-  }
-}
 
 - (void)updateYazeStatus {
   NSString *yazeDir = [self yazeDir];
@@ -803,21 +529,6 @@
   [self openTerminalCommand:command];
 }
 
-- (void)openCortexRepo:(id)sender {
-  NSString *path = [[self codeDir] stringByAppendingPathComponent:@"cortex"];
-  [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
-}
-
-- (void)openCortexApp:(id)sender {
-  NSString *appPath = @"/Applications/Cortex.app";
-  if ([[NSFileManager defaultManager] fileExistsAtPath:appPath]) {
-    [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:appPath]];
-  } else {
-    NSString *path = [[self codeDir] stringByAppendingPathComponent:@"cortex"];
-    [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
-  }
-}
-
 - (void)openHalextRepo:(id)sender {
   NSString *path = [[self codeDir] stringByAppendingPathComponent:@"halext-org"];
   [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
@@ -840,7 +551,7 @@
 
   NSString *apiKey = self.halextApiKeyField.stringValue;
   if ([apiKey length] > 0) {
-    [config setValue:@"*** stored in keychain ***" forKeyPath:@"integrations.halext.api_key_status"];
+    [config setValue:apiKey forKeyPath:@"integrations.halext.api_key"];
   }
 
   self.halextStatus.stringValue = @"Status: Settings saved";
@@ -848,14 +559,40 @@
 }
 
 - (void)testHalextConnection:(id)sender {
+  NSString *serverUrl = self.halextServerField.stringValue;
+  if (!serverUrl.length) {
+    self.halextStatus.stringValue = @"Status: No server URL configured";
+    self.halextStatus.textColor = [NSColor systemOrangeColor];
+    return;
+  }
   self.halextStatus.stringValue = @"Status: Testing connection...";
   self.halextStatus.textColor = [NSColor secondaryLabelColor];
 
-  // TODO: Implement actual REST API test
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-    self.halextStatus.stringValue = @"Status: Connection test not yet implemented";
-    self.halextStatus.textColor = [NSColor systemOrangeColor];
-  });
+  NSURL *url = [NSURL URLWithString:serverUrl];
+  if (!url) {
+    self.halextStatus.stringValue = @"Status: Invalid URL";
+    self.halextStatus.textColor = [NSColor systemRedColor];
+    return;
+  }
+  NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithURL:url
+    completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if (error) {
+          self.halextStatus.stringValue = [NSString stringWithFormat:@"Status: Failed - %@", error.localizedDescription];
+          self.halextStatus.textColor = [NSColor systemRedColor];
+        } else {
+          NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+          if (httpResponse.statusCode >= 200 && httpResponse.statusCode < 300) {
+            self.halextStatus.stringValue = [NSString stringWithFormat:@"Status: Connected (HTTP %ld)", (long)httpResponse.statusCode];
+            self.halextStatus.textColor = [NSColor systemGreenColor];
+          } else {
+            self.halextStatus.stringValue = [NSString stringWithFormat:@"Status: HTTP %ld", (long)httpResponse.statusCode];
+            self.halextStatus.textColor = [NSColor systemOrangeColor];
+          }
+        }
+      });
+    }];
+  [task resume];
 }
 
 @end

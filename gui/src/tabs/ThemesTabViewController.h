@@ -1,6 +1,6 @@
-#import <Cocoa/Cocoa.h>
+#import "BaristaTabBaseViewController.h"
 
-@interface ThemesTabViewController : NSViewController
+@interface ThemesTabViewController : BaristaTabBaseViewController
 @property (strong) NSPopUpButton *themeSelector;
 @property (strong) NSTextField *themePreview;
 @property (strong) NSArray *availableThemes;

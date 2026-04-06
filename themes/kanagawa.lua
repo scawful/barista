@@ -1,0 +1,49 @@
+-- Kanagawa Theme
+-- Inspired by Katsushika Hokusai's The Great Wave
+
+return {
+  bar = {
+    bg = 0xF01F1F28,  -- Sumi ink
+  },
+  clock = 0x802A2A37,
+  volume = 0x802A2A37,
+  battery = 0x802A2A37,
+
+  -- Kanagawa palette
+  SUMI_INK_0 = "0xFF16161D",
+  SUMI_INK_1 = "0xFF1F1F28",
+  SUMI_INK_2 = "0xFF2A2A37",
+  SUMI_INK_3 = "0xFF363646",
+  SUMI_INK_4 = "0xFF54546D",
+  WAVE_BLUE_1 = "0xFF223249",
+  WAVE_BLUE_2 = "0xFF2D4F67",
+  WINTER_BLUE = "0xFF252535",
+  CRYSTAL_BLUE = "0xFF7E9CD8",
+  SPRING_BLUE = "0xFF7FB4CA",
+  SPRING_GREEN = "0xFF98BB6C",
+  BOAT_YELLOW_1 = "0xFF938AA9",
+  BOAT_YELLOW_2 = "0xFFC0A36E",
+  CARP_YELLOW = "0xFFE6C384",
+  SAKURA = "0xFFD27E99",
+  WAVE_RED = "0xFFE46876",
+  PEACH_RED = "0xFFFF5D62",
+  SURIMI_ORANGE = "0xFFFFA066",
+  KATANA_GRAY = "0xFF717C7C",
+  FUJI_WHITE = "0xFFDCD7BA",
+  OLD_WHITE = "0xFFC8C093",
+
+  -- Standard mapped colors
+  RED = "0xFFE46876",
+  GREEN = "0xFF98BB6C",
+  YELLOW = "0xFFE6C384",
+  BLUE = "0xFF7E9CD8",
+  MAUVE = "0xFF957FB8",
+  PEACH = "0xFFFFA066",
+  TEAL = "0xFF7FB4CA",
+  SKY = "0xFF7FB4CA",
+  PINK = "0xFFD27E99",
+  WHITE = "0xFFDCD7BA",
+  DARK_WHITE = "0xFF717C7C",
+  BG_PRI_COLR = "0xEE1F1F28",
+  BG_SEC_COLR = "0xFF2A2A37",
+}

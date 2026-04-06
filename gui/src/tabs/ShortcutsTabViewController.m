@@ -1,5 +1,5 @@
+#import "BaristaTabBaseViewController.h"
 #import "ConfigurationManager.h"
-#import <Cocoa/Cocoa.h>
 
 @interface ShortcutRow : NSObject
 @property (copy) NSString *action;
@@ -13,9 +13,10 @@
 @implementation ShortcutRow
 @end
 
-@interface ShortcutsTabViewController : NSViewController <NSTableViewDataSource, NSTableViewDelegate>
+@interface ShortcutsTabViewController : BaristaTabBaseViewController <NSTableViewDataSource, NSTableViewDelegate>
 @property (strong) NSTableView *tableView;
 @property (strong) NSArray *shortcuts;
+@property (strong) NSArray *filteredShortcuts;
 @property (strong) NSSearchField *searchField;
 @end
 
@@ -74,23 +75,31 @@
   return key;
 }
 
-- (void)loadView {
-  self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
-  self.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-}
-
 - (void)viewDidLoad {
   [super viewDidLoad];
 
   [self loadShortcuts];
 
-  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
-  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  rootStack.alignment = NSLayoutAttributeLeading;
-  rootStack.spacing = 20;
-  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
-  [self.view addSubview:rootStack];
+  if (self.shortcuts.count == 0) {
+    NSTextField *placeholder = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    placeholder.stringValue = @"No shortcuts found. Ensure modules/shortcuts.lua exists in your SketchyBar config directory.";
+    placeholder.font = [NSFont systemFontOfSize:14 weight:NSFontWeightRegular];
+    placeholder.textColor = [NSColor secondaryLabelColor];
+    placeholder.bordered = NO;
+    placeholder.editable = NO;
+    placeholder.backgroundColor = [NSColor clearColor];
+    placeholder.alignment = NSTextAlignmentCenter;
+    placeholder.tag = 999;
+    placeholder.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:placeholder];
+    [NSLayoutConstraint activateConstraints:@[
+      [placeholder.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+      [placeholder.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
+    ]];
+  }
+
+  NSStackView *rootStack = nil;
+  [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(20, 24, 20, 24) spacing:20];
 
   // Title
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
@@ -126,13 +135,13 @@
   }
 
   // Table View
-  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
-  scrollView.hasVerticalScroller = YES;
-  scrollView.autohidesScrollers = YES;
-  scrollView.borderType = NSBezelBorder;
-  [rootStack addView:scrollView inGravity:NSStackViewGravityTop];
-  [scrollView.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
-  [scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-80].active = YES;
+  NSScrollView *tableScroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+  tableScroll.hasVerticalScroller = YES;
+  tableScroll.autohidesScrollers = YES;
+  tableScroll.borderType = NSBezelBorder;
+  [rootStack addView:tableScroll inGravity:NSStackViewGravityTop];
+  [tableScroll.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+  [tableScroll.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-80].active = YES;
 
   self.tableView = [[NSTableView alloc] initWithFrame:NSZeroRect];
   self.tableView.dataSource = self;
@@ -154,7 +163,7 @@
   commandColumn.width = 400;
   [self.tableView addTableColumn:commandColumn];
 
-  scrollView.documentView = self.tableView;
+  tableScroll.documentView = self.tableView;
 
   // Footer Actions
   NSStackView *footerStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
@@ -188,7 +197,7 @@
   NSMutableDictionary<NSString *, NSString *> *actionDescriptions = [NSMutableDictionary dictionary];
   
   // Parse shortcuts.global array
-  NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"\\{\\s*mods\\s*=\\s*\\{([^}]+)\\},\\s*key\\s*=\\s*\"([^\"]+)\",\\s*action\\s*=\\s*\"([^\"]+)\",\\s*desc\\s*=\\s*\"([^\"]+)\",\\s*symbol\\s*=\\s*\"([^\"]+)\"\\s*\\}" options:0 error:nil];
+  NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"\\{\\s*mods\\s*=\\s*\\{([^}]+)\\},\\s*key\\s*=\\s*\"([^\"]+)\",\\s*action\\s*=\\s*\"([^\"]+)\",\\s*desc\\s*=\\s*\"([^\"]+)\",\\s*symbol\\s*=\\s*\"([^\"]+)\"(?:,\\s*\\w+\\s*=\\s*\"[^\"]*\")*\\s*\\}" options:NSRegularExpressionDotMatchesLineSeparators error:nil];
   NSArray *matches = [regex matchesInString:content options:0 range:NSMakeRange(0, content.length)];
   
   for (NSTextCheckingResult *match in matches) {
@@ -210,14 +219,14 @@
       }
       
       // Get command from actions table
-      NSRegularExpression *cmdRegex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"%@\\s*=\\s*\"([^\"]+)\"", action] options:0 error:nil];
+      NSRegularExpression *cmdRegex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"%@\\s*=\\s*([^\\n,}]+)", action] options:0 error:nil];
       NSTextCheckingResult *cmdMatch = [cmdRegex firstMatchInString:content options:0 range:NSMakeRange(0, content.length)];
       if (cmdMatch && cmdMatch.numberOfRanges >= 2) {
-        row.command = [content substringWithRange:[cmdMatch rangeAtIndex:1]];
+        row.command = [[content substringWithRange:[cmdMatch rangeAtIndex:1]] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
       } else {
         row.command = @"";
       }
-      
+
       [shortcuts addObject:row];
     }
   }
@@ -238,10 +247,10 @@
       row.mods = @"\"fn\"";
       row.key = key;
 
-      NSRegularExpression *cmdRegex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"%@\\s*=\\s*\"([^\"]+)\"", action] options:0 error:nil];
+      NSRegularExpression *cmdRegex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"%@\\s*=\\s*([^\\n,}]+)", action] options:0 error:nil];
       NSTextCheckingResult *cmdMatch = [cmdRegex firstMatchInString:content options:0 range:NSMakeRange(0, content.length)];
       if (cmdMatch && cmdMatch.numberOfRanges >= 2) {
-        row.command = [content substringWithRange:[cmdMatch rangeAtIndex:1]];
+        row.command = [[content substringWithRange:[cmdMatch rangeAtIndex:1]] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
       } else {
         row.command = @"";
       }
@@ -249,8 +258,36 @@
       [shortcuts addObject:row];
     }
   }
-  
+
+  // JSON fallback: if Lua parsing yielded nothing, try workflow_shortcuts.json
+  if (shortcuts.count == 0) {
+    NSString *jsonPath = [config.configPath stringByAppendingPathComponent:@"data/workflow_shortcuts.json"];
+    NSData *jsonData = [NSData dataWithContentsOfFile:jsonPath];
+    if (jsonData) {
+      NSDictionary *json = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
+      NSArray *keymap = json[@"keymap"];
+      if ([keymap isKindOfClass:[NSArray class]]) {
+        for (NSDictionary *section in keymap) {
+          NSString *sectionName = section[@"section"] ?: @"";
+          NSArray *items = section[@"items"];
+          if (![items isKindOfClass:[NSArray class]]) continue;
+          for (NSDictionary *item in items) {
+            ShortcutRow *row = [[ShortcutRow alloc] init];
+            row.symbol = item[@"keys"] ?: @"";
+            row.shortcutDescription = item[@"description"] ?: @"";
+            row.command = sectionName;
+            row.action = @"";
+            row.mods = @"";
+            row.key = @"";
+            [shortcuts addObject:row];
+          }
+        }
+      }
+    }
+  }
+
   self.shortcuts = shortcuts;
+  self.filteredShortcuts = self.shortcuts;
   [self.tableView reloadData];
 }
 
@@ -276,16 +313,28 @@
 
 - (void)searchChanged:(id)sender {
   NSString *searchText = [self.searchField.stringValue lowercaseString];
-  // Filtering would be implemented here
+  if (searchText.length == 0) {
+    self.filteredShortcuts = self.shortcuts;
+  } else {
+    NSMutableArray *filtered = [NSMutableArray array];
+    for (ShortcutRow *row in self.shortcuts) {
+      if ([[row.shortcutDescription lowercaseString] containsString:searchText] ||
+          [[row.key lowercaseString] containsString:searchText] ||
+          [[row.command lowercaseString] containsString:searchText]) {
+        [filtered addObject:row];
+      }
+    }
+    self.filteredShortcuts = filtered;
+  }
   [self.tableView reloadData];
 }
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
-  return self.shortcuts.count;
+  return self.filteredShortcuts.count;
 }
 
 - (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-  ShortcutRow *shortcut = self.shortcuts[row];
+  ShortcutRow *shortcut = self.filteredShortcuts[row];
   NSString *identifier = tableColumn.identifier;
 
   NSTextField *textField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, tableColumn.width, 20)];

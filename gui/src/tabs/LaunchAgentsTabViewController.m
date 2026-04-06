@@ -1,7 +1,7 @@
 #import "ConfigurationManager.h"
-#import <Cocoa/Cocoa.h>
+#import "BaristaTabBaseViewController.h"
 
-@interface LaunchAgentsTabViewController : NSViewController <NSTableViewDataSource, NSTableViewDelegate>
+@interface LaunchAgentsTabViewController : BaristaTabBaseViewController <NSTableViewDataSource, NSTableViewDelegate>
 @property (strong) NSTableView *tableView;
 @property (strong) NSSearchField *searchField;
 @property (strong) NSTextField *statusLabel;
@@ -10,13 +10,11 @@
 @property (strong) NSButton *restartButton;
 @property (strong) NSMutableArray *launchAgents;
 @property (strong) NSArray *filteredLaunchAgents;
+@property (strong) NSTextView *plistPreview;
+@property (strong) NSScrollView *plistScrollView;
 @end
 
 @implementation LaunchAgentsTabViewController
-
-- (void)loadView {
-  self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
-}
 
 - (void)viewDidLoad {
   [super viewDidLoad];
@@ -24,34 +22,30 @@
   self.launchAgents = [NSMutableArray array];
   self.filteredLaunchAgents = @[];
 
-  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
-  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  rootStack.alignment = NSLayoutAttributeLeading;
-  rootStack.spacing = 20;
-  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
-  [self.view addSubview:rootStack];
+  NSStackView *rootStack = nil;
+  [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(28, 34, 34, 34) spacing:20];
 
-  // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  title.stringValue = @"Launch Agents";
-  title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
-  title.bordered = NO;
-  title.editable = NO;
-  title.backgroundColor = [NSColor clearColor];
-  [rootStack addView:title inGravity:NSStackViewGravityTop];
+  [rootStack addView:[self titleLabel:@"Launch Agents"] inGravity:NSStackViewGravityTop];
+  [rootStack addView:[self helperLabel:@"Manage Barista-related launch agents without leaving the panel. Search, inspect state, and restart services from one place."] inGravity:NSStackViewGravityTop];
 
-  // Search and Actions
+  NSStackView *browserSection = nil;
+  NSBox *browserBox = [self sectionBoxWithTitle:@"Agent Browser"
+                                       subtitle:@"Filter by label or plist path, then inspect live state in the table below."
+                                    contentStack:&browserSection];
+  [rootStack addView:browserBox inGravity:NSStackViewGravityTop];
+  [browserBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+
   NSStackView *headerStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
   headerStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
   headerStack.spacing = 12;
-  [rootStack addView:headerStack inGravity:NSStackViewGravityTop];
+  [browserSection addView:headerStack inGravity:NSStackViewGravityTop];
 
   self.searchField = [[NSSearchField alloc] initWithFrame:NSZeroRect];
   self.searchField.placeholderString = @"Filter by label or path";
   self.searchField.target = self;
   self.searchField.action = @selector(filterChanged:);
-  [self.searchField.widthAnchor constraintEqualToConstant:300].active = YES;
+  [self.searchField.widthAnchor constraintGreaterThanOrEqualToConstant:240].active = YES;
+  [self.searchField.widthAnchor constraintLessThanOrEqualToConstant:360].active = YES;
   [headerStack addView:self.searchField inGravity:NSStackViewGravityLeading];
 
   NSButton *refreshButton = [[NSButton alloc] initWithFrame:NSZeroRect];
@@ -62,14 +56,12 @@
   refreshButton.action = @selector(loadLaunchAgents:);
   [headerStack addView:refreshButton inGravity:NSStackViewGravityLeading];
 
-  // Table View
   NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
   scrollView.hasVerticalScroller = YES;
   scrollView.autohidesScrollers = YES;
   scrollView.borderType = NSBezelBorder;
-  [rootStack addView:scrollView inGravity:NSStackViewGravityTop];
-  [scrollView.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
-  [scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-100].active = YES;
+  [scrollView.heightAnchor constraintEqualToConstant:360].active = YES;
+  [browserSection addView:scrollView inGravity:NSStackViewGravityTop];
 
   self.tableView = [[NSTableView alloc] initWithFrame:NSZeroRect];
   self.tableView.dataSource = self;
@@ -98,11 +90,17 @@
 
   scrollView.documentView = self.tableView;
 
-  // Agent Controls
+  NSStackView *actionSection = nil;
+  NSBox *actionBox = [self sectionBoxWithTitle:@"Selected Agent"
+                                      subtitle:@"Start, stop, or restart the currently selected launch agent."
+                                   contentStack:&actionSection];
+  [rootStack addView:actionBox inGravity:NSStackViewGravityTop];
+  [actionBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+
   NSStackView *buttonRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
   buttonRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
   buttonRow.spacing = 12;
-  [rootStack addView:buttonRow inGravity:NSStackViewGravityTop];
+  [actionSection addView:buttonRow inGravity:NSStackViewGravityTop];
 
   for (NSString *title in @[@"Start", @"Stop", @"Restart"]) {
     NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
@@ -117,7 +115,6 @@
     [buttonRow addView:btn inGravity:NSStackViewGravityLeading];
   }
 
-  // Status
   self.statusLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.statusLabel.editable = NO;
   self.statusLabel.bordered = NO;
@@ -125,7 +122,36 @@
   self.statusLabel.stringValue = @"No agents loaded.";
   self.statusLabel.font = [NSFont systemFontOfSize:12];
   self.statusLabel.textColor = [NSColor secondaryLabelColor];
-  [rootStack addView:self.statusLabel inGravity:NSStackViewGravityTop];
+  [actionSection addView:self.statusLabel inGravity:NSStackViewGravityTop];
+
+  // Plist Contents Preview Section
+  NSStackView *plistStack = nil;
+  NSBox *plistBox = [self sectionBoxWithTitle:@"Plist Contents"
+                                     subtitle:@"Select an agent above to view its plist."
+                                 contentStack:&plistStack];
+  [rootStack addView:plistBox inGravity:NSStackViewGravityTop];
+  [plistBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+
+  self.plistScrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+  self.plistScrollView.hasVerticalScroller = YES;
+  self.plistScrollView.autohidesScrollers = YES;
+  self.plistScrollView.borderType = NSBezelBorder;
+  [self.plistScrollView.heightAnchor constraintGreaterThanOrEqualToConstant:150].active = YES;
+
+  self.plistPreview = [[NSTextView alloc] initWithFrame:NSZeroRect];
+  self.plistPreview.editable = NO;
+  self.plistPreview.font = [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular];
+  self.plistPreview.backgroundColor = [NSColor colorWithWhite:0.12 alpha:1.0];
+  self.plistPreview.textColor = [NSColor colorWithWhite:0.85 alpha:1.0];
+  self.plistPreview.minSize = NSMakeSize(0.0, 150);
+  self.plistPreview.maxSize = NSMakeSize(FLT_MAX, FLT_MAX);
+  self.plistPreview.verticallyResizable = YES;
+  self.plistPreview.horizontallyResizable = NO;
+  self.plistPreview.autoresizingMask = NSViewWidthSizable;
+  self.plistPreview.string = @"No agent selected.";
+  self.plistScrollView.documentView = self.plistPreview;
+  [plistStack addView:self.plistScrollView inGravity:NSStackViewGravityTop];
+  [self.plistScrollView.widthAnchor constraintEqualToAnchor:plistStack.widthAnchor].active = YES;
 
   [self loadLaunchAgents:nil];
 }
@@ -186,6 +212,7 @@
 
 - (void)filterChanged:(id)sender {
   [self applyFilter];
+  self.plistPreview.string = @"No agent selected.";
 }
 
 - (void)applyFilter {
@@ -316,6 +343,41 @@
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
   [self updateButtons];
+  [self updatePlistPreview];
+}
+
+- (void)updatePlistPreview {
+  NSDictionary *agent = [self selectedAgent];
+  if (!agent) {
+    self.plistPreview.string = @"No agent selected.";
+    return;
+  }
+
+  NSString *path = [agent[@"plist"] description];
+  if (!path || path.length == 0) {
+    self.plistPreview.string = @"Unable to load plist: no path available.";
+    return;
+  }
+
+  // Expand tilde if present
+  path = [path stringByExpandingTildeInPath];
+
+  NSDictionary *plistDict = [NSDictionary dictionaryWithContentsOfFile:path];
+  if (!plistDict) {
+    self.plistPreview.string = [NSString stringWithFormat:@"Unable to load plist at:\n%@", path];
+    return;
+  }
+
+  NSError *error = nil;
+  NSData *jsonData = [NSJSONSerialization dataWithJSONObject:plistDict
+                                                     options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys
+                                                       error:&error];
+  if (error || !jsonData) {
+    self.plistPreview.string = [NSString stringWithFormat:@"Unable to serialize plist: %@", error.localizedDescription ?: @"unknown error"];
+    return;
+  }
+
+  self.plistPreview.string = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding] ?: @"Unable to load plist";
 }
 
 @end

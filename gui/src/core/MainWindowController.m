@@ -1,24 +1,21 @@
 #import "ConfigurationManager.h"
 #import "MainWindowController.h"
-#import "AppearanceTabViewController.h"
-#import "WidgetsTabViewController.h"
-#import "SpacesTabViewController.h"
-#import "IconsTabViewController.h"
-#import "MenuTabViewController.h"
-#import "IntegrationsTabViewController.h"
-#import "ThemesTabViewController.h"
-#import "ShortcutsTabViewController.h"
-#import "LaunchAgentsTabViewController.h"
-#import "DebugTabViewController.h"
-#import "PerformanceTabViewController.h"
-#import "AdvancedTabViewController.h"
+#import "BaristaPanelState.h"
+#import "BaristaPanelWindow.h"
+#import "BaristaTabRegistry.h"
 #import "BaristaStyle.h"
 #import "BaristaPanelView.h"
 #import <Cocoa/Cocoa.h>
 
+static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotification";
+
 @interface MainWindowController ()
 @property (assign) BOOL windowConfigured;
 @property (strong) BaristaPanelView *tabContainer;
+@property (copy) NSString *requestedInitialTabIdentifier;
+@property (strong) NSDictionary<NSString *, NSDictionary *> *tabDescriptorsByIdentifier;
+@property (strong) NSMutableDictionary<NSString *, NSViewController *> *tabControllersByIdentifier;
+@property (strong) NSArray<NSDictionary *> *sidebarItems;
 @end
 
 @interface BaristaSidebarRowView : NSTableRowView
@@ -51,28 +48,50 @@
 
 @implementation MainWindowController
 
+- (NSFont *)preferredSidebarIconFontWithSize:(CGFloat)size {
+  NSArray<NSString *> *candidates = @[
+    @"Hack Nerd Font",
+    @"JetBrainsMono Nerd Font",
+    @"Symbols Nerd Font",
+    @"MesloLGS NF"
+  ];
+  for (NSString *name in candidates) {
+    NSFont *font = [NSFont fontWithName:name size:size];
+    if (font) {
+      return font;
+    }
+  }
+  return [NSFont monospacedSystemFontOfSize:size weight:NSFontWeightRegular];
+}
+
 - (instancetype)init {
-  NSRect frame = NSMakeRect(0, 0, 950, 750);
+  NSRect frame = NSMakeRect(0, 0, 720, 560);
+  BaristaPanelState *panelState = [BaristaPanelState sharedState];
   NSScreen *screen = [NSScreen mainScreen];
   if (screen) {
     NSRect visible = screen.visibleFrame;
     CGFloat margin = 80.0;
-    CGFloat maxWidth = MAX(700.0, visible.size.width - margin);
-    CGFloat maxHeight = MAX(560.0, visible.size.height - margin);
-    CGFloat width = MIN(980.0, maxWidth);
-    CGFloat height = MIN(780.0, maxHeight);
+    CGFloat maxWidth = MAX(560.0, visible.size.width - margin);
+    CGFloat maxHeight = MAX(420.0, visible.size.height - margin);
+    CGFloat width = MIN(760.0, maxWidth);
+    CGFloat height = MIN(600.0, maxHeight);
     frame = NSMakeRect(0, 0, width, height);
   }
-  NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
-                                                  styleMask:(NSWindowStyleMaskTitled |
-                                                            NSWindowStyleMaskClosable |
-                                                            NSWindowStyleMaskMiniaturizable |
-                                                            NSWindowStyleMaskResizable)
-                                                    backing:NSBackingStoreBuffered
-                                                      defer:NO];
+  NSWindow *window = [[BaristaPanelWindow alloc] initWithContentRect:frame];
 
   self = [super initWithWindow:window];
   if (self) {
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleSelectTabNotification:)
+                                                 name:BaristaSelectTabNotification
+                                               object:nil];
+    self.requestedInitialTabIdentifier = [self requestedInitialTabIdentifierFromProcess];
+    if (!self.requestedInitialTabIdentifier.length) {
+      self.requestedInitialTabIdentifier = [panelState lastSelectedTabIdentifier];
+    }
+    if (!self.requestedInitialTabIdentifier.length) {
+      self.requestedInitialTabIdentifier = @"appearance";
+    }
     NSLog(@"[barista] created window=%@", window);
     NSLog(@"[barista] before setupTabView");
     [self setupTabView];
@@ -81,142 +100,124 @@
   return self;
 }
 
+- (void)dealloc {
+  [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                  name:BaristaSelectTabNotification
+                                                object:nil];
+}
+
+- (NSString *)requestedInitialTabIdentifierFromProcess {
+  NSString *envTab = [[[NSProcessInfo processInfo] environment] objectForKey:@"BARISTA_CONTROL_TAB"];
+  if ([envTab isKindOfClass:[NSString class]] && envTab.length > 0) {
+    return [envTab lowercaseString];
+  }
+
+  NSArray<NSString *> *arguments = [[NSProcessInfo processInfo] arguments];
+  for (NSUInteger idx = 0; idx + 1 < arguments.count; idx++) {
+    if ([arguments[idx] isEqualToString:@"--tab"]) {
+      return [arguments[idx + 1] lowercaseString];
+    }
+  }
+  return nil;
+}
+
+- (NSInteger)indexOfTabIdentifier:(NSString *)identifier {
+  if (!identifier.length) {
+    return NSNotFound;
+  }
+  for (NSInteger idx = 0; idx < (NSInteger)self.sidebarItems.count; idx++) {
+    NSDictionary *item = self.sidebarItems[idx];
+    NSString *itemId = item[@"id"];
+    if ([[itemId lowercaseString] isEqualToString:[identifier lowercaseString]]) {
+      return idx;
+    }
+  }
+  return NSNotFound;
+}
+
+- (void)rebuildSidebarItems {
+  NSMutableArray<NSDictionary *> *items = [NSMutableArray array];
+  NSString *currentSection = nil;
+  for (NSDictionary *descriptor in [BaristaTabRegistry defaultTabDescriptors]) {
+    NSString *section = descriptor[@"section"] ?: @"";
+    if (section.length > 0 && ![section isEqualToString:currentSection]) {
+      [items addObject:@{ @"kind": @"section", @"label": section }];
+      currentSection = section;
+    }
+    NSMutableDictionary *row = [descriptor mutableCopy];
+    row[@"kind"] = @"tab";
+    [items addObject:row];
+  }
+  self.sidebarItems = [items copy];
+}
+
+- (NSString *)tabIdentifierForSidebarRow:(NSInteger)row {
+  if (row < 0 || row >= (NSInteger)self.sidebarItems.count) {
+    return nil;
+  }
+  NSDictionary *item = self.sidebarItems[row];
+  if (![item[@"kind"] isEqualToString:@"tab"]) {
+    return nil;
+  }
+  return item[@"id"];
+}
+
 - (void)setupTabView {
-  NSLog(@"[barista] setupTabView start");
-  self.tabView = [[NSTabView alloc] initWithFrame:self.window.contentView.bounds];
-  self.tabView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  BaristaStyle *style = [BaristaStyle sharedStyle];
+
+  // --- Tab view (borderless, no tabs — content only) ---
+  self.tabView = [[NSTabView alloc] initWithFrame:NSZeroRect];
+  self.tabView.translatesAutoresizingMaskIntoConstraints = NO;
   self.tabView.delegate = self;
   [self.tabView setTabViewType:NSNoTabsNoBorder];
   self.tabView.drawsBackground = NO;
-
-  BaristaStyle *style = [BaristaStyle sharedStyle];
   self.tabView.wantsLayer = YES;
   self.tabView.layer.backgroundColor = style.panelColor.CGColor;
   self.tabView.layer.borderColor = style.dividerColor.CGColor;
   self.tabView.layer.borderWidth = 1.0;
 
+  // --- Register tab descriptors ---
   NSMutableArray<NSDictionary *> *tabItems = [NSMutableArray array];
-
-  // Appearance Tab
-  NSLog(@"[barista] setupTabView appearance");
-  self.appearanceTab = [[AppearanceTabViewController alloc] init];
-  [self addTabWithIdentifier:@"appearance"
-                       label:@"Appearance"
-                   controller:self.appearanceTab
-                        store:tabItems];
-
-  // Widgets Tab
-  NSLog(@"[barista] setupTabView widgets");
-  self.widgetsTab = [[WidgetsTabViewController alloc] init];
-  [self addTabWithIdentifier:@"widgets"
-                       label:@"Widgets"
-                   controller:self.widgetsTab
-                        store:tabItems];
-
-  // Spaces Tab
-  NSLog(@"[barista] setupTabView spaces");
-  self.spacesTab = [[SpacesTabViewController alloc] init];
-  [self addTabWithIdentifier:@"spaces"
-                       label:@"Spaces"
-                   controller:self.spacesTab
-                        store:tabItems];
-
-  // Icons Tab
-  NSLog(@"[barista] setupTabView icons");
-  self.iconsTab = [[IconsTabViewController alloc] init];
-  [self addTabWithIdentifier:@"icons"
-                       label:@"Icons"
-                   controller:self.iconsTab
-                        store:tabItems];
-
-  // Menu Tab
-  NSLog(@"[barista] setupTabView menu");
-  self.menuTab = [[MenuTabViewController alloc] init];
-  [self addTabWithIdentifier:@"menu"
-                       label:@"Menu"
-                   controller:self.menuTab
-                        store:tabItems];
-
-  // Themes Tab
-  NSLog(@"[barista] setupTabView themes");
-  self.themesTab = [[ThemesTabViewController alloc] init];
-  [self addTabWithIdentifier:@"themes"
-                       label:@"Themes"
-                   controller:self.themesTab
-                        store:tabItems];
-
-  // Shortcuts Tab
-  NSLog(@"[barista] setupTabView shortcuts");
-  self.shortcutsTab = [[ShortcutsTabViewController alloc] init];
-  [self addTabWithIdentifier:@"shortcuts"
-                       label:@"Shortcuts"
-                   controller:self.shortcutsTab
-                        store:tabItems];
-
-  // Integrations Tab
-  NSLog(@"[barista] setupTabView integrations");
-  self.integrationsTab = [[IntegrationsTabViewController alloc] init];
-  [self addTabWithIdentifier:@"integrations"
-                       label:@"Integrations"
-                   controller:self.integrationsTab
-                        store:tabItems];
-
-  // Launch Agents Tab
-  NSLog(@"[barista] setupTabView launchagents");
-  self.launchAgentsTab = [[LaunchAgentsTabViewController alloc] init];
-  [self addTabWithIdentifier:@"launchAgents"
-                       label:@"Launch Agents"
-                   controller:self.launchAgentsTab
-                        store:tabItems];
-
-  // Debug Tab
-  NSLog(@"[barista] setupTabView debug");
-  self.debugTab = [[DebugTabViewController alloc] init];
-  [self addTabWithIdentifier:@"debug"
-                       label:@"Debug"
-                   controller:self.debugTab
-                        store:tabItems];
-
-  // Performance Tab
-  NSLog(@"[barista] setupTabView performance");
-  self.performanceTab = [[PerformanceTabViewController alloc] init];
-  [self addTabWithIdentifier:@"performance"
-                       label:@"Performance"
-                   controller:self.performanceTab
-                        store:tabItems];
-
-  // Advanced Tab
-  NSLog(@"[barista] setupTabView advanced");
-  self.advancedTab = [[AdvancedTabViewController alloc] init];
-  [self addTabWithIdentifier:@"advanced"
-                       label:@"Advanced"
-                   controller:self.advancedTab
-                        store:tabItems];
-
+  NSMutableDictionary<NSString *, NSDictionary *> *descriptorMap = [NSMutableDictionary dictionary];
+  self.tabControllersByIdentifier = [NSMutableDictionary dictionary];
+  for (NSDictionary *descriptor in [BaristaTabRegistry defaultTabDescriptors]) {
+    NSString *identifier = descriptor[@"id"];
+    if (![identifier isKindOfClass:[NSString class]] || identifier.length == 0) {
+      continue;
+    }
+    descriptorMap[identifier] = descriptor;
+    [self addTabDescriptor:descriptor store:tabItems];
+  }
+  self.tabDescriptorsByIdentifier = [descriptorMap copy];
   self.tabItems = [tabItems copy];
-  NSLog(@"[barista] setupTabView building sidebar (%lu tabs)", (unsigned long)self.tabItems.count);
-  [self setupSidebarWithStyle:style];
-  NSLog(@"[barista] setupTabView sidebar done");
-  @try {
-  NSRect bounds = self.window.contentView.bounds;
-  NSLog(@"[barista] bounds=%@", NSStringFromRect(bounds));
-  self.tabContainer = [[BaristaPanelView alloc] initWithFrame:NSMakeRect(style.sidebarWidth, 0, bounds.size.width - style.sidebarWidth, bounds.size.height)];
-  NSLog(@"[barista] tabContainer created");
-  self.tabContainer.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  [self rebuildSidebarItems];
 
-  CGFloat panelPadding = 14.0;
-  self.tabView.frame = NSInsetRect(self.tabContainer.bounds, panelPadding, panelPadding);
-  self.tabView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  // --- Sidebar ---
+  [self setupSidebarWithStyle:style];
+
+  // --- Tab container (holds the tab view with padding) ---
+  self.tabContainer = [[BaristaPanelView alloc] initWithFrame:NSZeroRect];
   [self.tabContainer addSubview:self.tabView];
 
-  self.splitView = [[NSSplitView alloc] initWithFrame:self.window.contentView.bounds];
-  self.splitView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  CGFloat pad = 10.0;
+  [NSLayoutConstraint activateConstraints:@[
+    [self.tabView.leadingAnchor constraintEqualToAnchor:self.tabContainer.leadingAnchor constant:pad],
+    [self.tabView.trailingAnchor constraintEqualToAnchor:self.tabContainer.trailingAnchor constant:-pad],
+    [self.tabView.topAnchor constraintEqualToAnchor:self.tabContainer.topAnchor constant:pad],
+    [self.tabView.bottomAnchor constraintEqualToAnchor:self.tabContainer.bottomAnchor constant:-pad],
+  ]];
+
+  // --- Split view (sidebar | content) ---
+  self.splitView = [[NSSplitView alloc] initWithFrame:NSZeroRect];
   self.splitView.vertical = YES;
   self.splitView.dividerStyle = NSSplitViewDividerStyleThin;
+  self.splitView.delegate = self;
   [self.splitView addSubview:self.sidebarView];
   [self.splitView addSubview:self.tabContainer];
+
   [self.window setContentView:self.splitView];
 
+  // --- Apply styles ---
   for (NSTabViewItem *item in self.tabView.tabViewItems) {
     NSViewController *controller = item.viewController;
     if (controller) {
@@ -228,60 +229,199 @@
     }
   }
 
+  // --- Select initial tab ---
   [self.sidebarTable reloadData];
-  if (self.tabItems.count > 0) {
-    [self.sidebarTable selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+  NSInteger initialRow = [self indexOfTabIdentifier:self.requestedInitialTabIdentifier];
+  if (initialRow == NSNotFound) {
+    initialRow = [self indexOfTabIdentifier:@"appearance"];
   }
-  NSLog(@"[barista] setupTabView done");
-  } @catch (NSException *exception) {
-    NSLog(@"[barista] EXCEPTION in setupTabView: %@ %@", exception.name, exception.reason);
+  if (self.sidebarItems.count > 0 && initialRow >= 0 && initialRow < (NSInteger)self.sidebarItems.count) {
+    [self.sidebarTable selectRowIndexes:[NSIndexSet indexSetWithIndex:initialRow] byExtendingSelection:NO];
+    NSString *initialIdentifier = [self tabIdentifierForSidebarRow:initialRow];
+    NSInteger tabIndex = [self.tabItems indexOfObjectPassingTest:^BOOL(NSDictionary *item, NSUInteger idx, BOOL *stop) {
+      return [[item[@"id"] lowercaseString] isEqualToString:[initialIdentifier lowercaseString]];
+    }];
+    if (tabIndex != NSNotFound) {
+      [self selectTabAtIndex:tabIndex];
+    }
   }
 }
 
-- (void)addTabWithIdentifier:(NSString *)identifier
-                       label:(NSString *)label
-                   controller:(NSViewController *)controller
-                        store:(NSMutableArray<NSDictionary *> *)store {
-  if (!identifier || !label || !controller) {
+// MARK: - NSSplitViewDelegate
+
+- (CGFloat)splitView:(NSSplitView *)splitView constrainMinCoordinate:(CGFloat)proposedMinimumPosition ofSubviewAt:(NSInteger)dividerIndex {
+  return 120.0;  // sidebar min width
+}
+
+- (CGFloat)splitView:(NSSplitView *)splitView constrainMaxCoordinate:(CGFloat)proposedMaximumPosition ofSubviewAt:(NSInteger)dividerIndex {
+  return splitView.bounds.size.width * 0.35;  // sidebar never > 35% of window
+}
+
+- (BOOL)splitView:(NSSplitView *)splitView canCollapseSubview:(NSView *)subview {
+  return NO;
+}
+
+- (void)splitView:(NSSplitView *)splitView resizeSubviewsWithOldSize:(NSSize)oldSize {
+  // Keep sidebar at its current width, give all extra space to content
+  NSView *sidebar = splitView.subviews.firstObject;
+  NSView *content = splitView.subviews.lastObject;
+  CGFloat divider = splitView.dividerThickness;
+  CGFloat totalWidth = splitView.bounds.size.width;
+  CGFloat totalHeight = splitView.bounds.size.height;
+  CGFloat sidebarWidth = sidebar.frame.size.width;
+  if (sidebarWidth < 1.0) {
+    sidebarWidth = [BaristaStyle sharedStyle].sidebarWidth;
+  }
+
+  // Clamp sidebar
+  CGFloat maxSidebar = totalWidth * 0.35;
+  if (sidebarWidth > maxSidebar) sidebarWidth = maxSidebar;
+  if (sidebarWidth < 120.0) sidebarWidth = 120.0;
+
+  CGFloat contentWidth = totalWidth - sidebarWidth - divider;
+  sidebar.frame = NSMakeRect(0, 0, sidebarWidth, totalHeight);
+  content.frame = NSMakeRect(sidebarWidth + divider, 0, contentWidth, totalHeight);
+}
+
+- (void)addTabDescriptor:(NSDictionary *)descriptor
+                    store:(NSMutableArray<NSDictionary *> *)store {
+  NSString *identifier = descriptor[@"id"];
+  NSString *label = descriptor[@"label"];
+  if (![identifier isKindOfClass:[NSString class]] || identifier.length == 0
+      || ![label isKindOfClass:[NSString class]] || label.length == 0) {
     return;
   }
+
   NSTabViewItem *item = [[NSTabViewItem alloc] initWithIdentifier:identifier];
   item.label = label;
-  item.viewController = controller;
+  NSView *placeholder = [[NSView alloc] initWithFrame:self.tabView.bounds];
+  placeholder.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  item.view = placeholder;
   [self.tabView addTabViewItem:item];
-  [store addObject:@{@"id": identifier, @"label": label}];
+  [store addObject:@{
+    @"id": identifier,
+    @"label": label,
+    @"icon": descriptor[@"icon"] ?: @""
+  }];
+}
+
+- (NSTabViewItem *)tabViewItemForIdentifier:(NSString *)identifier {
+  if (!identifier.length) {
+    return nil;
+  }
+
+  for (NSTabViewItem *item in self.tabView.tabViewItems) {
+    if ([[item.identifier description] isEqualToString:identifier]) {
+      return item;
+    }
+  }
+  return nil;
+}
+
+- (NSViewController *)ensureControllerLoadedForIdentifier:(NSString *)identifier {
+  if (!identifier.length) {
+    return nil;
+  }
+
+  NSViewController *controller = self.tabControllersByIdentifier[identifier];
+  NSTabViewItem *item = [self tabViewItemForIdentifier:identifier];
+  if (controller) {
+    if (item && item.view != controller.view) {
+      item.view = controller.view;
+    }
+    return controller;
+  }
+
+  NSDictionary *descriptor = self.tabDescriptorsByIdentifier[identifier];
+  Class controllerClass = descriptor[@"controllerClass"];
+  if (!controllerClass || ![controllerClass isSubclassOfClass:[NSViewController class]]) {
+    return nil;
+  }
+
+  controller = [[controllerClass alloc] init];
+  self.tabControllersByIdentifier[identifier] = controller;
+  if (item) {
+    item.view = controller.view;
+  }
+
+  @try {
+    [[BaristaStyle sharedStyle] applyStyleToViewHierarchy:controller.view];
+  } @catch (NSException *exception) {
+    NSLog(@"[barista] style exception on tab %@: %@", identifier, exception.reason);
+  }
+  return controller;
+}
+
+- (void)selectTabAtIndex:(NSInteger)index {
+  if (index < 0 || index >= (NSInteger)self.tabItems.count) {
+    return;
+  }
+
+  NSString *identifier = self.tabItems[index][@"id"];
+  [self ensureControllerLoadedForIdentifier:identifier];
+  [self.tabView selectTabViewItemAtIndex:index];
+  [[BaristaPanelState sharedState] setLastSelectedTabIdentifier:identifier];
+}
+
+- (void)saveWindowFrame {
+  if (self.window) {
+    NSString *frameString = NSStringFromRect(self.window.frame);
+    [[NSUserDefaults standardUserDefaults] setObject:frameString forKey:@"BaristaControlPanelWindowFrame"];
+  }
+}
+
+- (void)handleSelectTabNotification:(NSNotification *)notification {
+  NSString *identifier = notification.userInfo[@"tab"];
+  NSInteger index = [self indexOfTabIdentifier:identifier];
+  if (index == NSNotFound) {
+    return;
+  }
+  [self.sidebarTable selectRowIndexes:[NSIndexSet indexSetWithIndex:index] byExtendingSelection:NO];
+  NSString *tabIdentifier = [self tabIdentifierForSidebarRow:index];
+  NSInteger tabIndex = [self.tabItems indexOfObjectPassingTest:^BOOL(NSDictionary *item, NSUInteger idx, BOOL *stop) {
+    return [[item[@"id"] lowercaseString] isEqualToString:[tabIdentifier lowercaseString]];
+  }];
+  if (tabIndex != NSNotFound) {
+    [self selectTabAtIndex:tabIndex];
+  }
+  [self.sidebarTable reloadData];
 }
 
 - (void)setupSidebarWithStyle:(BaristaStyle *)style {
-  CGFloat sidebarWidth = style.sidebarWidth;
-  NSRect bounds = self.window.contentView.bounds;
-  self.sidebarView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, sidebarWidth, bounds.size.height)];
-  self.sidebarView.autoresizingMask = NSViewHeightSizable;
+  // Sidebar is a vertical stack: header on top, table scroll below
+  self.sidebarView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, style.sidebarWidth, 100)];
   self.sidebarView.wantsLayer = YES;
   self.sidebarView.layer.backgroundColor = style.sidebarColor.CGColor;
 
-  CGFloat headerHeight = 140.0;
-  NSView *header = [[NSView alloc] initWithFrame:NSMakeRect(0, bounds.size.height - headerHeight, sidebarWidth, headerHeight)];
-  header.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
+  // --- Header ---
+  NSView *header = [[NSView alloc] initWithFrame:NSZeroRect];
+  header.translatesAutoresizingMaskIntoConstraints = NO;
   header.wantsLayer = YES;
   header.layer.backgroundColor = style.backgroundColor.CGColor;
   [self.sidebarView addSubview:header];
 
-  NSStackView *headerStack = [[NSStackView alloc] initWithFrame:NSInsetRect(header.bounds, 14, 10)];
-  headerStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  NSStackView *headerStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  headerStack.translatesAutoresizingMaskIntoConstraints = NO;
   headerStack.orientation = NSUserInterfaceLayoutOrientationVertical;
   headerStack.alignment = NSLayoutAttributeLeading;
-  headerStack.spacing = 4;
+  headerStack.spacing = 3;
+  headerStack.edgeInsets = NSEdgeInsetsMake(10, 12, 8, 12);
   [header addSubview:headerStack];
+
+  [NSLayoutConstraint activateConstraints:@[
+    [headerStack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor],
+    [headerStack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor],
+    [headerStack.topAnchor constraintEqualToAnchor:header.topAnchor],
+    [headerStack.bottomAnchor constraintEqualToAnchor:header.bottomAnchor],
+  ]];
 
   ConfigurationManager *config = [ConfigurationManager sharedManager];
   NSString *themeName = style.themeName.length ? style.themeName : @"default";
-  NSString *configPath = [self shortPath:config.configPath];
-  NSString *codePath = [self shortPath:config.codePath];
+  NSString *profileName = [config valueForKeyPath:@"profile" defaultValue:@"default"] ?: @"default";
 
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  title.stringValue = @"BARISTA // CONTROL";
-  title.font = style.titleFont;
+  title.stringValue = @"Barista";
+  title.font = [NSFont systemFontOfSize:15 weight:NSFontWeightBold];
   title.textColor = style.textColor;
   title.bordered = NO;
   title.editable = NO;
@@ -289,73 +429,86 @@
   [headerStack addView:title inGravity:NSStackViewGravityTop];
 
   NSTextField *subtitle = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  subtitle.stringValue = @"config + orchestration";
-  subtitle.font = style.bodyFont;
+  subtitle.stringValue = [NSString stringWithFormat:@"%@ · %@", themeName, profileName];
+  subtitle.font = [NSFont systemFontOfSize:10 weight:NSFontWeightMedium];
   subtitle.textColor = style.mutedTextColor;
   subtitle.bordered = NO;
   subtitle.editable = NO;
   subtitle.backgroundColor = [NSColor clearColor];
   [headerStack addView:subtitle inGravity:NSStackViewGravityTop];
 
-  [headerStack setCustomSpacing:12 afterView:subtitle];
-
-  NSTextField *themeLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  themeLabel.stringValue = [NSString stringWithFormat:@"THEME  %@", [themeName uppercaseString]];
-  themeLabel.font = style.bodyFont;
-  themeLabel.textColor = style.accentColor;
-  themeLabel.bordered = NO;
-  themeLabel.editable = NO;
-  themeLabel.backgroundColor = [NSColor clearColor];
-  [headerStack addView:themeLabel inGravity:NSStackViewGravityTop];
-
-  NSTextField *pathLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  pathLabel.stringValue = [NSString stringWithFormat:@"CFG    %@", configPath ?: @"~/.config/sketchybar"];
-  pathLabel.font = style.bodyFont;
-  pathLabel.textColor = style.mutedTextColor;
-  pathLabel.bordered = NO;
-  pathLabel.editable = NO;
-  pathLabel.backgroundColor = [NSColor clearColor];
-  [headerStack addView:pathLabel inGravity:NSStackViewGravityTop];
-
-  NSTextField *codeLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  codeLabel.stringValue = [NSString stringWithFormat:@"CODE   %@", codePath ?: @"~/src"];
-  codeLabel.font = style.bodyFont;
-  codeLabel.textColor = style.mutedTextColor;
-  codeLabel.bordered = NO;
-  codeLabel.editable = NO;
-  codeLabel.backgroundColor = [NSColor clearColor];
-  [headerStack addView:codeLabel inGravity:NSStackViewGravityTop];
-
-  NSView *headerDivider = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, sidebarWidth, 1.0)];
+  // --- Divider ---
+  NSView *headerDivider = [[NSView alloc] initWithFrame:NSZeroRect];
+  headerDivider.translatesAutoresizingMaskIntoConstraints = NO;
   headerDivider.wantsLayer = YES;
   headerDivider.layer.backgroundColor = style.dividerColor.CGColor;
-  [header addSubview:headerDivider];
+  [self.sidebarView addSubview:headerDivider];
+  [headerDivider.heightAnchor constraintEqualToConstant:1.0].active = YES;
 
-  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, sidebarWidth, bounds.size.height - headerHeight)];
-  scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  // --- Table scroll ---
+  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+  scrollView.translatesAutoresizingMaskIntoConstraints = NO;
   scrollView.hasVerticalScroller = YES;
   scrollView.autohidesScrollers = YES;
   scrollView.borderType = NSNoBorder;
   scrollView.drawsBackground = NO;
 
-  self.sidebarTable = [[NSTableView alloc] initWithFrame:scrollView.bounds];
+  self.sidebarTable = [[NSTableView alloc] initWithFrame:NSZeroRect];
   self.sidebarTable.dataSource = self;
   self.sidebarTable.delegate = self;
   self.sidebarTable.headerView = nil;
-  self.sidebarTable.rowHeight = 32.0;
+  self.sidebarTable.rowHeight = 30.0;
   self.sidebarTable.backgroundColor = style.sidebarColor;
   self.sidebarTable.focusRingType = NSFocusRingTypeNone;
   self.sidebarTable.selectionHighlightStyle = NSTableViewSelectionHighlightStyleNone;
 
   NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"label"];
-  column.width = sidebarWidth - 20.0;
+  column.resizingMask = NSTableColumnAutoresizingMask;
   [self.sidebarTable addTableColumn:column];
   scrollView.documentView = self.sidebarTable;
   [self.sidebarView addSubview:scrollView];
+
+  // --- Layout: header | divider | scroll fill remaining ---
+  [NSLayoutConstraint activateConstraints:@[
+    [header.topAnchor constraintEqualToAnchor:self.sidebarView.topAnchor],
+    [header.leadingAnchor constraintEqualToAnchor:self.sidebarView.leadingAnchor],
+    [header.trailingAnchor constraintEqualToAnchor:self.sidebarView.trailingAnchor],
+
+    [headerDivider.topAnchor constraintEqualToAnchor:header.bottomAnchor],
+    [headerDivider.leadingAnchor constraintEqualToAnchor:self.sidebarView.leadingAnchor],
+    [headerDivider.trailingAnchor constraintEqualToAnchor:self.sidebarView.trailingAnchor],
+
+    [scrollView.topAnchor constraintEqualToAnchor:headerDivider.bottomAnchor],
+    [scrollView.leadingAnchor constraintEqualToAnchor:self.sidebarView.leadingAnchor],
+    [scrollView.trailingAnchor constraintEqualToAnchor:self.sidebarView.trailingAnchor],
+    [scrollView.bottomAnchor constraintEqualToAnchor:self.sidebarView.bottomAnchor],
+  ]];
 }
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
-  return self.tabItems.count;
+  return self.sidebarItems.count;
+}
+
+- (CGFloat)tableView:(NSTableView *)tableView heightOfRow:(NSInteger)row {
+  NSDictionary *item = (row >= 0 && row < (NSInteger)self.sidebarItems.count) ? self.sidebarItems[row] : nil;
+  if ([item[@"kind"] isEqualToString:@"section"]) {
+    return 22.0;
+  }
+  return 30.0;
+}
+
+- (NSIndexSet *)tableView:(NSTableView *)tableView selectionIndexesForProposedSelection:(NSIndexSet *)proposedSelectionIndexes {
+  NSMutableIndexSet *allowed = [NSMutableIndexSet indexSet];
+  [proposedSelectionIndexes enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+    NSString *identifier = [self tabIdentifierForSidebarRow:idx];
+    if (identifier.length > 0) {
+      [allowed addIndex:idx];
+    }
+  }];
+  if (allowed.count == 0) {
+    return tableView.selectedRowIndexes ?: [NSIndexSet indexSet];
+  }
+  return allowed;
 }
 
 - (NSTableRowView *)tableView:(NSTableView *)tableView rowViewForRow:(NSInteger)row {
@@ -363,16 +516,36 @@
 }
 
 - (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-  NSDictionary *item = (row >= 0 && row < (NSInteger)self.tabItems.count) ? self.tabItems[row] : nil;
+  NSDictionary *item = (row >= 0 && row < (NSInteger)self.sidebarItems.count) ? self.sidebarItems[row] : nil;
   if (!item) {
     return nil;
   }
 
   BaristaStyle *style = [BaristaStyle sharedStyle];
+  if ([item[@"kind"] isEqualToString:@"section"]) {
+    NSTableCellView *cell = [tableView makeViewWithIdentifier:@"BaristaSectionCell" owner:self];
+    if (!cell) {
+      cell = [[NSTableCellView alloc] initWithFrame:NSMakeRect(0, 0, tableColumn.width, 22)];
+      NSTextField *textField = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 4, tableColumn.width - 14, 14)];
+      textField.bordered = NO;
+      textField.editable = NO;
+      textField.backgroundColor = [NSColor clearColor];
+      textField.autoresizingMask = NSViewWidthSizable;
+      textField.font = [NSFont systemFontOfSize:9 weight:NSFontWeightBold];
+      textField.textColor = style.mutedTextColor;
+      textField.tag = 2001;
+      [cell addSubview:textField];
+      cell.identifier = @"BaristaSectionCell";
+    }
+    NSTextField *textField = [cell viewWithTag:2001];
+    textField.stringValue = [item[@"label"] uppercaseString];
+    return cell;
+  }
+
   NSTableCellView *cell = [tableView makeViewWithIdentifier:@"BaristaTabCell" owner:self];
   if (!cell) {
-    cell = [[NSTableCellView alloc] initWithFrame:NSMakeRect(0, 0, tableColumn.width, 32)];
-    NSTextField *textField = [[NSTextField alloc] initWithFrame:NSMakeRect(12, 6, tableColumn.width - 14, 20)];
+    cell = [[NSTableCellView alloc] initWithFrame:NSMakeRect(0, 0, tableColumn.width, 28)];
+    NSTextField *textField = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 5, tableColumn.width - 12, 18)];
     textField.bordered = NO;
     textField.editable = NO;
     textField.backgroundColor = [NSColor clearColor];
@@ -387,25 +560,55 @@
     textField = [cell.subviews firstObject];
   }
   NSString *label = item[@"label"] ?: @"";
-  textField.stringValue = [label uppercaseString];
-  textField.font = style.bodyFont;
+  NSString *icon = item[@"icon"] ?: @"";
+  textField.stringValue = icon.length ? [NSString stringWithFormat:@"%@  %@", icon, label] : label;
   BOOL isSelected = (row == self.sidebarTable.selectedRow);
+  textField.font = [self preferredSidebarIconFontWithSize:(isSelected ? 12.0 : 11.5)];
   textField.textColor = isSelected ? style.accentColor : style.textColor;
   return cell;
 }
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
+  (void)notification;
   NSInteger row = self.sidebarTable.selectedRow;
-  if (row >= 0 && row < (NSInteger)self.tabItems.count) {
-    [self.tabView selectTabViewItemAtIndex:row];
+  NSString *identifier = [self tabIdentifierForSidebarRow:row];
+  if (identifier.length > 0) {
+    NSInteger tabIndex = [self.tabItems indexOfObjectPassingTest:^BOOL(NSDictionary *item, NSUInteger idx, BOOL *stop) {
+      return [[item[@"id"] lowercaseString] isEqualToString:[identifier lowercaseString]];
+    }];
+    if (tabIndex != NSNotFound) {
+      [self selectTabAtIndex:tabIndex];
+    }
   }
   [self.sidebarTable reloadData];
 }
 
+- (void)tabView:(NSTabView *)tabView willSelectTabViewItem:(NSTabViewItem *)tabViewItem {
+  (void)tabView;
+  NSString *identifier = [[tabViewItem identifier] description];
+  [self ensureControllerLoadedForIdentifier:identifier];
+}
+
 - (BOOL)windowShouldClose:(NSWindow *)sender {
+  (void)sender;
   // Quit app when window is closed
   [NSApp terminate:nil];
   return YES;
+}
+
+- (void)windowDidMove:(NSNotification *)notification {
+  (void)notification;
+  [self saveWindowFrame];
+}
+
+- (void)windowDidEndLiveResize:(NSNotification *)notification {
+  (void)notification;
+  [self saveWindowFrame];
+}
+
+- (void)windowDidResize:(NSNotification *)notification {
+  (void)notification;
+  [self saveWindowFrame];
 }
 
 - (NSScreen *)activeScreenForPoint:(NSPoint)point {
@@ -415,19 +618,6 @@
     }
   }
   return [NSScreen mainScreen];
-}
-
-- (NSSize)preferredWindowSizeForScreen:(NSScreen *)screen {
-  if (!screen) {
-    return NSMakeSize(950, 750);
-  }
-  NSRect visible = screen.visibleFrame;
-  CGFloat margin = 80.0;
-  CGFloat maxWidth = MAX(700.0, visible.size.width - margin);
-  CGFloat maxHeight = MAX(560.0, visible.size.height - margin);
-  CGFloat width = MIN(980.0, maxWidth);
-  CGFloat height = MIN(780.0, maxHeight);
-  return NSMakeSize(width, height);
 }
 
 - (void)centerWindowOnActiveScreen {
@@ -446,48 +636,54 @@
   [self configureWindowIfNeeded];
   [NSApp activateIgnoringOtherApps:YES];
   [NSApp unhide:nil];
-  [self centerWindowOnActiveScreen];
+
+  NSString *savedFrame = [[NSUserDefaults standardUserDefaults] stringForKey:@"BaristaControlPanelWindowFrame"];
+  if (savedFrame.length) {
+    NSRect frame = NSRectFromString(savedFrame);
+    if (frame.size.width > 0 && frame.size.height > 0) {
+      [self.window setFrame:frame display:YES];
+    }
+  } else {
+    [self centerWindowOnActiveScreen];
+  }
+
   [self.window displayIfNeeded];
   if (self.window.isMiniaturized) {
     [self.window deminiaturize:nil];
   }
   [self.window setIsVisible:YES];
   [self.window makeKeyAndOrderFront:nil];
-  [self.window orderFrontRegardless];
   [self ensureWindowIsOnScreen];
-  [NSApp arrangeInFront:nil];
-
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
-                 dispatch_get_main_queue(), ^{
-                   [self ensureWindowIsOnScreen];
-                   [self.window makeKeyAndOrderFront:nil];
-                   [self.window orderFrontRegardless];
-                 });
 }
 
 - (void)configureWindowIfNeeded {
   if (self.windowConfigured || !self.window) { return; }
 
-  self.window.title = @"Barista Configuration";
+  self.window.title = @"Barista Control Panel";
   self.window.delegate = self;
   [[BaristaStyle sharedStyle] applyWindowStyle:self.window];
-  NSScreen *screen = [self activeScreenForPoint:[NSEvent mouseLocation]];
-  NSSize preferred = [self preferredWindowSizeForScreen:screen];
-  [self.window setContentSize:preferred];
-  CGFloat minWidth = MIN(850.0, preferred.width);
-  CGFloat minHeight = MIN(650.0, preferred.height);
+  NSSize currentSize = self.window.frame.size;
+  CGFloat minWidth = MIN(520.0, currentSize.width);
+  CGFloat minHeight = MIN(400.0, currentSize.height);
   [self.window setMinSize:NSMakeSize(minWidth, minHeight)];
-  [self.window center];
   self.window.alphaValue = 1.0;
   self.window.opaque = YES;
   self.window.hasShadow = YES;
 
-  // Use a normal window level to avoid Stage Manager hiding it.
-  [self.window setLevel:NSNormalWindowLevel];
-  [self.window setCollectionBehavior:(NSWindowCollectionBehaviorCanJoinAllSpaces |
-                                      NSWindowCollectionBehaviorFullScreenAuxiliary |
-                                      NSWindowCollectionBehaviorMoveToActiveSpace)];
+  BaristaPanelWindow *panelWindow = (BaristaPanelWindow *)self.window;
+  if ([[BaristaPanelState sharedState] prefersUtilityWindowMode]) {
+    [self.window setLevel:NSFloatingWindowLevel];
+    panelWindow.floatingPanel = YES;
+    self.window.animationBehavior = NSWindowAnimationBehaviorUtilityWindow;
+    [self.window setCollectionBehavior:NSWindowCollectionBehaviorMoveToActiveSpace];
+  } else {
+    [self.window setLevel:NSNormalWindowLevel];
+    panelWindow.floatingPanel = NO;
+    self.window.animationBehavior = NSWindowAnimationBehaviorDocumentWindow;
+    [self.window setCollectionBehavior:NSWindowCollectionBehaviorDefault];
+  }
   self.windowConfigured = YES;
+  [self saveWindowFrame];
   NSLog(@"[barista] window configured");
 }
 
@@ -516,8 +712,14 @@
   NSRect frame = window.frame;
 
   CGFloat margin = 40.0;
-  CGFloat width = MIN(frame.size.width, visible.size.width - margin);
-  CGFloat height = MIN(frame.size.height, visible.size.height - margin);
+  CGFloat maxWidth = visible.size.width - margin;
+  CGFloat maxHeight = visible.size.height - margin;
+  if (![[BaristaPanelState sharedState] prefersUtilityWindowMode]) {
+    maxWidth = MIN(maxWidth, 860.0);
+    maxHeight = MIN(maxHeight, 680.0);
+  }
+  CGFloat width = MIN(frame.size.width, maxWidth);
+  CGFloat height = MIN(frame.size.height, maxHeight);
   CGFloat minX = visible.origin.x + (margin / 2.0);
   CGFloat minY = visible.origin.y + (margin / 2.0);
   CGFloat maxX = visible.origin.x + visible.size.width - width - (margin / 2.0);

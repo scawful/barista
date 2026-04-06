@@ -1,6 +1,6 @@
-#import <Cocoa/Cocoa.h>
+#import "BaristaTabBaseViewController.h"
 
-@interface LaunchAgentsTabViewController : NSViewController <NSTableViewDataSource, NSTableViewDelegate>
+@interface LaunchAgentsTabViewController : BaristaTabBaseViewController <NSTableViewDataSource, NSTableViewDelegate>
 @property (strong) NSTableView *tableView;
 @property (strong) NSSearchField *searchField;
 @property (strong) NSTextField *statusLabel;

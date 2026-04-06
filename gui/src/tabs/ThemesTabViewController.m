@@ -1,19 +1,14 @@
+#import "BaristaTabBaseViewController.h"
 #import "BaristaStyle.h"
 #import "ConfigurationManager.h"
-#import <Cocoa/Cocoa.h>
 
-@interface ThemesTabViewController : NSViewController
+@interface ThemesTabViewController : BaristaTabBaseViewController
 @property (strong) NSPopUpButton *themeSelector;
-@property (strong) NSTextField *themePreview;
+@property (strong) NSView *swatchContainer;
 @property (strong) NSArray *availableThemes;
 @end
 
 @implementation ThemesTabViewController
-
-- (void)loadView {
-  self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
-  self.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-}
 
 - (void)viewDidLoad {
   [super viewDidLoad];
@@ -35,13 +30,8 @@
   }
   self.availableThemes = [themes sortedArrayUsingSelector:@selector(compare:)];
 
-  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
-  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  rootStack.alignment = NSLayoutAttributeLeading;
-  rootStack.spacing = 24;
-  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
-  [self.view addSubview:rootStack];
+  NSStackView *rootStack = nil;
+  [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(24, 24, 28, 24) spacing:20];
 
   // Title
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
@@ -96,22 +86,11 @@
   previewBox.wantsLayer = YES;
   previewBox.layer.backgroundColor = [[NSColor blackColor] colorWithAlphaComponent:0.2].CGColor;
   previewBox.layer.cornerRadius = 12;
-  [previewBox.widthAnchor constraintEqualToConstant:600].active = YES;
-  [previewBox.heightAnchor constraintEqualToConstant:120].active = YES;
+  [previewBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+  [previewBox.heightAnchor constraintEqualToConstant:160].active = YES;
   [rootStack addView:previewBox inGravity:NSStackViewGravityTop];
 
-  self.themePreview = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  self.themePreview.stringValue = @"Theme colors will be applied to the bar";
-  self.themePreview.font = [NSFont systemFontOfSize:16 weight:NSFontWeightMedium];
-  self.themePreview.bordered = NO;
-  self.themePreview.editable = NO;
-  self.themePreview.alignment = NSTextAlignmentCenter;
-  self.themePreview.backgroundColor = [NSColor clearColor];
-  self.themePreview.tag = 9901;
-  self.themePreview.translatesAutoresizingMaskIntoConstraints = NO;
-  [previewBox addSubview:self.themePreview];
-  [self.themePreview.centerXAnchor constraintEqualToAnchor:previewBox.centerXAnchor].active = YES;
-  [self.themePreview.centerYAnchor constraintEqualToAnchor:previewBox.centerYAnchor].active = YES;
+  self.swatchContainer = previewBox;
 
   [rootStack setCustomSpacing:40 afterView:previewBox];
 
@@ -155,11 +134,105 @@
 }
 
 - (void)updatePreview {
-  BaristaStyle *style = [BaristaStyle sharedStyle];
   NSString *themeName = self.themeSelector.selectedItem.title;
   if (themeName) {
-    self.themePreview.stringValue = [NSString stringWithFormat:@"Selected: %@ theme", themeName];
-    self.themePreview.textColor = style.accentColor;
+    [self buildSwatchesForTheme:themeName inContainer:self.swatchContainer];
+  }
+}
+
+- (void)buildSwatchesForTheme:(NSString *)themeName inContainer:(NSView *)container {
+  // Remove old swatches
+  for (NSView *sub in [container.subviews copy]) {
+    [sub removeFromSuperview];
+  }
+
+  BaristaStyle *style = [BaristaStyle sharedStyle];
+  NSString *barHex = nil;
+  NSDictionary<NSString *, NSColor *> *palette = [style paletteForThemeName:themeName barHex:&barHex];
+
+  if (!palette.count) {
+    NSTextField *empty = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 10, 200, 20)];
+    empty.stringValue = @"No colors found in theme";
+    empty.bordered = NO;
+    empty.editable = NO;
+    empty.backgroundColor = [NSColor clearColor];
+    empty.textColor = [NSColor secondaryLabelColor];
+    [container addSubview:empty];
+    return;
+  }
+
+  // Build a flow layout of color swatches
+  // Order: important keys first, then alphabetical
+  NSArray *priorityKeys = @[@"BG_PRI_COLR", @"BG_SEC_COLR", @"WHITE", @"DARK_WHITE"];
+  NSMutableArray *orderedKeys = [NSMutableArray arrayWithArray:priorityKeys];
+  NSArray *remaining = [[palette.allKeys sortedArrayUsingSelector:@selector(compare:)]
+      filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSString *key, NSDictionary *bindings) {
+        return ![priorityKeys containsObject:key];
+      }]];
+  [orderedKeys addObjectsFromArray:remaining];
+
+  CGFloat x = 10, y = container.bounds.size.height - 54;
+  CGFloat swatchSize = 28, spacing = 8, labelHeight = 14;
+
+  // Bar background swatch (wider)
+  if (barHex.length) {
+    NSColor *barColor = [style colorFromHexString:barHex fallback:nil];
+    if (barColor) {
+      NSView *swatch = [[NSView alloc] initWithFrame:NSMakeRect(x, y, 60, swatchSize)];
+      swatch.wantsLayer = YES;
+      swatch.layer.backgroundColor = barColor.CGColor;
+      swatch.layer.cornerRadius = 6;
+      swatch.layer.borderWidth = 1;
+      swatch.layer.borderColor = [[NSColor whiteColor] colorWithAlphaComponent:0.15].CGColor;
+      [container addSubview:swatch];
+
+      NSTextField *label = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y - labelHeight - 2, 60, labelHeight)];
+      label.stringValue = @"Bar BG";
+      label.font = [NSFont systemFontOfSize:8];
+      label.textColor = [NSColor secondaryLabelColor];
+      label.bordered = NO;
+      label.editable = NO;
+      label.backgroundColor = [NSColor clearColor];
+      label.alignment = NSTextAlignmentCenter;
+      [container addSubview:label];
+      x += 60 + spacing;
+    }
+  }
+
+  // Palette swatches
+  for (NSString *key in orderedKeys) {
+    NSColor *color = palette[key];
+    if (!color) continue;
+
+    if (x + swatchSize > container.bounds.size.width - 10) {
+      x = 10;
+      y -= (swatchSize + labelHeight + spacing + 4);
+    }
+
+    NSView *swatch = [[NSView alloc] initWithFrame:NSMakeRect(x, y, swatchSize, swatchSize)];
+    swatch.wantsLayer = YES;
+    swatch.layer.backgroundColor = color.CGColor;
+    swatch.layer.cornerRadius = 6;
+    swatch.layer.borderWidth = 1;
+    swatch.layer.borderColor = [[NSColor whiteColor] colorWithAlphaComponent:0.15].CGColor;
+    [container addSubview:swatch];
+
+    // Abbreviated key name
+    NSString *shortKey = key;
+    if (shortKey.length > 8) {
+      shortKey = [shortKey substringToIndex:8];
+    }
+    NSTextField *label = [[NSTextField alloc] initWithFrame:NSMakeRect(x - 2, y - labelHeight - 2, swatchSize + 4, labelHeight)];
+    label.stringValue = shortKey;
+    label.font = [NSFont systemFontOfSize:7];
+    label.textColor = [NSColor secondaryLabelColor];
+    label.bordered = NO;
+    label.editable = NO;
+    label.backgroundColor = [NSColor clearColor];
+    label.alignment = NSTextAlignmentCenter;
+    [container addSubview:label];
+
+    x += swatchSize + spacing;
   }
 }
 
@@ -176,6 +249,8 @@
   [config setValue:themeName forKeyPath:@"appearance.theme"];
   [[BaristaStyle sharedStyle] refreshFromConfig];
   NSString *themeBarHex = [BaristaStyle sharedStyle].themeBarHex;
+  NSLog(@"[barista] applyTheme: name=%@ barHex=%@ configPath=%@",
+        themeName, themeBarHex ?: @"(nil)", config.configPath);
   if (themeBarHex.length) {
     [config setValue:themeBarHex forKeyPath:@"appearance.bar_color"];
   }

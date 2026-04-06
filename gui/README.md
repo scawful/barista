@@ -13,10 +13,12 @@ gui/
 │   │   ├── AppDelegate           # Application lifecycle
 │   │   └── MainWindowController  # Main window coordinator
 │   └── tabs/                     # Tab view controllers
+│       ├── HomeTabViewController
 │       ├── AppearanceTabViewController
 │       ├── WidgetsTabViewController
 │       ├── SpacesTabViewController
 │       ├── IconsTabViewController
+│       ├── MenuTabViewController
 │       ├── ThemesTabViewController
 │       ├── ShortcutsTabViewController
 │       ├── IntegrationsTabViewController
@@ -44,7 +46,7 @@ Set `BARISTA_SYNC_GUI_BIN=1` if you need to copy fresh binaries into `gui/bin`.
 Or from this directory:
 ```bash
 cd /path/to/barista
-cmake --build build --target config_menu icon_browser help_center
+  cmake --build build --target config_menu barista_control_panel_app icon_browser help_center
 ```
 
 ### Clean Rebuild
@@ -64,7 +66,8 @@ From the project root:
 
 ### config_menu
 
-The unified configuration window with 11 tabs:
+The unified configuration window with 13 tabs:
+- **Home** - Config dashboard with quick actions and navigation
 - **Appearance** - Bar appearance settings with live preview
 - **Widgets** - Widget management and configuration
 - **Spaces** - Space customization with icon browser integration
@@ -136,6 +139,21 @@ The GUI uses a modular architecture:
 ### Modifying Existing Tabs
 
 Each tab is self-contained in its own files. Simply edit the corresponding files in `src/tabs/` and rebuild.
+
+### Opening Oracle Tools
+
+From the project root:
+
+```bash
+./bin/open_oracle_agent_manager.sh
+```
+
+This is the supported entry point for Oracle Hub.
+
+### App Bundle
+
+The native panel bundle is built as `build/bin/BaristaControlPanel.app` via the `barista_control_panel_app` target.
+`bin/open_control_panel.sh` now prefers that build artifact instead of generating an app bundle at launch time.
 
 ## Troubleshooting
 

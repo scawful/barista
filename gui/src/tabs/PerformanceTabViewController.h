@@ -1,6 +1,6 @@
-#import <Cocoa/Cocoa.h>
+#import "BaristaTabBaseViewController.h"
 
-@interface PerformanceTabViewController : NSViewController
+@interface PerformanceTabViewController : BaristaTabBaseViewController
 @property (strong) NSTextField *cpuUsageLabel;
 @property (strong) NSTextField *memoryUsageLabel;
 @property (strong) NSTextField *cacheHitsLabel;

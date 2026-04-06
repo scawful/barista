@@ -1,11 +1,11 @@
 # Barista/SketchyBar Integration Summary
 
 **Date**: 2026-01-01
-**Scope**: Cortex & sys_manual integration + Control Center UI improvements
+**Scope**: historical integration notes for sys_manual-era menu work
 
 ## Overview
 
-Successfully integrated cortex and sys_manual into the SketchyBar menu system and created a modern Control Center-style interface. This establishes the foundation for halext:: ImGui tools as the standard for workspace widgets and configuration.
+This document is historical. The current setup no longer routes Barista through Cortex; Barista owns SketchyBar configuration, and Oracle Agent Manager owns deeper Oracle workflow tooling.
 
 ## What Was Done
 
@@ -16,7 +16,7 @@ Successfully integrated cortex and sys_manual into the SketchyBar menu system an
 - macOS Control Center-inspired grouped sections with rounded backgrounds
 - Visual group headers with icons and colors
 - Control tiles with hover states
-- Tool launchers: cortex, sys_manual, terminal, finder
+- Tool launchers: sys_manual, terminal, finder
 - Workspace status (dirty repos indicator)
 - Space layout controls (Float/BSP/Stack)
 - Window operations (balance, rotate, flip)
@@ -35,7 +35,6 @@ Successfully integrated cortex and sys_manual into the SketchyBar menu system an
 
 **Features**:
 - New "Tools & Workspace" section
-- Cortex launcher with status indicator (Running/Stopped)
 - sys_manual quick launch
 - Terminal and Finder shortcuts
 - Better-organized submenus
@@ -50,7 +49,6 @@ Successfully integrated cortex and sys_manual into the SketchyBar menu system an
 │   └── Force Quit…
 │
 ├── Tools & Workspace ←─ NEW
-│   ├── Cortex (Running) 󰪴
 │   ├── System Manual
 │   ├── Terminal
 │   └── Open Workspace
@@ -131,17 +129,17 @@ local function is_running(proc)
   return result and result:match("1")
 end
 
-local cortex_running = is_running("cortex")
-local icon_color = cortex_running and "0xffa6e3a1" or "0xff6c7086"
+local oracle_running = is_running("oracle_manager_gui")
+local icon_color = oracle_running and "0xffa6e3a1" or "0xff6c7086"
 ```
 
 **Launch Command**:
 ```lua
-action = HOME .. "/src/lab/cortex/cortex &"
+action = HOME .. "/src/hobby/oracle-agent-manager/build/oracle_manager_gui &"
 ```
 
 **Menu Integration**:
-- Shows "Cortex (Running)" or "Cortex" based on status
+- Shows Oracle Agent Manager running state
 - Green icon (󰪴) when running, gray when stopped
 - Click to launch if stopped, or brings to front if running
 
@@ -165,7 +163,7 @@ halext Ecosystem
 ├── sys_manual       (7.2MB) - Workspace docs + syshelp
 ├── barista_config   (6.2MB) - SketchyBar configuration GUI
 ├── afs_studio       (TBD)   - AFS training visualization
-└── cortex           (2.2MB) - Swift menu bar app (integrates with halext)
+└── oracle-agent-manager (external) - Oracle workflow manager
 ```
 
 **Shared Infrastructure** (see [halext docs](../../shared/cpp/halext/docs/)):
@@ -181,10 +179,6 @@ halext Ecosystem
 ## Binary Verification
 
 ```bash
-# Verify cortex
-$ ls -lh ~/src/lab/cortex/cortex
--rwxr-xr-x  2.2M scawful  1 Jan 12:27  cortex
-
 # Verify sys_manual
 $ ls -lh ~/src/lab/sys_manual/build/sys_manual
 -rwxr-xr-x  7.2M scawful  1 Jan 12:19  sys_manual
@@ -209,15 +203,14 @@ $ ls -lh ~/src/shared/cpp/afs_gui/fonts/MaterialIcons-Regular.ttf
 
 ### What Works Now ✅
 1. Enhanced Control Center widget with grouped sections
-2. Apple menu with cortex and sys_manual entries
-3. Status detection for cortex (shows running/stopped)
+2. Apple menu with sys_manual entries
+3. Tool launch wiring remains documented
 4. Tool launchers work correctly
 5. Visual improvements (rounded tiles, better colors)
 
 ### Ready for Testing ⬜
 1. Activate enhanced control center in main.lua
-2. Test cortex launch from menu
-3. Test sys_manual launch from menu
+2. Test sys_manual launch from menu
 4. Verify status indicators update correctly
 5. Customize colors to match theme
 
@@ -239,7 +232,6 @@ $ ls -lh ~/src/shared/cpp/afs_gui/fonts/MaterialIcons-Regular.ttf
 SketchyBar (Lua)
 ├── Enhanced Control Center widget
 ├── Enhanced Apple menu
-├── cortex integration (launch + status)
 └── sys_manual integration (launch)
 ```
 
@@ -251,7 +243,7 @@ SketchyBar (Lua)
 halext:: Tools
 ├── sys_manual       (docs browser)
 ├── barista_config   (SketchyBar GUI) ← NEW
-└── cortex           (menu bar app)
+└── oracle-agent-manager (external Oracle workflow app)
 ```
 
 ### Long Term (Phase 3) - Future
@@ -260,13 +252,13 @@ halext:: Unified Ecosystem
 ├── Core Infrastructure
 │   ├── halext::gui           (ImGui base)
 │   ├── halext::workspace     (TOML parsers)
-│   ├── halext::integration   (cortex, syshelp, barista)
+│   ├── halext::integration   (syshelp, barista)
 │   └── afs::gui              (Agent framework GUI)
 │
 ├── Configuration & Control
 │   ├── barista_config        (SketchyBar settings) ✓ Phase 2
 │   ├── sys_manual            (workspace docs)
-│   └── cortex_config         (cortex settings)
+│   └── oracle tooling        (external)
 │
 └── Development & Workspace
     ├── afs_studio            (Agent training/testing)
@@ -280,9 +272,8 @@ halext:: Unified Ecosystem
 ## Success Metrics
 
 ✅ **Integration Complete**:
-1. Cortex accessible from SketchyBar menus
-2. sys_manual accessible from SketchyBar menus
-3. Status indicators work correctly
+1. sys_manual accessible from SketchyBar menus
+2. Status indicators work correctly
 4. Visual improvements implemented
 5. Documentation complete
 
@@ -305,7 +296,7 @@ halext:: Unified Ecosystem
 2. Choose activation option (Option 1 recommended)
 3. Edit `main.lua` to use enhanced modules
 4. Reload SketchyBar: `sketchybar --reload`
-5. Test cortex and sys_manual launches
+5. Test sys_manual launches
 6. Report any issues
 
 ### When Ready for Phase 2

@@ -20,17 +20,11 @@ static void BaristaSetupLogging(void) {
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
   BaristaSetupLogging();
-  // Set activation policy to regular app (shows in dock, stays open)
   [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
   self.windowController = [[MainWindowController alloc] init];
   NSLog(@"[barista] windowController=%@", self.windowController);
   [self activateControlPanel];
-
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
-                 dispatch_get_main_queue(), ^{
-                   [self activateControlPanel];
-                 });
 }
 
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
@@ -43,14 +37,14 @@ static void BaristaSetupLogging(void) {
 }
 
 - (void)applicationDidBecomeActive:(NSNotification *)notification {
-  [self activateControlPanel];
+  if (!self.windowController.window.isVisible) {
+    [self activateControlPanel];
+  }
 }
 
 - (void)activateControlPanel {
   if (!self.windowController) { return; }
-  [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-  [[NSRunningApplication currentApplication] activateWithOptions:(NSApplicationActivateIgnoringOtherApps |
-                                                                  NSApplicationActivateAllWindows)];
+  [NSApp activateIgnoringOtherApps:YES];
   [self.windowController showWindow:nil];
   NSWindow *window = self.windowController.window;
   if (!window) { return; }
@@ -59,7 +53,6 @@ static void BaristaSetupLogging(void) {
     [window deminiaturize:nil];
   }
   [window makeKeyAndOrderFront:nil];
-  [window orderFrontRegardless];
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {

@@ -38,6 +38,12 @@ def usage(msg=None):
     print("  bar-color <color> [blur]", file=sys.stderr)
     print("  icon <name> <glyph|none>", file=sys.stderr)
     print("  space-icon <space> <glyph|none>", file=sys.stderr)
+    print("  oracle-section <id> <on|off>", file=sys.stderr)
+    print("  oracle-widget-label <label|auto>", file=sys.stderr)
+    print("  oracle-widget-title <title|auto>", file=sys.stderr)
+    print("  oracle-widget-show-label <on|off>", file=sys.stderr)
+    print("  oracle-widget-icon <glyph|auto>", file=sys.stderr)
+    print("  oracle-update-freq <seconds>", file=sys.stderr)
     sys.exit(1)
 
 try:
@@ -53,6 +59,11 @@ def ensure_dict(key):
     if not isinstance(data.get(key), dict):
         data[key] = {}
     return data[key]
+
+def ensure_child(parent, key):
+    if not isinstance(parent.get(key), dict):
+        parent[key] = {}
+    return parent[key]
 
 if command == "widget-color":
     if len(args) < 2:
@@ -105,6 +116,60 @@ elif command == "space-icon":
         space_icons.pop(space, None)
     else:
         space_icons[space] = glyph
+elif command == "oracle-section":
+    if len(args) < 2:
+        usage("oracle-section requires <id> <on|off>")
+    section_id, value = args[0], args[1].lower()
+    enabled = value in ("1", "true", "on", "yes")
+    menus = ensure_dict("menus")
+    oracle_menu = ensure_child(menus, "oracle")
+    sections = ensure_child(oracle_menu, "sections")
+    section = ensure_child(sections, section_id)
+    section["enabled"] = enabled
+elif command == "oracle-widget-label":
+    if len(args) < 1:
+        usage("oracle-widget-label requires <label|auto>")
+    value = args[0]
+    menus = ensure_dict("menus")
+    oracle_menu = ensure_child(menus, "oracle")
+    triforce = ensure_child(oracle_menu, "triforce")
+    triforce["label"] = "" if value == "auto" else value
+elif command == "oracle-widget-title":
+    if len(args) < 1:
+        usage("oracle-widget-title requires <title|auto>")
+    value = args[0]
+    menus = ensure_dict("menus")
+    oracle_menu = ensure_child(menus, "oracle")
+    triforce = ensure_child(oracle_menu, "triforce")
+    triforce["title"] = "" if value == "auto" else value
+elif command == "oracle-widget-show-label":
+    if len(args) < 1:
+        usage("oracle-widget-show-label requires <on|off>")
+    value = args[0].lower()
+    enabled = value in ("1", "true", "on", "yes")
+    menus = ensure_dict("menus")
+    oracle_menu = ensure_child(menus, "oracle")
+    triforce = ensure_child(oracle_menu, "triforce")
+    triforce["show_label"] = enabled
+elif command == "oracle-widget-icon":
+    if len(args) < 1:
+        usage("oracle-widget-icon requires <glyph|auto>")
+    value = args[0]
+    menus = ensure_dict("menus")
+    oracle_menu = ensure_child(menus, "oracle")
+    triforce = ensure_child(oracle_menu, "triforce")
+    triforce["icon"] = "" if value == "auto" else value
+elif command == "oracle-update-freq":
+    if len(args) < 1:
+        usage("oracle-update-freq requires <seconds>")
+    try:
+        seconds = int(args[0])
+    except ValueError:
+        usage("oracle-update-freq requires an integer")
+    menus = ensure_dict("menus")
+    oracle_menu = ensure_child(menus, "oracle")
+    triforce = ensure_child(oracle_menu, "triforce")
+    triforce["update_freq"] = max(5, seconds)
 else:
     usage(f"Unknown command: {command}")
 

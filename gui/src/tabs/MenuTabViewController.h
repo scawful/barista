@@ -1,4 +1,4 @@
-#import <Cocoa/Cocoa.h>
+#import "BaristaTabBaseViewController.h"
 
-@interface MenuTabViewController : NSViewController <NSTextFieldDelegate>
+@interface MenuTabViewController : BaristaTabBaseViewController <NSTextFieldDelegate>
 @end

@@ -1,6 +1,6 @@
-#import <Cocoa/Cocoa.h>
+#import "BaristaTabBaseViewController.h"
 
-@interface ShortcutsTabViewController : NSViewController <NSTableViewDataSource, NSTableViewDelegate>
+@interface ShortcutsTabViewController : BaristaTabBaseViewController <NSTableViewDataSource, NSTableViewDelegate>
 @property (strong) NSTableView *tableView;
 @property (strong) NSArray *shortcuts;
 @property (strong) NSSearchField *searchField;

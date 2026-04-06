@@ -1,7 +1,7 @@
 #import "ConfigurationManager.h"
-#import <Cocoa/Cocoa.h>
+#import "BaristaTabBaseViewController.h"
 
-@interface IconsTabViewController : NSViewController <NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, NSTextFieldDelegate>
+@interface IconsTabViewController : BaristaTabBaseViewController <NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, NSTextFieldDelegate>
 @property (strong) NSSegmentedControl *modeControl;
 @property (strong) NSScrollView *mappingScrollView;
 @property (strong) NSView *libraryContainer;
@@ -30,10 +30,6 @@
 
 @implementation IconsTabViewController
 
-- (void)loadView {
-  self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
-}
-
 - (NSString *)configDir {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
   if (config.configPath.length) {
@@ -59,37 +55,14 @@
   ];
 }
 
-- (NSFont *)preferredIconFontWithSize:(CGFloat)size {
-  NSArray<NSString *> *candidates = @[
-    @"Hack Nerd Font",
-    @"JetBrainsMono Nerd Font",
-    @"FiraCode Nerd Font",
-    @"SFMono Nerd Font",
-    @"Symbols Nerd Font",
-    @"MesloLGS NF"
-  ];
-  for (NSString *name in candidates) {
-    NSFont *font = [NSFont fontWithName:name size:size];
-    if (font) {
-      return font;
-    }
-  }
-  return [NSFont monospacedSystemFontOfSize:size weight:NSFontWeightRegular];
-}
-
 - (void)viewDidLoad {
   [super viewDidLoad];
 
   [self loadIcons];
   [self loadAppIconMap];
 
-  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
-  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  rootStack.alignment = NSLayoutAttributeLeading;
-  rootStack.spacing = 20;
-  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
-  [self.view addSubview:rootStack];
+  NSStackView *rootStack = nil;
+  [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(20, 24, 20, 24) spacing:20];
 
   // Title
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
@@ -145,14 +118,16 @@
   scrollView.borderType = NSNoBorder;
   scrollView.drawsBackground = NO;
   [self.mappingContainer addSubview:scrollView];
+  self.mappingScrollView = scrollView;
 
   NSStackView *stack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  stack.translatesAutoresizingMaskIntoConstraints = NO;
   stack.orientation = NSUserInterfaceLayoutOrientationVertical;
   stack.alignment = NSLayoutAttributeLeading;
   stack.spacing = 16;
   stack.edgeInsets = NSEdgeInsetsMake(10, 0, 20, 20);
   scrollView.documentView = stack;
-  [stack.widthAnchor constraintEqualToAnchor:scrollView.widthAnchor constant:-20].active = YES;
+  [stack.widthAnchor constraintEqualToAnchor:scrollView.contentView.widthAnchor constant:-20].active = YES;
 
   NSTextField *widgetHeader = [[NSTextField alloc] initWithFrame:NSZeroRect];
   widgetHeader.stringValue = @"Widget Icons";
@@ -361,11 +336,25 @@
   self.glyphCopyButton.action = @selector(copyGlyph:);
   [self.glyphCopyButton.widthAnchor constraintEqualToConstant:140].active = YES;
   [previewStack addView:self.glyphCopyButton inGravity:NSStackViewGravityTop];
+
+  // Fallback notice when icon_map.json is missing
+  if (self.allIcons.count <= 10) {
+    NSTextField *fallbackLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    fallbackLabel.stringValue = @"Using built-in icons. Place icon_map.json in your SketchyBar config directory for a full library.";
+    fallbackLabel.font = [NSFont systemFontOfSize:11];
+    fallbackLabel.textColor = [NSColor secondaryLabelColor];
+    fallbackLabel.bordered = NO;
+    fallbackLabel.editable = NO;
+    fallbackLabel.backgroundColor = [NSColor clearColor];
+    fallbackLabel.lineBreakMode = NSLineBreakByWordWrapping;
+    fallbackLabel.preferredMaxLayoutWidth = 500;
+    [stack addView:fallbackLabel inGravity:NSStackViewGravityTop];
+  }
 }
 
 - (void)modeChanged:(NSSegmentedControl *)sender {
   BOOL showMappings = sender.selectedSegment == 0;
-  self.mappingScrollView.hidden = !showMappings;
+  self.mappingContainer.hidden = !showMappings;
   self.libraryContainer.hidden = showMappings;
 }
 
@@ -523,7 +512,7 @@
   if ([identifier isEqualToString:@"glyph"]) {
     NSTextField *textField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 60, 20)];
     textField.stringValue = icon[@"glyph"];
-    textField.font = [NSFont systemFontOfSize:20];
+    textField.font = [self preferredIconFontWithSize:20];
     textField.bordered = NO;
     textField.editable = NO;
     textField.backgroundColor = [NSColor clearColor];

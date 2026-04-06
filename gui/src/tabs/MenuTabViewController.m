@@ -3,10 +3,14 @@
 
 @interface MenuTabViewController ()
 @property (strong) NSArray<NSDictionary *> *tools;
+@property (strong) NSArray<NSDictionary *> *sections;
 @property (strong) NSScrollView *scrollView;
 @property (strong) NSView *contentView;
 @property (strong) NSButton *showMissingToggle;
 @property (strong) NSButton *allowTerminalToggle;
+@property (strong) NSColorWell *hoverColorWell;
+@property (strong) NSColorWell *hoverBorderColorWell;
+@property (strong) NSTextField *hoverBorderWidthField;
 @property (strong) NSTextField *workDomainField;
 @property (strong) NSTextField *workAppsFileField;
 @property (strong) NSButton *applyWorkAppsButton;
@@ -20,10 +24,6 @@
 @end
 
 @implementation MenuTabViewController
-
-- (void)loadView {
-  self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
-}
 
 - (void)viewDidLoad {
   [super viewDidLoad];
@@ -41,9 +41,7 @@
     @{@"key": @"stem_sampler", @"label": @"StemSampler", @"icon": @"󰎈", @"default_enabled": @YES},
     @{@"key": @"yaze", @"label": @"Yaze", @"icon": @"󰯙", @"default_enabled": @(yazeDefaultEnabled)},
     @{@"key": @"mesen_oos", @"label": @"Mesen2 OoS", @"icon": @"󰁆", @"default_enabled": @YES},
-    @{@"key": @"oracle_agent_manager", @"label": @"Agent Manager", @"icon": @"󰒋", @"default_enabled": @NO},
-    @{@"key": @"cortex_toggle", @"label": @"Cortex Dashboard", @"icon": @"󰕮", @"default_enabled": @YES},
-    @{@"key": @"cortex_hub", @"label": @"Cortex Hub", @"icon": @"󰣖", @"default_enabled": @YES},
+    @{@"key": @"oracle_agent_manager", @"label": @"Oracle Agent Manager", @"icon": @"󰒋", @"default_enabled": @YES},
     @{@"key": @"help_center", @"label": @"Help Center", @"icon": @"󰘥", @"default_enabled": @YES},
     @{@"key": @"sys_manual", @"label": @"Sys Manual", @"icon": @"󰋜", @"default_enabled": @YES},
     @{@"key": @"icon_browser", @"label": @"Icon Browser", @"icon": @"󰈙", @"default_enabled": @YES},
@@ -51,26 +49,23 @@
     @{@"key": @"barista_config", @"label": @"Barista Config", @"icon": @"󰒓", @"default_enabled": @YES},
     @{@"key": @"reload_bar", @"label": @"Reload SketchyBar", @"icon": @"󰑐", @"default_enabled": @YES}
   ];
+  self.sections = @[
+    @{@"key": @"apps", @"label": @"Apps", @"icon": @"󰀻"},
+    @{@"key": @"oracle", @"label": @"Oracle", @"icon": @"󰊠"},
+    @{@"key": @"controls", @"label": @"Controls", @"icon": @"󰒓"},
+    @{@"key": @"work", @"label": @"Web Apps", @"icon": @"󰖟"},
+    @{@"key": @"support", @"label": @"Support", @"icon": @"󰘥"},
+    @{@"key": @"afs", @"label": @"AFS Tools", @"icon": @"󰈙"},
+    @{@"key": @"audio", @"label": @"Audio", @"icon": @"󰎈"},
+    @{@"key": @"custom", @"label": @"Custom", @"icon": @"󰘥"}
+  ];
 
-  self.scrollView = [[NSScrollView alloc] initWithFrame:self.view.bounds];
-  self.scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  self.scrollView.hasVerticalScroller = YES;
-  self.scrollView.autohidesScrollers = YES;
-  self.scrollView.borderType = NSNoBorder;
-  self.scrollView.drawsBackground = NO;
-  [self.view addSubview:self.scrollView];
-
-  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
-  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  rootStack.alignment = NSLayoutAttributeLeading;
-  rootStack.spacing = 24;
-  rootStack.edgeInsets = NSEdgeInsetsMake(30, 40, 40, 40);
-  self.scrollView.documentView = rootStack;
-  [rootStack.widthAnchor constraintEqualToAnchor:self.scrollView.widthAnchor].active = YES;
+  NSStackView *rootStack = nil;
+  self.scrollView = [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(28, 34, 34, 34) spacing:20];
 
   // Title
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  title.stringValue = @"Apple Menu Popups";
+  title.stringValue = @"Menu Composer";
   title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
   title.bordered = NO;
   title.editable = NO;
@@ -78,7 +73,7 @@
   [rootStack addView:title inGravity:NSStackViewGravityTop];
 
   NSTextField *hint = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  hint.stringValue = @"Popup sections are grouped rows inside the Apple menu. Legacy submenus are hover-open fly-outs used by a few older integrations.\nToggle items, edit labels/icons, and set order here; use the sections below for web apps and local apps.";
+  hint.stringValue = @"Decide what the Apple menu owns and keep the sections intentional. Barista config belongs in Controls, Oracle actions belong in Oracle, and support tools stay clearly separated from daily apps.";
   hint.font = [NSFont systemFontOfSize:13];
   hint.textColor = [NSColor secondaryLabelColor];
   hint.bordered = NO;
@@ -88,11 +83,69 @@
   hint.lineBreakMode = NSLineBreakByWordWrapping;
   [rootStack addView:hint inGravity:NSStackViewGravityTop];
 
+  NSBox *heroBox = [[NSBox alloc] initWithFrame:NSZeroRect];
+  heroBox.boxType = NSBoxCustom;
+  heroBox.titlePosition = NSNoTitle;
+  heroBox.cornerRadius = 14.0;
+  heroBox.borderColor = [[NSColor whiteColor] colorWithAlphaComponent:0.08];
+  heroBox.fillColor = [NSColor colorWithCalibratedRed:0.11 green:0.12 blue:0.15 alpha:0.95];
+  heroBox.transparent = NO;
+  [rootStack addView:heroBox inGravity:NSStackViewGravityTop];
+  [heroBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+
+  NSStackView *heroStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  heroStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  heroStack.alignment = NSLayoutAttributeLeading;
+  heroStack.spacing = 8;
+  heroStack.edgeInsets = NSEdgeInsetsMake(18, 18, 18, 18);
+  heroBox.contentView = heroStack;
+
+  NSTextField *heroTitle = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  heroTitle.stringValue = @"The Apple menu should feel like a curated launcher, not a dumping ground.";
+  heroTitle.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
+  heroTitle.bordered = NO;
+  heroTitle.editable = NO;
+  heroTitle.backgroundColor = [NSColor clearColor];
+  [heroStack addView:heroTitle inGravity:NSStackViewGravityTop];
+
+  NSTextField *heroBody = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  heroBody.stringValue = @"Use section order, hover polish, and app discovery together so the popup reads like a system layer with a clear voice instead of a flat tool list.";
+  heroBody.font = [NSFont systemFontOfSize:12];
+  heroBody.textColor = [NSColor secondaryLabelColor];
+  heroBody.bordered = NO;
+  heroBody.editable = NO;
+  heroBody.backgroundColor = [NSColor clearColor];
+  heroBody.usesSingleLineMode = NO;
+  heroBody.lineBreakMode = NSLineBreakByWordWrapping;
+  [heroStack addView:heroBody inGravity:NSStackViewGravityTop];
+
+  NSStackView *heroMeta = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  heroMeta.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  heroMeta.spacing = 14;
+  [heroStack addView:heroMeta inGravity:NSStackViewGravityTop];
+  for (NSString *meta in @[@"Apps", @"Oracle", @"Controls", @"Support"]) {
+    NSTextField *metaLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    metaLabel.stringValue = meta;
+    metaLabel.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
+    metaLabel.textColor = [NSColor colorWithCalibratedRed:0.64 green:0.84 blue:1.0 alpha:1.0];
+    metaLabel.bordered = NO;
+    metaLabel.editable = NO;
+    metaLabel.backgroundColor = [NSColor clearColor];
+    [heroMeta addView:metaLabel inGravity:NSStackViewGravityLeading];
+  }
+
+  NSStackView *surfaceSection = nil;
+  NSBox *surfaceBox = [self sectionBoxWithTitle:@"Menu Surface"
+                                       subtitle:@"Adjust high-level popup behavior before you start editing individual tools."
+                                    contentStack:&surfaceSection];
+  [rootStack addView:surfaceBox inGravity:NSStackViewGravityTop];
+  [surfaceBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+
   // Options row
   NSStackView *optionsRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
   optionsRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
   optionsRow.spacing = 20;
-  [rootStack addView:optionsRow inGravity:NSStackViewGravityTop];
+  [surfaceSection addView:optionsRow inGravity:NSStackViewGravityTop];
 
   BOOL showMissing = [[config valueForKeyPath:@"menus.apple.show_missing" defaultValue:@NO] boolValue];
   self.showMissingToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
@@ -112,30 +165,145 @@
   self.allowTerminalToggle.state = allowTerminal ? NSControlStateValueOn : NSControlStateValueOff;
   [optionsRow addView:self.allowTerminalToggle inGravity:NSStackViewGravityLeading];
 
-  [rootStack setCustomSpacing:30 afterView:optionsRow];
+  NSStackView *hoverSection = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  hoverSection.orientation = NSUserInterfaceLayoutOrientationVertical;
+  hoverSection.spacing = 10;
+  [surfaceSection addView:hoverSection inGravity:NSStackViewGravityTop];
+
+  NSTextField *hoverTitle = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  hoverTitle.stringValue = @"Hover Style";
+  hoverTitle.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
+  hoverTitle.bordered = NO;
+  hoverTitle.editable = NO;
+  hoverTitle.backgroundColor = [NSColor clearColor];
+  [hoverSection addView:hoverTitle inGravity:NSStackViewGravityTop];
+
+  NSTextField *hoverHint = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  hoverHint.stringValue = @"Tune the Apple-menu popup hover highlight without editing JSON by hand. Reset clears the menu-specific override and falls back to your global appearance settings.";
+  hoverHint.font = [NSFont systemFontOfSize:12];
+  hoverHint.textColor = [NSColor secondaryLabelColor];
+  hoverHint.bordered = NO;
+  hoverHint.editable = NO;
+  hoverHint.backgroundColor = [NSColor clearColor];
+  hoverHint.usesSingleLineMode = NO;
+  hoverHint.lineBreakMode = NSLineBreakByWordWrapping;
+  [hoverSection addView:hoverHint inGravity:NSStackViewGravityTop];
+
+  NSStackView *hoverRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  hoverRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  hoverRow.spacing = 12;
+  [hoverSection addView:hoverRow inGravity:NSStackViewGravityTop];
+
+  NSTextField *hoverColorLabel = [self headerLabel:@"HOVER"];
+  [hoverColorLabel.widthAnchor constraintEqualToConstant:60].active = YES;
+  [hoverRow addView:hoverColorLabel inGravity:NSStackViewGravityLeading];
+
+  self.hoverColorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(0, 0, 54, 28)];
+  self.hoverColorWell.target = self;
+  self.hoverColorWell.action = @selector(hoverColorChanged:);
+  [hoverRow addView:self.hoverColorWell inGravity:NSStackViewGravityLeading];
+
+  NSTextField *hoverBorderColorLabel = [self headerLabel:@"BORDER"];
+  [hoverBorderColorLabel.widthAnchor constraintEqualToConstant:60].active = YES;
+  [hoverRow addView:hoverBorderColorLabel inGravity:NSStackViewGravityLeading];
+
+  self.hoverBorderColorWell = [[NSColorWell alloc] initWithFrame:NSMakeRect(0, 0, 54, 28)];
+  self.hoverBorderColorWell.target = self;
+  self.hoverBorderColorWell.action = @selector(hoverBorderColorChanged:);
+  [hoverRow addView:self.hoverBorderColorWell inGravity:NSStackViewGravityLeading];
+
+  NSTextField *hoverBorderWidthLabel = [self headerLabel:@"WIDTH"];
+  [hoverBorderWidthLabel.widthAnchor constraintEqualToConstant:50].active = YES;
+  [hoverRow addView:hoverBorderWidthLabel inGravity:NSStackViewGravityLeading];
+
+  self.hoverBorderWidthField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  self.hoverBorderWidthField.placeholderString = @"Auto";
+  self.hoverBorderWidthField.identifier = @"menu.hover.border_width";
+  self.hoverBorderWidthField.delegate = self;
+  [self.hoverBorderWidthField.widthAnchor constraintEqualToConstant:70].active = YES;
+  [hoverRow addView:self.hoverBorderWidthField inGravity:NSStackViewGravityLeading];
+
+  NSButton *resetHoverButton = [[NSButton alloc] initWithFrame:NSZeroRect];
+  resetHoverButton.title = @"Reset Hover";
+  resetHoverButton.target = self;
+  resetHoverButton.action = @selector(resetHoverOverrides:);
+  [hoverRow addView:resetHoverButton inGravity:NSStackViewGravityLeading];
+
+  [self refreshHoverControls];
+
+  NSStackView *sectionsContainer = nil;
+  NSBox *sectionsBox = [self sectionBoxWithTitle:@"Popup Sections"
+                                        subtitle:@"Keep top-level categories clear and ordered so the Apple menu reads like a system launcher rather than a mixed bucket of tools."
+                                     contentStack:&sectionsContainer];
+  [rootStack addView:sectionsBox inGravity:NSStackViewGravityTop];
+  [sectionsBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+
+  NSStackView *sectionsSection = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  sectionsSection.orientation = NSUserInterfaceLayoutOrientationVertical;
+  sectionsSection.spacing = 10;
+  [sectionsContainer addView:sectionsSection inGravity:NSStackViewGravityTop];
+
+  NSGridView *sectionsGrid = [[NSGridView alloc] initWithFrame:NSZeroRect];
+  sectionsGrid.rowSpacing = 10;
+  sectionsGrid.columnSpacing = 16;
+  sectionsGrid.xPlacement = NSGridCellPlacementLeading;
+  sectionsGrid.yPlacement = NSGridCellPlacementCenter;
+  [sectionsSection addView:sectionsGrid inGravity:NSStackViewGravityTop];
+
+  [sectionsGrid addRowWithViews:@[
+    [self headerLabel:@"ICON"],
+    [self headerLabel:@"LABEL"],
+    [self headerLabel:@"ORDER"]
+  ]];
+
+  for (NSInteger index = 0; index < self.sections.count; index++) {
+    NSDictionary *section = self.sections[index];
+    NSString *key = section[@"key"] ?: @"";
+    NSString *baseLabel = section[@"label"] ?: @"";
+    NSString *baseIcon = section[@"icon"] ?: @"";
+
+    NSTextField *iconField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    [iconField.widthAnchor constraintEqualToConstant:50].active = YES;
+    iconField.stringValue = [config valueForKeyPath:[NSString stringWithFormat:@"menus.apple.sections.%@.icon", key] defaultValue:baseIcon] ?: baseIcon;
+    iconField.font = [self preferredIconFontWithSize:18];
+    iconField.alignment = NSTextAlignmentCenter;
+    iconField.tag = 1000 + index;
+    iconField.identifier = @"section.icon";
+    iconField.delegate = self;
+
+    NSTextField *labelField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    [labelField.widthAnchor constraintEqualToConstant:220].active = YES;
+    labelField.stringValue = [config valueForKeyPath:[NSString stringWithFormat:@"menus.apple.sections.%@.label", key] defaultValue:baseLabel] ?: baseLabel;
+    labelField.font = [NSFont systemFontOfSize:13];
+    labelField.tag = 1000 + index;
+    labelField.identifier = @"section.label";
+    labelField.delegate = self;
+
+    NSTextField *orderField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    [orderField.widthAnchor constraintEqualToConstant:70].active = YES;
+    id orderValue = [config valueForKeyPath:[NSString stringWithFormat:@"menus.apple.sections.%@.order", key] defaultValue:nil];
+    if ([orderValue isKindOfClass:[NSNumber class]]) orderField.stringValue = [(NSNumber *)orderValue stringValue];
+    else if ([orderValue isKindOfClass:[NSString class]]) orderField.stringValue = (NSString *)orderValue;
+    else orderField.placeholderString = @"Auto";
+    orderField.tag = 1000 + index;
+    orderField.identifier = @"section.order";
+    orderField.delegate = self;
+
+    [sectionsGrid addRowWithViews:@[iconField, labelField, orderField]];
+  }
+
+  NSStackView *workAppsContainer = nil;
+  NSBox *workAppsBox = [self sectionBoxWithTitle:@"Web App Shortcuts"
+                                        subtitle:@"Control the workspace-domain links that appear in the menu without hand-editing every JSON route each time."
+                                     contentStack:&workAppsContainer];
+  [rootStack addView:workAppsBox inGravity:NSStackViewGravityTop];
+  [workAppsBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
   // Work apps controls
   NSStackView *workAppsSection = [[NSStackView alloc] initWithFrame:NSZeroRect];
   workAppsSection.orientation = NSUserInterfaceLayoutOrientationVertical;
   workAppsSection.spacing = 10;
-  [rootStack addView:workAppsSection inGravity:NSStackViewGravityTop];
-
-  NSTextField *workAppsTitle = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  workAppsTitle.stringValue = @"Web App Shortcuts";
-  workAppsTitle.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
-  workAppsTitle.bordered = NO;
-  workAppsTitle.editable = NO;
-  workAppsTitle.backgroundColor = [NSColor clearColor];
-  [workAppsSection addView:workAppsTitle inGravity:NSStackViewGravityTop];
-
-  NSTextField *workAppsHint = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  workAppsHint.stringValue = @"These are web links inside a popup section. Set the workspace domain, choose the JSON source, then open it to edit labels, icons, and URLs.";
-  workAppsHint.font = [NSFont systemFontOfSize:12];
-  workAppsHint.textColor = [NSColor secondaryLabelColor];
-  workAppsHint.bordered = NO;
-  workAppsHint.editable = NO;
-  workAppsHint.backgroundColor = [NSColor clearColor];
-  [workAppsSection addView:workAppsHint inGravity:NSStackViewGravityTop];
+  [workAppsContainer addView:workAppsSection inGravity:NSStackViewGravityTop];
 
   NSStackView *domainRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
   domainRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
@@ -154,7 +322,8 @@
   self.workDomainField = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.workDomainField.placeholderString = @"company.com";
   self.workDomainField.stringValue = [config valueForKeyPath:@"menus.work.workspace_domain" defaultValue:@""] ?: @"";
-  [self.workDomainField.widthAnchor constraintEqualToConstant:220].active = YES;
+  [self.workDomainField.widthAnchor constraintGreaterThanOrEqualToConstant:180].active = YES;
+  [self.workDomainField.widthAnchor constraintLessThanOrEqualToConstant:260].active = YES;
   [domainRow addView:self.workDomainField inGravity:NSStackViewGravityLeading];
 
   NSStackView *appsFileRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
@@ -174,7 +343,8 @@
   self.workAppsFileField = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.workAppsFileField.placeholderString = @"data/work_apps.local.json";
   self.workAppsFileField.stringValue = [config valueForKeyPath:@"menus.work.apps_file" defaultValue:@"data/work_apps.local.json"] ?: @"data/work_apps.local.json";
-  [self.workAppsFileField.widthAnchor constraintEqualToConstant:320].active = YES;
+  [self.workAppsFileField.widthAnchor constraintGreaterThanOrEqualToConstant:240].active = YES;
+  [self.workAppsFileField.widthAnchor constraintLessThanOrEqualToConstant:420].active = YES;
   [appsFileRow addView:self.workAppsFileField inGravity:NSStackViewGravityLeading];
 
   NSStackView *workActionsRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
@@ -194,30 +364,18 @@
   self.openWorkAppsFileButton.action = @selector(openWorkAppsFile:);
   [workActionsRow addView:self.openWorkAppsFileButton inGravity:NSStackViewGravityLeading];
 
-  [rootStack setCustomSpacing:24 afterView:workAppsSection];
+  NSStackView *projectsContainer = nil;
+  NSBox *projectsBox = [self sectionBoxWithTitle:@"App Launchers"
+                                        subtitle:@"Control local app/project rows separately from Oracle tools and system utilities."
+                                     contentStack:&projectsContainer];
+  [rootStack addView:projectsBox inGravity:NSStackViewGravityTop];
+  [projectsBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
   // Apps controls
   NSStackView *projectsSection = [[NSStackView alloc] initWithFrame:NSZeroRect];
   projectsSection.orientation = NSUserInterfaceLayoutOrientationVertical;
   projectsSection.spacing = 10;
-  [rootStack addView:projectsSection inGravity:NSStackViewGravityTop];
-
-  NSTextField *projectsTitle = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  projectsTitle.stringValue = @"Apps";
-  projectsTitle.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
-  projectsTitle.bordered = NO;
-  projectsTitle.editable = NO;
-  projectsTitle.backgroundColor = [NSColor clearColor];
-  [projectsSection addView:projectsTitle inGravity:NSStackViewGravityTop];
-
-  NSTextField *projectsHint = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  projectsHint.stringValue = @"These rows render in the Apps popup section. The JSON file is the source of truth; Refresh Apps re-detects launcher targets from apps and tools found on this machine.";
-  projectsHint.font = [NSFont systemFontOfSize:12];
-  projectsHint.textColor = [NSColor secondaryLabelColor];
-  projectsHint.bordered = NO;
-  projectsHint.editable = NO;
-  projectsHint.backgroundColor = [NSColor clearColor];
-  [projectsSection addView:projectsHint inGravity:NSStackViewGravityTop];
+  [projectsContainer addView:projectsSection inGravity:NSStackViewGravityTop];
 
   NSStackView *projectsOptionsRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
   projectsOptionsRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
@@ -281,7 +439,8 @@
     appsFile = [config valueForKeyPath:@"menus.projects.file" defaultValue:@"data/project_shortcuts.json"] ?: @"data/project_shortcuts.json";
   }
   self.projectFileField.stringValue = appsFile;
-  [self.projectFileField.widthAnchor constraintEqualToConstant:320].active = YES;
+  [self.projectFileField.widthAnchor constraintGreaterThanOrEqualToConstant:240].active = YES;
+  [self.projectFileField.widthAnchor constraintLessThanOrEqualToConstant:420].active = YES;
   [projectFileRow addView:self.projectFileField inGravity:NSStackViewGravityLeading];
 
   NSStackView *projectActionsRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
@@ -307,7 +466,12 @@
   self.openProjectsFileButton.action = @selector(openProjectShortcutsFile:);
   [projectActionsRow addView:self.openProjectsFileButton inGravity:NSStackViewGravityLeading];
 
-  [rootStack setCustomSpacing:24 afterView:projectsSection];
+  NSStackView *toolsContainer = nil;
+  NSBox *toolsBox = [self sectionBoxWithTitle:@"Tool Rows"
+                                     subtitle:@"Enable or rename individual rows after the high-level section structure feels right."
+                                  contentStack:&toolsContainer];
+  [rootStack addView:toolsBox inGravity:NSStackViewGravityTop];
+  [toolsBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
   // Tools Grid
   NSGridView *grid = [[NSGridView alloc] initWithFrame:NSZeroRect];
@@ -315,7 +479,7 @@
   grid.columnSpacing = 16;
   grid.xPlacement = NSGridCellPlacementLeading;
   grid.yPlacement = NSGridCellPlacementCenter;
-  [rootStack addView:grid inGravity:NSStackViewGravityTop];
+  [toolsContainer addView:grid inGravity:NSStackViewGravityTop];
 
   // Header
   [grid addRowWithViews:@[
@@ -344,7 +508,7 @@
     iconField.font = [self preferredIconFontWithSize:18];
     iconField.alignment = NSTextAlignmentCenter;
     iconField.tag = index;
-    iconField.identifier = @"icon";
+    iconField.identifier = @"tool.icon";
     iconField.delegate = self;
 
     NSTextField *labelField = [[NSTextField alloc] initWithFrame:NSZeroRect];
@@ -352,7 +516,7 @@
     labelField.stringValue = [config valueForKeyPath:labelKeyPath defaultValue:baseLabel] ?: baseLabel;
     labelField.font = [NSFont systemFontOfSize:14];
     labelField.tag = index;
-    labelField.identifier = @"label";
+    labelField.identifier = @"tool.label";
     labelField.delegate = self;
 
     NSButton *toggle = [[NSButton alloc] initWithFrame:NSZeroRect];
@@ -382,7 +546,7 @@
     else if ([orderValue isKindOfClass:[NSString class]]) orderField.stringValue = (NSString *)orderValue;
     else orderField.placeholderString = @"Auto";
     orderField.tag = index;
-    orderField.identifier = @"order";
+    orderField.identifier = @"tool.order";
     orderField.delegate = self;
 
     [grid addRowWithViews:@[iconField, labelField, toggle, colorWell, orderField]];
@@ -398,6 +562,67 @@
   label.editable = NO;
   label.backgroundColor = [NSColor clearColor];
   return label;
+}
+
+- (void)refreshHoverControls {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *hoverColor = [config valueForKeyPath:@"menus.apple.hover.color" defaultValue:nil];
+  if (![hoverColor isKindOfClass:[NSString class]] || hoverColor.length == 0) {
+    hoverColor = [config valueForKeyPath:@"appearance.hover_bg" defaultValue:nil];
+  }
+  NSString *borderColor = [config valueForKeyPath:@"menus.apple.hover.border_color" defaultValue:nil];
+  if (![borderColor isKindOfClass:[NSString class]] || borderColor.length == 0) {
+    borderColor = [config valueForKeyPath:@"appearance.hover_border_color" defaultValue:nil];
+  }
+  id borderWidth = [config valueForKeyPath:@"menus.apple.hover.border_width" defaultValue:nil];
+  if (!borderWidth) {
+    borderWidth = [config valueForKeyPath:@"appearance.hover_border_width" defaultValue:nil];
+  }
+
+  NSColor *hover = [self colorFromHexString:hoverColor] ?: [NSColor clearColor];
+  NSColor *border = [self colorFromHexString:borderColor] ?: [NSColor clearColor];
+  self.hoverColorWell.color = hover;
+  self.hoverBorderColorWell.color = border;
+
+  if ([borderWidth isKindOfClass:[NSNumber class]]) {
+    self.hoverBorderWidthField.stringValue = [(NSNumber *)borderWidth stringValue];
+  } else if ([borderWidth isKindOfClass:[NSString class]]) {
+    self.hoverBorderWidthField.stringValue = (NSString *)borderWidth;
+  } else {
+    self.hoverBorderWidthField.stringValue = @"";
+  }
+}
+
+- (void)hoverColorChanged:(NSColorWell *)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *hexColor = [self hexStringFromColor:sender.color];
+  if (!hexColor.length) {
+    return;
+  }
+  [config setValue:hexColor forKeyPath:@"menus.apple.hover.color"];
+  [config reloadSketchyBar];
+}
+
+- (void)hoverBorderColorChanged:(NSColorWell *)sender {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  NSString *hexColor = [self hexStringFromColor:sender.color];
+  if (!hexColor.length) {
+    return;
+  }
+  [config setValue:hexColor forKeyPath:@"menus.apple.hover.border_color"];
+  [config reloadSketchyBar];
+}
+
+- (void)resetHoverOverrides:(id)sender {
+  (void)sender;
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  [config performBatchUpdates:^{
+    [config removeValueForKeyPath:@"menus.apple.hover.color"];
+    [config removeValueForKeyPath:@"menus.apple.hover.border_color"];
+    [config removeValueForKeyPath:@"menus.apple.hover.border_width"];
+  }];
+  [self refreshHoverControls];
+  [config reloadSketchyBar];
 }
 
 - (NSString *)trimmedString:(NSString *)value {
@@ -453,8 +678,10 @@
     self.workAppsFileField.stringValue = appsFile;
   }
 
-  [config setValue:appsFile forKeyPath:@"menus.work.apps_file"];
-  [config setValue:domain forKeyPath:@"menus.work.workspace_domain"];
+  [config performBatchUpdates:^{
+    [config setValue:appsFile forKeyPath:@"menus.work.apps_file"];
+    [config setValue:domain forKeyPath:@"menus.work.workspace_domain"];
+  }];
 
   NSMutableArray *args = [NSMutableArray arrayWithArray:@[
     @"--apps-only",
@@ -511,12 +738,14 @@
 
   NSNumber *appsEnabled = @(self.projectShortcutsToggle.state == NSControlStateValueOn);
   NSString *defaultAction = [self selectedProjectActionValue];
-  [config setValue:appsEnabled forKeyPath:@"menus.apps.enabled"];
-  [config setValue:projectsFile forKeyPath:@"menus.apps.file"];
-  [config setValue:defaultAction forKeyPath:@"menus.apps.default_action"];
-  [config setValue:appsEnabled forKeyPath:@"menus.projects.enabled"];
-  [config setValue:projectsFile forKeyPath:@"menus.projects.file"];
-  [config setValue:defaultAction forKeyPath:@"menus.projects.default_action"];
+  [config performBatchUpdates:^{
+    [config setValue:appsEnabled forKeyPath:@"menus.apps.enabled"];
+    [config setValue:projectsFile forKeyPath:@"menus.apps.file"];
+    [config setValue:defaultAction forKeyPath:@"menus.apps.default_action"];
+    [config setValue:appsEnabled forKeyPath:@"menus.projects.enabled"];
+    [config setValue:projectsFile forKeyPath:@"menus.projects.file"];
+    [config setValue:defaultAction forKeyPath:@"menus.projects.default_action"];
+  }];
   [config reloadSketchyBar];
 }
 
@@ -611,34 +840,65 @@
   if (![field isKindOfClass:[NSTextField class]]) {
     return;
   }
-  if (field.tag < 0 || field.tag >= self.tools.count) {
-    return;
-  }
-  NSString *key = self.tools[field.tag][@"key"];
   NSString *value = field.stringValue ?: @"";
   NSString *identifier = field.identifier ?: @"";
 
   ConfigurationManager *config = [ConfigurationManager sharedManager];
-  NSString *keyPath = nil;
+  NSString *trimmed = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 
-  if ([identifier isEqualToString:@"label"]) {
-    keyPath = [NSString stringWithFormat:@"menus.apple.items.%@.label", key];
-  } else if ([identifier isEqualToString:@"icon"]) {
-    keyPath = [NSString stringWithFormat:@"menus.apple.items.%@.icon", key];
-  } else if ([identifier isEqualToString:@"order"]) {
-    keyPath = [NSString stringWithFormat:@"menus.apple.items.%@.order", key];
-  } else {
+  if ([identifier isEqualToString:@"menu.hover.border_width"]) {
+    if (trimmed.length == 0) {
+      [config removeValueForKeyPath:@"menus.apple.hover.border_width"];
+      [config reloadSketchyBar];
+      [self refreshHoverControls];
+      return;
+    }
+
+    NSScanner *scanner = [NSScanner scannerWithString:trimmed];
+    NSInteger number = 0;
+    if ([scanner scanInteger:&number] && scanner.isAtEnd) {
+      [config setValue:@(number) forKeyPath:@"menus.apple.hover.border_width"];
+      [config reloadSketchyBar];
+    }
     return;
   }
 
-  NSString *trimmed = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  NSString *keyPath = nil;
+  BOOL isOrderField = NO;
+
+  if (field.tag >= 1000 && field.tag < 1000 + self.sections.count) {
+    NSString *key = self.sections[field.tag - 1000][@"key"];
+    if ([identifier isEqualToString:@"section.label"]) {
+      keyPath = [NSString stringWithFormat:@"menus.apple.sections.%@.label", key];
+    } else if ([identifier isEqualToString:@"section.icon"]) {
+      keyPath = [NSString stringWithFormat:@"menus.apple.sections.%@.icon", key];
+    } else if ([identifier isEqualToString:@"section.order"]) {
+      keyPath = [NSString stringWithFormat:@"menus.apple.sections.%@.order", key];
+      isOrderField = YES;
+    }
+  } else if (field.tag >= 0 && field.tag < self.tools.count) {
+    NSString *key = self.tools[field.tag][@"key"];
+    if ([identifier isEqualToString:@"tool.label"] || [identifier isEqualToString:@"label"]) {
+      keyPath = [NSString stringWithFormat:@"menus.apple.items.%@.label", key];
+    } else if ([identifier isEqualToString:@"tool.icon"] || [identifier isEqualToString:@"icon"]) {
+      keyPath = [NSString stringWithFormat:@"menus.apple.items.%@.icon", key];
+    } else if ([identifier isEqualToString:@"tool.order"] || [identifier isEqualToString:@"order"]) {
+      keyPath = [NSString stringWithFormat:@"menus.apple.items.%@.order", key];
+      isOrderField = YES;
+    }
+  }
+
+  if (!keyPath.length) {
+    return;
+  }
+
   if (trimmed.length == 0) {
     [config removeValueForKeyPath:keyPath];
     [config reloadSketchyBar];
     return;
   }
 
-  if ([identifier isEqualToString:@"order"]) {
+  if (isOrderField) {
     NSScanner *scanner = [NSScanner scannerWithString:trimmed];
     NSInteger number = 0;
     if ([scanner scanInteger:&number] && scanner.isAtEnd) {
@@ -652,51 +912,5 @@
   [config reloadSketchyBar];
 }
 
-- (NSFont *)preferredIconFontWithSize:(CGFloat)size {
-  NSArray<NSString *> *candidates = @[
-    @"Hack Nerd Font",
-    @"JetBrainsMono Nerd Font",
-    @"FiraCode Nerd Font",
-    @"SFMono Nerd Font",
-    @"Symbols Nerd Font",
-    @"MesloLGS NF"
-  ];
-  for (NSString *name in candidates) {
-    NSFont *font = [NSFont fontWithName:name size:size];
-    if (font) {
-      return font;
-    }
-  }
-  return [NSFont monospacedSystemFontOfSize:size weight:NSFontWeightRegular];
-}
-
-- (NSColor *)colorFromHexString:(NSString *)hexString {
-  if (!hexString.length) {
-    return nil;
-  }
-  NSString *cleaned = [hexString stringByReplacingOccurrencesOfString:@"0x" withString:@""];
-  if (cleaned.length != 8) {
-    return nil;
-  }
-  unsigned int hexValue = 0;
-  NSScanner *scanner = [NSScanner scannerWithString:cleaned];
-  if (![scanner scanHexInt:&hexValue]) {
-    return nil;
-  }
-  CGFloat alpha = ((hexValue >> 24) & 0xFF) / 255.0;
-  CGFloat red = ((hexValue >> 16) & 0xFF) / 255.0;
-  CGFloat green = ((hexValue >> 8) & 0xFF) / 255.0;
-  CGFloat blue = (hexValue & 0xFF) / 255.0;
-  return [NSColor colorWithSRGBRed:red green:green blue:blue alpha:alpha];
-}
-
-- (NSString *)hexStringFromColor:(NSColor *)color {
-  NSColor *rgbColor = [color colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
-  int alpha = (int)(rgbColor.alphaComponent * 255);
-  int red = (int)(rgbColor.redComponent * 255);
-  int green = (int)(rgbColor.greenComponent * 255);
-  int blue = (int)(rgbColor.blueComponent * 255);
-  return [NSString stringWithFormat:@"0x%02X%02X%02X%02X", alpha, red, green, blue];
-}
 
 @end

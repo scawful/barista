@@ -1,7 +1,10 @@
+#import "BaristaTabBaseViewController.h"
+#import "BaristaCommandBus.h"
+#import "BaristaPanelState.h"
+#import "BaristaStyle.h"
 #import "ConfigurationManager.h"
-#import <Cocoa/Cocoa.h>
 
-@interface AdvancedTabViewController : NSViewController <NSTextViewDelegate, NSTextFieldDelegate>
+@interface AdvancedTabViewController : BaristaTabBaseViewController <NSTextViewDelegate, NSTextFieldDelegate>
 @property (strong) NSTextView *jsonEditor;
 @property (strong) NSButton *saveButton;
 @property (strong) NSButton *reloadButton;
@@ -12,24 +15,16 @@
 @property (strong) NSTextField *codeResolvedLabel;
 @property (strong) NSPopUpButton *controlPanelModeSelector;
 @property (strong) NSTextField *controlPanelCommandField;
+@property (strong) NSPopUpButton *controlPanelWindowModeSelector;
 @end
 
 @implementation AdvancedTabViewController
 
-- (void)loadView {
-  self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
-}
-
 - (void)viewDidLoad {
   [super viewDidLoad];
 
-  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
-  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  rootStack.alignment = NSLayoutAttributeLeading;
-  rootStack.spacing = 20;
-  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
-  [self.view addSubview:rootStack];
+  NSStackView *rootStack = nil;
+  [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(24, 24, 28, 24) spacing:18];
 
   // Title
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
@@ -50,23 +45,26 @@
   editorLabel.backgroundColor = [NSColor clearColor];
   [rootStack addView:editorLabel inGravity:NSStackViewGravityTop];
 
-  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
-  scrollView.hasVerticalScroller = YES;
-  scrollView.autohidesScrollers = YES;
-  scrollView.borderType = NSBezelBorder;
-  [scrollView.heightAnchor constraintEqualToConstant:250].active = YES;
-  [scrollView.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+  NSScrollView *editorScroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+  editorScroll.hasVerticalScroller = YES;
+  editorScroll.autohidesScrollers = YES;
+  editorScroll.borderType = NSBezelBorder;
+  [editorScroll.heightAnchor constraintGreaterThanOrEqualToConstant:200].active = YES;
+  NSLayoutConstraint *preferred = [editorScroll.heightAnchor constraintEqualToConstant:500];
+  preferred.priority = NSLayoutPriorityDefaultLow;
+  preferred.active = YES;
 
   self.jsonEditor = [[NSTextView alloc] initWithFrame:NSZeroRect];
-  self.jsonEditor.font = [NSFont fontWithName:@"SF Mono" size:13] ?: [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular];
+  self.jsonEditor.font = [[BaristaStyle sharedStyle] monoFontOfSize:13 weight:NSFontWeightRegular];
   self.jsonEditor.delegate = self;
   self.jsonEditor.minSize = NSMakeSize(0.0, 250);
   self.jsonEditor.maxSize = NSMakeSize(FLT_MAX, FLT_MAX);
   self.jsonEditor.verticallyResizable = YES;
   self.jsonEditor.horizontallyResizable = NO;
   self.jsonEditor.autoresizingMask = NSViewWidthSizable;
-  scrollView.documentView = self.jsonEditor;
-  [rootStack addView:scrollView inGravity:NSStackViewGravityTop];
+  editorScroll.documentView = self.jsonEditor;
+  [rootStack addView:editorScroll inGravity:NSStackViewGravityTop];
+  [editorScroll.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
   [self loadJSON];
 
@@ -90,7 +88,8 @@
 
   self.scriptsField = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.scriptsField.placeholderString = @"Auto (uses ~/.config/sketchybar/scripts)";
-  [self.scriptsField.widthAnchor constraintEqualToConstant:400].active = YES;
+  [self.scriptsField.widthAnchor constraintGreaterThanOrEqualToConstant:200].active = YES;
+  [self.scriptsField setContentHuggingPriority:200 forOrientation:NSLayoutConstraintOrientationHorizontal];
   [scriptsRow addView:self.scriptsField inGravity:NSStackViewGravityLeading];
 
   for (NSString *title in @[@"Apply", @"Auto", @"Open"]) {
@@ -114,6 +113,47 @@
   [scriptsStack addView:self.scriptsResolvedLabel inGravity:NSStackViewGravityTop];
 
   [self loadScriptsPath];
+
+  // --- Code Directory Override ---
+  NSStackView *codeStack = nil;
+  NSBox *codeBox = [self sectionBoxWithTitle:@"Code Directory Override"
+                                   subtitle:@"Override the default code path used by Barista for project resolution."
+                               contentStack:&codeStack];
+  [rootStack addView:codeBox inGravity:NSStackViewGravityTop];
+  [codeBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+
+  self.codeField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  self.codeField.placeholderString = @"Auto (uses default code path)";
+  self.codeField.delegate = self;
+  [self.codeField.widthAnchor constraintGreaterThanOrEqualToConstant:200].active = YES;
+  [self.codeField setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+  [codeStack addView:self.codeField inGravity:NSStackViewGravityTop];
+
+  self.codeResolvedLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  self.codeResolvedLabel.stringValue = @"Resolved: (loading...)";
+  self.codeResolvedLabel.font = [NSFont systemFontOfSize:11];
+  self.codeResolvedLabel.textColor = [NSColor secondaryLabelColor];
+  self.codeResolvedLabel.bordered = NO;
+  self.codeResolvedLabel.editable = NO;
+  self.codeResolvedLabel.backgroundColor = [NSColor clearColor];
+  [codeStack addView:self.codeResolvedLabel inGravity:NSStackViewGravityTop];
+
+  NSStackView *codeRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  codeRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  codeRow.spacing = 10;
+  for (NSString *title in @[@"Apply", @"Auto", @"Open"]) {
+    NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
+    btn.bezelStyle = NSBezelStyleRounded;
+    btn.title = title;
+    btn.target = self;
+    if ([title isEqualToString:@"Apply"]) btn.action = @selector(applyCodePath:);
+    else if ([title isEqualToString:@"Auto"]) btn.action = @selector(resetCodePath:);
+    else btn.action = @selector(openCodeFolder:);
+    [codeRow addView:btn inGravity:NSStackViewGravityLeading];
+  }
+  [codeStack addView:codeRow inGravity:NSStackViewGravityTop];
+
+  [self loadCodePath];
 
   // Control Panel Routing Section
   NSBox *routingBox = [[NSBox alloc] initWithFrame:NSZeroRect];
@@ -151,8 +191,38 @@
   self.controlPanelCommandField = [[NSTextField alloc] initWithFrame:NSZeroRect];
   self.controlPanelCommandField.placeholderString = @"Enter custom command...";
   self.controlPanelCommandField.delegate = self;
-  [self.controlPanelCommandField.widthAnchor constraintEqualToConstant:500].active = YES;
+  [self.controlPanelCommandField setContentHuggingPriority:200 forOrientation:NSLayoutConstraintOrientationHorizontal];
   [routingStack addView:self.controlPanelCommandField inGravity:NSStackViewGravityTop];
+  [self.controlPanelCommandField.widthAnchor constraintEqualToAnchor:routingStack.widthAnchor constant:-30].active = YES;
+
+  NSStackView *windowModeRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  windowModeRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  windowModeRow.spacing = 12;
+  [routingStack addView:windowModeRow inGravity:NSStackViewGravityTop];
+
+  NSTextField *windowModeLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  windowModeLabel.stringValue = @"Window Mode";
+  windowModeLabel.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
+  windowModeLabel.bordered = NO;
+  windowModeLabel.editable = NO;
+  windowModeLabel.backgroundColor = [NSColor clearColor];
+  [windowModeRow addView:windowModeLabel inGravity:NSStackViewGravityLeading];
+
+  self.controlPanelWindowModeSelector = [[NSPopUpButton alloc] initWithFrame:NSZeroRect];
+  [self.controlPanelWindowModeSelector addItemsWithTitles:@[@"Utility Floating", @"Standard Window"]];
+  self.controlPanelWindowModeSelector.target = self;
+  self.controlPanelWindowModeSelector.action = @selector(controlPanelWindowModeChanged:);
+  [self.controlPanelWindowModeSelector.widthAnchor constraintEqualToConstant:180].active = YES;
+  [windowModeRow addView:self.controlPanelWindowModeSelector inGravity:NSStackViewGravityLeading];
+
+  NSTextField *windowModeHint = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  windowModeHint.stringValue = @"Utility keeps the panel floating over tiled apps without behaving like an aggressive always-on-top window.";
+  windowModeHint.font = [NSFont systemFontOfSize:11];
+  windowModeHint.textColor = [NSColor secondaryLabelColor];
+  windowModeHint.bordered = NO;
+  windowModeHint.editable = NO;
+  windowModeHint.backgroundColor = [NSColor clearColor];
+  [routingStack addView:windowModeHint inGravity:NSStackViewGravityTop];
 
   [self loadControlPanelSettings];
 
@@ -278,6 +348,7 @@
 
 - (void)loadControlPanelSettings {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
+  BaristaPanelState *panelState = [BaristaPanelState sharedState];
   NSString *preferred = [config valueForKeyPath:@"control_panel.preferred" defaultValue:@"native"];
   NSString *command = [config valueForKeyPath:@"control_panel.command" defaultValue:@""];
 
@@ -289,6 +360,7 @@
   }
   [self.controlPanelModeSelector selectItemAtIndex:index];
   self.controlPanelCommandField.stringValue = command ?: @"";
+  [self.controlPanelWindowModeSelector selectItemAtIndex:[[panelState windowMode] isEqualToString:@"standard"] ? 1 : 0];
   [self updateControlPanelCommandField];
 }
 
@@ -312,6 +384,7 @@
 }
 
 - (void)controlPanelCommandChanged:(id)sender {
+  (void)sender;
   ConfigurationManager *config = [ConfigurationManager sharedManager];
   NSString *command = self.controlPanelCommandField.stringValue ?: @"";
   NSString *trimmed = [command stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
@@ -322,23 +395,25 @@
   [config setValue:trimmed forKeyPath:@"control_panel.command"];
 }
 
+- (void)controlPanelWindowModeChanged:(id)sender {
+  (void)sender;
+  NSString *mode = self.controlPanelWindowModeSelector.indexOfSelectedItem == 1 ? @"standard" : @"utility";
+  [[BaristaPanelState sharedState] setWindowMode:mode];
+  self.statusLabel.stringValue = @"✓ Window mode saved (reopen panel to apply)";
+  self.statusLabel.textColor = [NSColor systemGreenColor];
+}
+
 - (void)openControlPanelNow:(id)sender {
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  NSString *script = [config.configPath stringByAppendingPathComponent:@"bin/open_control_panel.sh"];
-  if (![[NSFileManager defaultManager] isExecutableFileAtPath:script]) {
+  (void)sender;
+  NSError *error = nil;
+  if (![[BaristaCommandBus sharedBus] openControlPanelForTab:nil error:&error]) {
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Control Panel Script Missing";
-    alert.informativeText = [NSString stringWithFormat:@"Expected executable at: %@", script];
+    alert.messageText = @"Control Panel Launch Failed";
+    alert.informativeText = error.localizedDescription ?: @"Unable to launch control panel.";
     [alert runModal];
-    return;
-  }
-  NSTask *task = [[NSTask alloc] init];
-  task.launchPath = @"/bin/bash";
-  task.arguments = @[script];
-  @try {
-    [task launch];
-  } @catch (NSException *exception) {
-    NSLog(@"Failed to launch control panel: %@", exception);
+  } else {
+    self.statusLabel.stringValue = @"✓ Control panel launch requested";
+    self.statusLabel.textColor = [NSColor systemGreenColor];
   }
 }
 
@@ -405,8 +480,8 @@
 }
 
 - (void)reloadBar:(id)sender {
-  ConfigurationManager *config = [ConfigurationManager sharedManager];
-  [config reloadSketchyBar];
+  (void)sender;
+  [[BaristaCommandBus sharedBus] reloadSketchyBar];
 
   self.statusLabel.stringValue = @"✓ Sketchybar reloading...";
   self.statusLabel.textColor = [NSColor systemGreenColor];

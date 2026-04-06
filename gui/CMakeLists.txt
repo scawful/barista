@@ -7,6 +7,15 @@ if(APPLE)
   
   # Compiler flags for Objective-C
   set(OBJC_FLAGS "-fobjc-arc")
+  set(BARISTA_PANEL_APP_NAME "BaristaControlPanel")
+  set(BARISTA_PANEL_BUNDLE_DIR "${CMAKE_BINARY_DIR}/bin/${BARISTA_PANEL_APP_NAME}.app")
+  set(BARISTA_PANEL_BUNDLE_EXEC "${BARISTA_PANEL_BUNDLE_DIR}/Contents/MacOS/${BARISTA_PANEL_APP_NAME}")
+  set(BARISTA_PANEL_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/${BARISTA_PANEL_APP_NAME}-Info.plist")
+  configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/BaristaControlPanel-Info.plist.in
+    ${BARISTA_PANEL_INFO_PLIST}
+    @ONLY
+  )
   
   # Include directories for organized structure
   include_directories(
@@ -24,6 +33,16 @@ if(APPLE)
     src/core/BaristaStyle.h
     src/core/BaristaPanelView.m
     src/core/BaristaPanelView.h
+    src/core/BaristaPanelWindow.m
+    src/core/BaristaPanelWindow.h
+    src/core/BaristaTabRegistry.m
+    src/core/BaristaTabRegistry.h
+    src/core/BaristaPanelState.m
+    src/core/BaristaPanelState.h
+    src/core/BaristaCommandBus.m
+    src/core/BaristaCommandBus.h
+    src/core/BaristaTabBaseViewController.m
+    src/core/BaristaTabBaseViewController.h
     src/core/AppDelegate.m
     src/core/AppDelegate.h
     src/core/MainWindowController.m
@@ -32,6 +51,8 @@ if(APPLE)
   
   # Tab view controllers
   set(CONFIG_MENU_TABS
+    src/tabs/HomeTabViewController.m
+    src/tabs/HomeTabViewController.h
     src/tabs/AppearanceTabViewController.m
     src/tabs/AppearanceTabViewController.h
     src/tabs/WidgetsTabViewController.m
@@ -71,6 +92,22 @@ if(APPLE)
   
   set_target_properties(config_menu PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+  )
+
+  add_custom_command(
+    OUTPUT ${BARISTA_PANEL_BUNDLE_EXEC}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${BARISTA_PANEL_BUNDLE_DIR}/Contents
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${BARISTA_PANEL_BUNDLE_DIR}/Contents/MacOS
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:config_menu> ${BARISTA_PANEL_BUNDLE_EXEC}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${BARISTA_PANEL_INFO_PLIST} ${BARISTA_PANEL_BUNDLE_DIR}/Contents/Info.plist
+    DEPENDS config_menu ${BARISTA_PANEL_INFO_PLIST}
+    BYPRODUCTS ${BARISTA_PANEL_BUNDLE_DIR}/Contents/Info.plist
+    COMMENT "Creating Barista Control Panel app bundle"
+    VERBATIM
+  )
+
+  add_custom_target(barista_control_panel_app
+    DEPENDS ${BARISTA_PANEL_BUNDLE_EXEC}
   )
   
   # Icon Browser

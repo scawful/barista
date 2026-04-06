@@ -46,10 +46,10 @@ Examples:
 
 The script will:
   1. Configure CMake (if needed)
-  2. Build config_menu and related GUI tools
+  2. Build config_menu, BaristaControlPanel.app, and related GUI tools
   3. Show build status
 
-Built binaries will be in: build/bin/
+Built artifacts will be in: build/bin/
 
 Sync behavior:
   - Set BARISTA_SYNC_GUI_BIN=1 to copy build/bin outputs into gui/bin/.
@@ -94,16 +94,23 @@ clean_build() {
 build_gui() {
     print_info "Building GUI components..."
     
-    if cmake --build build --target config_menu icon_browser help_center 2>&1 | tee /tmp/barista_gui_build.log; then
+    if cmake --build build --target config_menu barista_control_panel_app icon_browser help_center 2>&1 | tee /tmp/barista_gui_build.log; then
         print_info "✓ Build successful!"
-        print_info "Binaries are in: build/bin/"
+        print_info "Artifacts are in: build/bin/"
         echo ""
         print_info "Built components:"
         ls -lh build/bin/config_menu build/bin/icon_browser build/bin/help_center 2>/dev/null | awk '{print "  - " $9 " (" $5 ")"}'
+        if [[ -d build/bin/BaristaControlPanel.app ]]; then
+          print_info "  - build/bin/BaristaControlPanel.app"
+        fi
         if [[ "${BARISTA_SYNC_GUI_BIN:-0}" == "1" ]]; then
           mkdir -p gui/bin
+          rm -rf gui/BaristaControlPanel.app
+          if [[ -d build/bin/BaristaControlPanel.app ]]; then
+            cp -R build/bin/BaristaControlPanel.app gui/
+          fi
           cp -f build/bin/config_menu build/bin/icon_browser build/bin/help_center gui/bin/
-          print_info "Synced GUI binaries to gui/bin/"
+          print_info "Synced GUI artifacts to gui/bin/ and gui/"
         else
           print_warn "Skipping gui/bin sync (set BARISTA_SYNC_GUI_BIN=1 to copy)."
         fi

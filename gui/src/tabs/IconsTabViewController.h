@@ -1,6 +1,6 @@
-#import <Cocoa/Cocoa.h>
+#import "BaristaTabBaseViewController.h"
 
-@interface IconsTabViewController : NSViewController <NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate>
+@interface IconsTabViewController : BaristaTabBaseViewController <NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate>
 @property (strong) NSSearchField *searchField;
 @property (strong) NSTableView *tableView;
 @property (strong) NSTextField *previewField;

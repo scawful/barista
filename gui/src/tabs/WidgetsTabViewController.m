@@ -1,17 +1,13 @@
+#import "BaristaTabBaseViewController.h"
 #import "ConfigurationManager.h"
-#import <Cocoa/Cocoa.h>
 
-@interface WidgetsTabViewController : NSViewController
+@interface WidgetsTabViewController : BaristaTabBaseViewController
 @property (strong) NSArray *widgets;
 @property (strong) NSMutableDictionary *toggleButtons;
 @property (strong) NSMutableDictionary *colorWells;
 @end
 
 @implementation WidgetsTabViewController
-
-- (void)loadView {
-  self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
-}
 
 - (void)viewDidLoad {
   [super viewDidLoad];
@@ -24,13 +20,8 @@
     @{@"key": @"system_info", @"name": @"System Info", @"icon": @"󰍛"},
   ];
 
-  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
-  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  rootStack.alignment = NSLayoutAttributeLeading;
-  rootStack.spacing = 20;
-  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
-  [self.view addSubview:rootStack];
+  NSStackView *rootStack = nil;
+  [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(20, 24, 20, 24) spacing:20];
 
   // Title
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
@@ -170,24 +161,6 @@
   [config reloadSketchyBar];
 }
 
-- (NSFont *)preferredIconFontWithSize:(CGFloat)size {
-  NSArray<NSString *> *candidates = @[
-    @"Hack Nerd Font",
-    @"JetBrainsMono Nerd Font",
-    @"FiraCode Nerd Font",
-    @"SFMono Nerd Font",
-    @"Symbols Nerd Font",
-    @"MesloLGS NF"
-  ];
-  for (NSString *name in candidates) {
-    NSFont *font = [NSFont fontWithName:name size:size];
-    if (font) {
-      return font;
-    }
-  }
-  return [NSFont monospacedSystemFontOfSize:size weight:NSFontWeightRegular];
-}
-
 - (NSString *)hexStringFromValue:(id)value {
   if ([value isKindOfClass:[NSString class]]) {
     return (NSString *)value;
@@ -197,22 +170,6 @@
     return [NSString stringWithFormat:@"0x%08X", num];
   }
   return nil;
-}
-
-- (NSColor *)colorFromHexString:(NSString *)hexString {
-  if (!hexString || hexString.length < 8) return nil;
-  NSString *hex = [hexString hasPrefix:@"0x"] ? [hexString substringFromIndex:2] : hexString;
-  if (hex.length != 8) return nil;
-  unsigned int alpha, red, green, blue;
-  NSScanner *scanner = [NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(0, 2)]];
-  [scanner scanHexInt:&alpha];
-  scanner = [NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(2, 2)]];
-  [scanner scanHexInt:&red];
-  scanner = [NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(4, 2)]];
-  [scanner scanHexInt:&green];
-  scanner = [NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(6, 2)]];
-  [scanner scanHexInt:&blue];
-  return [NSColor colorWithCalibratedRed:red/255.0 green:green/255.0 blue:blue/255.0 alpha:alpha/255.0];
 }
 
 @end

@@ -8,9 +8,15 @@ set -euo pipefail
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
 HELPER="${BARISTA_AGENT_HELPER:-$CONFIG_DIR/helpers/launch_agent_manager.sh}"
 DOMAIN="gui/$(id -u)"
-# Default to Koekeishiya labels used by current installs; override via env if needed.
+# Default to the current yabai label when installed, but keep the legacy label as fallback.
 SKETCHYBAR_LABEL="${BARISTA_SKETCHYBAR_LABEL:-homebrew.mxcl.sketchybar}"
-YABAI_LABEL="${BARISTA_YABAI_LABEL:-com.koekeishiya.yabai}"
+if [[ -n "${BARISTA_YABAI_LABEL:-}" ]]; then
+  YABAI_LABEL="$BARISTA_YABAI_LABEL"
+elif [[ -f "$HOME/Library/LaunchAgents/com.asmvik.yabai.plist" ]]; then
+  YABAI_LABEL="com.asmvik.yabai"
+else
+  YABAI_LABEL="com.koekeishiya.yabai"
+fi
 SKHD_LABEL="${BARISTA_SKHD_LABEL:-com.koekeishiya.skhd}"
 AGENTS=("$SKETCHYBAR_LABEL" "$YABAI_LABEL" "$SKHD_LABEL")
 

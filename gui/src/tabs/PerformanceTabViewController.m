@@ -1,7 +1,7 @@
 #import "ConfigurationManager.h"
-#import <Cocoa/Cocoa.h>
+#import "BaristaTabBaseViewController.h"
 
-@interface PerformanceTabViewController : NSViewController
+@interface PerformanceTabViewController : BaristaTabBaseViewController
 @property (strong) NSTextField *cpuUsageLabel;
 @property (strong) NSTextField *memoryUsageLabel;
 @property (strong) NSTextField *cacheHitsLabel;
@@ -13,98 +13,59 @@
 
 @implementation PerformanceTabViewController
 
-- (void)loadView {
-  self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
-}
-
 - (void)viewDidLoad {
   [super viewDidLoad];
 
-  CGFloat y = 650;
-  CGFloat x = 100;
-  CGFloat leftMargin = 40;
+  NSStackView *rootStack = nil;
+  [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(28, 34, 34, 34) spacing:20];
 
-  // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSMakeRect(leftMargin, y + 50, 400, 30)];
-  title.stringValue = @"Performance Statistics";
-  title.font = [NSFont systemFontOfSize:20 weight:NSFontWeightBold];
-  title.bordered = NO;
-  title.editable = NO;
-  title.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:title];
+  [rootStack addView:[self titleLabel:@"Performance"] inGravity:NSStackViewGravityTop];
+  [rootStack addView:[self helperLabel:@"Use this page to inspect Barista runtime cost and the optional widget daemon state without dropping into the terminal."] inGravity:NSStackViewGravityTop];
 
-  NSTextField *statsTitle = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y, 300, 24)];
-  statsTitle.stringValue = @"Performance Statistics";
-  statsTitle.font = [NSFont boldSystemFontOfSize:16];
-  statsTitle.editable = NO;
-  statsTitle.bezeled = NO;
-  statsTitle.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:statsTitle];
+  NSStackView *snapshotSection = nil;
+  NSBox *snapshotBox = [self sectionBoxWithTitle:@"Runtime Snapshot"
+                                        subtitle:@"A quick read on current resource use and update cadence."
+                                     contentStack:&snapshotSection];
+  [rootStack addView:snapshotBox inGravity:NSStackViewGravityTop];
+  [snapshotBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
-  y -= 40;
+  self.cpuUsageLabel = [self metricLabel:@"CPU Usage: 0%"];
+  self.memoryUsageLabel = [self metricLabel:@"Memory Usage: 0 MB"];
+  self.cacheHitsLabel = [self metricLabel:@"Cache Hits: 0/0"];
+  self.updateRateLabel = [self metricLabel:@"Update Rate: 0 Hz"];
+  [snapshotSection addView:self.cpuUsageLabel inGravity:NSStackViewGravityTop];
+  [snapshotSection addView:self.memoryUsageLabel inGravity:NSStackViewGravityTop];
+  [snapshotSection addView:self.cacheHitsLabel inGravity:NSStackViewGravityTop];
+  [snapshotSection addView:self.updateRateLabel inGravity:NSStackViewGravityTop];
 
-  self.cpuUsageLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y, 300, 24)];
-  self.cpuUsageLabel.stringValue = @"CPU Usage: 0%";
-  self.cpuUsageLabel.editable = NO;
-  self.cpuUsageLabel.bezeled = NO;
-  self.cpuUsageLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:self.cpuUsageLabel];
-  y -= 30;
+  NSStackView *daemonSection = nil;
+  NSBox *daemonBox = [self sectionBoxWithTitle:@"Widget Daemon"
+                                      subtitle:@"Toggle the helper process and choose how aggressively it should refresh."
+                                   contentStack:&daemonSection];
+  [rootStack addView:daemonBox inGravity:NSStackViewGravityTop];
+  [daemonBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
-  self.memoryUsageLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y, 300, 24)];
-  self.memoryUsageLabel.stringValue = @"Memory Usage: 0 MB";
-  self.memoryUsageLabel.editable = NO;
-  self.memoryUsageLabel.bezeled = NO;
-  self.memoryUsageLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:self.memoryUsageLabel];
-  y -= 30;
-
-  self.cacheHitsLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y, 300, 24)];
-  self.cacheHitsLabel.stringValue = @"Cache Hits: 0/0";
-  self.cacheHitsLabel.editable = NO;
-  self.cacheHitsLabel.bezeled = NO;
-  self.cacheHitsLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:self.cacheHitsLabel];
-  y -= 30;
-
-  self.updateRateLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y, 300, 24)];
-  self.updateRateLabel.stringValue = @"Update Rate: 0 Hz";
-  self.updateRateLabel.editable = NO;
-  self.updateRateLabel.bezeled = NO;
-  self.updateRateLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:self.updateRateLabel];
-
-  y -= 60;
-
-  NSTextField *daemonTitle = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y, 300, 24)];
-  daemonTitle.stringValue = @"Widget Daemon";
-  daemonTitle.font = [NSFont boldSystemFontOfSize:16];
-  daemonTitle.editable = NO;
-  daemonTitle.bezeled = NO;
-  daemonTitle.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:daemonTitle];
-
-  y -= 40;
-
-  self.daemonToggle = [[NSButton alloc] initWithFrame:NSMakeRect(x, y, 200, 24)];
+  self.daemonToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   self.daemonToggle.buttonType = NSButtonTypeSwitch;
   self.daemonToggle.title = @"Enable Widget Daemon";
   self.daemonToggle.target = self;
   self.daemonToggle.action = @selector(toggleDaemon:);
-  [self.view addSubview:self.daemonToggle];
+  [daemonSection addView:self.daemonToggle inGravity:NSStackViewGravityTop];
 
-  y -= 40;
+  NSStackView *modeRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  modeRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  modeRow.spacing = 12;
+  [daemonSection addView:modeRow inGravity:NSStackViewGravityTop];
 
-  NSTextField *modeLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(x, y, 120, 24)];
-  modeLabel.stringValue = @"Update Mode:";
-  modeLabel.editable = NO;
-  modeLabel.bezeled = NO;
-  modeLabel.backgroundColor = [NSColor clearColor];
-  [self.view addSubview:modeLabel];
+  NSTextField *modeLabel = [self fieldLabel:@"Update mode"];
+  [modeRow addView:modeLabel inGravity:NSStackViewGravityLeading];
 
-  self.updateModeMenu = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(x + 120, y, 200, 24)];
+  self.updateModeMenu = [[NSPopUpButton alloc] initWithFrame:NSZeroRect];
   [self.updateModeMenu addItemsWithTitles:@[@"Event-driven", @"Polling", @"Hybrid"]];
-  [self.view addSubview:self.updateModeMenu];
+  [self.updateModeMenu.widthAnchor constraintGreaterThanOrEqualToConstant:180].active = YES;
+  [self.updateModeMenu setTarget:self];
+  [self.updateModeMenu setAction:@selector(updateModeChanged:)];
+  [modeRow addView:self.updateModeMenu inGravity:NSStackViewGravityLeading];
 
   [self updatePerformanceStats];
   
@@ -114,6 +75,17 @@
                                                      selector:@selector(updatePerformanceStats)
                                                      userInfo:nil
                                                       repeats:YES];
+}
+
+- (NSTextField *)metricLabel:(NSString *)text {
+  NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
+  label.stringValue = text ?: @"";
+  label.font = [NSFont systemFontOfSize:13];
+  label.textColor = [NSColor labelColor];
+  label.editable = NO;
+  label.bezeled = NO;
+  label.backgroundColor = [NSColor clearColor];
+  return label;
 }
 
 - (void)dealloc {
@@ -139,7 +111,15 @@
     NSArray *lines = [output componentsSeparatedByString:@"\n"];
     for (NSString *line in lines) {
       if ([line containsString:@"CPU usage"]) {
-        cpuLine = [NSString stringWithFormat:@"CPU Usage: %@", line];
+        // Extract percentages from "CPU usage: X% user, Y% sys, Z% idle"
+        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"([0-9.]+)% user.*?([0-9.]+)% sys.*?([0-9.]+)% idle" options:0 error:nil];
+        NSTextCheckingResult *match = [regex firstMatchInString:line options:0 range:NSMakeRange(0, line.length)];
+        if (match && match.numberOfRanges >= 4) {
+          NSString *user = [line substringWithRange:[match rangeAtIndex:1]];
+          NSString *sys = [line substringWithRange:[match rangeAtIndex:2]];
+          double used = [user doubleValue] + [sys doubleValue];
+          cpuLine = [NSString stringWithFormat:@"CPU Usage: %.1f%% (user %.1f%%, sys %.1f%%)", used, [user doubleValue], [sys doubleValue]];
+        }
         break;
       }
     }
@@ -152,9 +132,30 @@
     [task waitUntilExit];
 
     data = [[pipe fileHandleForReading] readDataToEndOfFile];
-    output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
-    if (output.length == 0) {
+    NSString *vmOutput = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
+    if (vmOutput.length == 0) {
       memoryLine = @"Memory Usage: N/A";
+    } else {
+      // Parse vm_stat output
+      NSArray *vmLines = [vmOutput componentsSeparatedByString:@"\n"];
+      NSUInteger pagesActive = 0, pagesWired = 0, pagesCompressed = 0;
+      for (NSString *vmLine in vmLines) {
+        if ([vmLine containsString:@"Pages active"]) {
+          pagesActive = [[vmLine componentsSeparatedByString:@":"].lastObject stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].integerValue;
+        } else if ([vmLine containsString:@"Pages wired"]) {
+          pagesWired = [[vmLine componentsSeparatedByString:@":"].lastObject stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].integerValue;
+        } else if ([vmLine containsString:@"Pages occupied by compressor"]) {
+          pagesCompressed = [[vmLine componentsSeparatedByString:@":"].lastObject stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].integerValue;
+        }
+      }
+      // vm_stat reports values with trailing period, strip it
+      NSUInteger totalPages = pagesActive + pagesWired + pagesCompressed;
+      double memoryMB = (totalPages * 16384.0) / (1024.0 * 1024.0);
+      if (memoryMB > 1024) {
+        memoryLine = [NSString stringWithFormat:@"Memory Usage: %.1f GB (active + wired + compressed)", memoryMB / 1024.0];
+      } else {
+        memoryLine = [NSString stringWithFormat:@"Memory Usage: %.0f MB (active + wired + compressed)", memoryMB];
+      }
     }
 
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -164,6 +165,15 @@
       self.updateRateLabel.stringValue = @"Update Rate: N/A";
     });
   });
+}
+
+- (void)updateModeChanged:(id)sender {
+  NSArray *modes = @[@"event", @"polling", @"hybrid"];
+  NSInteger index = self.updateModeMenu.indexOfSelectedItem;
+  if (index >= 0 && index < (NSInteger)modes.count) {
+    [self.config setValue:modes[index] forKeyPath:@"modes.widget_daemon"];
+    [self.config saveState];
+  }
 }
 
 - (void)toggleDaemon:(id)sender {
@@ -179,7 +189,10 @@
     }
   } else {
     // Stop daemon
-    system("pkill -f 'widget_manager daemon'");
+    NSTask *killTask = [[NSTask alloc] init];
+    killTask.launchPath = @"/usr/bin/pkill";
+    killTask.arguments = @[@"-f", @"widget_manager daemon"];
+    [killTask launch];
   }
 }
 

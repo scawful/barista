@@ -19,7 +19,7 @@
 - (instancetype)init {
   self = [super init];
   if (self) {
-    self.sidebarWidth = 260.0;
+    self.sidebarWidth = 170.0;
     [self refreshFromConfig];
   }
   return self;
@@ -153,6 +153,12 @@
   CGFloat green = ((value >> 8) & 0xFF) / 255.0;
   CGFloat blue = (value & 0xFF) / 255.0;
   return [NSColor colorWithCalibratedRed:red green:green blue:blue alpha:alpha];
+}
+
+- (NSDictionary<NSString *, NSColor *> *)paletteForThemeName:(NSString *)themeName
+                                                      barHex:(NSString **)barHex {
+  ConfigurationManager *config = [ConfigurationManager sharedManager];
+  return [self themePaletteForName:themeName configPath:config.configPath barHex:barHex];
 }
 
 - (void)refreshFromConfig {

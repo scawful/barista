@@ -19,6 +19,8 @@
 
 + (instancetype)sharedStyle;
 - (void)refreshFromConfig;
+- (NSDictionary<NSString *, NSColor *> *)paletteForThemeName:(NSString *)themeName
+                                                      barHex:(NSString **)barHex;
 - (void)applyWindowStyle:(NSWindow *)window;
 - (void)applyStyleToViewHierarchy:(NSView *)view;
 - (NSFont *)monoFontOfSize:(CGFloat)size weight:(NSFontWeight)weight;

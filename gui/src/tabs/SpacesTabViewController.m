@@ -1,7 +1,8 @@
+#import "BaristaTabBaseViewController.h"
+#import "BaristaCommandBus.h"
 #import "ConfigurationManager.h"
-#import <Cocoa/Cocoa.h>
 
-@interface SpacesTabViewController : NSViewController
+@interface SpacesTabViewController : BaristaTabBaseViewController
 @property (strong) NSPopUpButton *spaceSelector;
 @property (strong) NSTextField *iconField;
 @property (strong) NSTextField *iconPreview;
@@ -20,20 +21,15 @@
 @implementation SpacesTabViewController
 
 - (void)loadView {
-  self.view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 950, 700)];
+  [super loadView];
   self.currentSpace = 1;
 }
 
 - (void)viewDidLoad {
   [super viewDidLoad];
 
-  NSStackView *rootStack = [[NSStackView alloc] initWithFrame:NSInsetRect(self.view.bounds, 40, 20)];
-  rootStack.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  rootStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  rootStack.alignment = NSLayoutAttributeLeading;
-  rootStack.spacing = 24;
-  rootStack.edgeInsets = NSEdgeInsetsMake(20, 0, 20, 0);
-  [self.view addSubview:rootStack];
+  NSStackView *rootStack = nil;
+  [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(24, 24, 28, 24) spacing:20];
 
   // Title
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
@@ -159,7 +155,7 @@
   [self.modeSelector.cell setTrackingMode:NSSegmentSwitchTrackingSelectOne];
   self.modeSelector.target = self;
   self.modeSelector.action = @selector(modeChanged:);
-  [self.modeSelector.widthAnchor constraintEqualToConstant:450].active = YES;
+  [self.modeSelector.widthAnchor constraintGreaterThanOrEqualToConstant:300].active = YES;
   [rootStack addView:self.modeSelector inGravity:NSStackViewGravityTop];
 
   NSTextField *descLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
@@ -401,20 +397,13 @@
 
 - (void)applySettings:(id)sender {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
+  BaristaCommandBus *commandBus = [BaristaCommandBus sharedBus];
 
   NSString *icon = self.iconField.stringValue;
-  if ([icon length] > 0) {
-    NSString *keyPath = [NSString stringWithFormat:@"space_icons.%ld", (long)self.currentSpace];
-    [config setValue:icon forKeyPath:keyPath];
-  }
-
   NSInteger segment = self.modeSelector.selectedSegment;
   NSString *mode = @"float";
   if (segment == 1) mode = @"bsp";
   else if (segment == 2) mode = @"stack";
-
-  NSString *keyPath = [NSString stringWithFormat:@"space_modes.%ld", (long)self.currentSpace];
-  [config setValue:mode forKeyPath:keyPath];
 
   NSString *creatorMode = @"per_display";
   if (self.creatorModePopup.indexOfSelectedItem == 1) {
@@ -440,17 +429,28 @@
   } else if (self.reorderModePopup.indexOfSelectedItem == 2) {
     reorderMode = @"off";
   }
-  [config setValue:reorderMode forKeyPath:@"spaces.reorder_mode"];
-  [config setValue:modifierReorderEnabled forKeyPath:@"spaces.modifier_reorder_enabled"];
-  [config setValue:@(self.contextMenuToggle.state == NSControlStateValueOn) forKeyPath:@"spaces.context_menu_on_right_click"];
-  [config setValue:@(self.swapIndicatorToggle.state == NSControlStateValueOn) forKeyPath:@"spaces.swap_indicator"];
+
+  NSString *modeKeyPath = [NSString stringWithFormat:@"space_modes.%ld", (long)self.currentSpace];
+  NSString *iconKeyPath = [NSString stringWithFormat:@"space_icons.%ld", (long)self.currentSpace];
+  [config performBatchUpdates:^{
+    if ([icon length] > 0) {
+      [config setValue:icon forKeyPath:iconKeyPath];
+    }
+    [config setValue:mode forKeyPath:modeKeyPath];
+    [config setValue:creatorMode forKeyPath:@"spaces.creator_mode"];
+    [config setValue:closeMode forKeyPath:@"spaces.right_click_close"];
+    [config setValue:reorderMode forKeyPath:@"spaces.reorder_mode"];
+    [config setValue:modifierReorderEnabled forKeyPath:@"spaces.modifier_reorder_enabled"];
+    [config setValue:@(self.contextMenuToggle.state == NSControlStateValueOn) forKeyPath:@"spaces.context_menu_on_right_click"];
+    [config setValue:@(self.swapIndicatorToggle.state == NSControlStateValueOn) forKeyPath:@"spaces.swap_indicator"];
+  }];
 
   NSString *script = [[config.configPath stringByAppendingPathComponent:@"plugins"] stringByAppendingPathComponent:@"set_space_mode.sh"];
   if ([[NSFileManager defaultManager] fileExistsAtPath:script]) {
-    [config runScript:@"set_space_mode.sh" arguments:@[[NSString stringWithFormat:@"%ld", (long)self.currentSpace], mode]];
+    [commandBus runScriptNamed:@"set_space_mode.sh" arguments:@[[NSString stringWithFormat:@"%ld", (long)self.currentSpace], mode]];
   }
 
-  [config reloadSketchyBar];
+  [commandBus reloadSketchyBar];
 
   self.applyButton.title = @"✓ Applied!";
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -460,47 +460,31 @@
 
 - (void)clearMode:(id)sender {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
+  BaristaCommandBus *commandBus = [BaristaCommandBus sharedBus];
   NSString *keyPath = [NSString stringWithFormat:@"space_modes.%ld", (long)self.currentSpace];
   [config removeValueForKeyPath:keyPath];
 
   NSString *script = [[config.configPath stringByAppendingPathComponent:@"plugins"] stringByAppendingPathComponent:@"set_space_mode.sh"];
   if ([[NSFileManager defaultManager] fileExistsAtPath:script]) {
-    [config runScript:@"set_space_mode.sh" arguments:@[[NSString stringWithFormat:@"%ld", (long)self.currentSpace], @"float"]];
+    [commandBus runScriptNamed:@"set_space_mode.sh" arguments:@[[NSString stringWithFormat:@"%ld", (long)self.currentSpace], @"float"]];
   }
 
-  [config reloadSketchyBar];
+  [commandBus reloadSketchyBar];
   [self loadSpaceSettings];
 }
 
 - (void)resetAllModes:(id)sender {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
+  BaristaCommandBus *commandBus = [BaristaCommandBus sharedBus];
   [config setValue:[NSMutableDictionary dictionary] forKeyPath:@"space_modes"];
 
   NSString *script = [[config.configPath stringByAppendingPathComponent:@"plugins"] stringByAppendingPathComponent:@"set_space_mode.sh"];
   if ([[NSFileManager defaultManager] fileExistsAtPath:script]) {
-    [config runScript:@"set_space_mode.sh" arguments:@[[NSString stringWithFormat:@"%ld", (long)self.currentSpace], @"float"]];
+    [commandBus runScriptNamed:@"set_space_mode.sh" arguments:@[[NSString stringWithFormat:@"%ld", (long)self.currentSpace], @"float"]];
   }
 
-  [config reloadSketchyBar];
+  [commandBus reloadSketchyBar];
   [self loadSpaceSettings];
-}
-
-- (NSFont *)preferredIconFontWithSize:(CGFloat)size {
-  NSArray<NSString *> *candidates = @[
-    @"Hack Nerd Font",
-    @"JetBrainsMono Nerd Font",
-    @"FiraCode Nerd Font",
-    @"SFMono Nerd Font",
-    @"Symbols Nerd Font",
-    @"MesloLGS NF"
-  ];
-  for (NSString *name in candidates) {
-    NSFont *font = [NSFont fontWithName:name size:size];
-    if (font) {
-      return font;
-    }
-  }
-  return [NSFont systemFontOfSize:size];
 }
 
 @end

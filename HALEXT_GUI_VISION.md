@@ -31,7 +31,7 @@ Replace the current Objective-C configuration GUI with a modern halext:: ImGui-b
 - Icon browser (Material Design, FontAwesome, etc.)
 - Height/corner radius sliders
 - Space mode configuration
-- Integration toggles (yaze, emacs, cortex, halext)
+- Integration toggles (yaze, emacs, halext)
 
 ### New halext:: GUI Architecture
 
@@ -43,7 +43,7 @@ Replace the current Objective-C configuration GUI with a modern halext:: ImGui-b
 │   ├── views/
 │   │   ├── appearance.{h,cc}    # Appearance settings (colors, fonts, sizes)
 │   │   ├── widgets.{h,cc}       # Widget toggles and configuration
-│   │   ├── integrations.{h,cc}  # Integration settings (cortex, yaze, etc.)
+│   │   ├── integrations.{h,cc}  # Integration settings (yaze, emacs, etc.)
 │   │   ├── icons.{h,cc}         # Icon browser with preview
 │   │   ├── spaces.{h,cc}        # Space mode configuration
 │   │   └── preview.{h,cc}       # Live preview of bar appearance
@@ -375,7 +375,7 @@ void BaristaConfigApp::RenderAppearanceView() {
 
 ### Phase 1: Prototype (Current)
 - ✅ Create enhanced Control Center Lua module
-- ✅ Add cortex and sys_manual to apple menu
+- ✅ Add sys_manual to apple menu
 - ⬜ Test integration in SketchyBar
 
 ### Phase 2: Foundation
@@ -390,7 +390,7 @@ void BaristaConfigApp::RenderAppearanceView() {
 - ⬜ Icons view (browser, search, preview)
 
 ### Phase 4: Advanced Features
-- ⬜ Integrations view (cortex, yaze, emacs, etc.)
+- ⬜ Integrations view (yaze, emacs, halext, etc.)
 - ⬜ Spaces view (per-space configuration)
 - ⬜ Live preview (stretch goal)
 
@@ -422,7 +422,7 @@ void BaristaConfigApp::RenderAppearanceView() {
 - Shared with sys_manual (one codebase to maintain)
 
 ### 4. **Integration**
-- Seamless integration with cortex
+- Seamless integration with external Oracle tools
 - Same menu system as sys_manual
 - Can communicate via distributed notifications
 - Shares theme with other halext:: tools
@@ -432,7 +432,7 @@ void BaristaConfigApp::RenderAppearanceView() {
 The new tool will be accessible via:
 1. **Apple menu** → "Barista Settings" (current config_menu.m launch point)
 2. **Control Center widget** → "Tools & Apps" → "Barista Config"
-3. **cortex** → Quick actions → "Configure Barista"
+3. **Oracle Agent Manager** and other external tools stay separate from Barista config
 
 This creates a unified ecosystem:
 ```
@@ -441,7 +441,7 @@ This creates a unified ecosystem:
 ├─────────────────────────────────────────┤
 │ • sys_manual    - Workspace docs        │
 │ • barista_config - SketchyBar settings  │
-│ • cortex        - Swift menu bar app    │
+│ • oracle-agent-manager - Oracle tools   │
 │ • (future) afs_studio - HAFS agent UI   │
 └─────────────────────────────────────────┘
 ```

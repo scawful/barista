@@ -27,6 +27,7 @@ BAR_QUERY_JSON=""
 BAR_HEIGHT_SNAPSHOT=""
 BAR_ITEMS_LOOKUP=""
 BAR_SPACE_ITEM_COUNT=""
+CACHED_SPACE_ICONS_LOADED=0
 DISPLAY_STATE_LOADED=0
 DISPLAY_COUNT_CACHE=""
 ACTIVE_DISPLAY_CACHE=""
@@ -37,6 +38,8 @@ CACHED_SPACE_PROPS=""
 CACHED_CREATOR_PROPS=""
 FULL_REBUILD_DISCOVERY_END_MS=""
 FULL_REBUILD_BUILD_END_MS=""
+
+declare -a CACHED_SPACE_ICONS
 
 now_ms() {
   if command -v python3 >/dev/null 2>&1; then
@@ -225,6 +228,35 @@ count_snapshot_space_items() {
     return 0
   fi
   printf '0'
+}
+
+load_cached_space_icons() {
+  [ "$CACHED_SPACE_ICONS_LOADED" -eq 0 ] || return 0
+  CACHED_SPACE_ICONS_LOADED=1
+  [ -d "$ICON_CACHE_DIR" ] || return 0
+
+  local cache_file cache_name cache_value
+  shopt -s nullglob
+  for cache_file in "$ICON_CACHE_DIR"/*; do
+    [ -f "$cache_file" ] || continue
+    cache_name="${cache_file##*/}"
+    case "$cache_name" in
+      ''|*[!0-9]*)
+        continue
+        ;;
+    esac
+    cache_value="$(cat "$cache_file" 2>/dev/null || true)"
+    [ -n "$cache_value" ] || continue
+    CACHED_SPACE_ICONS[$cache_name]="$cache_value"
+  done
+  shopt -u nullglob
+}
+
+cached_space_icon() {
+  local space_index="${1:-}"
+  [ -n "$space_index" ] || return 0
+  load_cached_space_icons
+  printf '%s' "${CACHED_SPACE_ICONS[$space_index]-}"
 }
 
 count_desired_space_items() {
@@ -682,6 +714,11 @@ apply_incremental_space_items() {
 
 # Prepare batch command
 declare -a SB_ARGS=()
+SNAPSHOT_SPACE_COUNT="$(count_snapshot_space_items)"
+FORCE_FULL_REBUILD=0
+if [ "$SNAPSHOT_SPACE_COUNT" -eq 0 ]; then
+  FORCE_FULL_REBUILD=1
+fi
 
 # Do not block startup waiting for front_app. If it is not present yet, fall
 # back to the next available anchor and let the async reorder path repair the
@@ -709,11 +746,9 @@ for entry in "${SPACE_LINES[@]}"; do
   fi
 
   icon="$space_index"
-  if [ -f "$ICON_CACHE_DIR/$space_index" ]; then
-    cached_icon="$(cat "$ICON_CACHE_DIR/$space_index" 2>/dev/null || true)"
-    if [ -n "$cached_icon" ]; then
-      icon="$cached_icon"
-    fi
+  cached_icon="$(cached_space_icon "$space_index")"
+  if [ -n "$cached_icon" ]; then
+    icon="$cached_icon"
   fi
   click_action="$(space_click_action "$space_index")"
 
@@ -783,15 +818,26 @@ if resolve_diff_updates_enabled; then
   DIFF_UPDATES_ENABLED=1
 fi
 
-SPACE_TOPOLOGY_SIG="$(topology_signature)"
-CREATOR_TOPOLOGY_SIG="creator_mode=$CREATOR_MODE|creator_targets=$(creator_targets_signature)"
-VISIBLE_SIG="$(visible_signature)"
-VISIBLE_BY_DISPLAY_SIG="$(visible_by_display_signature)"
-ACTIVE_DISPLAY_SIG="${active_display:-none}"
-SPACE_PROPS_SIG="$(space_props_signature)"
-CREATOR_PROPS_SIG="$(creator_props_signature)"
+SPACE_TOPOLOGY_SIG=""
+CREATOR_TOPOLOGY_SIG=""
+VISIBLE_SIG=""
+VISIBLE_BY_DISPLAY_SIG=""
+ACTIVE_DISPLAY_SIG=""
+SPACE_PROPS_SIG=""
+CREATOR_PROPS_SIG=""
 
-if [ "$DIFF_UPDATES_ENABLED" -eq 1 ]; then
+compute_signatures() {
+  SPACE_TOPOLOGY_SIG="$(topology_signature)"
+  CREATOR_TOPOLOGY_SIG="creator_mode=$CREATOR_MODE|creator_targets=$(creator_targets_signature)"
+  VISIBLE_SIG="$(visible_signature)"
+  VISIBLE_BY_DISPLAY_SIG="$(visible_by_display_signature)"
+  ACTIVE_DISPLAY_SIG="${active_display:-none}"
+  SPACE_PROPS_SIG="$(space_props_signature)"
+  CREATOR_PROPS_SIG="$(creator_props_signature)"
+}
+
+if [ "$DIFF_UPDATES_ENABLED" -eq 1 ] && [ "$FORCE_FULL_REBUILD" -eq 0 ]; then
+  compute_signatures
   load_cached_signatures
   cached_topology="$CACHED_TOPOLOGY"
   cached_creator_topology="$CACHED_CREATOR_TOPOLOGY"
@@ -948,6 +994,9 @@ full_rebuild_apply_ms=$((full_rebuild_apply_end_ms - full_rebuild_apply_start_ms
 full_rebuild_discovery_ms=$((FULL_REBUILD_DISCOVERY_END_MS - SIMPLE_SPACES_START_MS))
 full_rebuild_build_ms=$((FULL_REBUILD_BUILD_END_MS - FULL_REBUILD_DISCOVERY_END_MS))
 full_rebuild_decision_ms=$((full_rebuild_apply_start_ms - FULL_REBUILD_BUILD_END_MS))
+if [ -z "$SPACE_TOPOLOGY_SIG" ]; then
+  compute_signatures
+fi
 write_space_metrics "full_rebuild" "$(count_desired_space_items)" "$existing_space_count" "$(count_desired_space_items)" "$full_rebuild_prepare_ms" "$full_rebuild_apply_ms" "$full_rebuild_discovery_ms" "$full_rebuild_build_ms" "$full_rebuild_decision_ms"
 write_signatures "$SPACE_TOPOLOGY_SIG" "$CREATOR_TOPOLOGY_SIG" "$VISIBLE_SIG" "$VISIBLE_BY_DISPLAY_SIG" "$ACTIVE_DISPLAY_SIG" "$SPACE_PROPS_SIG" "$CREATOR_PROPS_SIG"
 

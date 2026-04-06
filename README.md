@@ -18,9 +18,9 @@ Barista is the ambient menu bar layer.
 - Barista owns glanceable status, popup sections, quick launch, and one-click entry into deeper tools.
 - Cortex owns the native host/runtime, notifications, secrets, and module shell.
 - Oracle inside Cortex owns persistent AI sessions, agent modes, provider/model routing, and Zelda-first AI work.
-- Janice Studio owns cross-device persona/avatar and model-fleet workflows.
+- Janice Code owns cross-device persona/avatar and model-fleet workflows.
 
-Barista may launch Oracle, Janice Studio, or Cortex, but it should not duplicate Oracle's AI settings, Janice Studio's model hub behavior, or Cortex host logic.
+Barista may launch Oracle, Janice Code, or Cortex, but it should not duplicate Oracle's AI settings, Janice Code's model-fleet behavior, or Cortex host logic.
 
 ## Quick Install
 
@@ -53,6 +53,12 @@ The installer will guide you through:
 Barista includes optimized configurations for **Yabai** (window manager) and **Skhd** (hotkeys).
 The installer can automatically set these up for you.
 
+Window-manager status and controls are surfaced through the left-side
+`control_center` widget and `front_app` popup actions.
+The popup manager, helper popups, and the `toggle_control_center` shortcut all
+target the same resolved control-center item name; the default remains
+`control_center`.
+
 - **Enable**: Run installer and select "Window Manager Mode: Required".
 - **Disable**: Run `./scripts/set_mode.sh <profile> disabled`.
 
@@ -74,6 +80,28 @@ Optionally pass the target dir (default: `~/.config/sketchybar`). If the runtime
 
 **LaunchAgents:** The single place to edit the Barista orchestrator (SketchyBar + yabai + skhd at login) is `lab/barista/launch_agents/`. See [launch_agents/README.md](launch_agents/README.md). Recommended: use either this LaunchAgent or `brew services` for the three daemons, not both.
 
+## Zelda Workbench
+
+Barista now treats Zelda hacking as a two-layer surface:
+
+- The left-bar `Triforce` widget is the shallow launcher.
+- Oracle Hub is the deeper workflow surface.
+
+Use Oracle Hub when you want session planning, Oracle status, build/test buttons, and tool launchers:
+
+```bash
+./bin/open_oracle_agent_manager.sh
+```
+
+Oracle Hub is intended to replace deep SketchyBar popup interaction for Oracle work. The SketchyBar side should stay shallow and quick.
+
+In practice, the Triforce popup should stay close to three actions plus ROM context:
+
+- `Continue: <current focus>`
+- `Patch + Launch`
+- `Open Oracle Hub`
+- `ROM: oosNNNx.sfc`
+
 ## Customization
 
 ### Switching Profiles
@@ -88,7 +116,7 @@ Optionally pass the target dir (default: `~/.config/sketchybar`). If the runtime
 ### Configuration
 Edit `~/.config/sketchybar/state.json` to toggle widgets and appearance, or use `barista_config.lua` for overrides that survive the GUI. See [docs/guides/CUSTOMIZATION.md](docs/guides/CUSTOMIZATION.md) for state.json, profiles, themes, and fonts; [docs/STATE_SCHEMA.md](docs/STATE_SCHEMA.md) for the live runtime key schema; [docs/architecture/SKETCHYBAR_LAYOUT.md](docs/architecture/SKETCHYBAR_LAYOUT.md) for which file defines each bar item. To validate theme files: `lua scripts/validate_theme.lua [theme_name]`.
 
-For the stricter ownership split between Barista, Cortex, and Oracle, see [../cortex/docs/PRODUCT_BOUNDARY.md](../cortex/docs/PRODUCT_BOUNDARY.md).
+For the stricter ownership split between Barista and Oracle tooling, keep Barista focused on bar configuration and use Oracle Hub for Oracle work.
 
 ```json
 {
@@ -130,6 +158,21 @@ For managed/work Macs that should avoid compiled helpers entirely:
 
 See [docs/guides/WORK_MACHINE_GEMINI.md](docs/guides/WORK_MACHINE_GEMINI.md) for the Gemini-first upgrade flow.
 
+If you want the compiled widget daemon to be explicit in persisted state instead of
+automatic detection, set:
+
+```json
+{
+  "modes": {
+    "widget_daemon": "auto"
+  }
+}
+```
+
+Supported values are `auto`, `enabled`, and `disabled`.
+
+For Oracle workflow, `open_control_panel.sh --oracle` forwards directly to Oracle Hub without changing the broader panel-mode preference.
+
 ### Update Another Mac
 Push the latest repo changes to a remote Mac and apply work profile extras:
 
@@ -143,10 +186,27 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 ```
 
 - **Hover animation:** In `state.json` or in `modules/state.lua` defaults, `hover_animation_duration` (default 8) and `hover_animation_curve` (default `sin`) control popup hover speed. Lower duration (e.g. 6) for even snappier feel.
-- **Process Batching:** Barista minimizes process forks. Space switching uses a batched diff-update path (40+ forks reduced to 1). C helpers like `system_info_widget` batch multiple updates into a single call.
+- **Process Batching:** Barista minimizes process forks. Space topology rebuilds stay batched, and the post-rebuild visual pass now runs once through `plugins/space_visuals.sh` instead of per-space `space_change` handlers.
+- **Widget Daemon:** `clock`, `system_info`, and `battery` can run as daemon-managed surfaces. Their steady-state updates come from the long-lived `widget_manager daemon`, while popup detail refresh still happens only on click.
+- **Runtime Context Helper:** `scripts/runtime_context.sh` now prefers the compiled `bin/runtime_context_helper` for front-app and focused-space cache reads/writes, while the shell path still owns media/output state.
+- **Spaces Diff Path:** `plugins/simple_spaces.sh` now updates `space.*` incrementally for reorder and add/remove topology changes instead of dropping the full spaces stack in those cases.
+- **Non-blocking Spaces Startup:** `plugins/simple_spaces.sh` no longer stalls reload waiting for `front_app`; it falls back to the next available anchor and lets the async reorder path repair final placement once `front_app` appears.
+- **Dedicated Spaces Startup Delay:** the initial spaces rebuild and `space_runtime` subscription now use a shorter post-config delay than the rest of the bar so `space.*` items land sooner after reload without retuning every other delayed subscription.
+- **Precomputed Apple Menu Model:** the enhanced Apple-menu model is now prepared before `begin_config`, so menu path discovery and section building happen while the old bar is still visible instead of inside the blank reload window.
 - **Direct Execution:** Hot-path C helpers use `execlp()` instead of `system()` to eliminate shell overhead and unnecessary forks.
 - **Modular Load:** Configuration logic is split across focused modules (`shell_utils`, `paths`, `binary_resolver`) to ensure fast initialization.
-- **Tuning:** See [docs/PERFORMANCE_AUDIT.md](docs/PERFORMANCE_AUDIT.md) for a stability/performance checklist and detailed audit results.
+- **Instrumentation:** `./bin/barista-stats.sh show` reports reload timing plus space topology and visual refresh timings from the live runtime, and now breaks space topology timings out by strategy (`full_rebuild`, `creator_only`, `incremental_reorder`, `incremental_add_remove`, etc.).
+- **Config Build Metric:** `./bin/barista-stats.sh show` now reports `config_build_time` separately from total reload time, so the `begin_config` to `end_config` window can be tuned independently from spaces follow-up work.
+- **Config Build Breakdown:** the same stats view now splits config build into menu render, left layout, right layout, and popup/submenu registry work, and now further separates left/right layout time into layout-table build vs. SketchyBar apply so reload tuning can target the actual slow phase.
+- **Shared Left-Layout State:** the left-side Oracle and control-center builders now reuse one status/model snapshot per config pass instead of rediscovering the same runtime state twice during reload.
+- **Left-Layout Section Metrics:** the same stats view now also breaks left-layout build into `front_app`, `triforce`, `spaces`, `control_center`, and group assembly so the next reload fix can target the slow subsection instead of the whole left side.
+- **Cheap Timing Probes:** config-build and left-layout section metrics now use an in-process profiling clock so measuring reload hot paths no longer adds extra timestamp subprocesses; end-to-end `reload_time` still uses wall-clock.
+- **Spaces Discovery Reuse:** `simple_spaces.sh` now derives active display and display count from the already-fetched `yabai query --spaces` payload in the normal path, keeping the separate displays query only as a fallback.
+- **Topology vs. Overhead Metrics:** `space_topology_refresh` now reflects pure `simple_spaces.sh` topology time, while `space_refresh_overhead` reports the remaining orchestration work around triggers, visual refresh invocation, and external-bar follow-up.
+- **Full-Rebuild Phase Timing:** space topology stats now expose `full_rebuild` preparation vs. SketchyBar batch-apply time so reload tuning can target the slower half instead of guessing.
+- **Prep-Path Reuse:** `plugins/simple_spaces.sh` now reuses one state-file read, one bar snapshot, and one sorted pass over yabai space data across the full-rebuild preparation path.
+- **Cached Prep Reads:** full-rebuild prep now also reuses one display-state snapshot and one signature-cache read instead of re-querying yabai/displays or rescanning `.spaces_signatures` multiple times.
+- **Tuning:** See [docs/PERFORMANCE_AUDIT.md](docs/PERFORMANCE_AUDIT.md) for the active runtime model and performance checklist.
 
 ## Testing
 
@@ -160,7 +220,11 @@ lua tests/run_tests.lua              # Run Lua unit tests only
 
 ## Troubleshooting
 
-- **Bar not showing?** Run `sketchybar --reload`.
+- **Bar not showing?** Prefer `./bin/recover_sketchybar.sh`.
+- **Need a normal interactive restart?** Use `./plugins/reload_sketchybar.sh` or the Apple-menu reload action instead of raw `sketchybar --reload`.
+- **Bar comes up empty after reload or launch-agent restart?** Run `./bin/recover_sketchybar.sh`.
+- **Recovery still leaves the bar empty or startup hangs at `require("sketchybar")`?** Reinstall SbarLua, then relaunch:
+  `(rm -rf /tmp/SbarLua && git clone https://github.com/FelixKratz/SbarLua.git /tmp/SbarLua && cd /tmp/SbarLua && make install)`.
 - **Icons missing?** Run `./scripts/barista-fonts.sh --apply-state --report` and re-run `./scripts/barista-doctor.sh --fix`.
 - **Need to debug without C/C++ helpers?** Run `./scripts/barista-debug.sh --lua-only --reload`.
 - **Yabai acting weird?** Check `System Settings > Privacy & Security > Accessibility`.

@@ -53,8 +53,13 @@ local function create(CONFIG_DIR, PLUGIN_DIR, SKETCHYBAR_BIN, YABAI_BIN, shell_e
   end
 
   local function refresh_spaces()
-    local cmd = string.format("CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR)
+    local cmd = string.format("CONFIG_DIR=%q %q", CONFIG_DIR, PLUGIN_DIR .. "/refresh_spaces.sh")
     shell_exec(cmd)
+  end
+
+  local function build_refresh_action(reason)
+    local refresh_script = PLUGIN_DIR .. "/refresh_spaces.sh"
+    return string.format("BARISTA_REASON=%q CONFIG_DIR=%q %q", reason or "topology_refresh", CONFIG_DIR, refresh_script)
   end
 
   local function refresh_spaces_if_needed()
@@ -69,22 +74,22 @@ local function create(CONFIG_DIR, PLUGIN_DIR, SKETCHYBAR_BIN, YABAI_BIN, shell_e
   end
 
   local function watch_spaces()
-    local refresh_action = string.format("CONFIG_DIR=%s %s/refresh_spaces.sh", CONFIG_DIR, PLUGIN_DIR)
-    local change_action = string.format("%s --trigger space_change; %s --trigger space_mode_refresh", SKETCHYBAR_BIN, SKETCHYBAR_BIN)
+    local active_refresh_action = build_refresh_action("space_changed")
+    local yabai_cmd = string.format("%q -m signal", YABAI_BIN or "yabai")
 
     local signal_cmds = {
-      "yabai -m signal --remove sketchybar_space_change >/dev/null 2>&1 || true",
-      "yabai -m signal --remove sketchybar_space_created >/dev/null 2>&1 || true",
-      "yabai -m signal --remove sketchybar_space_destroyed >/dev/null 2>&1 || true",
-      "yabai -m signal --remove sketchybar_display_changed >/dev/null 2>&1 || true",
-      "yabai -m signal --remove sketchybar_display_added >/dev/null 2>&1 || true",
-      "yabai -m signal --remove sketchybar_display_removed >/dev/null 2>&1 || true",
-      string.format("yabai -m signal --add event=space_changed label=sketchybar_space_change action=%q", change_action),
-      string.format("yabai -m signal --add event=space_created label=sketchybar_space_created action=%q", refresh_action),
-      string.format("yabai -m signal --add event=space_destroyed label=sketchybar_space_destroyed action=%q", refresh_action),
-      string.format("yabai -m signal --add event=display_changed label=sketchybar_display_changed action=%q", change_action),
-      string.format("yabai -m signal --add event=display_added label=sketchybar_display_added action=%q", refresh_action),
-      string.format("yabai -m signal --add event=display_removed label=sketchybar_display_removed action=%q", refresh_action),
+      string.format("%s --remove sketchybar_space_change >/dev/null 2>&1 || true", yabai_cmd),
+      string.format("%s --remove sketchybar_space_created >/dev/null 2>&1 || true", yabai_cmd),
+      string.format("%s --remove sketchybar_space_destroyed >/dev/null 2>&1 || true", yabai_cmd),
+      string.format("%s --remove sketchybar_display_changed >/dev/null 2>&1 || true", yabai_cmd),
+      string.format("%s --remove sketchybar_display_added >/dev/null 2>&1 || true", yabai_cmd),
+      string.format("%s --remove sketchybar_display_removed >/dev/null 2>&1 || true", yabai_cmd),
+      string.format("%s --add event=space_changed label=sketchybar_space_change action=%q", yabai_cmd, active_refresh_action),
+      string.format("%s --add event=space_created label=sketchybar_space_created action=%q", yabai_cmd, build_refresh_action("space_created")),
+      string.format("%s --add event=space_destroyed label=sketchybar_space_destroyed action=%q", yabai_cmd, build_refresh_action("space_destroyed")),
+      string.format("%s --add event=display_changed label=sketchybar_display_changed action=%q", yabai_cmd, build_refresh_action("display_changed")),
+      string.format("%s --add event=display_added label=sketchybar_display_added action=%q", yabai_cmd, build_refresh_action("display_added")),
+      string.format("%s --add event=display_removed label=sketchybar_display_removed action=%q", yabai_cmd, build_refresh_action("display_removed")),
     }
     shell_exec(table.concat(signal_cmds, "; "))
     last_display_state = get_display_state()

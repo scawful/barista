@@ -1,10 +1,32 @@
+local STARTUP_TRACE = os.getenv("BARISTA_STARTUP_TRACE") or rawget(_G, "BARISTA_STARTUP_TRACE")
+local RELOAD_START_MS = tonumber(rawget(_G, "BARISTA_RELOAD_START_MS"))
+
+local function trace_startup(message)
+  if not STARTUP_TRACE or STARTUP_TRACE == "" then
+    return
+  end
+  local file = io.open(STARTUP_TRACE, "a")
+  if not file then
+    return
+  end
+  file:write(os.date("%Y-%m-%d %H:%M:%S "), message, "\n")
+  file:close()
+end
+
+trace_startup("main:file_loaded")
+
 -- SketchyBar Configuration
 -- Modular, modern macOS status bar with Yabai integration
 
+trace_startup("main:require_sketchybar")
 local sbar = require("sketchybar")
+trace_startup("main:require_theme")
 local theme = require("theme")
+trace_startup("main:require_utf8")
 local utf8 = require("utf8")
 local unpack = table.unpack or _G.unpack
+
+trace_startup("main:start")
 
 -- Load modules
 local HOME = os.getenv("HOME")
@@ -30,6 +52,8 @@ local emacs_module   = require("emacs")
 local shell_utils      = require("shell_utils")
 local paths_module     = require("paths")
 local binary_resolver  = require("binary_resolver")
+local runtime_daemon   = require("runtime_daemon")
+local runtime_startup  = require("runtime_startup")
 
 -- Initialize component switcher for C/Lua hybrid architecture
 local component_switcher = require("component_switcher")
@@ -136,6 +160,8 @@ local SKETCHYBAR_BIN = binary_resolver.resolve_sketchybar_bin()
 local YABAI_BIN      = binary_resolver.resolve_yabai_bin()
 
 local POST_CONFIG_DELAY = 1.0
+local SPACE_POST_CONFIG_DELAY = 0.2
+local SPACE_STARTUP_SYNC_DELAY = 0.8
 local NET_INTERFACE = os.getenv("SKETCHYBAR_NET_INTERFACE") or "en0"
 
 -- Convenience wrappers that close over resolved state
@@ -148,6 +174,10 @@ local POPUP_ANCHOR_SCRIPT  = compiled_script("popup_anchor",   PLUGIN_DIR .. "/p
 local SUBMENU_HOVER_SCRIPT = compiled_script("submenu_hover",  PLUGIN_DIR .. "/submenu_hover.sh")
 local POPUP_MANAGER_SCRIPT = compiled_script("popup_manager",  PLUGIN_DIR .. "/popup_manager.sh")
 local POPUP_GUARD_SCRIPT   = compiled_script("popup_guard",    PLUGIN_DIR .. "/popup_guard.sh")
+local WIDGET_MANAGER_BIN   = compiled_script("widget_manager", "")
+local SPACE_VISUALS_SCRIPT = PLUGIN_DIR .. "/space_visuals.sh"
+local STATS_BIN            = CONFIG_DIR .. "/bin/barista-stats.sh"
+local RUNTIME_CONTEXT_SCRIPT = SCRIPTS_DIR .. "/runtime_context.sh"
 
 -- Yabai availability (cached)
 local yabai_available_cache = nil
@@ -162,7 +192,6 @@ local function yabai_available()
 end
 
 local WINDOW_MANAGER_MODE = binary_resolver.resolve_window_manager_mode(state_module, state)
-local WINDOW_MANAGER_ENABLED = binary_resolver.compute_window_manager_enabled(WINDOW_MANAGER_MODE, YABAI_BIN)
 
 -- Icon helpers
 local function safe_icon(value)
@@ -197,14 +226,6 @@ local emacs_enabled  = integration_enabled("emacs")
 local halext_enabled = integration_enabled("halext")
 local halext_module  = halext_enabled and require("halext") or nil
 
-local cortex_enabled = integration_enabled("cortex")
-local cortex_module  = nil
-if cortex_enabled then
-  local ok, mod = pcall(require, "cortex")
-  if ok then cortex_module = mod
-  else print("Barista: cortex integration enabled but module not found") end
-end
-
 local janice_enabled = integration_enabled("janice")
 local janice_module  = nil
 if janice_enabled then
@@ -221,13 +242,27 @@ if premia_enabled then
   else print("Barista: premia integration enabled but module not found") end
 end
 
-local control_center_enabled = integration_enabled("control_center") or cortex_enabled
+local control_center_enabled = integration_enabled("control_center")
 local control_center_module = nil
 if control_center_enabled then
   local ok, mod = pcall(require, "control_center")
   if ok then control_center_module = mod
-  else print("Barista: control_center module not found, falling back to cortex") end
+  else print("Barista: control_center module not found") end
 end
+local control_center_item_name = nil
+if control_center_module and type(control_center_module.get_item_name) == "function" then
+  control_center_item_name = control_center_module.get_item_name({
+    state = state,
+    config_dir = CONFIG_DIR,
+  })
+elseif control_center_module then
+  control_center_item_name = "control_center"
+end
+
+local widget_daemon_enabled = runtime_daemon.should_enable_widget_daemon(state, {
+  binary_path = WIDGET_MANAGER_BIN,
+  lua_only = LUA_ONLY,
+})
 
 -- Popup toggle
 local POPUP_TOGGLE_SCRIPT = SCRIPTS_DIR .. "/focus_display_and_toggle_popup.sh"
@@ -239,7 +274,7 @@ local POPUP_TOGGLE_AVAILABLE = shell_utils.file_exists(POPUP_TOGGLE_SCRIPT)
 
 local function direct_popup_toggle(item_name)
   if item_name and item_name ~= "" then
-    return string.format("%q --set %s popup.drawing=toggle", SKETCHYBAR_BIN, item_name)
+    return string.format("%q --set %q popup.drawing=toggle", SKETCHYBAR_BIN, item_name)
   end
   return [[sketchybar -m --set $NAME popup.drawing=toggle]]
 end
@@ -282,6 +317,15 @@ local hover_script_cmd = shell_utils.env_prefix({
   POPUP_HOVER_ANIMATION_DURATION = tostring(bc.hover_animation_duration),
 }) .. HOVER_SCRIPT
 
+local fast_hover_duration = math.max(1, math.min(tonumber(bc.hover_animation_duration) or 8, 3))
+local triforce_hover_script_cmd = shell_utils.env_prefix({
+  POPUP_HOVER_COLOR              = tostring(bc.hover_color),
+  POPUP_HOVER_BORDER_COLOR       = tostring(bc.hover_border_color),
+  POPUP_HOVER_BORDER_WIDTH       = tostring(bc.hover_border_width),
+  POPUP_HOVER_ANIMATION_CURVE    = tostring(bc.hover_animation_curve),
+  POPUP_HOVER_ANIMATION_DURATION = tostring(fast_hover_duration),
+}) .. HOVER_SCRIPT
+
 local submenu_hover_script_cmd = shell_utils.env_prefix({
   SUBMENU_HOVER_BG             = tostring(bc.submenu_hover_color),
   SUBMENU_IDLE_BG              = tostring(bc.submenu_idle_color),
@@ -301,7 +345,6 @@ local integrations = {
   oracle = oracle_enabled and oracle_module or nil,
   emacs  = emacs_enabled  and emacs_module  or nil,
   halext = halext_enabled  and halext_module or nil,
-  cortex = cortex_module,
   janice = janice_module,
   premia = premia_module,
   control_center = control_center_module,
@@ -339,6 +382,7 @@ local barista_context = {
   HOVER_SCRIPT         = hover_script_cmd,
   SUBMENU_HOVER_SCRIPT = submenu_hover_script_cmd,
   hover_script_cmd     = hover_script_cmd,
+  triforce_hover_script_cmd = triforce_hover_script_cmd,
 
   -- Helpers & shell
   shell_exec               = shell_utils.shell_exec,
@@ -350,16 +394,22 @@ local barista_context = {
   subscribe_popup_autoclose = subscribe_popup_autoclose,
   popup_toggle_action      = popup_toggle_action,
   popup_toggle_script      = POPUP_TOGGLE_AVAILABLE and POPUP_TOGGLE_SCRIPT or nil,
+  popup_anchor_script      = POPUP_ANCHOR_SCRIPT,
 
   -- Directories & binaries
   CONFIG_DIR      = CONFIG_DIR,
   PLUGIN_DIR      = PLUGIN_DIR,
+  SCRIPTS_DIR     = SCRIPTS_DIR,
+  RUNTIME_CONTEXT_SCRIPT = RUNTIME_CONTEXT_SCRIPT,
   CODE_DIR        = CODE_DIR,
   SKETCHYBAR_BIN  = SKETCHYBAR_BIN,
   sketchybar_bin  = SKETCHYBAR_BIN,
   POST_CONFIG_DELAY = POST_CONFIG_DELAY,
+  SPACE_POST_CONFIG_DELAY = SPACE_POST_CONFIG_DELAY,
   associated_displays = associated_displays,
   compiled_script = compiled_script,
+  current_time_ms = runtime_startup.current_time_ms,
+  widget_daemon_enabled = widget_daemon_enabled,
 
   -- Paths, scripts, helpers, integrations
   paths       = paths,
@@ -382,6 +432,7 @@ local barista_context = {
   yabai_available     = yabai_available,
   WINDOW_MANAGER_MODE = WINDOW_MANAGER_MODE,
   control_center_module = control_center_module,
+  control_center_item_name = control_center_item_name,
 
   -- Appearance
   appearance = state.appearance,
@@ -394,36 +445,46 @@ local barista_context = {
   widget_factory = nil,
 }
 
--- Spaces init helper (used by items_left)
-local function init_spaces()
-  local yabai_bin = YABAI_BIN or "yabai"
-  local wait_cmd = string.format(
-    "path_to_yabai=%q; sketchybar_bin=%q; i=0; while [ $i -lt 10 ]; do " ..
-      "\"$path_to_yabai\" -m query --spaces >/dev/null 2>&1 && break; " ..
-      "sleep 0.2; i=$((i+1)); " ..
-    "done; " ..
-    "\"$sketchybar_bin\" --trigger space_change; " ..
-    "\"$sketchybar_bin\" --trigger space_mode_refresh",
-    yabai_bin, SKETCHYBAR_BIN
-  )
-  shell_utils.shell_exec(wait_cmd)
-end
-
-barista_context.init_spaces = init_spaces
 barista_context.widget_factory = widgets_module.create_factory(sbar, theme, bc.settings, state, bc)
+barista_context.prepared_menus = menu_module.prepare(barista_context)
 
 -----------------------------------------------------------------------
 -- Begin configuration
 -----------------------------------------------------------------------
+runtime_daemon.stop_widget_daemon({ trace = trace_startup })
+runtime_daemon.stop_runtime_context_daemon({ trace = trace_startup })
+
+local config_build_start_ms = runtime_startup.current_time_ms()
+local menu_render_duration_ms = 0
+local left_layout_duration_ms = 0
+local left_layout_build_duration_ms = 0
+local left_layout_apply_duration_ms = 0
+local left_layout_metrics = {}
+local right_layout_duration_ms = 0
+local right_layout_build_duration_ms = 0
+local right_layout_apply_duration_ms = 0
+local registry_duration_ms = 0
 sbar.begin_config()
+trace_startup("main:begin_config")
 shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event space_change >/dev/null 2>&1 || true")
 shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event space_mode_refresh >/dev/null 2>&1 || true")
+shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event space_visual_refresh >/dev/null 2>&1 || true")
+shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event display_changed >/dev/null 2>&1 || true")
+shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event display_added >/dev/null 2>&1 || true")
+shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event display_removed >/dev/null 2>&1 || true")
 
 -- Global popup manager (invisible item that handles popup dismissal)
 sbar.add("item", "popup_manager", {
   position = "left",
   drawing = false,
   script = POPUP_MANAGER_SCRIPT,
+})
+
+-- Space runtime coordinator (single batch updater for all space visuals)
+sbar.add("item", "space_runtime", {
+  position = "left",
+  drawing = false,
+  script = SPACE_VISUALS_SCRIPT,
 })
 
 -- Bar configuration
@@ -438,7 +499,10 @@ end
 sbar.default(bc.defaults)
 
 -- Render All Menus (System, Workspace, Window)
+local menu_render_start_ms = runtime_startup.current_time_ms()
 local menu_metadata = menu_module.render_all_menus(barista_context) or {}
+menu_render_duration_ms = runtime_startup.current_time_ms() - menu_render_start_ms
+trace_startup("main:menus_rendered")
 
 -- Register left and right bar items
 -----------------------------------------------------------------------
@@ -459,7 +523,14 @@ local function process_layout(layout, ctx)
     elseif entry.action == "exec" then
       ctx.shell_exec(entry.cmd)
     elseif entry.action == "call" then
-      entry.fn()
+      if type(entry.fn) == "function" then
+        entry.fn()
+      else
+        print(string.format(
+          "Barista: skipped layout call with missing fn (name=%s)",
+          tostring(entry.name or "(unnamed)")
+        ))
+      end
     elseif entry.action == "subscribe_popup_autoclose" then
       ctx.subscribe_popup_autoclose(entry.name)
     elseif entry.action == "attach_hover" then
@@ -471,8 +542,23 @@ end
 local items_left  = require("items_left")
 local items_right = require("items_right")
 
-process_layout(items_left.get_layout(barista_context), barista_context)
-process_layout(items_right.get_layout(barista_context), barista_context)
+local left_layout_build_start_ms = runtime_startup.current_time_ms()
+local left_layout
+left_layout, left_layout_metrics = items_left.get_layout(barista_context)
+left_layout_build_duration_ms = runtime_startup.current_time_ms() - left_layout_build_start_ms
+local left_layout_apply_start_ms = runtime_startup.current_time_ms()
+process_layout(left_layout, barista_context)
+left_layout_apply_duration_ms = runtime_startup.current_time_ms() - left_layout_apply_start_ms
+left_layout_duration_ms = left_layout_build_duration_ms + left_layout_apply_duration_ms
+trace_startup("main:left_layout_processed")
+local right_layout_build_start_ms = runtime_startup.current_time_ms()
+local right_layout = items_right.get_layout(barista_context)
+right_layout_build_duration_ms = runtime_startup.current_time_ms() - right_layout_build_start_ms
+local right_layout_apply_start_ms = runtime_startup.current_time_ms()
+process_layout(right_layout, barista_context)
+right_layout_apply_duration_ms = runtime_startup.current_time_ms() - right_layout_apply_start_ms
+right_layout_duration_ms = right_layout_build_duration_ms + right_layout_apply_duration_ms
+trace_startup("main:right_layout_processed")
 
 -- Write dynamic popup/submenu lists for C helpers (replaces hardcoded lists)
 local submenu_registry = require("submenu_registry")
@@ -484,15 +570,20 @@ local popup_manager_items = {
   "battery",
   unpack(menu_metadata.popup_parents or {}),
 }
-if control_center_module then
-  table.insert(popup_manager_items, "control_center")
+if control_center_item_name then
+  table.insert(popup_manager_items, control_center_item_name)
 end
+if oracle_enabled then
+  table.insert(popup_manager_items, "triforce")
+end
+local registry_start_ms = runtime_startup.current_time_ms()
 submenu_registry.register(
   -- Popup parents (items with popup.drawing=toggle)
   popup_manager_items,
   -- Submenu sections (items inside menu popups that have their own popups)
   menu_metadata.submenu_parents or {}
 )
+registry_duration_ms = runtime_startup.current_time_ms() - registry_start_ms
 
 shell_utils.shell_exec(string.format(
   "sleep %.1f; %s --subscribe popup_manager space_change display_changed display_added display_removed system_woke front_app_switched",
@@ -502,6 +593,92 @@ shell_utils.shell_exec(string.format(
 
 -- End configuration
 sbar.end_config()
+trace_startup("main:end_config")
+local config_build_duration_ms = runtime_startup.current_time_ms() - config_build_start_ms
+runtime_startup.record_duration_event(STATS_BIN, "config_build_time", config_build_duration_ms, {
+  trace = trace_startup,
+  trace_label = "main:config_build_ms",
+})
+runtime_startup.record_duration_event(STATS_BIN, "config_menu_render_time", menu_render_duration_ms, {
+  trace = trace_startup,
+  trace_label = "main:config_menu_render_ms",
+})
+runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_time", left_layout_duration_ms, {
+  trace = trace_startup,
+  trace_label = "main:config_left_layout_ms",
+})
+runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_build_time", left_layout_build_duration_ms, {
+  trace = trace_startup,
+  trace_label = "main:config_left_layout_build_ms",
+})
+runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_apply_time", left_layout_apply_duration_ms, {
+  trace = trace_startup,
+  trace_label = "main:config_left_layout_apply_ms",
+})
+runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_front_app_time", left_layout_metrics.front_app_ms or 0, {
+  trace = trace_startup,
+  trace_label = "main:config_left_layout_front_app_ms",
+})
+runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_triforce_time", left_layout_metrics.triforce_ms or 0, {
+  trace = trace_startup,
+  trace_label = "main:config_left_layout_triforce_ms",
+})
+runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_spaces_time", left_layout_metrics.spaces_ms or 0, {
+  trace = trace_startup,
+  trace_label = "main:config_left_layout_spaces_ms",
+})
+runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_control_center_time", left_layout_metrics.control_center_ms or 0, {
+  trace = trace_startup,
+  trace_label = "main:config_left_layout_control_center_ms",
+})
+runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_group_time", left_layout_metrics.group_ms or 0, {
+  trace = trace_startup,
+  trace_label = "main:config_left_layout_group_ms",
+})
+runtime_startup.record_duration_event(STATS_BIN, "config_right_layout_time", right_layout_duration_ms, {
+  trace = trace_startup,
+  trace_label = "main:config_right_layout_ms",
+})
+runtime_startup.record_duration_event(STATS_BIN, "config_right_layout_build_time", right_layout_build_duration_ms, {
+  trace = trace_startup,
+  trace_label = "main:config_right_layout_build_ms",
+})
+runtime_startup.record_duration_event(STATS_BIN, "config_right_layout_apply_time", right_layout_apply_duration_ms, {
+  trace = trace_startup,
+  trace_label = "main:config_right_layout_apply_ms",
+})
+runtime_startup.record_duration_event(STATS_BIN, "config_registry_time", registry_duration_ms, {
+  trace = trace_startup,
+  trace_label = "main:config_registry_ms",
+})
+runtime_startup.record_reload_metrics(STATS_BIN, RELOAD_START_MS, { trace = trace_startup })
+
+if widget_daemon_enabled then
+  runtime_daemon.ensure_widget_daemon(WIDGET_MANAGER_BIN, {
+    trace = trace_startup,
+    force_restart = true,
+  })
+else
+  runtime_daemon.stop_widget_daemon({ trace = trace_startup })
+end
+
+if shell_utils.file_exists(RUNTIME_CONTEXT_SCRIPT) then
+  runtime_daemon.ensure_runtime_context_daemon(RUNTIME_CONTEXT_SCRIPT, {
+    trace = trace_startup,
+    force_restart = true,
+  })
+else
+  runtime_daemon.stop_runtime_context_daemon({ trace = trace_startup })
+end
+
+shell_utils.shell_exec(runtime_startup.build_space_runtime_subscription(SPACE_POST_CONFIG_DELAY, SKETCHYBAR_BIN))
+shell_utils.shell_exec(runtime_startup.build_space_visual_refresh(
+  SPACE_STARTUP_SYNC_DELAY,
+  SPACE_VISUALS_SCRIPT,
+  CONFIG_DIR,
+  SCRIPTS_DIR
+))
 
 print("main.lua finished loading!")
+trace_startup("main:event_loop")
 sbar.event_loop()

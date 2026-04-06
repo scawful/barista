@@ -27,11 +27,13 @@ case "$APP_NAME" in
   "Warp") echo "󱓞" ;;
   "WezTerm") echo "" ;;
   "Hyper") echo "󰆍" ;;
-  "Ghostty") echo "󰊠" ;;
+  "Ghostty"|"ghostty") echo "" ;;
   
   # Editors & IDEs
   "Code"|"Visual Studio Code"|"VSCode") echo "󰨞" ;;
-  "Cursor") echo "󰨞" ;;
+  "Cursor"|"cursor") echo "󰨞" ;;
+  "Claude"|"claude") echo "󰭻" ;;
+  "Claude Code"|"claude code") echo "󰭻" ;;
   "Xcode") echo "" ;;
   "Emacs") echo "" ;;
   "Vim"|"MacVim") echo "" ;;
@@ -49,7 +51,7 @@ case "$APP_NAME" in
   # Browsers
   "Safari"|"Safari Technology Preview") echo "󰀹" ;;
   "Google Chrome"|"Chrome"|"Chromium") echo "" ;;
-  "Firefox"|"Firefox Developer Edition") echo "" ;;
+  "Firefox"|"Firefox Developer Edition"|"firefox") echo "" ;;
   "Arc") echo "󰞍" ;;
   "Brave Browser") echo "󰊯" ;;
   "Microsoft Edge") echo "󰇩" ;;
@@ -60,7 +62,7 @@ case "$APP_NAME" in
   "Discord"|"Discord Canary"|"Discord PTB") echo "󰙯" ;;
   "Slack") echo "󰒱" ;;
   "Microsoft Teams"|"Teams") echo "󰊻" ;;
-  "Messages"|"信息") echo "󰍦" ;;
+  "Messages"|"messages"|"信息") echo "󰍦" ;;
   "Telegram") echo "󰍦" ;;
   "WhatsApp"|"‎WhatsApp") echo "󰖣" ;;
   "Signal") echo "󰭹" ;;
@@ -90,7 +92,7 @@ case "$APP_NAME" in
   
   # Media
   "Music"|"音乐"|"Apple Music") echo "󰎈" ;;
-  "Spotify") echo "" ;;
+  "Spotify"|"spotify") echo "" ;;
   "VLC") echo "󰕼" ;;
   "Podcasts"|"播客") echo "󰎈" ;;
   "TIDAL") echo "󰓃" ;;
@@ -119,6 +121,11 @@ case "$APP_NAME" in
   "Spotlight") echo "󰍉" ;;
   "Activity Monitor") echo "󰨇" ;;
   "Raycast") echo "󰑓" ;;
+  "Antigravity"|"antigravity") echo "" ;;
+  "LM Studio"|"lm studio") echo "󰭻" ;;
+
+  # Zelda / Oracle tooling
+  "Oracle Agent Manager"|"oracle_manager_gui"|"oracle_hub"|"Oracle") echo "󰯙" ;;
   
   # Games
   "Steam") echo "" ;;

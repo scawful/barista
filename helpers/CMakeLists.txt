@@ -33,6 +33,11 @@ set(HELPER_CXX_SOURCES
   menu_action.cpp
 )
 
+# Objective-C helpers
+set(HELPER_OBJC_SOURCES
+  runtime_context_helper.m
+)
+
 # Build C helpers
 foreach(SOURCE ${HELPER_SOURCES})
   get_filename_component(NAME ${SOURCE} NAME_WE)
@@ -66,6 +71,26 @@ foreach(SOURCE ${HELPER_CXX_SOURCES})
   )
 endforeach()
 
+# Build Objective-C helpers
+foreach(SOURCE ${HELPER_OBJC_SOURCES})
+  get_filename_component(NAME ${SOURCE} NAME_WE)
+  add_executable(${NAME} ${SOURCE})
+
+  if(APPLE)
+    find_library(COCOA_LIB Cocoa)
+    find_library(FOUNDATION_LIB Foundation)
+    target_compile_options(${NAME} PRIVATE -fobjc-arc)
+    target_link_libraries(${NAME} PRIVATE
+      ${COCOA_LIB}
+      ${FOUNDATION_LIB}
+    )
+  endif()
+
+  set_target_properties(${NAME} PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+  )
+endforeach()
+
 # Event providers subdirectory
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/event_providers/CMakeLists.txt)
   add_subdirectory(event_providers)
@@ -91,6 +116,6 @@ install(TARGETS
   widget_manager
   menu_renderer
   menu_action
+  runtime_context_helper
   RUNTIME DESTINATION bin
 )
-

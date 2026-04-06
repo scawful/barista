@@ -109,6 +109,24 @@ track_event() {
     log_event "$event_name" "$(event_payload_json "$duration_ms" "$details")"
 }
 
+track_events_batch() {
+    local timestamp
+    local event_name duration_ms details
+
+    ensure_log_format
+    timestamp=$(get_timestamp)
+    while IFS=$'\t' read -r event_name duration_ms details || [ -n "${event_name:-}" ]; do
+        [ -n "${event_name:-}" ] || continue
+        duration_ms="${duration_ms:-0}"
+        details="${details:-}"
+        printf '{"duration_ms":%s,"details":"%s","timestamp":%s,"event":"%s"}\n' \
+            "$duration_ms" \
+            "$details" \
+            "$timestamp" \
+            "$event_name" >> "$LOG_FILE"
+    done
+}
+
 summarize_event() {
     local event_name="$1"
     [ -f "$LOG_FILE" ] || return 1
@@ -259,11 +277,33 @@ show_stats() {
     echo "  Average reload time: ${avg_reload_time}ms"
     echo "  Last reload time: ${last_reload_time}ms"
     local config_build_stats
+    local reload_prep_stats
+    local reload_daemon_stop_stats
+    local reload_stats_flush_stats
+    local config_build_wall_stats
+    reload_prep_stats="$(summarize_event "reload_prep_time" 2>/dev/null || true)"
+    if [ -n "$reload_prep_stats" ]; then
+        local phase_count phase_avg phase_last
+        read -r phase_count phase_avg phase_last <<< "$reload_prep_stats"
+        echo "  Reload prep time: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
+    fi
+    reload_daemon_stop_stats="$(summarize_event "reload_daemon_stop_time" 2>/dev/null || true)"
+    if [ -n "$reload_daemon_stop_stats" ]; then
+        local phase_count phase_avg phase_last
+        read -r phase_count phase_avg phase_last <<< "$reload_daemon_stop_stats"
+        echo "  Reload daemon stop: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
+    fi
     config_build_stats="$(summarize_event "config_build_time" 2>/dev/null || true)"
     if [ -n "$config_build_stats" ]; then
         local config_count config_avg config_last
         read -r config_count config_avg config_last <<< "$config_build_stats"
         echo "  Config build time: ${config_count} (avg ${config_avg}ms, last ${config_last}ms)"
+        config_build_wall_stats="$(summarize_event "config_build_wall_time" 2>/dev/null || true)"
+        if [ -n "$config_build_wall_stats" ]; then
+            local phase_count phase_avg phase_last
+            read -r phase_count phase_avg phase_last <<< "$config_build_wall_stats"
+            echo "    wall: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
+        fi
         local config_menu_stats
         local config_left_stats
         local config_left_build_stats
@@ -355,6 +395,12 @@ show_stats() {
             read -r phase_count phase_avg phase_last <<< "$config_registry_stats"
             echo "    registry: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
         fi
+    fi
+    reload_stats_flush_stats="$(summarize_event "reload_stats_flush_time" 2>/dev/null || true)"
+    if [ -n "$reload_stats_flush_stats" ]; then
+        local phase_count phase_avg phase_last
+        read -r phase_count phase_avg phase_last <<< "$reload_stats_flush_stats"
+        echo "  Reload stats flush: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
     fi
     local topology_stats
     topology_stats="$(summarize_event "space_topology_refresh" 2>/dev/null || true)"
@@ -448,6 +494,9 @@ case "${1:-show}" in
     event)
         track_event "${2:-}" "${3:-0}" "${4:-}"
         ;;
+    events-batch)
+        track_events_batch
+        ;;
     show|stats)
         show_stats
         ;;
@@ -456,13 +505,14 @@ case "${1:-show}" in
         echo "Statistics reset."
         ;;
     *)
-        echo "Usage: $0 {reload|reload-time <ms>|update <widget>|event <name> <duration_ms> [details]|show|reset}"
+        echo "Usage: $0 {reload|reload-time <ms>|update <widget>|event <name> <duration_ms> [details]|events-batch|show|reset}"
         echo ""
         echo "Commands:"
         echo "  reload          - Track a reload event"
         echo "  reload-time <ms> - Track reload duration in milliseconds"
         echo "  update <widget> - Track a widget update"
         echo "  event <name> <duration_ms> [details] - Track a named timing event"
+        echo "  events-batch    - Track newline-delimited <event><tab><duration><tab><details> timing events from stdin"
         echo "  show            - Display statistics (default)"
         echo "  reset           - Reset all statistics"
         exit 1

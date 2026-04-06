@@ -129,6 +129,8 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
     - `runtime_daemon.stop_runtime_context_daemon()` now clears the whole runtime-context family on restart, including stale helper daemon and refresh children, so live focused-space probes no longer inherit orphaned runtime/query processes across reloads
     - `runtime_context.sh daemon` now launches `runtime_context_helper daemon` directly instead of backgrounding a shell function, removing the redundant nested shell layer from the live runtime path
     - topology and visual refresh durations are logged separately
+    - config-build timing now flushes through one `events-batch` write instead of spawning `barista-stats.sh` once per config metric, removing a large artificial post-config cost from reload profiling
+    - reload timing is now also split into wall-clock `reload_prep_time`, `reload_daemon_stop_time`, `config_build_wall_time`, and `reload_stats_flush_time`, so the blocking reload path can be attributed even when the Lua-side `config_build_time` stays tiny
     - topology refresh events now carry explicit strategy/counter metadata (`strategy`, `added`, `removed`, `updated`, `spaces`)
     - full-rebuild topology events now also carry `prepare_ms` and `apply_ms`, so `barista-stats.sh show` separates script-side preparation from the SketchyBar batch apply cost
     - the live stats now also split `full_rebuild` preparation into `discovery`, `build`, and `decision` phases so the remaining shell-side cost can be targeted more precisely

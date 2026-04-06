@@ -30,6 +30,20 @@ function M.shell_exec(cmd)
   get_sbar().exec(string.format("env PATH=%s bash -lc %s", M.shell_quote(base_path), M.shell_quote(cmd)))
 end
 
+--- Execute a shell command in the background via sbar.exec.
+function M.shell_exec_background(cmd)
+  local base_path = "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin"
+  local env_path = os.getenv("PATH")
+  if env_path and env_path ~= "" then
+    base_path = base_path .. ":" .. env_path
+  end
+  get_sbar().exec(string.format(
+    "env PATH=%s bash -lc %s",
+    M.shell_quote(base_path),
+    M.shell_quote("(" .. tostring(cmd) .. ") >/dev/null 2>&1 &")
+  ))
+end
+
 --- Execute a sketchybar CLI command.
 function M.sketchybar_cli(sketchybar_bin, cmd)
   if not cmd or cmd == "" then

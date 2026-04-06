@@ -30,6 +30,7 @@ assert_contains() {
 printf '1775400000|reload|{"count":1}\n' > "$TMP_DIR/.barista_stats.log"
 
 CONFIG_DIR="$TMP_DIR" "$SCRIPT" event smoke 12 ok >/dev/null
+printf 'batch_alpha\t12\nbatch_beta\t34\n' | CONFIG_DIR="$TMP_DIR" "$SCRIPT" events-batch >/dev/null
 CONFIG_DIR="$TMP_DIR" "$SCRIPT" event config_build_time 412 ok >/dev/null
 CONFIG_DIR="$TMP_DIR" "$SCRIPT" event config_menu_render_time 210 ok >/dev/null
 CONFIG_DIR="$TMP_DIR" "$SCRIPT" event config_left_layout_time 111 ok >/dev/null
@@ -58,6 +59,9 @@ assert_eq "$event_count" "1" "smoke event should be written as JSONL"
 
 duration="$(jq -r 'select(.event == "smoke") | .duration_ms' "$TMP_DIR/.barista_stats.log")"
 assert_eq "$duration" "12" "smoke event duration should round-trip"
+
+batch_count="$(jq -sr '[.[] | select(.event == "batch_alpha")] | length' "$TMP_DIR/.barista_stats.log")"
+assert_eq "$batch_count" "1" "events-batch should append batch_alpha as JSONL"
 
 CONFIG_DIR="$TMP_DIR" "$SCRIPT" reload >/dev/null
 CONFIG_DIR="$TMP_DIR" "$SCRIPT" reload-time 25 >/dev/null

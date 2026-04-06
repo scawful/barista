@@ -214,6 +214,8 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **No More Forced Space Visual Passes:** the hidden `space_runtime` item now keeps `updates=false`, `space_visuals.sh` ignores autonomous `forced` runs, and `space.sh` no longer falls back to a full visual refresh when hover-state restore has no cached style to restore.
 - **Dedicated Active-Space Event:** active-space updates now use `space_active_refresh` instead of the legacy broad `space_change` fan-out, so the active-space path only wakes the popup manager and control-center consumers that still need it.
 - **Startup Visual Sync Cooldown:** the delayed `startup_sync` visual pass now uses its own cooldown window and skips itself when a recent authoritative topology refresh already settled the spaces strip, so reload no longer pays for a redundant second full visual pass.
+- **Batched Config Metrics:** config-build timing now flushes to `barista-stats.sh` in one batch instead of one shell invocation per metric, so reload profiling no longer creates a large artificial post-config cost.
+- **Wall-Clock Reload Breakdown:** `barista-stats.sh show` now separates reload prep, daemon stop, config-build wall time, and stats flush time, so reload latency can be attributed to the actual blocking phase instead of one undifferentiated `reload_time`.
 - **Tuning:** See [docs/PERFORMANCE_AUDIT.md](docs/PERFORMANCE_AUDIT.md) for the active runtime model and performance checklist.
 
 ## Testing

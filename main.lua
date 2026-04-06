@@ -292,11 +292,11 @@ end
 
 -- Hover helpers
 local function attach_hover(name)
-  shell_utils.shell_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name))
+  shell_utils.shell_exec_background(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name))
 end
 
 local function subscribe_popup_autoclose(name)
-  shell_utils.shell_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited mouse.exited.global", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name))
+  shell_utils.shell_exec_background(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited mouse.exited.global", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name))
 end
 
 -- Spaces module
@@ -386,6 +386,7 @@ local barista_context = {
 
   -- Helpers & shell
   shell_exec               = shell_utils.shell_exec,
+  shell_exec_background    = shell_utils.shell_exec_background,
   call_script              = shell_utils.call_script,
   open_path                = shell_utils.open_path,
   open_url                 = shell_utils.open_url,
@@ -451,10 +452,14 @@ barista_context.prepared_menus = menu_module.prepare(barista_context)
 -----------------------------------------------------------------------
 -- Begin configuration
 -----------------------------------------------------------------------
+local reload_prep_end_wall_ms = runtime_startup.wall_time_ms()
+local daemon_stop_start_wall_ms = reload_prep_end_wall_ms
 runtime_daemon.stop_widget_daemon({ trace = trace_startup })
 runtime_daemon.stop_runtime_context_daemon({ trace = trace_startup })
+local daemon_stop_duration_ms = runtime_startup.wall_time_ms() - daemon_stop_start_wall_ms
 
 local config_build_start_ms = runtime_startup.current_time_ms()
+local config_build_start_wall_ms = runtime_startup.wall_time_ms()
 local menu_render_duration_ms = 0
 local left_layout_duration_ms = 0
 local left_layout_build_duration_ms = 0
@@ -523,7 +528,11 @@ local function process_layout(layout, ctx)
     elseif entry.type == "set" then
       sbar.set(entry.name, entry.props)
     elseif entry.action == "exec" then
-      ctx.shell_exec(entry.cmd)
+      if type(entry.cmd) == "string" and entry.cmd:match("^sleep%s") and type(ctx.shell_exec_background) == "function" then
+        ctx.shell_exec_background(entry.cmd)
+      else
+        ctx.shell_exec(entry.cmd)
+      end
     elseif entry.action == "call" then
       if type(entry.fn) == "function" then
         entry.fn()
@@ -597,61 +606,33 @@ shell_utils.shell_exec(string.format(
 sbar.end_config()
 trace_startup("main:end_config")
 local config_build_duration_ms = runtime_startup.current_time_ms() - config_build_start_ms
-runtime_startup.record_duration_event(STATS_BIN, "config_build_time", config_build_duration_ms, {
+local config_build_wall_duration_ms = runtime_startup.wall_time_ms() - config_build_start_wall_ms
+local stats_flush_start_wall_ms = runtime_startup.wall_time_ms()
+runtime_startup.record_duration_events(STATS_BIN, {
+  { name = "reload_prep_time", duration_ms = math.max(0, reload_prep_end_wall_ms - (RELOAD_START_MS or reload_prep_end_wall_ms)), trace_label = "main:reload_prep_ms" },
+  { name = "reload_daemon_stop_time", duration_ms = math.max(0, daemon_stop_duration_ms), trace_label = "main:reload_daemon_stop_ms" },
+  { name = "config_build_time", duration_ms = config_build_duration_ms, trace_label = "main:config_build_ms" },
+  { name = "config_build_wall_time", duration_ms = config_build_wall_duration_ms, trace_label = "main:config_build_wall_ms" },
+  { name = "config_menu_render_time", duration_ms = menu_render_duration_ms, trace_label = "main:config_menu_render_ms" },
+  { name = "config_left_layout_time", duration_ms = left_layout_duration_ms, trace_label = "main:config_left_layout_ms" },
+  { name = "config_left_layout_build_time", duration_ms = left_layout_build_duration_ms, trace_label = "main:config_left_layout_build_ms" },
+  { name = "config_left_layout_apply_time", duration_ms = left_layout_apply_duration_ms, trace_label = "main:config_left_layout_apply_ms" },
+  { name = "config_left_layout_front_app_time", duration_ms = left_layout_metrics.front_app_ms or 0, trace_label = "main:config_left_layout_front_app_ms" },
+  { name = "config_left_layout_triforce_time", duration_ms = left_layout_metrics.triforce_ms or 0, trace_label = "main:config_left_layout_triforce_ms" },
+  { name = "config_left_layout_spaces_time", duration_ms = left_layout_metrics.spaces_ms or 0, trace_label = "main:config_left_layout_spaces_ms" },
+  { name = "config_left_layout_control_center_time", duration_ms = left_layout_metrics.control_center_ms or 0, trace_label = "main:config_left_layout_control_center_ms" },
+  { name = "config_left_layout_group_time", duration_ms = left_layout_metrics.group_ms or 0, trace_label = "main:config_left_layout_group_ms" },
+  { name = "config_right_layout_time", duration_ms = right_layout_duration_ms, trace_label = "main:config_right_layout_ms" },
+  { name = "config_right_layout_build_time", duration_ms = right_layout_build_duration_ms, trace_label = "main:config_right_layout_build_ms" },
+  { name = "config_right_layout_apply_time", duration_ms = right_layout_apply_duration_ms, trace_label = "main:config_right_layout_apply_ms" },
+  { name = "config_registry_time", duration_ms = registry_duration_ms, trace_label = "main:config_registry_ms" },
+}, {
   trace = trace_startup,
-  trace_label = "main:config_build_ms",
 })
-runtime_startup.record_duration_event(STATS_BIN, "config_menu_render_time", menu_render_duration_ms, {
+local stats_flush_duration_ms = runtime_startup.wall_time_ms() - stats_flush_start_wall_ms
+runtime_startup.record_duration_event(STATS_BIN, "reload_stats_flush_time", stats_flush_duration_ms, {
   trace = trace_startup,
-  trace_label = "main:config_menu_render_ms",
-})
-runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_time", left_layout_duration_ms, {
-  trace = trace_startup,
-  trace_label = "main:config_left_layout_ms",
-})
-runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_build_time", left_layout_build_duration_ms, {
-  trace = trace_startup,
-  trace_label = "main:config_left_layout_build_ms",
-})
-runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_apply_time", left_layout_apply_duration_ms, {
-  trace = trace_startup,
-  trace_label = "main:config_left_layout_apply_ms",
-})
-runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_front_app_time", left_layout_metrics.front_app_ms or 0, {
-  trace = trace_startup,
-  trace_label = "main:config_left_layout_front_app_ms",
-})
-runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_triforce_time", left_layout_metrics.triforce_ms or 0, {
-  trace = trace_startup,
-  trace_label = "main:config_left_layout_triforce_ms",
-})
-runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_spaces_time", left_layout_metrics.spaces_ms or 0, {
-  trace = trace_startup,
-  trace_label = "main:config_left_layout_spaces_ms",
-})
-runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_control_center_time", left_layout_metrics.control_center_ms or 0, {
-  trace = trace_startup,
-  trace_label = "main:config_left_layout_control_center_ms",
-})
-runtime_startup.record_duration_event(STATS_BIN, "config_left_layout_group_time", left_layout_metrics.group_ms or 0, {
-  trace = trace_startup,
-  trace_label = "main:config_left_layout_group_ms",
-})
-runtime_startup.record_duration_event(STATS_BIN, "config_right_layout_time", right_layout_duration_ms, {
-  trace = trace_startup,
-  trace_label = "main:config_right_layout_ms",
-})
-runtime_startup.record_duration_event(STATS_BIN, "config_right_layout_build_time", right_layout_build_duration_ms, {
-  trace = trace_startup,
-  trace_label = "main:config_right_layout_build_ms",
-})
-runtime_startup.record_duration_event(STATS_BIN, "config_right_layout_apply_time", right_layout_apply_duration_ms, {
-  trace = trace_startup,
-  trace_label = "main:config_right_layout_apply_ms",
-})
-runtime_startup.record_duration_event(STATS_BIN, "config_registry_time", registry_duration_ms, {
-  trace = trace_startup,
-  trace_label = "main:config_registry_ms",
+  trace_label = "main:reload_stats_flush_ms",
 })
 runtime_startup.record_reload_metrics(STATS_BIN, RELOAD_START_MS, { trace = trace_startup })
 

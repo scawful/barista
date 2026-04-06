@@ -71,6 +71,36 @@ run_test("runtime_startup.record_duration_event: records named duration events",
   assert_equal(traces[1], "main:config_build_ms 412", "trace should include the configured trace label")
 end)
 
+run_test("runtime_startup.record_duration_events: batches named duration events", function()
+  local executed = {}
+  local traces = {}
+
+  local recorded = runtime_startup.record_duration_events("/tmp/barista-stats.sh", {
+    { name = "config_build_time", duration_ms = 412, trace_label = "main:config_build_ms" },
+    { name = "config_menu_render_time", duration_ms = 210, trace_label = "main:config_menu_render_ms" },
+  }, {
+    file_exists = function(path)
+      assert_equal(path, "/tmp/barista-stats.sh", "stats path should be forwarded")
+      return true
+    end,
+    exec = function(cmd)
+      table.insert(executed, cmd)
+      return 0
+    end,
+    trace = function(message)
+      table.insert(traces, message)
+    end,
+  })
+
+  assert_equal(recorded, 2, "two duration events should be recorded")
+  assert_equal(#executed, 1, "batched duration events should use one shell execution")
+  assert_true(executed[1]:find("events-batch", 1, true) ~= nil, "batched duration events should call events-batch")
+  assert_true(executed[1]:find("config_build_time\t412", 1, true) ~= nil, "batched payload should include config_build_time")
+  assert_true(executed[1]:find("config_menu_render_time\t210", 1, true) ~= nil, "batched payload should include config_menu_render_time")
+  assert_equal(traces[1], "main:config_build_ms 412", "first trace should include config_build_time")
+  assert_equal(traces[2], "main:config_menu_render_ms 210", "second trace should include config_menu_render_time")
+end)
+
 run_test("runtime_startup.build_space_runtime_subscription: includes expected events", function()
   local command = runtime_startup.build_space_runtime_subscription(1.0, "/opt/homebrew/bin/sketchybar")
   assert_true(command:find("sleep 1%.0;", 1) ~= nil, "command should include post-config delay")

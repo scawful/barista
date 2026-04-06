@@ -60,6 +60,53 @@ function runtime_startup.record_duration_event(stats_bin, event_name, duration_m
   return duration_ms
 end
 
+function runtime_startup.record_duration_events(stats_bin, events, opts)
+  opts = opts or {}
+
+  if type(stats_bin) ~= "string" or stats_bin == "" then
+    return 0
+  end
+  if type(events) ~= "table" then
+    return 0
+  end
+
+  local exists = opts.file_exists or file_exists
+  if not exists(stats_bin) then
+    return 0
+  end
+
+  local batch_lines = {}
+  local trace = opts.trace
+  local recorded_count = 0
+
+  for _, event in ipairs(events) do
+    if type(event) == "table"
+      and type(event.name) == "string"
+      and event.name ~= ""
+      and type(event.duration_ms) == "number"
+      and event.duration_ms >= 0 then
+      table.insert(batch_lines, string.format("%s\t%d", event.name, event.duration_ms))
+      recorded_count = recorded_count + 1
+      if type(trace) == "function" then
+        trace((event.trace_label or event.name) .. " " .. tostring(event.duration_ms))
+      end
+    end
+  end
+
+  if recorded_count == 0 then
+    return 0
+  end
+
+  local exec = opts.exec or os.execute
+  exec(string.format(
+    "cat <<'BARISTA_EVENTS' | %q events-batch >/dev/null 2>&1 || true\n%s\nBARISTA_EVENTS",
+    stats_bin,
+    table.concat(batch_lines, "\n")
+  ))
+
+  return recorded_count
+end
+
 function runtime_startup.record_reload_metrics(stats_bin, reload_start_ms, opts)
   opts = opts or {}
 

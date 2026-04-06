@@ -1,6 +1,6 @@
 #!/bin/bash
 # control_center.sh - SketchyBar Control Center widget update script
-# Shows system status: layout mode, service health, dirty repos
+# Shows layout mode and shortcut state for the active control-center surface
 
 set -euo pipefail
 
@@ -20,6 +20,11 @@ case "${SENDER:-}" in
     exit 0
     ;;
   "mouse.exited")
+    animate_set "$NAME" background.drawing=off
+    exit 0
+    ;;
+  "mouse.exited.global")
+    "$SKETCHYBAR_BIN" --set "$NAME" popup.drawing=off >/dev/null 2>&1 || true
     animate_set "$NAME" background.drawing=off
     exit 0
     ;;
@@ -108,27 +113,15 @@ resolve_window_manager_flags() {
   echo "$mode:$enabled:$required:$has_yabai:$has_skhd:$yabai_running:$skhd_running"
 }
 
-# Get dirty repo count
-get_dirty_count() {
-  local cache_file="$HOME/.workspace/cache/dirty.txt"
-  if [[ -f "$cache_file" ]]; then
-    wc -l < "$cache_file" | tr -d ' '
-  else
-    echo "0"
-  fi
-}
-
 # Main
 IFS=: read -r WM_MODE WM_ENABLED WM_REQUIRED WM_HAS_YABAI WM_HAS_SKHD WM_YABAI_RUNNING WM_SKHD_RUNNING <<EOF
 $(resolve_window_manager_flags)
 EOF
 layout=$(get_layout "$WM_ENABLED")
-bar_ok=1
 health="healthy"
 if [[ "$WM_REQUIRED" -eq 1 && ( "$WM_YABAI_RUNNING" -ne 1 || "$WM_SKHD_RUNNING" -ne 1 ) ]]; then
   health="degraded"
 fi
-dirty=$(get_dirty_count)
 
 # Icon based on health
 if [[ "$health" == "healthy" ]]; then
@@ -155,40 +148,8 @@ set_popup_item() {
   "$SKETCHYBAR_BIN" --set "$item" "$@" >/dev/null 2>&1 || true
 }
 
-popup_status_icon() {
-  if [[ "${1:-0}" -eq 1 ]]; then
-    printf '●'
-  else
-    printf '○'
-  fi
-}
-
-popup_status_color() {
-  if [[ "${1:-0}" -eq 1 ]]; then
-    printf '0xffa6e3a1'
-  else
-    printf '0xfff38ba8'
-  fi
-}
-
 if [[ "$WM_SKHD_RUNNING" -eq 1 ]]; then
   set_popup_item "cc.yabai.shortcuts" "label=Yabai Shortcuts: On" "icon.color=0xffa6e3a1"
 else
   set_popup_item "cc.yabai.shortcuts" "label=Yabai Shortcuts: Off" "icon.color=0xfff38ba8"
-fi
-
-set_popup_item "cc.svc.yabai" \
-  "icon=$(popup_status_icon "$WM_YABAI_RUNNING")" \
-  "icon.color=$(popup_status_color "$WM_YABAI_RUNNING")"
-set_popup_item "cc.svc.skhd" \
-  "icon=$(popup_status_icon "$WM_SKHD_RUNNING")" \
-  "icon.color=$(popup_status_color "$WM_SKHD_RUNNING")"
-set_popup_item "cc.svc.sketchybar" \
-  "icon=$(popup_status_icon "$bar_ok")" \
-  "icon.color=$(popup_status_color "$bar_ok")"
-
-if [[ "$dirty" =~ ^[0-9]+$ ]] && [[ "$dirty" -gt 0 ]]; then
-  set_popup_item "cc.workspace" "label=${dirty} dirty repos" "icon.color=0xfff9e2af"
-else
-  set_popup_item "cc.workspace" "label=Workspace clean" "icon.color=0xffa6e3a1"
 fi

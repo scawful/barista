@@ -3,9 +3,11 @@
 # Battery Widget Script
 # Handles battery updates and hover effects
 
+set -euo pipefail
+
 _d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
 
-if [ -z "$NAME" ]; then
+if [ -z "${NAME:-}" ]; then
   NAME="battery"
 fi
 
@@ -14,9 +16,11 @@ GREEN_COLOR=${1:-"0xffa6e3a1"}
 YELLOW_COLOR=${2:-"0xfff9e2af"}
 RED_COLOR=${3:-"0xfff38ba8"}
 BLUE_COLOR=${4:-"0xff89b4fa"}
+ACTIONS_ARG=${5:-}
 LABEL_MODE="${BARISTA_BATTERY_LABEL_MODE:-percent}"
+BATTERY_FAST_BIN="${BARISTA_BATTERY_FAST_BIN:-}"
 
-case "$SENDER" in
+case "${SENDER:-}" in
   "mouse.entered")
     animate_set "$NAME" background.drawing=on background.color="$HIGHLIGHT"
     exit 0
@@ -25,7 +29,16 @@ case "$SENDER" in
     animate_set "$NAME" background.drawing=off
     exit 0
     ;;
+  "mouse.exited.global")
+    sketchybar --set "$NAME" popup.drawing=off
+    animate_set "$NAME" background.drawing=off
+    exit 0
+    ;;
 esac
+
+if [ "$ACTIONS_ARG" != "popup_refresh" ] && [ -n "$BATTERY_FAST_BIN" ] && [ -x "$BATTERY_FAST_BIN" ]; then
+  exec "$BATTERY_FAST_BIN" update battery
+fi
 
 PMSET_OUTPUT="$(pmset -g batt)"
 POWER_SOURCE="$(echo "$PMSET_OUTPUT" | head -1 | sed -E "s/.*'([^']+)'.*/\1/")"
@@ -57,6 +70,9 @@ if [ -n "$TIME_RAW" ]; then
     TIME_LABEL=$(echo "$TIME_RAW" | sed -E 's/present: (true|false)//Ig; s/remaining//Ig; s/finishing charge//Ig; s/^[[:space:]]+//; s/[[:space:]]+$//')
     TIME_LABEL=$(echo "$TIME_LABEL" | xargs 2>/dev/null || true)
   fi
+fi
+if [ "$STATUS" = "Charging" ] && [ -n "$TIME_LABEL" ] && [ "$TIME_KIND" = "Remaining" ]; then
+  TIME_KIND="Until Full"
 fi
 
 case "${PERCENTAGE}" in
@@ -134,6 +150,10 @@ if [ -n "$TIME_LABEL" ]; then
   else
     TIME_DISPLAY_LABEL="$TIME_LABEL"
   fi
+elif [ "$STATUS" = "Charged" ]; then
+  TIME_DISPLAY_LABEL="Fully charged"
+elif [ "$STATUS" = "Charging" ]; then
+  TIME_DISPLAY_LABEL="Charging"
 fi
 
 HEALTH_COLOR="$GREEN_COLOR"

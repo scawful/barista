@@ -97,12 +97,12 @@ icons.categories = {
     key = "󰌆",
     map = "󰆋",
     potion = "󰍛",
-    quest = "",
+    quest = "󰯙",
     rupee = "",
     shield = "󰡁",
     sword = "󰚥",
     treasure = "",
-    triforce = "󰊠",
+    triforce = "󰯙",
   },
 
   misc = {

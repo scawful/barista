@@ -28,14 +28,14 @@ end
 run_test("project_shortcuts.normalize_entry: relative paths resolve against code dir", function()
   local root = make_temp_dir("project_shortcuts_relative")
   local code_dir = root .. "/code"
-  mkdir(code_dir .. "/lab/cortex")
+  mkdir(code_dir .. "/hobby/oracle-agent-manager")
 
   local entry = project_shortcuts.normalize_entry(code_dir, "terminal", {
-    label = "Cortex",
-    path = "lab/cortex",
+    label = "Oracle Agent Manager",
+    path = "hobby/oracle-agent-manager",
   }, 1)
 
-  assert_equal(entry.path, code_dir .. "/lab/cortex", "resolved project path")
+  assert_equal(entry.path, code_dir .. "/hobby/oracle-agent-manager", "resolved project path")
   assert_true(entry.available, "project should be available")
   assert_true(entry.action:match("Terminal"), "terminal action should use Terminal")
   cleanup(root)

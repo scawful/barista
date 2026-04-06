@@ -33,9 +33,12 @@ int main(void) {
     }
 
     const char *sender = get("SENDER", "mouse.entered");
-    const char *curve = getenv("POPUP_HOVER_ANIMATION_CURVE");
-    const char *dur = getenv("POPUP_HOVER_ANIMATION_DURATION");
-    int anim = (curve && *curve && dur && *dur);
+    const char *enter_curve = getenv("POPUP_HOVER_ANIMATION_CURVE");
+    const char *enter_dur = getenv("POPUP_HOVER_ANIMATION_DURATION");
+    const char *exit_curve = getenv("POPUP_HOVER_EXIT_CURVE");
+    const char *exit_dur = getenv("POPUP_HOVER_EXIT_DURATION");
+    int enter_anim = (enter_curve && *enter_curve && enter_dur && *enter_dur);
+    int exit_anim = (exit_curve && *exit_curve && exit_dur && *exit_dur);
 
     char cmd[1024];
     if (!strcmp(sender, "mouse.entered")) {
@@ -46,18 +49,18 @@ int main(void) {
         if (width && *width) {
             snprintf(cmd, sizeof(cmd), 
                 "sketchybar%s%s%s%s --set %s background.drawing=on background.color=%s background.border_width=%s background.border_color=%s",
-                anim ? " --animate " : "", anim ? curve : "", anim ? " " : "", anim ? dur : "",
+                enter_anim ? " --animate " : "", enter_anim ? enter_curve : "", enter_anim ? " " : "", enter_anim ? enter_dur : "",
                 name, color, width, brd);
         } else {
             snprintf(cmd, sizeof(cmd), 
                 "sketchybar%s%s%s%s --set %s background.drawing=on background.color=%s",
-                anim ? " --animate " : "", anim ? curve : "", anim ? " " : "", anim ? dur : "",
+                enter_anim ? " --animate " : "", enter_anim ? enter_curve : "", enter_anim ? " " : "", enter_anim ? enter_dur : "",
                 name, color);
         }
     } else {
         snprintf(cmd, sizeof(cmd), 
             "sketchybar%s%s%s%s --set %s background.drawing=off background.border_width=0",
-            anim ? " --animate " : "", anim ? curve : "", anim ? " " : "", anim ? dur : "",
+            exit_anim ? " --animate " : "", exit_anim ? exit_curve : "", exit_anim ? " " : "", exit_anim ? exit_dur : "",
             name);
     }
     /* PERF: Use execlp instead of system() to avoid double-fork.

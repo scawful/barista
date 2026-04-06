@@ -12,10 +12,7 @@ local STATE_FILE = CONFIG_DIR .. "/state.json"
 -- State version for migrations
 local STATE_VERSION = 1
 
--- Performance optimization: batch writes and debouncing
-local save_timer = nil
-local save_delay = 0.5  -- Wait 500ms before saving (debounce)
-local pending_save = false
+-- Save writes are immediate today; keep dirty tracking explicit.
 local dirty_flag = false
 
 -- Forward declaration for save_immediate (defined after sanitize_state/merge_defaults)
@@ -85,7 +82,7 @@ local default_state = {
   },
   icons = {
     apple = "",       -- System menu icon (customizable)
-    quest = "󰊠",       -- Material Design triforce (F02A0)
+    quest = "󰯙",       -- Material Design triforce (F0BD9)
     settings = "",    -- FontAwesome gear (F013)
     clock = "",       -- FontAwesome clock (F017)
     calendar = "",    -- FontAwesome calendar (F073)
@@ -125,6 +122,7 @@ local default_state = {
   modes = {
     window_manager = "auto",
     runtime_backend = "auto",
+    widget_daemon = "auto",
   },
   toggles = {
     yabai_shortcuts = true,
@@ -140,6 +138,16 @@ local default_state = {
       sections = {},
       hover = {},
     },
+    oracle = {
+      sections = {},
+      triforce = {
+        label = "",
+        icon = "",
+        title = "",
+        show_label = false,
+        update_freq = 45,
+      },
+    },
     apps = {
       enabled = true,
       file = "data/project_shortcuts.json",
@@ -152,7 +160,18 @@ local default_state = {
       workspace_domain = "",
     },
   },
-  integrations = {},
+  integrations = {
+    control_center = {
+      enabled = false,
+      item_name = "control_center",
+    },
+  },
+  debug = {
+    verbose_logging = false,
+    hotload_enabled = false,
+    popup_debug = false,
+    widget_refresh_ms = 500,
+  },
 }
 
 -- Utility functions
@@ -176,10 +195,12 @@ local function sanitize_state(data)
   if type(data.modes) ~= "table" then data.modes = {} end
   if type(data.paths) ~= "table" then data.paths = {} end
   if type(data.integrations) ~= "table" then data.integrations = {} end
+  if type(data.debug) ~= "table" then data.debug = {} end
   if type(data.space_modes) ~= "table" then data.space_modes = {} end
   if type(data.spaces) ~= "table" then data.spaces = {} end
   if type(data.menus) ~= "table" then data.menus = {} end
   if type(data.menus.apple) ~= "table" then data.menus.apple = {} end
+  if type(data.menus.oracle) ~= "table" then data.menus.oracle = {} end
   if type(data.menus.work) ~= "table" then data.menus.work = {} end
   local apps_menu = type(data.menus.apps) == "table" and data.menus.apps or {}
   local legacy_projects_menu = type(data.menus.projects) == "table" and data.menus.projects or {}
@@ -190,6 +211,8 @@ local function sanitize_state(data)
   if type(data.menus.apple.custom) ~= "table" then data.menus.apple.custom = {} end
   if type(data.menus.apple.sections) ~= "table" then data.menus.apple.sections = {} end
   if type(data.menus.apple.hover) ~= "table" then data.menus.apple.hover = {} end
+  if type(data.menus.oracle.sections) ~= "table" then data.menus.oracle.sections = {} end
+  if type(data.menus.oracle.triforce) ~= "table" then data.menus.oracle.triforce = {} end
   if type(data.menus.apps.items) ~= "table" then data.menus.apps.items = {} end
   if type(data.menus.work.google_apps) ~= "table" then data.menus.work.google_apps = {} end
 
@@ -215,6 +238,29 @@ local function sanitize_state(data)
   if type(data.system_info_items) ~= "table" then
     data.system_info_items = {}
   end
+
+  -- Legacy migration: `widgets.yabai_status` was replaced by
+  -- `integrations.control_center.enabled`.
+  if data.widgets.yabai_status ~= nil then
+    local legacy_enabled = data.widgets.yabai_status ~= false
+    if type(data.integrations.control_center) ~= "table" then
+      data.integrations.control_center = {}
+    end
+    if data.integrations.control_center.enabled == nil then
+      data.integrations.control_center.enabled = legacy_enabled
+    end
+    data.widgets.yabai_status = nil
+  end
+end
+
+function state.normalize(data)
+  if type(data) ~= "table" then
+    data = {}
+  end
+  sanitize_state(data)
+  merge_defaults(data, default_state)
+  sanitize_state(data)
+  return data
 end
 
 -- Migrate state from old version to new version
@@ -250,14 +296,11 @@ function state.load()
   if loaded_version < STATE_VERSION then
     data = migrate_state(data, loaded_version, STATE_VERSION)
     data._version = STATE_VERSION
-    -- Save migrated state immediately
-    sanitize_state(data)
-    merge_defaults(data, default_state)
+    -- Save migrated state immediately after normalizing legacy keys/defaults.
+    state.normalize(data)
     save_immediate(data)
   else
-    sanitize_state(data)
-    merge_defaults(data, default_state)
-    sanitize_state(data)
+    state.normalize(data)
   end
 
   return data
@@ -293,19 +336,6 @@ function state.save(data, immediate)
   end
   
   dirty_flag = true
-  pending_save = true
-  
-  -- Clear existing timer
-  if save_timer then
-    -- Note: In Lua, we can't easily cancel timers, so we just set a flag
-    -- The timer will check the flag before saving
-  end
-  
-  -- Schedule save after delay
-  -- Since we can't use actual timers in pure Lua, we'll save immediately
-  -- but mark as dirty to prevent redundant saves in rapid succession
-  -- The debouncing will be handled at the call site if needed
-  
   return save_immediate(data)
 end
 

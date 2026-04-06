@@ -14,7 +14,6 @@ profile.integrations = {
   yaze = false,
   emacs = false,
   halext = false,
-  cortex = false,
   oracle = false,
   journal = false,
   nerv = false,
@@ -68,7 +67,6 @@ profile.widgets = {
   network = true,
   system_info = true,
   volume = true,
-  yabai_status = false,
 }
 
 -- Space configuration

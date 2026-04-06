@@ -1,5 +1,9 @@
 # SketchyBar Architecture Diagrams
 
+> Status note (April 2026): diagrams may mention legacy nodes/events from older layouts.
+> Current window-manager UI is centered on `control_center` and `front_app` popup actions.
+> See `docs/architecture/SKETCHYBAR_LAYOUT.md` for the live mapping.
+
 ## System Component Overview
 
 ```
@@ -193,7 +197,6 @@ set_space_mode.sh              reloadSketchyBar
   --layout <mode>
 • Trigger:
   space_mode_refresh
-  yabai_status_refresh
     │                               │
     └────────┬──────────────────────┘
              │
@@ -453,4 +456,3 @@ Events from System → SketchyBar → Lua Scripts → State → UI
    └─ App changes       └─ events      └─ Python
    └─ Volume/Battery                     inline
 ```
-

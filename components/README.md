@@ -30,11 +30,11 @@ local items = {
 }
 ```
 
-### yabai.lua
-Yabai status widget with popup controls for:
-- Space layout modes (float/bsp/stack)
-- Window management (balance, rotate, flip)
-- Space navigation
+### Window Management Note
+The legacy `components/yabai.lua` prototype has been retired.
+Window-manager status and controls now live in the active runtime path:
+- `modules/integrations/control_center.lua`
+- `modules/items_left.lua` (front-app window controls)
 
 ### clock.lua
 Clock widget with calendar popup displaying:

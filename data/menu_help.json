@@ -3,7 +3,7 @@
   {"id": "keyboard_overlay", "icon": "󰌌", "label": "Keyboard Overlay", "command": "%CONFIG%/scripts/open_keyboard_overlay.sh"},
   {"id": "sys_manual", "icon": "󰋜", "label": "Open Sys Manual", "command": "%CONFIG%/scripts/open_sys_manual.sh"},
   {"id": "icon_browser", "icon": "󰈙", "label": "Open Icon Browser", "command": "%CONFIG%/scripts/open_icon_browser.sh"},
-  {"id": "barista_config", "icon": "󰒓", "label": "Open Barista Config", "command": "%CONFIG%/bin/open_control_panel.sh --panel"},
+  {"id": "barista_config", "icon": "󰒓", "label": "Open Barista Config", "command": "%CONFIG%/bin/open_control_panel.sh --tab appearance"},
   {"id": "whichkey_plan", "icon": "󰈙", "label": "WhichKey Plan (Archived)", "path_key": "whichkey_plan"},
   {"id": "readme", "icon": "󰈙", "label": "README", "path_key": "readme"},
   {"id": "sharing", "icon": "󰓛", "label": "Sharing Guide", "path_key": "sharing"},

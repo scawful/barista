@@ -1,11 +1,14 @@
 {
   "keymap": [
     {
-      "section": "Oracle Workbench",
+      "section": "Zelda Hacking",
       "items": [
         { "keys": "SPC o w o", "description": "Open the Oracle workbench in Emacs" },
+        { "keys": "SPC o w c", "description": "Continue the current Oracle testing focus" },
         { "keys": "SPC o w b", "description": "Quick build + reload the Oracle ROM" },
         { "keys": "SPC o w v", "description": "Run the Oracle verify build" },
+        { "keys": "SPC o w t", "description": "Run the Oracle transition regression subset" },
+        { "keys": "SPC o w n", "description": "Send a clickable Oracle reminder notification" },
         { "keys": "SPC o w m", "description": "Jump into the Maku Tree debug session" },
         { "keys": "SPC o w 4", "description": "Jump into the D4 / Zora Temple session" },
         { "keys": "SPC o w 6", "description": "Jump into the D6 entrance session" }
@@ -47,8 +50,11 @@
   ],
   "actions": [
     { "id": "oracle_dashboard", "title": "Open Oracle Workbench", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench dashboard" },
+    { "id": "oracle_continue", "title": "Continue Oracle Testing", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench continue-play" },
     { "id": "oracle_quick", "title": "Oracle Quick Build", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench quick-build" },
     { "id": "oracle_verify", "title": "Oracle Verify Build", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench verify" },
+    { "id": "oracle_transition", "title": "Oracle Transition Tests", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench transition-tests" },
+    { "id": "oracle_notify", "title": "Oracle Reminder Notification", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench notify" },
     { "id": "oracle_maku", "title": "Oracle Maku Session", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench session maku" },
     { "id": "oracle_d6", "title": "Oracle D6 Session", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench session d6" },
     { "id": "reload_bar", "title": "Reload SketchyBar" },

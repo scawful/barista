@@ -5,9 +5,9 @@
 local function build_popup_items(parent_name, items, opts)
   opts = opts or {}
   local hover_script = opts.hover_script or ""
+  local hover_default = opts.hover == true
   local defaults = {
     position = "popup." .. parent_name,
-    script = hover_script,
     ["icon.padding_left"] = opts.icon_padding_left or 6,
     ["icon.padding_right"] = opts.icon_padding_right or 6,
     ["label.padding_left"] = opts.label_padding_left or 8,
@@ -27,7 +27,17 @@ local function build_popup_items(parent_name, items, opts)
         merged[k] = v
       end
     end
-    table.insert(definitions, { type = "item", name = id, props = merged, attach_hover = true })
+    local hover_enabled = merged.hover
+    if hover_enabled == nil then
+      hover_enabled = hover_default
+    else
+      hover_enabled = hover_enabled == true
+    end
+    merged.hover = nil
+    if hover_enabled and hover_script ~= "" and not merged.script then
+      merged.script = hover_script
+    end
+    table.insert(definitions, { type = "item", name = id, props = merged, attach_hover = hover_enabled })
   end
   return definitions
 end

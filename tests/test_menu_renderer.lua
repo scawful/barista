@@ -11,6 +11,8 @@ end
 
 run_test("menu_renderer: uses direct toggle for nested submenu parents", function()
   local added = {}
+  local hover_attached = {}
+  local shell_exec_calls = {}
   local renderer = menu_renderer.create({
     sbar = {
       add = function(kind, name, props)
@@ -30,8 +32,12 @@ run_test("menu_renderer: uses direct toggle for nested submenu parents", functio
       bar = { bg = "0xff111111" },
     },
     appearance = {},
-    attach_hover = function() end,
-    shell_exec = function() end,
+    attach_hover = function(name)
+      table.insert(hover_attached, name)
+    end,
+    shell_exec = function(cmd)
+      table.insert(shell_exec_calls, cmd)
+    end,
     HOVER_SCRIPT = "hover.sh",
     SUBMENU_HOVER_SCRIPT = "submenu_hover.sh",
     popup_toggle_action = function(item_name, opts)
@@ -66,4 +72,62 @@ run_test("menu_renderer: uses direct toggle for nested submenu parents", functio
   local metadata = renderer.get_metadata()
   assert_true(#metadata.submenu_parents == 1, "submenu parent metadata should be tracked")
   assert_equal(metadata.submenu_parents[1], "menu.oracle", "submenu parent metadata value")
+  assert_equal(#hover_attached, 0, "submenu parent should not attach hover by default")
+  assert_equal(#shell_exec_calls, 0, "submenu parent should not subscribe hover events by default")
+end)
+
+run_test("menu_renderer: popup rows only attach hover when explicitly enabled", function()
+  local added = {}
+  local hover_attached = {}
+  local renderer = menu_renderer.create({
+    sbar = {
+      add = function(kind, name, props)
+        table.insert(added, { kind = kind, name = name, props = props })
+      end,
+    },
+    settings = {
+      font = {
+        text = "Source Code Pro",
+        style_map = { Regular = "Regular", Semibold = "Semibold", Bold = "Bold" },
+        sizes = { small = 12 },
+      },
+    },
+    theme = {
+      WHITE = "0xffffffff",
+      DARK_WHITE = "0xffcccccc",
+      bar = { bg = "0xff111111" },
+    },
+    appearance = {},
+    attach_hover = function(name)
+      table.insert(hover_attached, name)
+    end,
+    shell_exec = function() end,
+    HOVER_SCRIPT = "hover.sh",
+    SUBMENU_HOVER_SCRIPT = "submenu_hover.sh",
+  })
+
+  renderer.render("apple_menu", {
+    {
+      name = "menu.normal",
+      icon = "N",
+      label = "Normal",
+      action = "echo normal",
+    },
+    {
+      name = "menu.hovered",
+      icon = "H",
+      label = "Hovered",
+      action = "echo hovered",
+      hover = true,
+    },
+  })
+
+  local normal = find_entry(added, "menu.normal")
+  local hovered = find_entry(added, "menu.hovered")
+  assert_true(normal ~= nil, "normal entry should be rendered")
+  assert_true(hovered ~= nil, "hover entry should be rendered")
+  assert_nil(normal.props.script, "normal popup row should not get a hover script")
+  assert_equal(hovered.props.script, "env SUBMENU_PARENT=\"apple_menu\" hover.sh", "hover-enabled row should get hover script")
+  assert_equal(#hover_attached, 1, "only the hover-enabled row should attach hover")
+  assert_equal(hover_attached[1], "menu.hovered", "hover attachment should target the explicit row")
 end)

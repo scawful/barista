@@ -57,7 +57,7 @@ cat > /tmp/new_icons.txt << 'EOF'
     // Gaming & Entertainment
     @{ @"title": @"Gamepad", @"glyph": @"󰍳" },
     @{ @"title": @"Quest", @"glyph": @"" },
-    @{ @"title": @"Triforce", @"glyph": @"󰊠" },
+    @{ @"title": @"Triforce", @"glyph": @"󰯙" },
     @{ @"title": @"Controller", @"glyph": @"󰊴" },
     // Misc
     @{ @"title": @"Star", @"glyph": @"" },

@@ -185,10 +185,6 @@ local function resolve_oracle_agent_manager(ctx)
   return locator.resolve_oracle_agent_manager(ctx)
 end
 
-local function resolve_cortex_cli(ctx)
-  return locator.resolve_cortex_cli(ctx)
-end
-
 local function afs_cli(afs_root, args)
   local pythonpath = afs_root .. "/src"
   return string.format(
@@ -238,28 +234,12 @@ local function wrap_action(ctx, popup_name, entry_name, action)
   return string.format("%s; sketchybar -m --set %s popup.drawing=off", action, popup_name or "")
 end
 
-function apple_menu.setup(ctx)
-  local sbar = ctx.sbar
+local function build_prepared(ctx)
   local theme = ctx.theme
   local settings = ctx.settings
-  local widget_height = ctx.widget_height
-  local associated_displays = ctx.associated_displays or "all"
   local config_dir = resolve_config_dir(ctx)
   local state = type(ctx.state) == "table" and ctx.state or load_state(config_dir)
   local menu_config = read_menu_config(config_dir, state)
-
-  local function resolved_style(style_name, fallback)
-    local raw = tostring(style_name or fallback or "Regular")
-    local normalized = raw:sub(1, 1):upper() .. raw:sub(2):lower()
-    if settings.font.style_map[normalized] then
-      return settings.font.style_map[normalized]
-    end
-    if settings.font.style_map[fallback] then
-      return settings.font.style_map[fallback]
-    end
-    return settings.font.style_map["Regular"] or "Regular"
-  end
-
   local style = menu_style.compute(ctx)
   local font_small = style.font_small
   local font_bold = style.font_header
@@ -267,48 +247,6 @@ function apple_menu.setup(ctx)
   local popup_header_height = style.header_height
   local popup_item_corner_radius = style.item_corner_radius
   local popup_padding = style.padding or {}
-  local function popup_toggle(item_name, opts)
-    if type(ctx.popup_toggle_action) == "function" then
-      return ctx.popup_toggle_action(item_name, opts)
-    end
-    if item_name and item_name ~= "" then
-      return string.format("sketchybar -m --set %s popup.drawing=toggle", item_name)
-    end
-    return "sketchybar -m --set $NAME popup.drawing=toggle"
-  end
-
-  sbar.add("item", "apple_menu", {
-    position = "left",
-    icon = ctx.icon_for and ctx.icon_for("apple", "") or "",
-    label = { drawing = false },
-    associated_display = associated_displays,
-    associated_space = "all",
-    background = {
-      color = "0x00000000",
-      corner_radius = 4,
-      height = widget_height,
-      padding_left = 4,
-      padding_right = 4,
-    },
-    click_script = popup_toggle(),
-    popup = {
-      background = {
-        border_width = style.popup_border_width,
-        corner_radius = style.popup_corner_radius,
-        border_color = style.popup_border_color,
-        color = style.popup_bg_color,
-        padding_left = style.popup_padding,
-        padding_right = style.popup_padding,
-      },
-    },
-  })
-
-  local subscribe_popup = ctx.subscribe_popup_autoclose or ctx.subscribe_mouse_exit
-  if subscribe_popup then
-    subscribe_popup("apple_menu")
-  end
-
-  local item_height = popup_item_height
 
   local hover_script = ctx.HOVER_SCRIPT
   if not hover_script and config_dir then
@@ -415,6 +353,477 @@ function apple_menu.setup(ctx)
     return open_terminal(command)
   end
 
+  local afs_root, afs_ok = resolve_afs_root(ctx)
+  local studio_root, studio_ok = resolve_afs_studio_root(ctx, afs_root)
+  local studio_launcher, studio_launcher_ok = locator.resolve_afs_studio_launcher(ctx)
+  local afs_browser_app, afs_browser_ok = resolve_afs_browser_app(ctx)
+  local stemforge_app, stemforge_ok = resolve_stemforge_app(ctx)
+  local stem_sampler_app, stem_sampler_ok = resolve_stem_sampler_app(ctx)
+  local yaze_app, yaze_ok = resolve_yaze_app(ctx)
+  local yaze_launcher, yaze_launcher_ok = resolve_yaze_launcher()
+  local yaze_available = yaze_ok or yaze_launcher_ok
+  local yaze_enabled = (ctx.integrations and ctx.integrations.yaze ~= nil)
+  if ctx.integration_flags and ctx.integration_flags.yaze == false then
+    yaze_enabled = false
+  end
+  local help_center_bin, help_center_ok = resolve_executable_path({
+    ctx.helpers and ctx.helpers.help_center or nil,
+    config_dir .. "/gui/bin/help_center",
+    config_dir .. "/build/bin/help_center",
+  })
+  local help_center_doc, help_center_doc_ok = resolve_path(ctx, {
+    config_dir .. "/docs/features/ICONS_AND_SHORTCUTS.md",
+    config_dir .. "/docs/guides/QUICK_START.md",
+  }, false)
+  local help_center_action = ""
+  local help_center_available = false
+  local env_prefix = string.format(
+    "BARISTA_CONFIG_DIR=%s BARISTA_CODE_DIR=%s",
+    shell_quote(config_dir),
+    shell_quote(code_dir)
+  )
+  if help_center_ok and help_center_bin then
+    help_center_action = string.format("%s %s", env_prefix, shell_quote(help_center_bin))
+    help_center_available = true
+  elseif help_center_doc then
+    help_center_action = string.format("open %s", shell_quote(help_center_doc))
+    help_center_available = help_center_doc_ok
+  end
+
+  local icon_browser_bin, icon_browser_ok = resolve_executable_path({
+    config_dir .. "/gui/bin/icon_browser",
+    config_dir .. "/build/bin/icon_browser",
+  })
+  local icon_browser_doc, icon_browser_doc_ok = resolve_path(ctx, {
+    config_dir .. "/docs/features/ICON_REFERENCE.md",
+  }, false)
+  local icon_browser_action = ""
+  local icon_browser_available = false
+  if icon_browser_ok and icon_browser_bin then
+    icon_browser_action = string.format("%s %s", env_prefix, shell_quote(icon_browser_bin))
+    icon_browser_available = true
+  elseif icon_browser_doc then
+    icon_browser_action = string.format("open %s", shell_quote(icon_browser_doc))
+    icon_browser_available = icon_browser_doc_ok
+  end
+
+  local keyboard_overlay_bin, keyboard_overlay_ok = resolve_executable_path({
+    config_dir .. "/scripts/open_keyboard_overlay.sh",
+  })
+  local keyboard_overlay_action = ""
+  local keyboard_overlay_available = false
+  if keyboard_overlay_ok and keyboard_overlay_bin then
+    keyboard_overlay_action = shell_quote(keyboard_overlay_bin)
+    keyboard_overlay_available = true
+  end
+
+  local sys_manual_bin, sys_manual_ok = resolve_sys_manual_binary(ctx)
+  local sys_manual_action = ""
+  local sys_manual_available = false
+  if sys_manual_ok and sys_manual_bin then
+    sys_manual_action = shell_quote(sys_manual_bin)
+    sys_manual_available = true
+  end
+  local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
+
+  local mesen_run_bin, mesen_run_ok = resolve_mesen_run(ctx)
+  local mesen_run_action = ""
+  if mesen_run_ok and mesen_run_bin then
+    mesen_run_action = shell_quote(mesen_run_bin)
+  end
+
+  local oam_bin, oam_ok = resolve_oracle_agent_manager(ctx)
+  local oam_action = ""
+  local reload_action = ctx.call_script and ctx.call_script(config_dir .. "/plugins/reload_sketchybar.sh")
+  if not reload_action or reload_action == "" then
+    reload_action = string.format("%q --reload", sketchybar_bin)
+  end
+  if ctx.call_script and config_dir and path_exists(config_dir .. "/bin/open_oracle_agent_manager.sh", false) then
+    oam_action = ctx.call_script(config_dir .. "/bin/open_oracle_agent_manager.sh")
+    oam_ok = true
+  elseif oam_ok and oam_bin then
+    oam_action = shell_quote(oam_bin)
+  end
+
+  local yaze_dir = select(1, locator.resolve_yaze_dir(ctx)) or (code_dir .. "/yaze")
+  local afs_action = afs_browser_app and string.format("open %s", shell_quote(afs_browser_app)) or ""
+  local studio_bin, studio_bin_ok = locator.resolve_afs_studio_binary(studio_root)
+  local studio_action
+  local studio_cmd
+  if studio_launcher_ok and studio_launcher then
+    studio_action = shell_quote(studio_launcher)
+  elseif studio_bin_ok and studio_bin then
+    if studio_bin:match("%.app/?$") then
+      studio_action = string.format("open %s", shell_quote(studio_bin))
+    else
+      studio_action = shell_quote(studio_bin)
+    end
+  else
+    if afs_root then
+      studio_cmd = afs_cli(afs_root, "studio run --build")
+    elseif studio_root then
+      local build_dir = locator.afs_build_dir(studio_root)
+      if locator.afs_studio_layout(studio_root) == "suite" then
+        studio_cmd = string.format(
+          "cd %s && cmake --build %s --target afs-studio && ./%s/apps/studio/afs-studio",
+          shell_quote(studio_root),
+          build_dir,
+          build_dir
+        )
+      else
+        studio_cmd = string.format(
+          "cd %s && cmake --build build --target afs_studio && ./build/afs_studio",
+          shell_quote(studio_root)
+        )
+      end
+    end
+    studio_action = terminal_action("afs_studio", studio_cmd)
+  end
+  local studio_available = studio_ok and (studio_launcher_ok or studio_bin_ok or studio_cmd ~= nil)
+  local studio_blocked = studio_ok and not studio_launcher_ok and studio_cmd ~= nil and studio_action == nil
+
+  local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(studio_root)
+  local labeler_csv = os.getenv("AFS_LABELER_CSV")
+  local labeler_cmd
+  local labeler_action
+  if labeler_bin_ok and labeler_bin then
+    labeler_cmd = shell_quote(labeler_bin)
+    if labeler_csv and labeler_csv ~= "" then
+      labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
+    end
+    labeler_action = labeler_cmd
+  elseif studio_root then
+    local build_dir = locator.afs_build_dir(studio_root)
+    if locator.afs_studio_layout(studio_root) == "suite" then
+      labeler_cmd = string.format(
+        "cd %s && cmake --build %s --target afs-labeler && ./%s/apps/studio/afs-labeler",
+        shell_quote(studio_root),
+        build_dir,
+        build_dir
+      )
+    else
+      labeler_cmd = string.format(
+        "cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler",
+        shell_quote(studio_root)
+      )
+    end
+    if labeler_csv and labeler_csv ~= "" then
+      labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
+    end
+    labeler_action = terminal_action("afs_labeler", labeler_cmd)
+  end
+
+  local sketchybar_bin = binary_resolver.resolve_sketchybar_bin()
+
+  -- AFS context helpers
+  local afs_context_root = os.getenv("AFS_CONTEXT_ROOT")
+    or ((os.getenv("HOME") or "") .. "/.context")
+  local afs_scratchpad_dir = afs_context_root .. "/scratchpad"
+  local afs_context_available = path_exists(afs_context_root, true)
+  local afs_scratchpad_action = afs_context_available
+    and open_terminal(string.format("ls -la %s && echo '--- Scratchpad ---' && cat %s/*.md 2>/dev/null || echo 'Empty'",
+        shell_quote(afs_scratchpad_dir), shell_quote(afs_scratchpad_dir)))
+    or ""
+  local afs_query_action = ""
+  if afs_root then
+    afs_query_action = open_terminal(afs_cli(afs_root, "context query --interactive"))
+  end
+
+  local base_items = {
+    {
+      id = "afs_browser",
+      label = "AFS Browser",
+      icon = "󰈙",
+      icon_color = tc("SAPPHIRE"),
+      section = "apps",
+      action = afs_action or "",
+      shortcut_action = "launch_afs_browser",
+      available = afs_browser_ok,
+      default_enabled = true,
+    },
+    {
+      id = "afs_context",
+      label = "AFS Context Query",
+      icon = "󰊕",
+      icon_color = tc("TEAL"),
+      section = "afs",
+      action = afs_query_action,
+      available = afs_root ~= nil,
+      default_enabled = false,
+    },
+    {
+      id = "afs_scratchpad",
+      label = "AFS Scratchpad",
+      icon = "󰏫",
+      icon_color = tc("PEACH"),
+      section = "afs",
+      action = afs_scratchpad_action,
+      available = afs_context_available,
+      default_enabled = afs_context_available,
+    },
+    {
+      id = "afs_studio",
+      label = "AFS Studio",
+      icon = "󰆍",
+      icon_color = tc("LAVENDER"),
+      section = "apps",
+      action = studio_action or "",
+      shortcut_action = "launch_afs_studio",
+      available = studio_available,
+      blocked = studio_blocked,
+      default_enabled = true,
+    },
+    {
+      id = "afs_labeler",
+      label = "AFS Labeler",
+      icon = "󰓹",
+      icon_color = tc("TEAL"),
+      section = "apps",
+      action = labeler_action or "",
+      shortcut_action = "launch_afs_labeler",
+      available = studio_ok and labeler_cmd ~= nil,
+      blocked = studio_ok and labeler_cmd ~= nil and labeler_action == nil,
+      default_enabled = false,
+    },
+    {
+      id = "stemforge",
+      label = "StemForge",
+      icon = "󰎈",
+      icon_color = tc("PINK"),
+      section = "audio",
+      action = stemforge_app and string.format("open %s", shell_quote(stemforge_app)) or "",
+      shortcut_action = "launch_stemforge",
+      available = stemforge_ok,
+      default_enabled = false,
+    },
+    {
+      id = "stem_sampler",
+      label = "StemSampler",
+      icon = "󰎈",
+      icon_color = tc("PEACH"),
+      section = "audio",
+      action = stem_sampler_app and string.format("open %s", shell_quote(stem_sampler_app)) or "",
+      shortcut_action = "launch_stem_sampler",
+      available = stem_sampler_ok,
+      default_enabled = false,
+    },
+    {
+      id = "yaze",
+      label = "Yaze",
+      icon = "󰯙",
+      icon_color = tc("YELLOW"),
+      section = "oracle",
+      action = yaze_launcher_ok and shell_quote(yaze_launcher) or (yaze_app and string.format("open %s", shell_quote(yaze_app)) or ""),
+      -- Default to enabled if we found it
+      available = yaze_available,
+      default_enabled = true,
+      popup = "yaze.tools",
+      items = yaze_enabled and {
+        {
+          name = "yaze.repo",
+          label = "Open Repo",
+          icon = "󰋜",
+          action = ctx.open_path(yaze_dir),
+        },
+        {
+          name = "yaze.docs",
+          label = "Workflow Docs",
+          icon = "󰊕",
+          action = ctx.open_path(ctx.paths and ctx.paths.rom_doc or (code_dir .. "/docs/workflow/rom-hacking.org")),
+        }
+      } or nil
+    },
+    {
+      id = "mesen_oos",
+      label = "Mesen2 OoS",
+      icon = "󰁆",
+      icon_color = tc("RED"),
+      section = "oracle",
+      action = mesen_run_action,
+      available = mesen_run_ok,
+      default_enabled = true,
+    },
+    {
+      id = "oracle_agent_manager",
+      label = "Oracle Hub",
+      icon = "󰒋",
+      icon_color = tc("MAGENTA", "MAUVE"),
+      section = "oracle",
+      action = oam_action,
+      available = oam_ok,
+      default_enabled = true,
+    },
+    {
+      id = "help_center",
+      label = "Help Center",
+      icon = "󰘥",
+      icon_color = tc("BLUE"),
+      section = "support",
+      action = help_center_action,
+      shortcut_action = "open_help_center",
+      available = help_center_available,
+      default_enabled = true,
+    },
+    {
+      id = "sys_manual",
+      label = "Sys Manual",
+      icon = "󰋜",
+      icon_color = tc("BLUE"),
+      section = "support",
+      action = sys_manual_action,
+      shortcut_action = "open_sys_manual",
+      available = sys_manual_available,
+      default_enabled = false,
+    },
+    {
+      id = "icon_browser",
+      label = "Icon Browser",
+      icon = "󰈙",
+      icon_color = tc("SKY"),
+      section = "support",
+      action = icon_browser_action,
+      shortcut_action = "open_icon_browser",
+      available = icon_browser_available,
+      default_enabled = false,
+    },
+    {
+      id = "keyboard_overlay",
+      label = "Keyboard Overlay",
+      icon = "󰌌",
+      icon_color = tc("SKY"),
+      section = "support",
+      action = keyboard_overlay_action,
+      shortcut_action = "toggle_keyboard_overlay",
+      available = keyboard_overlay_available,
+      default_enabled = false,
+    },
+    {
+      id = "barista_config",
+      label = "Barista Config",
+      icon = "󰒓",
+      icon_color = tc("SKY"),
+      section = "controls",
+      action = ctx.call_script(config_dir .. "/bin/open_control_panel.sh", "--tab", "appearance"),
+      shortcut_action = "open_control_panel",
+      available = true,
+      default_enabled = true,
+    },
+    {
+      id = "reload_bar",
+      label = "Reload SketchyBar",
+      icon = "󰑐",
+      icon_color = tc("YELLOW"),
+      section = "controls",
+      action = reload_action,
+      shortcut_action = "reload_sketchybar",
+      available = true,
+      default_enabled = true,
+    },
+  }
+
+  local sections = {
+    apps = { id = "apps", label = "Apps", icon = "󰀻", color = tc("MAUVE", "LAVENDER"), order = 0 },
+    oracle = { id = "oracle", label = "Oracle", icon = "󰯙", color = tc("GREEN"), order = 1 },
+    controls = { id = "controls", label = "Controls", icon = "󰒓", color = tc("SKY"), order = 2 },
+    work = { id = "work", label = "Web Apps", icon = "󰖟", color = tc("BLUE"), order = 3 },
+    support = { id = "support", label = "Support", icon = "󰘥", color = tc("LAVENDER"), order = 4 },
+    afs = { id = "afs", label = "AFS Tools", icon = "󰈙", color = tc("SAPPHIRE"), order = 5 },
+    audio = { id = "audio", label = "Audio", icon = "󰎈", color = tc("PEACH"), order = 6 },
+    custom = { id = "custom", label = "Custom", icon = "󰘥", color = tc("LAVENDER"), order = 7 },
+  }
+
+  local menu_model = apple_menu_model.build({
+    base_items = base_items,
+    sections = sections,
+    menu_config = menu_config,
+    project_shortcuts = project_shortcuts,
+    show_missing = show_missing,
+    theme = theme,
+  })
+  return {
+    config_dir = config_dir,
+    style = style,
+    font_small = font_small,
+    font_bold = font_bold,
+    popup_item_height = popup_item_height,
+    popup_header_height = popup_header_height,
+    popup_item_corner_radius = popup_item_corner_radius,
+    popup_padding = popup_padding,
+    hover_script_cmd = hover_script_cmd,
+    rendered = menu_model.rendered,
+    sections = menu_model.sections,
+  }
+end
+
+function apple_menu.prepare(ctx)
+  return build_prepared(ctx)
+end
+
+function apple_menu.setup(ctx)
+  local sbar = ctx.sbar
+  local theme = ctx.theme
+  local widget_height = ctx.widget_height
+  local associated_displays = ctx.associated_displays or "all"
+  local prepared = ctx.apple_menu_prepared or build_prepared(ctx)
+  local config_dir = prepared.config_dir
+  local style = prepared.style
+  local font_small = prepared.font_small
+  local font_bold = prepared.font_bold
+  local popup_item_height = prepared.popup_item_height
+  local popup_header_height = prepared.popup_header_height
+  local popup_item_corner_radius = prepared.popup_item_corner_radius
+  local popup_padding = prepared.popup_padding
+  local hover_script_cmd = prepared.hover_script_cmd
+  local rendered = prepared.rendered
+  local sections = prepared.sections
+
+  local function popup_toggle(item_name, opts)
+    if type(ctx.popup_toggle_action) == "function" then
+      return ctx.popup_toggle_action(item_name, opts)
+    end
+    if item_name and item_name ~= "" then
+      return string.format("sketchybar -m --set %s popup.drawing=toggle", item_name)
+    end
+    return "sketchybar -m --set $NAME popup.drawing=toggle"
+  end
+  local apple_menu_script = ctx.popup_anchor_script
+  if apple_menu_script and apple_menu_script ~= "" then
+    apple_menu_script = "env POPUP_OPEN_ON_ENTER=1 " .. apple_menu_script
+  end
+
+  sbar.add("item", "apple_menu", {
+    position = "left",
+    icon = ctx.icon_for and ctx.icon_for("apple", "") or "",
+    label = { drawing = false },
+    associated_display = associated_displays,
+    associated_space = "all",
+    background = {
+      color = "0x00000000",
+      corner_radius = 4,
+      height = widget_height,
+      padding_left = 4,
+      padding_right = 4,
+    },
+    click_script = popup_toggle(),
+    popup = {
+      background = {
+        border_width = style.popup_border_width,
+        corner_radius = style.popup_corner_radius,
+        border_color = style.popup_border_color,
+        color = style.popup_bg_color,
+        padding_left = style.popup_padding,
+        padding_right = style.popup_padding,
+      },
+    },
+    script = apple_menu_script,
+  })
+
+  local subscribe_popup = ctx.subscribe_popup_autoclose or ctx.subscribe_mouse_exit
+  if subscribe_popup then
+    subscribe_popup("apple_menu")
+  end
+
+  local item_height = popup_item_height
   local popup_parents = { apple_menu = true }
   local submenu_parents = {}
 
@@ -516,6 +925,7 @@ function apple_menu.setup(ctx)
     end
     local click_script = wrap_action(ctx, parent_popup or popup_name, entry.name, action)
     local popup_config = nil
+    local hover_enabled = entry.hover == true
     if entry.submenu and entry.items and #entry.items > 0 then
       remember_popup(entry.name)
       remember_submenu(entry.name)
@@ -531,7 +941,6 @@ function apple_menu.setup(ctx)
       icon = { string = entry.icon or "", color = icon_color },
       label = { string = label, font = font_small, color = label_color },
       click_script = click_script,
-      script = hover_script_cmd,
       ["icon.padding_left"] = popup_padding.icon_left or 4,
       ["icon.padding_right"] = popup_padding.icon_right or 6,
       ["label.padding_left"] = popup_padding.label_left or 6,
@@ -542,11 +951,14 @@ function apple_menu.setup(ctx)
         height = item_height,
       },
     }
+    if hover_enabled and hover_script_cmd then
+      item_config.script = hover_script_cmd
+    end
     if popup_config then
       item_config.popup = popup_config
     end
     sbar.add("item", entry.name, item_config)
-    if ctx.attach_hover then
+    if hover_enabled and ctx.attach_hover then
       ctx.attach_hover(entry.name)
     end
     if popup_config then
@@ -568,434 +980,6 @@ function apple_menu.setup(ctx)
       end
     end
   end
-
-  local afs_root, afs_ok = resolve_afs_root(ctx)
-  local studio_root, studio_ok = resolve_afs_studio_root(ctx, afs_root)
-  local studio_launcher, studio_launcher_ok = locator.resolve_afs_studio_launcher(ctx)
-  local afs_browser_app, afs_browser_ok = resolve_afs_browser_app(ctx)
-  local stemforge_app, stemforge_ok = resolve_stemforge_app(ctx)
-  local stem_sampler_app, stem_sampler_ok = resolve_stem_sampler_app(ctx)
-  local yaze_app, yaze_ok = resolve_yaze_app(ctx)
-  local yaze_launcher, yaze_launcher_ok = resolve_yaze_launcher()
-  local yaze_available = yaze_ok or yaze_launcher_ok
-  local yaze_enabled = (ctx.integrations and ctx.integrations.yaze ~= nil)
-  if ctx.integration_flags and ctx.integration_flags.yaze == false then
-    yaze_enabled = false
-  end
-  local cortex_cli, cortex_cli_ok = resolve_cortex_cli(ctx)
-  local help_center_bin, help_center_ok = resolve_executable_path({
-    ctx.helpers and ctx.helpers.help_center or nil,
-    config_dir .. "/gui/bin/help_center",
-    config_dir .. "/build/bin/help_center",
-  })
-  local help_center_doc, help_center_doc_ok = resolve_path(ctx, {
-    config_dir .. "/docs/features/ICONS_AND_SHORTCUTS.md",
-    config_dir .. "/docs/guides/QUICK_START.md",
-  }, false)
-  local help_center_action = ""
-  local help_center_available = false
-  local env_prefix = string.format(
-    "BARISTA_CONFIG_DIR=%s BARISTA_CODE_DIR=%s",
-    shell_quote(config_dir),
-    shell_quote(code_dir)
-  )
-  if help_center_ok and help_center_bin then
-    help_center_action = string.format("%s %s", env_prefix, shell_quote(help_center_bin))
-    help_center_available = true
-  elseif help_center_doc then
-    help_center_action = string.format("open %s", shell_quote(help_center_doc))
-    help_center_available = help_center_doc_ok
-  end
-
-  local icon_browser_bin, icon_browser_ok = resolve_executable_path({
-    config_dir .. "/gui/bin/icon_browser",
-    config_dir .. "/build/bin/icon_browser",
-  })
-  local icon_browser_doc, icon_browser_doc_ok = resolve_path(ctx, {
-    config_dir .. "/docs/features/ICON_REFERENCE.md",
-  }, false)
-  local icon_browser_action = ""
-  local icon_browser_available = false
-  if icon_browser_ok and icon_browser_bin then
-    icon_browser_action = string.format("%s %s", env_prefix, shell_quote(icon_browser_bin))
-    icon_browser_available = true
-  elseif icon_browser_doc then
-    icon_browser_action = string.format("open %s", shell_quote(icon_browser_doc))
-    icon_browser_available = icon_browser_doc_ok
-  end
-
-  local keyboard_overlay_bin, keyboard_overlay_ok = resolve_executable_path({
-    config_dir .. "/scripts/open_keyboard_overlay.sh",
-  })
-  local keyboard_overlay_action = ""
-  local keyboard_overlay_available = false
-  if keyboard_overlay_ok and keyboard_overlay_bin then
-    keyboard_overlay_action = shell_quote(keyboard_overlay_bin)
-    keyboard_overlay_available = true
-  end
-
-  local sys_manual_bin, sys_manual_ok = resolve_sys_manual_binary(ctx)
-  local sys_manual_action = ""
-  local sys_manual_available = false
-  if sys_manual_ok and sys_manual_bin then
-    sys_manual_action = shell_quote(sys_manual_bin)
-    sys_manual_available = true
-  end
-  local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
-
-  local mesen_run_bin, mesen_run_ok = resolve_mesen_run(ctx)
-  local mesen_run_action = ""
-  if mesen_run_ok and mesen_run_bin then
-    mesen_run_action = shell_quote(mesen_run_bin)
-  end
-
-  local oam_bin, oam_ok = resolve_oracle_agent_manager(ctx)
-  local oam_action = ""
-  if oam_ok and oam_bin then
-    oam_action = terminal_action("oracle.agent_manager", shell_quote(oam_bin))
-  end
-
-  local yaze_dir = select(1, locator.resolve_yaze_dir(ctx)) or (code_dir .. "/yaze")
-  local oracle_menu_module = ctx.integrations and ctx.integrations.oracle or nil
-  if not oracle_menu_module then
-    local ok_oracle, oracle_module = pcall(require, "oracle")
-    if ok_oracle then
-      oracle_menu_module = oracle_module
-    end
-  end
-  local oracle_apple_entry = nil
-  if ctx.integration_flags and ctx.integration_flags.oracle == false then
-    oracle_menu_module = nil
-  end
-  if oracle_menu_module and type(oracle_menu_module.create_apple_menu_entry) == "function" then
-    oracle_apple_entry = oracle_menu_module.create_apple_menu_entry(ctx, {
-      section = "apps",
-      icon_color = tc("GREEN"),
-      order = 1008,
-    })
-  end
-  local afs_action = afs_browser_app and string.format("open %s", shell_quote(afs_browser_app)) or ""
-  local studio_bin, studio_bin_ok = locator.resolve_afs_studio_binary(studio_root)
-  local studio_action
-  local studio_cmd
-  if studio_launcher_ok and studio_launcher then
-    studio_action = shell_quote(studio_launcher)
-  elseif studio_bin_ok and studio_bin then
-    if studio_bin:match("%.app/?$") then
-      studio_action = string.format("open %s", shell_quote(studio_bin))
-    else
-      studio_action = shell_quote(studio_bin)
-    end
-  else
-    if afs_root then
-      studio_cmd = afs_cli(afs_root, "studio run --build")
-    elseif studio_root then
-      local build_dir = locator.afs_build_dir(studio_root)
-      if locator.afs_studio_layout(studio_root) == "suite" then
-        studio_cmd = string.format(
-          "cd %s && cmake --build %s --target afs-studio && ./%s/apps/studio/afs-studio",
-          shell_quote(studio_root),
-          build_dir,
-          build_dir
-        )
-      else
-        studio_cmd = string.format(
-          "cd %s && cmake --build build --target afs_studio && ./build/afs_studio",
-          shell_quote(studio_root)
-        )
-      end
-    end
-    studio_action = terminal_action("afs_studio", studio_cmd)
-  end
-  local studio_available = studio_ok and (studio_launcher_ok or studio_bin_ok or studio_cmd ~= nil)
-  local studio_blocked = studio_ok and not studio_launcher_ok and studio_cmd ~= nil and studio_action == nil
-
-  local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(studio_root)
-  local labeler_csv = os.getenv("AFS_LABELER_CSV")
-  local labeler_cmd
-  local labeler_action
-  if labeler_bin_ok and labeler_bin then
-    labeler_cmd = shell_quote(labeler_bin)
-    if labeler_csv and labeler_csv ~= "" then
-      labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
-    end
-    labeler_action = labeler_cmd
-  elseif studio_root then
-    local build_dir = locator.afs_build_dir(studio_root)
-    if locator.afs_studio_layout(studio_root) == "suite" then
-      labeler_cmd = string.format(
-        "cd %s && cmake --build %s --target afs-labeler && ./%s/apps/studio/afs-labeler",
-        shell_quote(studio_root),
-        build_dir,
-        build_dir
-      )
-    else
-      labeler_cmd = string.format(
-        "cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler",
-        shell_quote(studio_root)
-      )
-    end
-    if labeler_csv and labeler_csv ~= "" then
-      labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
-    end
-    labeler_action = terminal_action("afs_labeler", labeler_cmd)
-  end
-
-  local cortex_toggle = cortex_cli_ok and (shell_quote(cortex_cli) .. " toggle") or ""
-  local cortex_hub = cortex_cli_ok and (shell_quote(cortex_cli) .. " hub") or ""
-  local sketchybar_bin = binary_resolver.resolve_sketchybar_bin()
-
-  -- AFS context helpers
-  local afs_context_root = os.getenv("AFS_CONTEXT_ROOT")
-    or ((os.getenv("HOME") or "") .. "/.context")
-  local afs_scratchpad_dir = afs_context_root .. "/scratchpad"
-  local afs_context_available = path_exists(afs_context_root, true)
-  local afs_scratchpad_action = afs_context_available
-    and open_terminal(string.format("ls -la %s && echo '--- Scratchpad ---' && cat %s/*.md 2>/dev/null || echo 'Empty'",
-        shell_quote(afs_scratchpad_dir), shell_quote(afs_scratchpad_dir)))
-    or ""
-  local afs_query_action = ""
-  if afs_root then
-    afs_query_action = open_terminal(afs_cli(afs_root, "context query --interactive"))
-  end
-
-  local base_items = {
-    {
-      id = "afs_browser",
-      label = "AFS Browser",
-      icon = "󰈙",
-      icon_color = tc("SAPPHIRE"),
-      section = "apps",
-      action = afs_action or "",
-      shortcut_action = "launch_afs_browser",
-      available = afs_browser_ok,
-      default_enabled = true,
-    },
-    {
-      id = "afs_context",
-      label = "AFS Context Query",
-      icon = "󰊕",
-      icon_color = tc("TEAL"),
-      section = "afs",
-      action = afs_query_action,
-      available = afs_root ~= nil,
-      default_enabled = false,
-    },
-    {
-      id = "afs_scratchpad",
-      label = "AFS Scratchpad",
-      icon = "󰏫",
-      icon_color = tc("PEACH"),
-      section = "afs",
-      action = afs_scratchpad_action,
-      available = afs_context_available,
-      default_enabled = afs_context_available,
-    },
-    {
-      id = "afs_studio",
-      label = "AFS Studio",
-      icon = "󰆍",
-      icon_color = tc("LAVENDER"),
-      section = "apps",
-      action = studio_action or "",
-      shortcut_action = "launch_afs_studio",
-      available = studio_available,
-      blocked = studio_blocked,
-      default_enabled = true,
-    },
-    {
-      id = "afs_labeler",
-      label = "AFS Labeler",
-      icon = "󰓹",
-      icon_color = tc("TEAL"),
-      section = "apps",
-      action = labeler_action or "",
-      shortcut_action = "launch_afs_labeler",
-      available = studio_ok and labeler_cmd ~= nil,
-      blocked = studio_ok and labeler_cmd ~= nil and labeler_action == nil,
-      default_enabled = false,
-    },
-    {
-      id = "stemforge",
-      label = "StemForge",
-      icon = "󰎈",
-      icon_color = tc("PINK"),
-      section = "audio",
-      action = stemforge_app and string.format("open %s", shell_quote(stemforge_app)) or "",
-      shortcut_action = "launch_stemforge",
-      available = stemforge_ok,
-      default_enabled = false,
-    },
-    {
-      id = "stem_sampler",
-      label = "StemSampler",
-      icon = "󰎈",
-      icon_color = tc("PEACH"),
-      section = "audio",
-      action = stem_sampler_app and string.format("open %s", shell_quote(stem_sampler_app)) or "",
-      shortcut_action = "launch_stem_sampler",
-      available = stem_sampler_ok,
-      default_enabled = false,
-    },
-    {
-      id = "yaze",
-      label = "Yaze",
-      icon = "󰯙",
-      icon_color = tc("YELLOW"),
-      section = "apps",
-      action = yaze_launcher_ok and shell_quote(yaze_launcher) or (yaze_app and string.format("open %s", shell_quote(yaze_app)) or ""),
-      -- Default to enabled if we found it
-      available = yaze_available,
-      default_enabled = true,
-      popup = "yaze.tools",
-      items = yaze_enabled and {
-        {
-          name = "yaze.repo",
-          label = "Open Repo",
-          icon = "󰋜",
-          action = ctx.open_path(yaze_dir),
-        },
-        {
-          name = "yaze.docs",
-          label = "Workflow Docs",
-          icon = "󰊕",
-          action = ctx.open_path(ctx.paths and ctx.paths.rom_doc or (code_dir .. "/docs/workflow/rom-hacking.org")),
-        }
-      } or nil
-    },
-    {
-      id = "mesen_oos",
-      label = "Mesen2 OoS",
-      icon = "󰁆",
-      icon_color = tc("RED"),
-      section = "apps",
-      action = mesen_run_action,
-      available = mesen_run_ok,
-      default_enabled = true,
-    },
-    {
-      id = "oracle_agent_manager",
-      label = "Agent Manager",
-      icon = "󰒋",
-      icon_color = tc("MAGENTA", "MAUVE"),
-      section = "core",
-      action = oam_action,
-      available = oam_ok,
-      default_enabled = true,
-    },
-    {
-      id = "cortex_toggle",
-      label = "Cortex",
-      icon = "󰕮",
-      icon_color = tc("MAUVE", "LAVENDER"),
-      section = "apps",
-      action = cortex_hub,
-      available = cortex_cli_ok,
-      default_enabled = true,
-    },
-    {
-      id = "cortex_hub",
-      label = "Cortex Hub",
-      icon = "󰣖",
-      icon_color = tc("SKY"),
-      section = "controls",
-      action = cortex_hub,
-      available = cortex_cli_ok,
-      default_enabled = false,
-    },
-    {
-      id = "help_center",
-      label = "Help Center",
-      icon = "󰘥",
-      icon_color = tc("BLUE"),
-      section = "support",
-      action = help_center_action,
-      shortcut_action = "open_help_center",
-      available = help_center_available,
-      default_enabled = true,
-    },
-    {
-      id = "sys_manual",
-      label = "Sys Manual",
-      icon = "󰋜",
-      icon_color = tc("BLUE"),
-      section = "support",
-      action = sys_manual_action,
-      shortcut_action = "open_sys_manual",
-      available = sys_manual_available,
-      default_enabled = false,
-    },
-    {
-      id = "icon_browser",
-      label = "Icon Browser",
-      icon = "󰈙",
-      icon_color = tc("SKY"),
-      section = "support",
-      action = icon_browser_action,
-      shortcut_action = "open_icon_browser",
-      available = icon_browser_available,
-      default_enabled = false,
-    },
-    {
-      id = "keyboard_overlay",
-      label = "Keyboard Overlay",
-      icon = "󰌌",
-      icon_color = tc("SKY"),
-      section = "support",
-      action = keyboard_overlay_action,
-      shortcut_action = "toggle_keyboard_overlay",
-      available = keyboard_overlay_available,
-      default_enabled = false,
-    },
-    {
-      id = "barista_config",
-      label = "Barista Config",
-      icon = "󰒓",
-      icon_color = tc("SKY"),
-      section = "controls",
-      action = ctx.call_script(config_dir .. "/bin/open_control_panel.sh", "--panel"),
-      shortcut_action = "open_control_panel",
-      available = true,
-      default_enabled = true,
-    },
-    {
-      id = "reload_bar",
-      label = "Reload SketchyBar",
-      icon = "󰑐",
-      icon_color = tc("YELLOW"),
-      section = "controls",
-      action = string.format("%q --reload", sketchybar_bin),
-      shortcut_action = "reload_sketchybar",
-      available = true,
-      default_enabled = true,
-    },
-  }
-
-  if oracle_apple_entry then
-    table.insert(base_items, oracle_apple_entry)
-  end
-
-  local sections = {
-    apps = { id = "apps", label = "Apps", icon = "󰀻", color = tc("MAUVE", "LAVENDER"), order = 0 },
-    core = { id = "core", label = "Core Tools", icon = "󰯙", color = tc("GREEN"), order = 1 },
-    controls = { id = "controls", label = "Controls", icon = "󰒓", color = tc("SKY"), order = 2 },
-    work = { id = "work", label = "Web Apps", icon = "󰖟", color = tc("BLUE"), order = 3 },
-    support = { id = "support", label = "Support", icon = "󰘥", color = tc("LAVENDER"), order = 4 },
-    afs = { id = "afs", label = "AFS Tools", icon = "󰈙", color = tc("SAPPHIRE"), order = 5 },
-    audio = { id = "audio", label = "Audio", icon = "󰎈", color = tc("PEACH"), order = 6 },
-    custom = { id = "custom", label = "Custom", icon = "󰘥", color = tc("LAVENDER"), order = 7 },
-  }
-
-  local menu_model = apple_menu_model.build({
-    base_items = base_items,
-    sections = sections,
-    menu_config = menu_config,
-    project_shortcuts = project_shortcuts,
-    show_missing = show_missing,
-    theme = theme,
-  })
-  local rendered = menu_model.rendered
-  sections = menu_model.sections
 
   local current_section = nil
   local section_index = 1

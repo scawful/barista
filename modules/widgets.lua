@@ -49,6 +49,21 @@ function widgets.create_factory(sbar, theme, settings, state_data, metrics)
     return { type = "bracket", name = name, children = children, props = props }
   end
 
+  local function merge_item_config(defaults, config)
+    for key, value in pairs(config or {}) do
+      if key ~= "background_color" and key ~= "daemon_managed" then
+        if key == "update_freq" and value == false then
+          defaults.update_freq = nil
+        else
+          defaults[key] = value
+        end
+      end
+    end
+    if config and config.daemon_managed then
+      defaults.update_freq = nil
+    end
+  end
+
   -- Create a standard widget with common properties
   function factory.create(name, config)
     local defaults = {
@@ -69,11 +84,7 @@ function widgets.create_factory(sbar, theme, settings, state_data, metrics)
     }
 
     -- Merge with custom config
-    for key, value in pairs(config) do
-      if key ~= "background_color" then
-        defaults[key] = value
-      end
-    end
+    merge_item_config(defaults, config)
 
     sbar.add("item", name, defaults)
     return name
@@ -124,9 +135,7 @@ function widgets.create_factory(sbar, theme, settings, state_data, metrics)
       ),
     }
 
-    for key, value in pairs(config or {}) do
-      defaults[key] = value
-    end
+    merge_item_config(defaults, config)
 
     sbar.add("item", "clock", defaults)
     return "clock"
@@ -145,9 +154,7 @@ function widgets.create_factory(sbar, theme, settings, state_data, metrics)
       },
     }
 
-    for key, value in pairs(config or {}) do
-      defaults[key] = value
-    end
+    merge_item_config(defaults, config)
 
     sbar.add("item", "battery", defaults)
     return "battery"
@@ -165,9 +172,7 @@ function widgets.create_factory(sbar, theme, settings, state_data, metrics)
       },
     }
 
-    for key, value in pairs(config or {}) do
-      defaults[key] = value
-    end
+    merge_item_config(defaults, config)
 
     sbar.add("item", "volume", defaults)
     return "volume"
@@ -192,9 +197,7 @@ function widgets.create_factory(sbar, theme, settings, state_data, metrics)
       }
     }
 
-    for key, value in pairs(config or {}) do
-      defaults[key] = value
-    end
+    merge_item_config(defaults, config)
 
     sbar.add("item", "system_info", defaults)
     return "system_info"
@@ -215,9 +218,7 @@ function widgets.create_factory(sbar, theme, settings, state_data, metrics)
       },
     }
 
-    for key, value in pairs(config or {}) do
-      defaults[key] = value
-    end
+    merge_item_config(defaults, config)
 
     sbar.add("item", "network", defaults)
     return "network"

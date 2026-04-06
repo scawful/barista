@@ -157,9 +157,9 @@ ws install barista_config
 barista_config
 ```
 
-Or from cortex menu (if integrated):
-- Click cortex icon
-- Select "SketchyBar Config"
+Or from the Barista controls entry point:
+- Open the Apple menu
+- Select "Barista Config"
 
 #### Step 3: Verify Configuration Loaded
 The app should automatically load your existing configuration from:
@@ -422,7 +422,7 @@ sketchybar --reload
 ### Issue 4: Missing Dock Integration
 **Problem:** barista_config doesn't stay in Dock like Objective-C panel
 
-**Workaround:** Pin to Dock manually or launch from cortex
+**Workaround:** Pin to Dock manually or launch from Barista Config
 
 **Status:** Will remain different (by design, barista_config is standalone tool)
 

@@ -18,6 +18,13 @@ ICON_WIFI_OVERRIDE="${BARISTA_ICON_WIFI:-}"
 ICON_WIFI_OFF_OVERRIDE="${BARISTA_ICON_WIFI_OFF:-}"
 ICON_SWAP_OVERRIDE="${BARISTA_ICON_SWAP:-}"
 ICON_UPTIME_OVERRIDE="${BARISTA_ICON_UPTIME:-}"
+ACTION="${1:-}"
+UPDATE_MAIN=1
+SYSTEM_INFO_BIN="${SYSTEM_INFO_BIN:-$HOME/.config/sketchybar/bin/system_info_widget}"
+
+if [ "$ACTION" = "popup_refresh" ]; then
+  UPDATE_MAIN=0
+fi
 
 # Handle mouse events
 case "${SENDER:-}" in
@@ -34,6 +41,10 @@ case "${SENDER:-}" in
     exit 0
     ;;
 esac
+
+if [ "$ACTION" != "popup_refresh" ] && [ -x "$SYSTEM_INFO_BIN" ]; then
+  exec "$SYSTEM_INFO_BIN"
+fi
 
 # Detect whether CPU row is enabled (default to off unless explicitly enabled)
 CPU_ENABLED=0
@@ -86,12 +97,6 @@ PY
       PROCS_ENABLED=1
     fi
   fi
-fi
-
-# Fallback binary usage if needed (only when CPU row is enabled)
-SYSTEM_INFO_BIN="${SYSTEM_INFO_BIN:-$HOME/.config/sketchybar/bin/system_info_widget}"
-if [ "$CPU_ENABLED" -eq 1 ] && [ -x "$SYSTEM_INFO_BIN" ]; then
-  exec "$SYSTEM_INFO_BIN"
 fi
 
 # Configuration
@@ -245,26 +250,21 @@ elif [ "$mem_usage" -gt 60 ]; then
 fi
 
 # Main Widget Update
-if [ "$CPU_ENABLED" -eq 1 ]; then
+if [ "$UPDATE_MAIN" -eq 1 ]; then
   cpu_icon="${ICON_CPU_OVERRIDE:-󰻠}"
   sketchybar --set system_info \
     icon="$cpu_icon" \
-    label="${cpu_usage}%" \
+    label="${cpu_usage}% ${mem_label}" \
     icon.color="$cpu_status_color" \
     label.color="$cpu_status_color"
+fi
 
-  # Popup Items Update
+if [ "$CPU_ENABLED" -eq 1 ]; then
+  cpu_icon="${ICON_CPU_OVERRIDE:-󰻠}"
   sketchybar --set system_info.cpu \
     label="CPU Usage: ${cpu_usage}% (Load: ${cpu_load})" \
     icon="$cpu_icon" \
     icon.color="$cpu_status_color"
-else
-  mem_icon="${ICON_MEM_OVERRIDE:-󰘚}"
-  sketchybar --set system_info \
-    icon="$mem_icon" \
-    label="${mem_label}" \
-    icon.color="$mem_status_color" \
-    label.color="$mem_status_color"
 fi
 
 mem_icon="${ICON_MEM_OVERRIDE:-󰘚}"

@@ -45,9 +45,9 @@ if [ -n "$WM_MODE" ]; then
   echo "Window Manager mode set to: $WM_MODE"
   
   if [ "$WM_MODE" == "disabled" ]; then
-    # Disable yabai status too
+    # Disable yabai shortcuts in disabled mode.
     tmp2=$(mktemp)
-    jq '.widgets.yabai_status = false | .toggles.yabai_shortcuts = false' "$STATE_FILE" > "$tmp2" && mv "$tmp2" "$STATE_FILE"
+    jq '.toggles.yabai_shortcuts = false' "$STATE_FILE" > "$tmp2" && mv "$tmp2" "$STATE_FILE"
   fi
 fi
 

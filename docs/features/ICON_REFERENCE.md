@@ -39,6 +39,13 @@ icon = c_bridge.icons.get("apple", icon_for("apple", ""))
 }
 ```
 
+### Runtime App Aliases
+`scripts/app_icon.sh` also carries a small set of Barista-specific application aliases for live space icons and `front_app`.
+
+- `Ghostty` -> ``
+- `Oracle Hub` / `Oracle Agent Manager` / `oracle_manager_gui` / `oracle_hub` -> `󰯙`
+- `Antigravity` -> ``
+
 ---
 
 ## Complete Icon Library
@@ -270,8 +277,8 @@ icon = c_bridge.icons.get("apple", icon_for("apple", ""))
 | `controller` | 󰖺 | F05BA | Game controller |
 | `dice` | 󰆹 | F01B9 | Dice, random |
 | `puzzle` | 󰉌 | F024C | Puzzle, games |
-| `triforce` | 󰊠 | F02A0 | Zelda triforce |
-| `quest` | 󰊠 | F02A0 | Quest/adventure |
+| `triforce` | 󰯙 | F0BD9 | Zelda triforce |
+| `quest` | 󰯙 | F0BD9 | Quest/adventure |
 | `sword` | 󰚠 | F06A0 | Sword |
 | `shield` | 󰞀 | F0780 | Shield |
 | `trophy` |  | F091 | Achievement |

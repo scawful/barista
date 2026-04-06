@@ -10,6 +10,7 @@ profile.author = "scawful"
 
 -- Integration toggles
 profile.integrations = {
+  control_center = true, -- Primary window-manager status + controls
   yaze = false,       -- No ROM hacking at work
   emacs = true,       -- Keep Emacs for org-mode
   halext = true,      -- Use halext-org for task management
@@ -58,7 +59,6 @@ profile.widgets = {
   network = true,
   system_info = true,
   volume = true,
-  yabai_status = true,
   cpp_build_status = true,  -- C++ build status widget
   ssh_connections = true,   -- SSH connection status widget
 }

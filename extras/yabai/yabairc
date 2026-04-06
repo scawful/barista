@@ -58,7 +58,8 @@ yabai -m rule --add app="^Raycast$" manage=off
 yabai -m rule --add app="^Taskwarrior$" manage=off
 yabai -m rule --add app="^Lazygit$" manage=off grid=10:10:1:1:8:8 title="lazygit"
 
-# Halext ImGui Tools (always float)
+# Barista + Halext tools
+# Native Barista panel is managed by default; utility mode floats it at launch.
 yabai -m rule --add app="^barista_config$" manage=off
 yabai -m rule --add app="^Barista Config$" manage=off
 yabai -m rule --add app="^afs_studio$" manage=off

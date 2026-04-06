@@ -53,5 +53,5 @@ with open(state_path, "w", encoding="utf-8") as fh:
     json.dump(data, fh, ensure_ascii=False)
 PY
 
-sketchybar --trigger yabai_status_refresh >/dev/null 2>&1 || true
 sketchybar --trigger space_mode_refresh >/dev/null 2>&1 || true
+sketchybar --reload >/dev/null 2>&1 || true

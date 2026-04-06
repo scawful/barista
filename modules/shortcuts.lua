@@ -11,6 +11,7 @@ local HOME = os.getenv("HOME") or ""
 local CONFIG_DIR = locator.resolve_config_dir()
 local runtime_state = locator.load_state(CONFIG_DIR) or {}
 local SKETCHYBAR_BIN = binary_resolver.resolve_sketchybar_bin()
+local DEFAULT_CONTROL_CENTER_ITEM_NAME = "control_center"
 
 local function service_running(name)
   if not name or name == "" then
@@ -27,6 +28,28 @@ end
 
 local function shell_quote(value)
   return string.format("%q", tostring(value))
+end
+
+function shortcuts.resolve_control_center_item_name(state, getenv_fn)
+  local getenv = getenv_fn or os.getenv
+  local env_name = getenv and getenv("BARISTA_CONTROL_CENTER_ITEM_NAME") or nil
+  if env_name and env_name ~= "" then
+    return env_name
+  end
+
+  local runtime = type(state) == "table" and state or runtime_state
+  local integrations = runtime and runtime.integrations
+  local control_center = type(integrations) == "table" and integrations.control_center or nil
+  local state_name = type(control_center) == "table" and (control_center.item_name or control_center.name) or nil
+  if state_name and state_name ~= "" then
+    return state_name
+  end
+
+  return DEFAULT_CONTROL_CENTER_ITEM_NAME
+end
+
+local function build_control_center_toggle_command(item_name)
+  return string.format("%q --set %q popup.drawing=toggle", SKETCHYBAR_BIN, item_name)
 end
 
 local function open_terminal(command)
@@ -143,8 +166,6 @@ local YAZE_LAUNCHER = select(1, locator.resolve_yaze_launcher())
 local SYS_MANUAL_BIN, SYS_MANUAL_OK = locator.resolve_sys_manual_binary(shared_opts)
 local HELP_CENTER_BIN, HELP_CENTER_OK = locator.resolve_help_center_bin(CONFIG_DIR)
 local ICON_BROWSER_BIN, ICON_BROWSER_OK = locator.resolve_icon_browser_bin(CONFIG_DIR)
-local CORTEX_CLI = select(1, locator.resolve_cortex_cli(shared_opts)) or "cortex-cli"
-
 local function integration_flag(name)
   local integrations = runtime_state.integrations
   local entry = type(integrations) == "table" and integrations[name] or nil
@@ -292,13 +313,6 @@ shortcuts.global = {
   },
   {
     mods = {"cmd", "alt"},
-    key = "c",
-    action = "toggle_cortex",
-    desc = "Toggle Cortex",
-    symbol = "⌘⌥C"
-  },
-  {
-    mods = {"cmd", "alt"},
     key = "0x2C",
     action = "toggle_control_center",
     desc = "Toggle Control Center",
@@ -419,12 +433,11 @@ shortcuts.actions = {
   reload_sketchybar = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh --reload-only",
   rebuild_and_reload = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh",
   open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh",
-  toggle_control_center = string.format("%q --set control_center popup.drawing=toggle", SKETCHYBAR_BIN),
+  toggle_control_center = build_control_center_toggle_command(shortcuts.resolve_control_center_item_name(runtime_state)),
   open_help_center = help_center_action(),
   open_icon_browser = icon_browser_action(),
   open_sys_manual = sys_manual_action(),
   toggle_keyboard_overlay = CONFIG_DIR .. "/scripts/open_keyboard_overlay.sh",
-  toggle_cortex = string.format("%q toggle", CORTEX_CLI),
 
   -- Yabai
   toggle_yabai_shortcuts = SCRIPTS_DIR .. "/toggle_shortcuts.sh toggle",

@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <stdarg.h>
 
-static double RESET_DELAY = 0.18;
+static double RESET_DELAY = 0.04;
 static const char *DEFAULT_HILITE = "0x60cba6f7";
 
 static void run_cmd(const char *fmt, ...) {
@@ -22,6 +22,18 @@ static void run_async(const char *command) {
   if (pid == 0) {
     execl("/bin/bash", "bash", "-lc", command, (char *)NULL);
     _exit(127);
+  }
+}
+
+static void reset_background_async(const char *item) {
+  if (!item || item[0] == '\0') return;
+  pid_t pid = fork();
+  if (pid == 0) {
+    if (RESET_DELAY > 0.0) {
+      usleep((useconds_t)(RESET_DELAY * 1000000.0));
+    }
+    run_cmd("sketchybar --set %s background.drawing=off", item);
+    _exit(0);
   }
 }
 
@@ -52,12 +64,7 @@ int main(int argc, char *argv[]) {
   if (popup && popup[0] != '\0') {
     run_cmd("sketchybar -m --set %s popup.drawing=off", popup);
   }
-
-  usleep((useconds_t)(RESET_DELAY * 1000000.0));
-
-  if (item && item[0] != '\0') {
-    run_cmd("sketchybar --set %s background.drawing=off", item);
-  }
+  reset_background_async(item);
 
   return 0;
 }

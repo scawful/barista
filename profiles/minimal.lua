@@ -11,6 +11,7 @@ profile.author = "template"
 
 -- Integration toggles (all disabled by default)
 profile.integrations = {
+  control_center = true,
   yaze = false,
   emacs = false,
   halext = false,
@@ -48,7 +49,6 @@ profile.widgets = {
   network = true,
   system_info = true,
   volume = true,
-  yabai_status = true,
 }
 
 -- Space configuration (simple 5 spaces)

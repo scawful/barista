@@ -9,6 +9,7 @@
 #include <sys/time.h>
 
 static double CLOSE_DELAY = 0.18;
+static int OPEN_ON_ENTER = 0;
 static char state_dir[PATH_MAX];
 static char state_path[PATH_MAX];
 static char parent_state_path[PATH_MAX];
@@ -88,6 +89,10 @@ int main(void) {
     double parsed = atof(delay_env);
     if (parsed > 0.0) CLOSE_DELAY = parsed;
   }
+  const char *open_env = getenv("POPUP_OPEN_ON_ENTER");
+  if (open_env && strcmp(open_env, "1") == 0) {
+    OPEN_ON_ENTER = 1;
+  }
 
   const char *name = getenv("NAME");
   if (!name || name[0] == '\0') {
@@ -102,6 +107,9 @@ int main(void) {
     char token[64];
     snprintf(token, sizeof(token), "%lld%06ld", (long long)tv.tv_sec, (long long)tv.tv_usec);
     write_token(token);
+    if (OPEN_ON_ENTER) {
+      run_cmd("sketchybar --set %s popup.drawing=on", name);
+    }
     return 0;
   }
 

@@ -127,8 +127,7 @@ class Barista < Formula
             "battery": true,
             "network": true,
             "system_info": true,
-            "volume": true,
-            "yabai_status": true
+            "volume": true
           },
           "appearance": {
             "bar_height": 32,
@@ -138,6 +137,7 @@ class Barista < Formula
             "widget_scale": 1.0
           },
           "integrations": {
+            "control_center": {"enabled": true},
             "yaze": {"enabled": false},
             "emacs": {"enabled": false},
             "halext": {"enabled": false}

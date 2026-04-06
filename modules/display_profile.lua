@@ -3,6 +3,75 @@
 local json = require("json")
 
 local display_profile = {}
+local CACHE_TTL_SECONDS = tonumber(os.getenv("BARISTA_DISPLAY_PROFILE_CACHE_TTL") or "10") or 10
+
+local function cache_path()
+  local home = os.getenv("HOME")
+  local config_dir = os.getenv("BARISTA_CONFIG_DIR") or (home .. "/.config/sketchybar")
+  return config_dir .. "/cache/display_profile.json"
+end
+
+local function load_cached_result()
+  if CACHE_TTL_SECONDS <= 0 then
+    return nil
+  end
+
+  local handle = io.open(cache_path(), "r")
+  if not handle then
+    return nil
+  end
+
+  local raw = handle:read("*a")
+  handle:close()
+  if type(raw) ~= "string" or raw == "" then
+    return nil
+  end
+
+  local ok, decoded = pcall(json.decode, raw)
+  if not ok or type(decoded) ~= "table" then
+    return nil
+  end
+
+  local timestamp = tonumber(decoded.timestamp)
+  local result = decoded.result
+  if not timestamp or type(result) ~= "table" then
+    return nil
+  end
+
+  if (os.time() - timestamp) > CACHE_TTL_SECONDS then
+    return nil
+  end
+
+  return result
+end
+
+local function write_cached_result(result)
+  if CACHE_TTL_SECONDS <= 0 or type(result) ~= "table" then
+    return
+  end
+
+  local path = cache_path()
+  local dir = path:match("^(.*)/[^/]+$")
+  if dir and dir ~= "" then
+    os.execute(string.format("mkdir -p %q", dir))
+  end
+
+  local ok, encoded = pcall(json.encode, {
+    timestamp = os.time(),
+    result = result,
+  })
+  if not ok or type(encoded) ~= "string" then
+    return
+  end
+
+  local handle = io.open(path, "w")
+  if not handle then
+    return
+  end
+
+  handle:write(encoded)
+  handle:close()
+end
 
 local function parse_resolution(value)
   if type(value) ~= "string" then return nil, nil end
@@ -159,6 +228,13 @@ function display_profile.analyze(snapshot)
 end
 
 function display_profile.detect(reader)
+  if reader == nil then
+    local cached = load_cached_result()
+    if cached then
+      return cached
+    end
+  end
+
   local snapshot = display_profile.load_snapshot(reader)
   local result = display_profile.analyze(snapshot)
   local inset_rows = display_profile.load_screen_insets(reader)
@@ -181,6 +257,10 @@ function display_profile.detect(reader)
   end
   if max_bottom_inset > 0 then
     result.bottom_inset = max_bottom_inset
+  end
+
+  if reader == nil then
+    write_cached_result(result)
   end
 
   return result

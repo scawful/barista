@@ -38,6 +38,11 @@ modules/menu_fixed.lua
 # Logs
 logs
 *.log
+.barista_stats.log.legacy
+
+# Local runtime artifacts
+.barista_stats.json
+imgui.ini
 
 # User configuration (should not be committed)
 state.json

@@ -195,7 +195,7 @@ The menu system is JSON-driven with Lua orchestration:
 menu.lua (renderer)
   ├─ apple_menu_items[]
   ├─ front_app_menu_items[]
-  ├─ yabai_status_menu_items[]
+  ├─ control_center_menu_items[]
   └─ custom submenu items[]
 ```
 

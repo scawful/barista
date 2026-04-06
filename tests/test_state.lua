@@ -71,6 +71,37 @@ if ok and state_module then
       assert_true(not result.enabled, "oracle disabled")
     end
   end)
+
+  run_test("state.normalize: migrates legacy yabai_status to control_center", function()
+    local data = {
+      widgets = { yabai_status = false },
+      integrations = {},
+    }
+    local normalized = state_module.normalize(data)
+    assert_true(normalized.widgets.yabai_status == nil, "legacy widget key should be removed")
+    assert_equal(normalized.integrations.control_center.enabled, false, "control_center should inherit legacy disabled state")
+  end)
+
+  run_test("state.normalize: preserves explicit control_center setting over legacy key", function()
+    local data = {
+      widgets = { yabai_status = true },
+      integrations = { control_center = { enabled = false } },
+    }
+    local normalized = state_module.normalize(data)
+    assert_true(normalized.widgets.yabai_status == nil, "legacy widget key should be removed")
+    assert_equal(normalized.integrations.control_center.enabled, false, "existing control_center setting should win")
+  end)
+
+  run_test("state.normalize: fills defaults for partial state", function()
+    local normalized = state_module.normalize({ widgets = { clock = false } })
+    assert_type(normalized.appearance, "table", "appearance defaults present")
+    assert_type(normalized.modes, "table", "modes defaults present")
+    assert_type(normalized.integrations.control_center, "table", "control_center defaults present")
+    assert_equal(normalized.widgets.clock, false, "explicit widget value preserved")
+    assert_equal(normalized.widgets.volume, true, "missing widget default applied")
+    assert_equal(normalized.modes.widget_daemon, "auto", "widget daemon mode default applied")
+    assert_equal(normalized.integrations.control_center.item_name, "control_center", "control_center item name default applied")
+  end)
 else
   run_test("state module: load check (skipped - module not available in test env)", function()
     -- This is expected when running outside the full barista environment

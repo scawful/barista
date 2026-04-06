@@ -273,23 +273,32 @@ function M.setup(opts)
     yabai_control_script = opts.yabai_control_script,
     skhd_control_script = opts.skhd_control_script,
     window_manager_mode = opts.window_manager_mode,
-    button = (opts.button_name or "zelda"),
+    button = (opts.button_name or "apple_menu"),
   }
   ctx.popup = "popup." .. ctx.button
 
   local items = (opts.menu and opts.menu.items) or default_menu(ctx)
   local anchor_icon = ctx.icon_for("apple", "")
+  local launcher = ctx.config_dir .. "/bin/open_control_panel.sh"
+  local default_click_script = opts.apple_click_script
+  if not default_click_script or default_click_script == "" then
+    if ctx.call_script then
+      default_click_script = ctx.call_script(launcher, "--tab", "appearance")
+    else
+      default_click_script = string.format("bash %q --tab appearance", launcher)
+    end
+  end
 
   ctx.sbar.add("item", opts.apple_item or "apple_menu", {
     position = "left",
     icon = anchor_icon,
     label = { drawing = false },
-    click_script = opts.apple_click_script or string.format("%s/gui/bin/config_menu >/tmp/sketchybar_config_menu.log 2>&1 &", ctx.config_dir),
+    click_script = default_click_script,
   })
 
   ctx.sbar.add("item", ctx.button, {
     position = "left",
-    icon = ctx.icon_for("quest", "󰊠"),
+    icon = ctx.icon_for("quest", "󰯙"),
     ["icon.font"] = ctx.font_string("SF Pro", "Black", 16.0),
     label = { drawing = false },
     script = ctx.popup_anchor_script,

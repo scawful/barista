@@ -363,28 +363,6 @@ function locator.resolve_icon_browser_bin(config_dir)
   })
 end
 
-function locator.resolve_cortex_cli(opts)
-  local override = os.getenv("CORTEX_CLI") or os.getenv("CORTEX_CLI_PATH")
-  if override and override ~= "" then
-    override = locator.expand_path(override) or override
-    if locator.path_is_executable(override) then
-      return override, true
-    end
-  end
-
-  local resolved = locator.command_path("cortex-cli")
-  if resolved then
-    return resolved, true
-  end
-
-  local code_dir = locator.resolve_code_dir(opts)
-  return locator.resolve_executable_path({
-    code_dir .. "/lab/cortex/bin/cortex-cli",
-    code_dir .. "/cortex/bin/cortex-cli",
-    HOME .. "/.local/bin/cortex-cli",
-  })
-end
-
 function locator.resolve_mesen_run(opts)
   local override = option_value(opts, "mesen_run")
     or os.getenv("MESEN_RUN")
@@ -417,8 +395,10 @@ end
 function locator.resolve_oracle_agent_manager(opts)
   local code_dir = locator.resolve_code_dir(opts)
   return locator.resolve_executable_path({
-    code_dir .. "/hobby/oracle-agent-manager/mesen2ctl",
-    code_dir .. "/hobby/oracle-agent-manager/build/mesen2ctl",
+    code_dir .. "/hobby/oracle-agent-manager/build/oracle_manager_gui",
+    code_dir .. "/hobby/oracle-agent-manager/oracle_manager_gui",
+    code_dir .. "/hobby/oracle-agent-manager/build/oracle_hub",
+    code_dir .. "/hobby/oracle-agent-manager/oracle_hub",
   })
 end
 

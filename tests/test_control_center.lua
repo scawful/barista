@@ -64,6 +64,46 @@ run_test("create_widget: show_label=false hides label", function()
   assert_equal(widget.label.drawing, false, "label hidden")
 end)
 
+run_test("create_widget: custom item name is preserved", function()
+  local widget = control_center.create_widget({
+    item_name = "status_hub",
+    layout = "bsp",
+    window_manager_flags = {
+      mode = "required",
+      enabled = true,
+      required = true,
+      has_yabai = true,
+      has_skhd = true,
+      yabai_running = true,
+      skhd_running = true,
+    },
+  })
+  assert_equal(widget.name, "status_hub", "custom widget name")
+  assert_equal(widget.label.string, "BSP", "layout override should drive label")
+end)
+
+run_test("create_widget: state item name fallback is used", function()
+  local widget = control_center.create_widget({
+    state = {
+      integrations = {
+        control_center = { item_name = "state_hub" },
+      },
+    },
+    layout = "float",
+    window_manager_flags = {
+      mode = "required",
+      enabled = true,
+      required = true,
+      has_yabai = true,
+      has_skhd = true,
+      yabai_running = true,
+      skhd_running = true,
+    },
+  })
+  assert_equal(widget.name, "state_hub", "state item name")
+  assert_equal(widget.label.string, "Float", "layout override should still drive label")
+end)
+
 local function test_theme()
   return {
     WHITE = "0xffffffff",
@@ -105,9 +145,29 @@ local function find_item(items, name)
   return nil
 end
 
+local function enabled_window_manager_flags()
+  return {
+    mode = "required",
+    enabled = true,
+    required = true,
+    has_yabai = true,
+    has_skhd = true,
+    yabai_running = true,
+    skhd_running = true,
+  }
+end
+
 run_test("create_popup_items: disabled mode shows notice", function()
   local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
-    window_manager_mode = "disabled",
+    window_manager_flags = {
+      mode = "disabled",
+      enabled = false,
+      required = false,
+      has_yabai = false,
+      has_skhd = false,
+      yabai_running = false,
+      skhd_running = false,
+    },
   })
   local notice = find_item(items, "cc.window_manager.notice")
   assert_type(notice, "table", "notice item exists")
@@ -115,18 +175,43 @@ run_test("create_popup_items: disabled mode shows notice", function()
   assert_nil(find_item(items, "cc.layout.float"), "layout controls hidden")
 end)
 
-run_test("create_popup_items: service rows close popup after action", function()
-  local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {})
-  local sketchybar = find_item(items, "cc.svc.sketchybar")
-  assert_type(sketchybar, "table", "sketchybar service item")
-  assert_true(sketchybar.click_script:match("%-%-reload") ~= nil, "reload action present")
-  assert_true(sketchybar.click_script:match("popup%.drawing=off") ~= nil, "popup close action present")
+run_test("create_popup_items: simplified popup omits legacy service and workspace rows", function()
+  local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
+    window_manager_flags = enabled_window_manager_flags(),
+  })
+  assert_nil(find_item(items, "cc.svc.yabai"), "yabai service row removed")
+  assert_nil(find_item(items, "cc.svc.skhd"), "skhd service row removed")
+  assert_nil(find_item(items, "cc.svc.sketchybar"), "sketchybar service row removed")
+  assert_nil(find_item(items, "cc.workspace"), "workspace row removed")
 end)
 
 run_test("create_popup_items: shortcut toggle updates label and closes popup", function()
-  local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {})
+  local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
+    window_manager_flags = enabled_window_manager_flags(),
+  })
   local toggle = find_item(items, "cc.yabai.shortcuts")
   assert_type(toggle, "table", "shortcut toggle item")
   assert_true(toggle.click_script:match("toggle_yabai_shortcuts%.sh") ~= nil or toggle.click_script:match("toggle_shortcuts%.sh") ~= nil, "toggle script present")
   assert_true(toggle.click_script:match("popup%.drawing=off") ~= nil, "popup close action present")
+end)
+
+run_test("create_popup_items: custom parent and paths are threaded through", function()
+  local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
+    item_name = "status_hub",
+    config_dir = "/tmp/config",
+    scripts_dir = "/tmp/scripts",
+    window_manager_flags = enabled_window_manager_flags(),
+  })
+  local header = find_item(items, "cc.header")
+  local layout = find_item(items, "cc.layout.float")
+  local balance = find_item(items, "cc.layout_ops.balance")
+
+  assert_type(header, "table", "header item exists")
+  assert_equal(header.position, "popup.status_hub", "custom popup parent should be used")
+  assert_type(layout, "table", "layout item exists")
+  assert_true(layout.click_script:match("/tmp/config/plugins/set_space_mode%.sh") ~= nil, "custom config dir should drive layout commands")
+  assert_type(balance, "table", "layout op item exists")
+  assert_true(balance.click_script:match("/tmp/scripts/yabai_control%.sh") ~= nil, "custom scripts dir should drive yabai commands")
+  assert_true(balance.click_script:match("status_hub") ~= nil, "popup close should target the custom item name")
+  assert_nil(find_item(items, "cc.workspace"), "workspace item should stay removed even with custom paths")
 end)

@@ -211,6 +211,16 @@ local function help_items(ctx)
   }
 end
 
+function menu.prepare(ctx)
+  local ok, apple_menu_enhanced = pcall(require, "apple_menu_enhanced")
+  if not ok or type(apple_menu_enhanced.prepare) ~= "function" then
+    return nil
+  end
+  return {
+    apple_menu = apple_menu_enhanced.prepare(ctx),
+  }
+end
+
 -- === MAIN RENDER FUNCTION === --
 
 function menu.render_all_menus(ctx)
@@ -255,13 +265,13 @@ function menu.render_all_menus(ctx)
   local popup_border_color = appearance.popup_border_color or ctx.theme.WHITE
   local popup_bg_color = appearance.popup_bg_color or ctx.theme.bar.bg
   local popup_padding = appearance.popup_padding or 8
+  local HOME = os.getenv("HOME")
+  local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
 
   -- Use enhanced apple menu if available
   local ok, apple_menu_enhanced = pcall(require, "apple_menu_enhanced")
   if ok then
     -- Enhanced apple menu handles its own rendering
-    local HOME = os.getenv("HOME")
-    local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
     local scripts_dir = (ctx.scripts and ctx.scripts.yabai_control and ctx.scripts.yabai_control:match("^(.+)/[^/]+$")) or (CONFIG_DIR .. "/scripts")
 
     local enhanced_meta = apple_menu_enhanced.setup({
@@ -288,6 +298,8 @@ function menu.render_all_menus(ctx)
       yabai_control_script = ctx.scripts.yabai_control,
       popup_toggle_action = ctx.popup_toggle_action,
       popup_toggle_script = ctx.popup_toggle_script,
+      popup_anchor_script = ctx.popup_anchor_script,
+      apple_menu_prepared = ctx.prepared_menus and ctx.prepared_menus.apple_menu or nil,
     })
     merge_metadata(enhanced_meta)
     return {
@@ -309,6 +321,10 @@ function menu.render_all_menus(ctx)
   if type(ctx.popup_toggle_action) == "function" then
     apple_menu_click = ctx.popup_toggle_action()
   end
+  local apple_menu_script = ctx.popup_anchor_script
+  if apple_menu_script and apple_menu_script ~= "" then
+    apple_menu_script = "env POPUP_OPEN_ON_ENTER=1 " .. apple_menu_script
+  end
 
   sbar.add("item", "apple_menu", {
     position = "left",
@@ -324,6 +340,7 @@ function menu.render_all_menus(ctx)
         padding_right = 4
     },
     click_script = apple_menu_click,
+    script = apple_menu_script,
     popup = {
       background = {
         border_width = popup_border_width,
@@ -487,7 +504,7 @@ function menu.render_all_menus(ctx)
     name = "menu.tools.barista.config",
     icon = "󰒓",
     label = "Barista Config",
-    action = ctx.call_script(ctx.paths.apple_launcher, "--panel"),
+    action = ctx.call_script(ctx.paths.apple_launcher, "--tab", "appearance"),
     shortcut = "⌘⌥P",
   })
   table.insert(apple_menu_items, {
@@ -495,7 +512,7 @@ function menu.render_all_menus(ctx)
     name = "menu.tools.barista.reload",
     icon = "󰑐",
     label = "Reload SketchyBar",
-    action = "/opt/homebrew/opt/sketchybar/bin/sketchybar --reload",
+    action = ctx.call_script(CONFIG_DIR .. "/plugins/reload_sketchybar.sh"),
     shortcut = "⌘⌥R",
   })
 

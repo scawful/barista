@@ -77,4 +77,3 @@ apply_layout() {
 update_state
 apply_layout
 sketchybar --trigger space_mode_refresh >/dev/null 2>&1 || true
-sketchybar --trigger yabai_status_refresh >/dev/null 2>&1 || true

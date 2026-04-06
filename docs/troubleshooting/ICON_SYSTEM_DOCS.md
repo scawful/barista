@@ -22,7 +22,7 @@ Icons are stored in `~/.config/sketchybar/state.json`:
   "icons": {
     "apple": "",
     "quest": "",
-    "triforce": "󰊠",
+    "triforce": "󰯙",
     "calendar": "",
     "clock": "",
     "settings": ""
@@ -67,7 +67,7 @@ The GUI at `~/.config/sketchybar/gui/bin/config_menu` allows you to:
 - Arrows: `` (F0B2)
 
 ### Layout Icons (Material Design via Nerd Font)
-- Triforce: `󰊠` (F02A0)
+- Triforce: `󰯙` (F0BD9)
 - BSP/Tile: `󰆾` (F01BE)
 - Stack: `󰓩` (F04E9)
 - Float: `󰒄` (F0484)

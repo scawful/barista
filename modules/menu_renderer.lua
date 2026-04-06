@@ -195,13 +195,13 @@ function menu_renderer.create(ctx)
     local padding = menu_entry_padding()
     local label = menu_label(entry.label, entry.shortcut)
     local click = wrap_action(entry, parent_popup or popup)
+    local hover_enabled = entry.hover == true
     
     local item_config = {
       position = "popup." .. popup,
       icon = entry.icon or "",
       label = label,
       click_script = click,
-      script = string.format("env SUBMENU_PARENT=%q %s", popup, ctx.HOVER_SCRIPT or ""),
       ["label.font"] = menu_font_small,
       ["label.color"] = entry.label_color or entry.color or menu_label_color,
       ["icon.padding_left"] = padding.icon_left,
@@ -214,6 +214,9 @@ function menu_renderer.create(ctx)
         height = popup_item_height
       }
     }
+    if hover_enabled and ctx.HOVER_SCRIPT and ctx.HOVER_SCRIPT ~= "" then
+      item_config.script = string.format("env SUBMENU_PARENT=%q %s", popup, ctx.HOVER_SCRIPT)
+    end
 
     -- Allow overriding colors
     if entry.label_color then
@@ -226,7 +229,9 @@ function menu_renderer.create(ctx)
     end
 
     sbar.add("item", entry.name, item_config)
-    attach_hover(entry.name)
+    if hover_enabled then
+      attach_hover(entry.name)
+    end
   end
 
   local function add_popup_action(popup, entry, renderer)
@@ -258,12 +263,12 @@ function menu_renderer.create(ctx)
     -- Create clickable menu item that opens the popup
     local click_action = popup_toggle(popup_item_name, { direct = true, origin = "submenu" })
     
-    sbar.add("item", entry.name, {
+    local hover_enabled = entry.hover == true
+    local item_config = {
       position = "popup." .. popup,
       icon = entry.icon or "",
       label = entry.label or "",
       click_script = click_action,
-      script = ctx.HOVER_SCRIPT,
       ["label.font"] = menu_font_small,
       ["label.color"] = menu_label_color,
       ["icon.padding_left"] = padding.icon_left,
@@ -275,8 +280,14 @@ function menu_renderer.create(ctx)
         corner_radius = popup_item_corner_radius,
         height = popup_item_height
       }
-    })
-    attach_hover(entry.name)
+    }
+    if hover_enabled and ctx.HOVER_SCRIPT and ctx.HOVER_SCRIPT ~= "" then
+      item_config.script = ctx.HOVER_SCRIPT
+    end
+    sbar.add("item", entry.name, item_config)
+    if hover_enabled and ctx.HOVER_SCRIPT and ctx.HOVER_SCRIPT ~= "" then
+      attach_hover(entry.name)
+    end
   end
 
   local add_submenu
@@ -304,11 +315,11 @@ function menu_renderer.create(ctx)
     local padding = menu_entry_padding()
     local parent = entry.name
     local arrow = entry.arrow_icon or "󰅂"
-    sbar.add("item", parent, {
+    local hover_enabled = entry.hover == true or entry.hover_open == true
+    local item_config = {
       position = "popup." .. popup,
       icon = entry.icon or "",
       label = string.format("%s  %s", entry.label, arrow),
-      script = submenu_hover_script,
       click_script = popup_toggle(parent, { direct = true, origin = "submenu" }),
       ["icon.padding_left"] = padding.icon_left,
       ["icon.padding_right"] = padding.icon_right,
@@ -323,9 +334,15 @@ function menu_renderer.create(ctx)
         align = "right",
         background = popup_background()
       }
-    })
+    }
+    if hover_enabled and submenu_hover_script ~= "" then
+      item_config.script = submenu_hover_script
+    end
+    sbar.add("item", parent, item_config)
     remember(metadata.submenu_parents, parent)
-    shell_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited mouse.exited.global", post_config_delay, sketchybar_bin, parent))
+    if hover_enabled then
+      shell_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited mouse.exited.global", post_config_delay, sketchybar_bin, parent))
+    end
     renderer(parent, entry.items or {})
   end
 

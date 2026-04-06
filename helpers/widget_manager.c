@@ -40,6 +40,8 @@ typedef struct {
 typedef struct {
     double cpu_usage;
     double memory_usage;
+    unsigned long long memory_used_gb;
+    unsigned long long memory_total_gb;
     double disk_usage;
     int battery_percentage;
     int battery_charging;
@@ -82,19 +84,50 @@ double get_memory_usage() {
     vm_size_t page_size;
     mach_port_t mach_port = mach_host_self();
     vm_statistics64_data_t vm_stat;
-    mach_msg_type_number_t host_size = sizeof(vm_stat) / sizeof(natural_t);
+    mach_msg_type_number_t host_size = HOST_VM_INFO64_COUNT;
 
     host_page_size(mach_port, &page_size);
-    if (host_statistics64(mach_port, HOST_VM_INFO,
+    if (host_statistics64(mach_port, HOST_VM_INFO64,
                           (host_info64_t)&vm_stat, &host_size) != KERN_SUCCESS) {
         return 0.0;
     }
 
     uint64_t total_pages = vm_stat.free_count + vm_stat.active_count +
-                           vm_stat.inactive_count + vm_stat.wire_count;
-    uint64_t used_pages = vm_stat.active_count + vm_stat.wire_count;
+                           vm_stat.inactive_count + vm_stat.wire_count +
+                           vm_stat.compressor_page_count;
+    uint64_t used_pages = vm_stat.active_count + vm_stat.wire_count +
+                          vm_stat.compressor_page_count;
 
     return (total_pages > 0) ? ((double)used_pages / total_pages * 100.0) : 0.0;
+}
+
+void get_memory_gb(unsigned long long* used_gb, unsigned long long* total_gb) {
+    vm_size_t page_size;
+    mach_port_t mach_port = mach_host_self();
+    vm_statistics64_data_t vm_stat;
+    mach_msg_type_number_t host_size = HOST_VM_INFO64_COUNT;
+    int64_t memsize = 0;
+    size_t memsize_len = sizeof(memsize);
+
+    *used_gb = 0;
+    *total_gb = 0;
+
+    if (sysctlbyname("hw.memsize", &memsize, &memsize_len, NULL, 0) == 0 && memsize > 0) {
+        *total_gb = (unsigned long long)(memsize / (1024ULL * 1024ULL * 1024ULL));
+    }
+
+    if (host_page_size(mach_port, &page_size) != KERN_SUCCESS) {
+        return;
+    }
+    if (host_statistics64(mach_port, HOST_VM_INFO64,
+                          (host_info64_t)&vm_stat, &host_size) != KERN_SUCCESS) {
+        return;
+    }
+
+    uint64_t used_pages = vm_stat.active_count + vm_stat.wire_count +
+                          vm_stat.compressor_page_count;
+    uint64_t used_bytes = used_pages * (uint64_t)page_size;
+    *used_gb = (unsigned long long)(used_bytes / (1024ULL * 1024ULL * 1024ULL));
 }
 
 // Disk usage calculation
@@ -164,12 +197,20 @@ void get_battery_status(int* percentage, int* charging) {
     CFRelease(info);
 }
 
-// Update clock widget
-void update_clock(const char* widget_name) {
+static void format_clock_label(char *buffer, size_t size) {
     time_t t = time(NULL);
     struct tm* tm = localtime(&t);
+    if (!tm) {
+        snprintf(buffer, size, "--:--");
+        return;
+    }
+    strftime(buffer, size, "%a %m/%d %I:%M %p", tm);
+}
+
+// Update clock widget
+void update_clock(const char* widget_name) {
     char time_str[32];
-    strftime(time_str, sizeof(time_str), "%H:%M", tm);
+    format_clock_label(time_str, sizeof(time_str));
 
     char cmd[256];
     snprintf(cmd, sizeof(cmd), "sketchybar --set %s label='%s'", widget_name, time_str);
@@ -181,25 +222,37 @@ void update_battery(const char* widget_name) {
     int percentage, charging;
     get_battery_status(&percentage, &charging);
 
-    const char* icon = "";
+    const char* icon = "";
+    const char* color = "0xffa6e3a1";
+
     if (charging) {
-        icon = "";
-    } else if (percentage > 80) {
-        icon = "";
-    } else if (percentage > 60) {
-        icon = "";
-    } else if (percentage > 40) {
-        icon = "";
-    } else if (percentage > 20) {
-        icon = "";
+        icon = "";
+        color = "0xff89b4fa";
+    } else if (percentage >= 90) {
+        icon = "";
+    } else if (percentage >= 60) {
+        icon = "";
+    } else if (percentage >= 30) {
+        icon = "";
+    } else if (percentage >= 10) {
+        icon = "";
+        color = "0xfff9e2af";
     } else {
-        icon = "";
+        icon = "";
+        color = "0xfff38ba8";
+    }
+
+    if (!charging && percentage < 50 && percentage >= 20) {
+        color = "0xfff9e2af";
+    }
+    if (!charging && percentage < 20) {
+        color = "0xfff38ba8";
     }
 
     char cmd[256];
     snprintf(cmd, sizeof(cmd),
-             "sketchybar --set %s icon='%s' label='%d%%'",
-             widget_name, icon, percentage);
+             "sketchybar --set %s icon='%s' label='%d%%' icon.color='%s' label.color='%s'",
+             widget_name, icon, percentage, color, color);
     system(cmd);
 }
 
@@ -229,6 +282,7 @@ void update_memory(const char* widget_name) {
     time_t now = time(NULL);
     if (now - cache.last_mem_update >= 2) {
         cache.memory_usage = get_memory_usage();
+        get_memory_gb(&cache.memory_used_gb, &cache.memory_total_gb);
         cache.last_mem_update = now;
     }
 
@@ -252,6 +306,7 @@ void update_system_info(const char* widget_name) {
     }
     if (now - cache.last_mem_update >= 2) {
         cache.memory_usage = get_memory_usage();
+        get_memory_gb(&cache.memory_used_gb, &cache.memory_total_gb);
         cache.last_mem_update = now;
     }
     if (now - cache.last_disk_update >= 10) {
@@ -261,8 +316,8 @@ void update_system_info(const char* widget_name) {
 
     char label[128];
     snprintf(label, sizeof(label),
-             "󰻠 %.1f%% 󰘚 %.1f%% 󰋊 %.1f%%",
-             cache.cpu_usage, cache.memory_usage, cache.disk_usage);
+             "%.0f%% %llu/%lluG",
+             cache.cpu_usage, cache.memory_used_gb, cache.memory_total_gb);
 
     char cmd[512];
     snprintf(cmd, sizeof(cmd),
@@ -278,10 +333,8 @@ void batch_update(const char* widgets[], int count) {
 
     for (int i = 0; i < count; i++) {
         if (strcmp(widgets[i], "clock") == 0) {
-            time_t t = time(NULL);
-            struct tm* tm = localtime(&t);
             char time_str[32];
-            strftime(time_str, sizeof(time_str), "%H:%M", tm);
+            format_clock_label(time_str, sizeof(time_str));
             char buf[256];
             snprintf(buf, sizeof(buf), " --set clock label='%s'", time_str);
             strcat(cmd, buf);
@@ -290,17 +343,44 @@ void batch_update(const char* widgets[], int count) {
             int percentage, charging;
             get_battery_status(&percentage, &charging);
             char buf[256];
-            snprintf(buf, sizeof(buf), " --set battery label='%d%%'", percentage);
+            const char* icon = "";
+            const char* color = "0xffa6e3a1";
+            if (charging) {
+                icon = "";
+                color = "0xff89b4fa";
+            } else if (percentage >= 90) {
+                icon = "";
+            } else if (percentage >= 60) {
+                icon = "";
+            } else if (percentage >= 30) {
+                icon = "";
+            } else if (percentage >= 10) {
+                icon = "";
+                color = "0xfff9e2af";
+            } else {
+                icon = "";
+                color = "0xfff38ba8";
+            }
+            if (!charging && percentage < 50 && percentage >= 20) {
+                color = "0xfff9e2af";
+            }
+            if (!charging && percentage < 20) {
+                color = "0xfff38ba8";
+            }
+            snprintf(buf, sizeof(buf),
+                     " --set battery icon='%s' label='%d%%' icon.color='%s' label.color='%s'",
+                     icon, percentage, color, color);
             strcat(cmd, buf);
         }
         else if (strcmp(widgets[i], "system_info") == 0) {
             pthread_mutex_lock(&cache_lock);
             cache.cpu_usage = get_cpu_usage();
             cache.memory_usage = get_memory_usage();
+            get_memory_gb(&cache.memory_used_gb, &cache.memory_total_gb);
             char buf[512];
             snprintf(buf, sizeof(buf),
-                    " --set system_info label='󰻠 %.1f%% 󰘚 %.1f%%'",
-                    cache.cpu_usage, cache.memory_usage);
+                    " --set system_info label='%.0f%% %llu/%lluG'",
+                    cache.cpu_usage, cache.memory_used_gb, cache.memory_total_gb);
             strcat(cmd, buf);
             pthread_mutex_unlock(&cache_lock);
         }

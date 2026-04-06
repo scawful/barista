@@ -22,7 +22,8 @@
   },
   "modes": {
     "window_manager": "optional",
-    "runtime_backend": "lua"
+    "runtime_backend": "lua",
+    "widget_daemon": "auto"
   },
   "paths": {
     "scripts_dir": "/Users/you/.config/sketchybar/scripts",
@@ -36,6 +37,16 @@
         "yaze": { "enabled": true }
       }
     },
+    "oracle": {
+      "sections": {
+        "play": { "enabled": true }
+      },
+      "triforce": {
+        "label": "",
+        "icon": "",
+        "update_freq": 45
+      }
+    },
     "apps": {
       "enabled": true,
       "file": "data/project_shortcuts.json",
@@ -46,8 +57,7 @@
     }
   },
   "integrations": {
-    "yaze": { "enabled": true },
-    "cortex": { "enabled": true }
+    "yaze": { "enabled": true }
   }
 }
 ```
@@ -111,6 +121,7 @@ Supported keys:
 
 - `window_manager`: `disabled`, `optional`, `required`, or `auto`
 - `runtime_backend`: `lua`, `compiled`, or `auto`
+- `widget_daemon`: `auto`, `enabled`, or `disabled`
 
 ### `paths`
 
@@ -156,6 +167,38 @@ Nested `items[]` rows support:
 - `type = "header"`
 - `type = "separator"`
 - standard rows with `label`, `command`/`action`, `url`, `icon`, `shortcut`, and optional nested `items[]`
+
+### `menus.oracle`
+
+Supported keys:
+
+- `sections.<section_id>.enabled`
+- `sections.<section_id>.label`
+- `sections.<section_id>.order`
+- `sections.<section_id>.limit`
+- `triforce.label`
+- `triforce.icon`
+- `triforce.title`
+- `triforce.show_label`
+- `triforce.update_freq`
+
+Known section ids:
+
+- `play`
+
+This config drives the standalone Zelda hacking surface:
+
+- the left-bar `Triforce` widget popup
+- the native Barista control-panel `Zelda` tab as its status source
+
+Section visibility and ordering shape the shallow Triforce popup. In the current design, `play` is the only primary launcher section and the native Zelda tab owns the deeper workflow detail.
+
+Notes:
+
+- `menus.oracle` still configures the bar-facing Zelda surface, not the full native panel layout.
+- The native Zelda tab reads the same Oracle status snapshot (`scripts/oos_status.py`) but does not currently add its own persisted state keys.
+- Oracle status items like `today`, `next`, and `blocked` still exist in the status snapshot for the native panel, but they no longer create nested Triforce popup sections.
+- `open_control_panel.sh --oracle` forwards to Oracle Hub.
 
 ### `menus.apps`
 
@@ -208,6 +251,19 @@ Barista currently expects an `enabled` boolean for feature gating, for example:
   }
 }
 ```
+
+Known integration-specific keys used by the active runtime:
+
+- `integrations.control_center.enabled`
+- `integrations.control_center.item_name`
+
+`integrations.control_center.item_name` is optional. When set, Barista uses it as
+the shared item name for:
+
+- the left-bar control-center widget
+- popup-parent registration and dismissal
+- helper popup attachment that targets the control center
+- the generated `toggle_control_center` shortcut command
 
 ## Notes
 

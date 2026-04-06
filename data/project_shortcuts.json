@@ -1,11 +1,11 @@
 [
   {
     "id": "janice_studio",
-    "label": "Janice Studio",
+    "label": "Janice Code",
     "icon": "󰭹",
     "icon_color": "0xfff5c2e7",
     "label_color": "0xfff8d6ee",
-    "action": "open -b com.scawful.ModelHub.mac || open /Users/scawful/src/lab/janice-studio/ModelHub.xcodeproj",
+    "action": "/bin/bash /Users/scawful/src/lab/janice-studio/scripts/build_and_open_mac.sh",
     "order": 20
   },
   {

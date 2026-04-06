@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # OPTIMIZED: Avoid expensive osascript, use yabai if available
 # Updated: Show app name only (icon shown in space widget instead)
 
@@ -8,11 +8,12 @@ export LANG="${LANG:-en_US.UTF-8}"
 
 _d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
 
-SPACE_SCRIPT="$HOME/.config/sketchybar/plugins/space.sh"
 APP_NAME="${INFO:-}"
+FRONT_APP_CONTEXT_SCRIPT="${BARISTA_FRONT_APP_CONTEXT_SCRIPT:-$SCRIPTS_DIR/front_app_context.sh}"
+OSASCRIPT_BIN="${BARISTA_OSASCRIPT_BIN:-$(command -v osascript 2>/dev/null || true)}"
 
 # Barista's own binaries to filter out
-BARISTA_APPS="config_menu_v2|help_center|icon_browser|sketchybar"
+BARISTA_APPS="config_menu|config_menu_v2|BaristaControlPanel|Barista Control Panel|help_center|icon_browser|sketchybar"
 
 case "${SENDER:-}" in
   mouse.exited.global)
@@ -30,14 +31,24 @@ case "${SENDER:-}" in
     ;;
 esac
 
-# OPTIMIZED: Use yabai (faster) instead of osascript when INFO not available
+STATE_ICON="󰋽"
+STATE_LABEL="No managed window"
+LOCATION_LABEL="Space ? · Display ?"
+
+if [ -x "$FRONT_APP_CONTEXT_SCRIPT" ]; then
+  while IFS=$'\t' read -r key value; do
+    case "$key" in
+      app_name) APP_NAME="$value" ;;
+      state_icon) STATE_ICON="$value" ;;
+      state_label) STATE_LABEL="$value" ;;
+      location_label) LOCATION_LABEL="$value" ;;
+    esac
+  done < <("$FRONT_APP_CONTEXT_SCRIPT" --app "$APP_NAME" 2>/dev/null || true)
+fi
+
 if [ -z "$APP_NAME" ]; then
-  if command -v yabai >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-    APP_NAME=$(yabai -m query --windows --window 2>/dev/null | jq -r '.app // empty' 2>/dev/null)
-  fi
-  # Only fall back to osascript if yabai failed
-  if [ -z "$APP_NAME" ]; then
-    APP_NAME=$(osascript -e 'tell application "System Events" to name of first process whose frontmost is true' 2>/dev/null)
+  if [ -n "$OSASCRIPT_BIN" ]; then
+    APP_NAME=$("$OSASCRIPT_BIN" -e 'tell application "System Events" to name of first process whose frontmost is true' 2>/dev/null || true)
   fi
 fi
 
@@ -47,11 +58,17 @@ fi
 
 # Filter out barista's own apps - keep previous app visible
 case "$APP_NAME" in
-  config_menu_v2|help_center|icon_browser|sketchybar)
+  $BARISTA_APPS)
     exit 0
     ;;
 esac
 
 # Show app name only - icon is shown in the space widget
 sketchybar --set "$NAME" icon.drawing=off label="$APP_NAME"
-sketchybar --set front_app.header label="App Controls · $APP_NAME" >/dev/null 2>&1 || true
+sketchybar --set front_app.header label="App · $APP_NAME" >/dev/null 2>&1 || true
+
+sketchybar --set front_app.state \
+  icon="$STATE_ICON" \
+  label="$STATE_LABEL" >/dev/null 2>&1 || true
+sketchybar --set front_app.location \
+  label="$LOCATION_LABEL" >/dev/null 2>&1 || true

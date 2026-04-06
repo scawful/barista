@@ -30,10 +30,13 @@ resolve_space_item_height() {
 
 SPACE_ITEM_HEIGHT="$(resolve_space_item_height)"
 
-# Wait for anchor item (yabai_status) to exist - reduced iterations
-for i in {1..20}; do
-  sketchybar --query yabai_status >/dev/null 2>&1 && break
-  sleep 0.05
+# Wait briefly for any viable left anchor item to exist.
+for i in {1..8}; do
+  if sketchybar --query control_center >/dev/null 2>&1 \
+     || sketchybar --query front_app >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.03
 done
 
 # Get current display state for comparison
@@ -130,13 +133,10 @@ for entry in "${SPACE_LINES[@]}"; do
   item="space.$space_index"
 
   # Determine effective anchor item
-  current_anchor="yabai_status"
+  current_anchor="control_center"
   # Fallback chain for anchoring the first item
   if ! sketchybar --query "$current_anchor" >/dev/null 2>&1; then
       current_anchor="front_app"
-      if ! sketchybar --query "$current_anchor" >/dev/null 2>&1; then
-          current_anchor="control_center"
-      fi
   fi
 
   # If not the first item, anchor to the previous item created in this loop

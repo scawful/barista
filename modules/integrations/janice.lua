@@ -1,5 +1,5 @@
--- Janice Studio Integration Module for Barista
--- Simple launcher for the Janice Studio macOS app (AI model hub)
+-- Janice Code integration module for Barista
+-- Launcher for the Janice Code macOS app
 --
 -- Install: Copy to ~/.config/sketchybar/modules/integrations/janice.lua
 -- Or symlink: ln -sf ~/src/lab/barista/modules/integrations/janice.lua ~/.config/sketchybar/modules/integrations/
@@ -11,14 +11,14 @@ local CODE_DIR = os.getenv("BARISTA_CODE_DIR") or (HOME .. "/src")
 
 -- Configuration
 janice.config = {
-  app_name = "ModelHub",
-  bundle_id = "com.scawful.ModelHub.mac",
+  app_name = "JaniceCode",
+  bundle_id = "com.scawful.JaniceCode.mac",
   repo_path = CODE_DIR .. "/lab/janice-studio",
 }
 
--- Check if Janice Studio is running
+-- Check if Janice Code is running
 function janice.is_running()
-  local handle = io.popen("pgrep -x ModelHub >/dev/null 2>&1 && echo 1 || echo 0")
+  local handle = io.popen("pgrep -x JaniceCode >/dev/null 2>&1 && echo 1 || echo 0")
   if not handle then return false end
   local result = handle:read("*a")
   handle:close()
@@ -51,7 +51,7 @@ function janice.create_menu_items(ctx)
   table.insert(items, {
     type = "header",
     name = "janice.header",
-    label = "Janice Studio",
+    label = "Janice Code",
     icon = status_icon,
     icon_color = status_color,
   })
@@ -61,7 +61,7 @@ function janice.create_menu_items(ctx)
     type = "item",
     name = "janice.open",
     icon = "󰏗",
-    label = running and "Show Janice Studio" or "Launch Janice Studio",
+    label = running and "Show Janice Code" or "Launch Janice Code",
     action = "open -b " .. janice.config.bundle_id,
   })
 

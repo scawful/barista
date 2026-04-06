@@ -6,6 +6,7 @@
 #include <string.h>
 #include <sys/sysctl.h>
 #include <mach/mach.h>
+#include <mach/mach_host.h>
 #include <sys/types.h>
 #include <sys/mount.h>
 
@@ -16,6 +17,7 @@ typedef struct {
     int cpu_percent;
     float load_avg;
     unsigned long long mem_used_gb;
+    unsigned long long mem_total_gb;
     char disk_info[128];
     char net_ip[64];
     char net_name[64];
@@ -51,14 +53,33 @@ void get_cpu_info(SystemInfo *info) {
 
 // Get memory info
 void get_memory_info(SystemInfo *info) {
-    int64_t memsize;
+    int64_t memsize = 0;
     size_t len = sizeof(memsize);
+    vm_size_t page_size = 0;
+    mach_port_t mach_port = mach_host_self();
+    vm_statistics64_data_t vm_stat;
+    mach_msg_type_number_t host_size = HOST_VM_INFO64_COUNT;
+    unsigned long long used_bytes = 0;
 
-    if (sysctlbyname("hw.memsize", &memsize, &len, NULL, 0) == 0) {
-        info->mem_used_gb = memsize / (1024ULL * 1024ULL * 1024ULL);
-    } else {
-        info->mem_used_gb = 0;
+    info->mem_used_gb = 0;
+    info->mem_total_gb = 0;
+
+    if (sysctlbyname("hw.memsize", &memsize, &len, NULL, 0) == 0 && memsize > 0) {
+        info->mem_total_gb = (unsigned long long)(memsize / (1024ULL * 1024ULL * 1024ULL));
     }
+
+    if (host_page_size(mach_port, &page_size) != KERN_SUCCESS) {
+        return;
+    }
+
+    if (host_statistics64(mach_port, HOST_VM_INFO64, (host_info64_t)&vm_stat, &host_size) != KERN_SUCCESS) {
+        return;
+    }
+
+    used_bytes = ((unsigned long long)vm_stat.active_count +
+                  (unsigned long long)vm_stat.wire_count +
+                  (unsigned long long)vm_stat.compressor_page_count) * (unsigned long long)page_size;
+    info->mem_used_gb = used_bytes / (1024ULL * 1024ULL * 1024ULL);
 }
 
 // Get disk info
@@ -131,7 +152,7 @@ void get_network_info(SystemInfo *info) {
     info->net_online = (info->net_ip[0] != '\0' || info->net_name[0] != '\0');
 }
 
-int main(int argc, char *argv[]) {
+int main(void) {
     const char *sender = getenv("SENDER");
 
     // Handle mouse.exited.global
@@ -150,26 +171,24 @@ int main(int argc, char *argv[]) {
     get_network_info(&info);
 
     // Determine CPU icon and color based on load
-    const char *cpu_icon = "󰍛";
     const char *cpu_color = "0xFFa6e3a1"; // Green
 
     if (info.cpu_percent > 80) {
-        cpu_icon = "󰈸";
         cpu_color = "0xFFf38ba8"; // Red
     } else if (info.cpu_percent > 50) {
-        cpu_icon = "󰔄";
         cpu_color = "0xFFfab387"; // Peach
     }
 
     // Build main widget label
     char main_label[LABEL_SIZE];
-    snprintf(main_label, sizeof(main_label), "%s %d%%", cpu_icon, info.cpu_percent);
+    snprintf(main_label, sizeof(main_label), "%d%% %llu/%lluG",
+             info.cpu_percent,
+             info.mem_used_gb,
+             info.mem_total_gb);
 
     // Network label
     char net_label[LABEL_SIZE];
-    const char *net_color;
     if (info.net_online) {
-        net_color = "0xFFa6e3a1";
         if (info.net_name[0] != '\0' && info.net_ip[0] != '\0') {
             snprintf(net_label, sizeof(net_label), "Wi-Fi: %s (%s)", info.net_name, info.net_ip);
         } else if (info.net_name[0] != '\0') {
@@ -178,27 +197,17 @@ int main(int argc, char *argv[]) {
             snprintf(net_label, sizeof(net_label), "Network: %s", info.net_ip);
         }
     } else {
-        net_color = "0xFFf38ba8";
         snprintf(net_label, sizeof(net_label), "Wi-Fi: Disconnected");
     }
 
-    /* PERF: Single batched sketchybar call for all 5 widget updates.
-     * Previously 5 separate system() calls = 5 fork+exec cycles. */
-    char cmd[CMD_SIZE * 4];
+    /* Routine helper updates should only touch the main bar label.
+     * Popup rows are refreshed on demand by plugins/system_info.sh popup_refresh. */
+    char cmd[CMD_SIZE];
     snprintf(cmd, sizeof(cmd),
              "sketchybar"
-             " --set system_info label=\"%s\" icon.color=\"%s\" label.font.style=\"Semibold\""
-             " --set system_info.cpu label=\"CPU %d%%    Load %.2f\""
-             " --set system_info.mem label=\"Memory %lluG\""
-             " --set system_info.disk label=\"Disk %s\""
-             " --set system_info.net label=\"%s\" icon.color=\"%s\"",
-             main_label, cpu_color,
-             info.cpu_percent, info.load_avg,
-             info.mem_used_gb,
-             info.disk_info,
-             net_label, net_color);
+             " --set system_info label=\"%s\" icon.color=\"%s\" label.font.style=\"Semibold\"",
+             main_label, cpu_color);
     system(cmd);
 
     return 0;
 }
-

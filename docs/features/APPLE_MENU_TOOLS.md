@@ -82,7 +82,6 @@ menus.apps = {
 - `afs_context`, `afs_scratchpad`
 - `stemforge`, `stem_sampler`
 - `yaze`, `mesen_oos`, `oracle_agent_manager`
-- `cortex_toggle`, `cortex_hub`
 - `help_center`, `sys_manual`, `icon_browser`, `keyboard_overlay`, `barista_config`, `reload_bar`
 
 ## App shortcuts
@@ -109,6 +108,9 @@ menus.apps = {
 - `menus.apple.custom[].items` can define nested rows using `type = "header"`, `type = "separator"`, or standard action rows with `label`, `command`/`action`, `url`, `icon`, and `shortcut`.
 - Legacy fly-out submenu timing is controlled by `appearance.submenu_close_delay`.
 - Top-level popups still use the display-aware toggle path; nested submenu rows now use a direct SketchyBar toggle so fly-outs feel faster.
+- Zelda hacking now lives on the standalone left-bar Triforce popup, not inside the Apple menu.
+- Oracle-specific UI preferences live under `menus.oracle` in `state.json`, not under `menus.apple`.
+- The Triforce surface should stay shallow: use it for `Continue`, `Patch + Launch`, `Open Oracle Hub`, and ROM context, then do the deeper Oracle work in Oracle Hub.
 
 ## AFS app resolution
 
@@ -127,12 +129,6 @@ menus.apps = {
 - **Launcher override**: `BARISTA_YAZE_LAUNCHER` or `YAZE_LAUNCHER`.
   If unset, Barista uses `yaze-nightly` when it exists in `PATH`.
 - **Nightly app path**: also checks `~/Applications/Yaze Nightly.app` and `~/applications/yaze nightly.app`.
-
-## Cortex integration
-
-- The menu uses `cortex-cli` for toggle + hub actions.
-- Provide it via `PATH` or set `CORTEX_CLI` / `CORTEX_CLI_PATH`.
-- Barista may launch `Oracle` or `Cortex Hub`, but it should not become a second Oracle settings or session surface.
 
 ## Reload
 

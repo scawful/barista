@@ -278,10 +278,9 @@ setup_profile() {
     fi
   fi
 
-  YABAI_STATUS=true
+  CONTROL_CENTER=true
   YABAI_SHORTCUTS=true
   if [ "$window_manager_mode" = "disabled" ]; then
-    YABAI_STATUS=false
     YABAI_SHORTCUTS=false
   fi
 
@@ -299,8 +298,7 @@ setup_profile() {
     "battery": true,
     "network": true,
     "system_info": true,
-    "volume": true,
-    "yabai_status": ${YABAI_STATUS}
+    "volume": true
   },
   "toggles": {
     "yabai_shortcuts": ${YABAI_SHORTCUTS}
@@ -318,6 +316,9 @@ setup_profile() {
     "hover_color": "${HOVER_COLOR}"
   },
   "integrations": {
+    "control_center": {
+      "enabled": ${CONTROL_CENTER}
+    },
     "yaze": {
       "enabled": ${INTEGRATION_YAZE}
     },
@@ -478,6 +479,10 @@ start_sketchybar() {
 
   # Start service
   brew services start sketchybar
+
+  if [ -x "$HOME/.config/sketchybar/bin/fix_sketchybar_agent.sh" ]; then
+    "$HOME/.config/sketchybar/bin/fix_sketchybar_agent.sh" >/dev/null 2>&1 || true
+  fi
 
   sleep 2
 

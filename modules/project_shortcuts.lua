@@ -112,9 +112,6 @@ local function default_icon(entry)
   if path:match("premia") then
     return "󰃬"
   end
-  if path:match("cortex") then
-    return "󰕮"
-  end
   if path:match("halext") then
     return "󰖟"
   end
@@ -146,9 +143,6 @@ local function project_palette(entry)
   end
   if key:match("afs") then
     return "0xff74c7ec", "0xffa9dbf1"
-  end
-  if key:match("cortex") then
-    return "0xfff9e2af", "0xfff7e7c8"
   end
   if key:match("janice") then
     return "0xfff5c2e7", "0xfff8d6ee"

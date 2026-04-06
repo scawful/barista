@@ -124,20 +124,15 @@ def add_entry(item_id: str, label: str, icon: str, icon_color: str, label_color:
         "order": len(items) * 10 + 10,
     })
 
-cortex_cli = resolve_command([
-    code_dir / "lab/cortex/bin/cortex-cli",
-    Path.home() / "src/lab/cortex/bin/cortex-cli",
-    "cortex-cli",
-])
-
+janice_build_open = None
 janice_repo = resolve_path([
     code_dir / "lab/janice-studio",
     Path.home() / "src/lab/janice-studio",
 ])
-janice_fallback = None
 if janice_repo:
-    janice_project = janice_repo / "ModelHub.xcodeproj"
-    janice_fallback = janice_project if janice_project.exists() else janice_repo
+    script = janice_repo / "scripts" / "build_and_open_mac.sh"
+    if script.exists():
+        janice_build_open = str(script)
 
 premia_command = resolve_command([
     code_dir / "lab/premia/build/bin/premia",
@@ -145,8 +140,12 @@ premia_command = resolve_command([
     "premia",
 ])
 
-add_entry("janice_studio", "Janice Studio", "󰭹", "0xfff5c2e7", "0xfff8d6ee",
-          bundle_action("com.scawful.ModelHub.mac", janice_fallback))
+janice_action = ""
+if janice_build_open:
+    janice_action = f"/bin/bash {shlex.quote(janice_build_open)}"
+else:
+    janice_action = bundle_action("com.scawful.JaniceCode.mac", None)
+add_entry("janice_studio", "Janice Code", "󰭹", "0xfff5c2e7", "0xfff8d6ee", janice_action)
 add_entry("premia_v2", "Premia v2", "󰃬", "0xff94e2d5", "0xffc7eee8",
           command_action(premia_command) if premia_command else "")
 

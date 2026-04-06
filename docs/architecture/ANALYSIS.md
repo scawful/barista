@@ -1,5 +1,9 @@
 # SketchyBar Configuration Architecture Analysis
 
+> Status note (April 2026): this file includes historical snapshots from older layouts.
+> The active window-manager surface is `control_center` + `front_app` actions, not `yabai_status`.
+> For current item ownership, use `docs/architecture/SKETCHYBAR_LAYOUT.md`.
+
 ## Executive Summary
 
 This is a sophisticated macOS status bar configuration built on SketchyBar with a Lua/C hybrid architecture. It demonstrates:
@@ -37,7 +41,6 @@ Key insight: The system uses **file-based synchronization** between components (
 │  • space_change (line 279)                                  │
 │  • space_mode_refresh (line 280)                            │
 │  • whichkey_toggle (line 281)                               │
-│  • yabai_status_refresh (line 493)                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -58,8 +61,11 @@ Line 459:   front_app subscribes to:
 Line 460:   front_app subscribes to (via subscribe_popup_autoclose):
             mouse.entered, mouse.exited, mouse.exited.global
 
-Line 494:   yabai_status subscribes to:
-            yabai_status_refresh, system_woke, front_app_switched, space_change
+Line 494:   control_center subscribes to:
+            mouse.entered, mouse.exited, space_change, space_mode_refresh, system_woke
+
+Line 495:   front_app subscribes to:
+            front_app_switched (plus popup auto-close mouse events)
 
 Line 785:   volume subscribes to:
             volume_change
@@ -765,7 +771,6 @@ if os.path.exists(path):
 update_state       # Updates state.json
 apply_layout       # Calls yabai -m space <N> --layout <mode>
 sketchybar --trigger space_mode_refresh
-sketchybar --trigger yabai_status_refresh
 ```
 
 **Issue:**
@@ -980,4 +985,3 @@ space_mode_refresh event
 | helpers/submenu_hover.c | 162 | Submenu coordination | On mouse events |
 | helpers/popup_guard.c | 41 | Parent popup guard | On mouse.exited |
 | gui/config_menu_v2.m | 1562 | Configuration UI | On user interaction |
-

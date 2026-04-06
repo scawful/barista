@@ -98,7 +98,7 @@ case "${1:-toggle}" in
     ;;
   configure)
     # Open control panel to Integrations tab
-    "${CONFIG_DIR}/gui/bin/config_menu_v2" &
+    "${CONFIG_DIR}/bin/open_control_panel.sh" --tab integrations
     ;;
   open_tasks)
     open "${SERVER_URL}/tasks"

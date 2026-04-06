@@ -5,6 +5,9 @@ YABAI_BIN="${YABAI_BIN:-$(command -v yabai || true)}"
 JQ_BIN="${JQ_BIN:-$(command -v jq || true)}"
 SKHD_BIN="${SKHD_BIN:-$(command -v skhd || true)}"
 CONFIG_DIR="${BARISTA_CONFIG_DIR:-$HOME/.config/sketchybar}"
+YABAI_LABEL="${BARISTA_YABAI_LABEL:-}"
+YABAI_LABEL_NEW="com.asmvik.yabai"
+YABAI_LABEL_OLD="com.koekeishiya.yabai"
 SPACE_FOCUS_TIMEOUT_SEC="${SPACE_FOCUS_TIMEOUT_SEC:-1}"
 SPACE_QUERY_TIMEOUT_SEC="${SPACE_QUERY_TIMEOUT_SEC:-1}"
 SPACE_FOCUS_LOCK_STALE_SEC="${SPACE_FOCUS_LOCK_STALE_SEC:-2}"
@@ -15,6 +18,44 @@ if [[ -z "$YABAI_BIN" ]]; then
   echo "yabai not found in PATH." >&2
   exit 1
 fi
+
+yabai_service_labels() {
+  local labels=()
+  if [[ -n "$YABAI_LABEL" ]]; then
+    labels+=("$YABAI_LABEL")
+  fi
+  labels+=("$YABAI_LABEL_NEW" "$YABAI_LABEL_OLD")
+
+  local seen=""
+  local label
+  for label in "${labels[@]}"; do
+    [[ -z "$label" ]] && continue
+    case " $seen " in
+      *" $label "*) ;;
+      *)
+        seen="${seen:+$seen }$label"
+        printf '%s\n' "$label"
+        ;;
+    esac
+  done
+}
+
+yabai_has_service_file() {
+  local label="$1"
+  [[ -f "$HOME/Library/LaunchAgents/${label}.plist" ]]
+}
+
+yabai_launchctl_kickstart() {
+  local label
+  for label in $(yabai_service_labels); do
+    if launchctl print "gui/${UID}/${label}" >/dev/null 2>&1 || yabai_has_service_file "$label"; then
+      if launchctl kickstart -kp "gui/${UID}/${label}" >/dev/null 2>&1; then
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
 
 require_jq() {
   if [[ -z "$JQ_BIN" ]]; then
@@ -233,12 +274,51 @@ restart_yabai() {
     echo "yabai restarted"
     return 0
   fi
-  if command -v brew >/dev/null 2>&1; then
-    brew services restart yabai >/dev/null 2>&1
-    echo "yabai restarted via brew"
+  if yabai_launchctl_kickstart; then
+    echo "yabai restarted via launchctl"
     return 0
   fi
-  echo "Unable to restart yabai." >&2
+  if "$YABAI_BIN" --install-service >/dev/null 2>&1; then
+    if "$YABAI_BIN" --start-service >/dev/null 2>&1; then
+      echo "yabai restarted via installed service"
+      return 0
+    fi
+  fi
+  if command -v brew >/dev/null 2>&1; then
+    if brew services restart yabai >/dev/null 2>&1; then
+      echo "yabai restarted via brew"
+      return 0
+    fi
+  fi
+  start_yabai
+}
+
+start_yabai() {
+  if pgrep -x yabai >/dev/null 2>&1; then
+    echo "yabai already running"
+    return 0
+  fi
+  if "$YABAI_BIN" --start-service >/dev/null 2>&1; then
+    echo "yabai started"
+    return 0
+  fi
+  if "$YABAI_BIN" --install-service >/dev/null 2>&1; then
+    if "$YABAI_BIN" --start-service >/dev/null 2>&1; then
+      echo "yabai started via installed service"
+      return 0
+    fi
+  fi
+  if yabai_launchctl_kickstart; then
+    echo "yabai started via launchctl"
+    return 0
+  fi
+  if command -v brew >/dev/null 2>&1; then
+    if brew services start yabai >/dev/null 2>&1; then
+      echo "yabai started via brew"
+      return 0
+    fi
+  fi
+  echo "Unable to start yabai." >&2
   return 1
 }
 
@@ -386,6 +466,13 @@ run_doctor() {
   if ! pgrep -x yabai >/dev/null 2>&1; then
     echo "yabai: not running"
     ok=0
+    if (( fix == 1 )) && start_yabai; then
+      sleep 0.5
+      if pgrep -x yabai >/dev/null 2>&1; then
+        echo "yabai: started"
+        ok=1
+      fi
+    fi
   else
     echo "yabai: running"
   fi
@@ -447,9 +534,8 @@ run_doctor() {
     local err_log
     err_log=$(skhd_error_log)
     if [[ -s "$err_log" ]] && skhd_error_recent "$err_log"; then
-      echo "skhd errors: recent log entries ($err_log)" >&2
+      echo "skhd warnings: recent log entries ($err_log)" >&2
       tail -n 3 "$err_log" | sed 's/^/  /' >&2 || true
-      ok=0
       if (( fix == 1 )); then
         skhd_generate_shortcuts || true
         skhd_fix_load_line "$skhd_config" || true
@@ -501,6 +587,9 @@ case "$command" in
     current=$(current_space_index 2>/dev/null || echo "unknown")
     echo "layout: $layout"
     echo "current space: $current"
+    ;;
+  start)
+    start_yabai
     ;;
   restart)
     restart_yabai
@@ -612,6 +701,7 @@ Usage: yabai_control.sh <command>
 
 Commands:
   status
+  start
   restart
   balance
   space-rotate|rotate

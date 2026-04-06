@@ -13,11 +13,11 @@ profile.author = "scawful"
 
 -- Integration toggles
 profile.integrations = {
+  control_center = true, -- Primary window-manager status + controls
   yaze = true,        -- ROM hacking with Yaze
   oracle = true,      -- Oracle cockpit + shortcuts
   emacs = true,       -- Personal Emacs org-mode workflows
   halext = false,     -- halext-org (when ready)
-  cortex = true,      -- Cortex + AFS quick actions
   journal = true,     -- Journal/org-mode capture + inbox
   nerv = true,        -- NERV transfer queue status
   halext_org = true,  -- Halext-org dashboard widget
@@ -60,7 +60,6 @@ profile.widgets = {
   network = true,
   system_info = true,
   volume = true,
-  yabai_status = true,
 }
 
 -- Space configuration

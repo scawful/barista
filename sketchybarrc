@@ -4,6 +4,96 @@
 local HOME = os.getenv("HOME")
 local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
 local lua_cpath = os.getenv("SKETCHYBAR_LUA_CPATH") or (HOME .. "/.local/share/sketchybar_lua/?.so")
+local STARTUP_TRACE = os.getenv("BARISTA_STARTUP_TRACE")
+
+local function trace(message)
+  if not STARTUP_TRACE or STARTUP_TRACE == "" then
+    return
+  end
+  local file = io.open(STARTUP_TRACE, "a")
+  if not file then
+    return
+  end
+  file:write(os.date("%Y-%m-%d %H:%M:%S "), message, "\n")
+  file:close()
+end
+
+local function now_ms()
+  local handle = io.popen("python3 - <<'PY'\nimport time\nprint(time.time_ns() // 1_000_000)\nPY\n")
+  if not handle then
+    return os.time() * 1000
+  end
+  local value = (handle:read("*a") or ""):gsub("%s+", "")
+  handle:close()
+  local numeric = tonumber(value)
+  if numeric then
+    return numeric
+  end
+  return os.time() * 1000
+end
+
+trace("sketchybarrc:start")
+local reload_start_ms = now_ms()
+
+local function read_text(path)
+  local file = io.open(path, "r")
+  if not file then
+    return nil
+  end
+  local content = file:read("*a")
+  file:close()
+  return content
+end
+
+local function write_text(path, content)
+  local file = io.open(path, "w")
+  if not file then
+    return false
+  end
+  file:write(content or "")
+  file:close()
+  return true
+end
+
+local function current_lua_pid()
+  -- io.popen runs through a shell; that shell's PPID is this Lua process.
+  local handle = io.popen("echo $PPID 2>/dev/null")
+  if not handle then
+    return nil
+  end
+  local pid = (handle:read("*a") or ""):gsub("%s+", "")
+  handle:close()
+  return pid:match("^(%d+)$")
+end
+
+local function enforce_singleton()
+  local pid_file = (os.getenv("TMPDIR") or "/tmp") .. "/barista-sketchybarrc.pid"
+  local current_pid = current_lua_pid()
+  if not current_pid then
+    return
+  end
+
+  local previous_pid = read_text(pid_file)
+  if previous_pid then
+    previous_pid = previous_pid:gsub("%s+", ""):match("^(%d+)$")
+  end
+
+  if previous_pid and previous_pid ~= current_pid then
+    local handle = io.popen(string.format("ps -p %s -o command= 2>/dev/null", previous_pid))
+    local command = handle and (handle:read("*a") or "") or ""
+    if handle then
+      handle:close()
+    end
+    if command:find("barista/sketchybarrc", 1, true) then
+      os.execute(string.format("kill %s >/dev/null 2>&1", previous_pid))
+      trace("sketchybarrc:killed_previous_pid " .. previous_pid)
+    end
+  end
+
+  write_text(pid_file, current_pid .. "\n")
+end
+
+enforce_singleton()
 
 package.cpath = package.cpath .. ";" .. lua_cpath
 package.path = table.concat({
@@ -13,4 +103,11 @@ package.path = table.concat({
 }, ";")
 
 package.loaded["main"] = nil
-require("main")
+_G.BARISTA_STARTUP_TRACE = STARTUP_TRACE
+_G.BARISTA_RELOAD_START_MS = reload_start_ms
+trace("sketchybarrc:require_main")
+local ok, err = pcall(require, "main")
+if not ok then
+  trace("sketchybarrc:main_error " .. tostring(err))
+  error(err)
+end

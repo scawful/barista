@@ -107,7 +107,11 @@ mkdir -p "$BIN_DIR"
   printf '%s\n' 'fi'
   printf '%s\n' ''
   printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "window" ] && [ "${3:-}" = "42" ] && [ "${4:-}" = "--toggle" ] && [ "${5:-}" = "float" ]; then'
-  printf '%s\n' '  write_state floating true'
+  printf '%s\n' '  if [ "$(read_state floating)" = "true" ]; then'
+  printf '%s\n' '    write_state floating false'
+  printf '%s\n' '  else'
+  printf '%s\n' '    write_state floating true'
+  printf '%s\n' '  fi'
   printf '%s\n' '  exit 0'
   printf '%s\n' 'fi'
   printf '%s\n' ''
@@ -176,6 +180,19 @@ run_control window-space next
 assert_log_contains "-m window 42 --space next"
 assert_log_contains "-m query --spaces --space 9"
 assert_log_not_contains "-m window 42 --toggle float"
+
+printf '%s\n' 'space=9' 'display=2' 'floating=true' > "$STATE_FILE"
+: > "$LOG_FILE"
+run_control window-display-prev
+assert_log_contains "-m window 42 --display prev"
+assert_log_contains "-m query --spaces --space 3"
+assert_log_contains "-m window 42 --toggle float"
+
+grep -Fxq 'floating=false' "$STATE_FILE" || {
+  echo "FAIL: expected floating=false after adopting managed destination" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
 
 reset_state
 run_control window-space-float

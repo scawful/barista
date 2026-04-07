@@ -61,8 +61,10 @@ target the same resolved control-center item name; the default remains
 
 Window move commands now normalize the destination state when a managed window
 is sent into a `float` space: the window is moved first, then floated if the
-target space is actually `float`. Moves into managed (`bsp` / `stack`) spaces
-preserve the current window float state instead of forcing tiling.
+target space is actually `float`. Cross-display window moves now adopt the
+visible destination space mode in both directions, so a floating window dropped
+onto a managed (`bsp` / `stack`) display is re-tiled and a tiled window dropped
+onto a float display is floated.
 The `front_app` popup now exposes two explicit rule-aware window actions on top
 of the raw toggles: `Adopt Current Space Mode` and `Send to Float Space`.
 

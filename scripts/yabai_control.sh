@@ -252,6 +252,24 @@ normalize_window_for_space_layout() {
   esac
 }
 
+apply_window_move_policy() {
+  local policy="${1:-preserve}"
+  local window_id="${2:-}"
+  local target_space="${3:-}"
+
+  [ -n "$window_id" ] || return 0
+  [ -n "$target_space" ] || return 0
+
+  case "$policy" in
+    adopt_destination)
+      adopt_window_to_space_layout "$window_id" "$target_space"
+      ;;
+    preserve|*)
+      normalize_window_for_space_layout "$window_id" "$target_space"
+      ;;
+  esac
+}
+
 adopt_window_to_space_layout() {
   local window_id="${1:-}"
   local target_space="${2:-}"
@@ -309,6 +327,13 @@ focused_window_id() {
 }
 
 move_window_with_rules() {
+  local policy="${BARISTA_WINDOW_MOVE_POLICY:-preserve}"
+
+  if [[ "${1:-}" == "--policy" ]]; then
+    policy="${2:-preserve}"
+    shift 2
+  fi
+
   if [[ -z "$JQ_BIN" ]]; then
     "$YABAI_BIN" -m window "$@"
     return
@@ -327,7 +352,7 @@ move_window_with_rules() {
 
   target_space="$(window_space_for_id "$window_id")"
   if [[ -n "$target_space" && "$target_space" != "null" ]]; then
-    normalize_window_for_space_layout "$window_id" "$target_space"
+    apply_window_move_policy "$policy" "$window_id" "$target_space"
   fi
 }
 
@@ -827,10 +852,10 @@ case "$command" in
     window_center
     ;;
   window-display-next)
-    move_window_with_rules --display next
+    move_window_with_rules --policy adopt_destination --display next
     ;;
   window-display-prev)
-    move_window_with_rules --display prev
+    move_window_with_rules --policy adopt_destination --display prev
     ;;
   window-space-next)
     move_window_with_rules --space next

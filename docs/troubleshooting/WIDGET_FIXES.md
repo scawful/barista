@@ -167,6 +167,7 @@ sketchybar --reload
 - If current-space discovery misses but the selected app window is still known, the helper now backfills raw `space_index` / `display_index` from that window instead of leaving those fields blank.
 - The front-app state label now distinguishes `Floating · Float Space` from `Floating · Managed Space`, so a per-window float inside a tiled space is not conflated with a true float-space workflow.
 - `scripts/yabai_control.sh` now applies the same rule on window moves: when the destination space is `float`, the moved window is normalized to floating after the move instead of landing in a mismatched tiled state.
+- Cross-display window moves now adopt the visible destination space mode in both directions. A floating window moved onto a managed display is re-tiled, and a tiled window moved onto a float display is floated.
 - The `front_app` popup now exposes the same policy directly through `Adopt Current Space Mode` and `Send to Float Space`, so recovery does not require remembering a lower-level yabai command.
 
 ### 11. Runtime Context Helper

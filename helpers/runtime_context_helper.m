@@ -213,7 +213,8 @@ static NSString *frontmost_app_name(void) {
 
 static NSInteger window_rank(NSDictionary *window, NSString *appName, NSNumber *spaceIndex, NSNumber *displayIndex) {
   NSInteger rank = 0;
-  if (![string_value(window[@"app"]) isEqualToString:appName]) {
+  NSString *windowApp = string_value(window[@"app"]);
+  if (windowApp.length == 0 || [windowApp caseInsensitiveCompare:appName] != NSOrderedSame) {
     rank += 1000;
   }
   if (bool_value(window[@"is-minimized"])) {
@@ -238,7 +239,8 @@ static NSDictionary *select_matching_window(NSString *appName, NSNumber *spaceIn
   }
 
   NSDictionary *focusedWindow = query_object(@[@"-m", @"query", @"--windows", @"--window"]);
-  if (focusedWindow && [string_value(focusedWindow[@"app"]) isEqualToString:appName] && !bool_value(focusedWindow[@"is-minimized"])) {
+  NSString *focusedApp = string_value(focusedWindow[@"app"]);
+  if (focusedWindow && focusedApp.length > 0 && [focusedApp caseInsensitiveCompare:appName] == NSOrderedSame && !bool_value(focusedWindow[@"is-minimized"])) {
     return focusedWindow;
   }
 
@@ -250,7 +252,8 @@ static NSDictionary *select_matching_window(NSString *appName, NSNumber *spaceIn
       continue;
     }
     NSDictionary *window = (NSDictionary *)candidate;
-    if (![string_value(window[@"app"]) isEqualToString:appName] || bool_value(window[@"is-minimized"])) {
+    NSString *windowApp = string_value(window[@"app"]);
+    if (windowApp.length == 0 || [windowApp caseInsensitiveCompare:appName] != NSOrderedSame || bool_value(window[@"is-minimized"])) {
       continue;
     }
     NSInteger rank = window_rank(window, appName, spaceIndex, displayIndex);
@@ -278,6 +281,11 @@ static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
 
   NSDictionary *window = select_matching_window(appName, spaceIndex, displayIndex);
   if (window != nil) {
+    NSString *windowApp = string_value(window[@"app"]);
+    if (windowApp.length > 0 && [windowApp caseInsensitiveCompare:appName] == NSOrderedSame) {
+      appName = windowApp;
+    }
+
     BOOL floating = bool_value(window[@"is-floating"]);
     BOOL sticky = bool_value(window[@"is-sticky"]);
     BOOL fullscreen = bool_value(window[@"has-fullscreen-zoom"]) || bool_value(window[@"is-native-fullscreen"]);

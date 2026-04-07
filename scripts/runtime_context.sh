@@ -50,6 +50,67 @@ run_runtime_context_helper() {
     "$RUNTIME_CONTEXT_HELPER_BIN" "$@"
 }
 
+lowercase_value() {
+  printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'
+}
+
+canonical_front_app_name() {
+  local app_name="${1:-}"
+  local current_space_json current_space_index current_display_index window_json window_app fallback_name
+
+  [ -n "$app_name" ] || return 0
+
+  if [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ]; then
+    current_space_json="$(query_current_space_json)"
+    current_space_index="$(printf '%s\n' "$current_space_json" | "$JQ_BIN" -r '.index // 0' 2>/dev/null || echo 0)"
+    current_display_index="$(printf '%s\n' "$current_space_json" | "$JQ_BIN" -r '.display // 0' 2>/dev/null || echo 0)"
+    window_json="$(select_matching_window_json "$app_name" "$current_space_index" "$current_display_index")"
+    window_app="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.app // empty' 2>/dev/null || true)"
+    if [ -n "$window_app" ] && [ "$(lowercase_value "$window_app")" = "$(lowercase_value "$app_name")" ]; then
+      printf '%s' "$window_app"
+      return 0
+    fi
+  fi
+
+  fallback_name="$(resolve_front_app_name)"
+  if [ -n "$fallback_name" ] && [ "$(lowercase_value "$fallback_name")" = "$(lowercase_value "$app_name")" ]; then
+    printf '%s' "$fallback_name"
+    return 0
+  fi
+
+  printf '%s' "$app_name"
+}
+
+normalize_front_app_output() {
+  local output="${1:-}"
+  local runtime_app_name canonical_name
+
+  [ -n "$output" ] || return 0
+  runtime_app_name="$(printf '%s\n' "$output" | awk -F'\t' '$1 == "app_name" { print $2; exit }')"
+  [ -n "$runtime_app_name" ] || {
+    printf '%s\n' "$output"
+    return 0
+  }
+
+  canonical_name="$(canonical_front_app_name "$runtime_app_name")"
+  if [ -n "$canonical_name" ] && [ "$(lowercase_value "$runtime_app_name")" = "$(lowercase_value "$canonical_name")" ]; then
+    printf '%s\n' "$output" | awk -F'\t' -v OFS='\t' -v canonical="$canonical_name" '
+      $1 == "app_name" { $2 = canonical }
+      { print }
+    '
+    return 0
+  fi
+
+  printf '%s\n' "$output"
+}
+
+normalize_front_app_cache_file() {
+  [ -s "$FRONT_APP_FILE" ] || return 0
+  local normalized
+  normalized="$(normalize_front_app_output "$(cat "$FRONT_APP_FILE")")"
+  printf '%s\n' "$normalized" | write_atomic "$FRONT_APP_FILE"
+}
+
 write_atomic() {
   local target="$1"
   local temp_file
@@ -61,7 +122,10 @@ write_atomic() {
 
 refresh_front_app_cache() {
   if runtime_context_helper_available; then
-    run_runtime_context_helper refresh-front-app >/dev/null 2>&1 && return 0
+    if run_runtime_context_helper refresh-front-app >/dev/null 2>&1; then
+      normalize_front_app_cache_file
+      return 0
+    fi
   fi
   write_front_app_cache
 }
@@ -149,7 +213,7 @@ select_matching_window_json() {
 
   focused_window_json="$(query_focused_window_json)"
   if [ -n "$focused_window_json" ]; then
-    if printf '%s\n' "$focused_window_json" | "$JQ_BIN" -e --arg app "$app_name" '(.app // "") == $app and (."is-minimized" // false) == false' >/dev/null 2>&1; then
+    if printf '%s\n' "$focused_window_json" | "$JQ_BIN" -e --arg app "$app_name" '((.app // "") | ascii_downcase) == ($app | ascii_downcase) and (."is-minimized" // false) == false' >/dev/null 2>&1; then
       printf '%s' "$focused_window_json"
       return 0
     fi
@@ -161,7 +225,7 @@ select_matching_window_json() {
     --arg app "$app_name" \
     --argjson space "$current_space" \
     --argjson display "$current_display" '
-      map(select((.app // "") == $app and (."is-minimized" // false) == false))
+      map(select(((.app // "") | ascii_downcase) == ($app | ascii_downcase) and (."is-minimized" // false) == false))
       | sort_by(
           (if ."has-focus" == true then 0 else 1 end),
           (if (.space // 0) == $space then 0 else 1 end),
@@ -493,14 +557,14 @@ case "$COMMAND" in
     ;;
   front-app)
     if runtime_context_helper_available; then
-      run_runtime_context_helper "$COMMAND"
+      normalize_front_app_output "$(run_runtime_context_helper "$COMMAND")"
     else
       print_cache "$FRONT_APP_FILE" front-app
     fi
     ;;
   focused-space)
     if runtime_context_helper_available; then
-      run_runtime_context_helper "$COMMAND"
+      normalize_front_app_output "$(run_runtime_context_helper "$COMMAND")"
     else
       write_front_app_cache
       cat "$FRONT_APP_FILE"

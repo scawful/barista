@@ -62,7 +62,7 @@ query_runtime_context() {
 
   if [ -n "$APP_NAME" ]; then
     runtime_app_name="$(printf '%s\n' "$output" | awk -F'\t' '$1 == "app_name" { print $2; exit }')"
-    if [ -n "$runtime_app_name" ] && [ "$runtime_app_name" != "$APP_NAME" ]; then
+    if [ -n "$runtime_app_name" ] && [ "$(printf '%s' "$runtime_app_name" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$APP_NAME" | tr '[:upper:]' '[:lower:]')" ]; then
       return 1
     fi
   fi
@@ -140,7 +140,7 @@ select_matching_window_json() {
   focused_window_json="$(query_focused_window_json)"
   if [ -n "$focused_window_json" ]; then
     if printf '%s\n' "$focused_window_json" | "$JQ_BIN" -e --arg app "$app_name" \
-      '(.app // "") == $app and (."is-minimized" // false) == false' >/dev/null 2>&1; then
+      '((.app // "") | ascii_downcase) == ($app | ascii_downcase) and (."is-minimized" // false) == false' >/dev/null 2>&1; then
       printf '%s' "$focused_window_json"
       return 0
     fi
@@ -152,7 +152,7 @@ select_matching_window_json() {
     --arg app "$app_name" \
     --argjson space "$current_space" \
     --argjson display "$current_display" '
-      map(select((.app // "") == $app and (."is-minimized" // false) == false))
+      map(select(((.app // "") | ascii_downcase) == ($app | ascii_downcase) and (."is-minimized" // false) == false))
       | sort_by(
           (if ."has-focus" == true then 0 else 1 end),
           (if (.space // 0) == $space then 0 else 1 end),

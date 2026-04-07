@@ -15,12 +15,27 @@ ICON_CACHE_DIR="${CONFIG_DIR}/cache/space_icons"
 PERF_STATS_BIN="${CONFIG_DIR}/bin/barista-stats.sh"
 SPACE_VISUALS_SCRIPT="${CONFIG_DIR}/plugins/space_visuals.sh"
 BARISTA_REASON="${BARISTA_REASON:-}"
+BARISTA_ALL_SPACES_DATA="${BARISTA_ALL_SPACES_DATA:-}"
 SPACE_METRICS_FILE=""
 EXTERNAL_BAR_HEIGHT_CACHE_FILE="${CONFIG_DIR}/cache/external_bar_height"
+SPACE_ITEM_LOOKUP_FILE="${CONFIG_DIR}/cache/space_visuals/space_items"
 BAR_SPACE_ITEMS_LOOKUP=""
 BAR_SPACE_ITEMS_LOADED=0
 CURRENT_SPACES_COUNT="0"
 CURRENT_SPACE_INDEXES_CSV=""
+
+cached_space_items_count() {
+  [ -f "$SPACE_ITEM_LOOKUP_FILE" ] || return 1
+  local count=0
+  local item=""
+  while IFS= read -r item || [ -n "$item" ]; do
+    case "$item" in
+      space.[0-9]*) count=$((count + 1)) ;;
+    esac
+  done < "$SPACE_ITEM_LOOKUP_FILE"
+  [ "$count" -gt 0 ] || return 1
+  printf '%s' "$count"
+}
 
 create_metrics_file() {
   [ -n "$SPACE_METRICS_FILE" ] && return 0
@@ -193,25 +208,51 @@ trigger_space_mode_refresh() {
   "$SKETCHYBAR_BIN" --trigger space_mode_refresh >/dev/null 2>&1 || true
 }
 
-trigger_space_active_refresh_if_needed() {
+dispatch_space_active_refresh_if_needed() {
   [ "$BARISTA_REASON" = "space_changed" ] || return 0
   [ -n "$SKETCHYBAR_BIN" ] || return 0
   "$SKETCHYBAR_BIN" --trigger space_active_refresh >/dev/null 2>&1 || true
 }
 
+fast_active_refresh_from_cache() {
+  [ "$BARISTA_REASON" = "space_changed" ] || return 1
+  [ -f "$CACHE_FILE" ] || return 1
+  [ -f "$ACTIVE_CACHE_FILE" ] || return 1
+
+  local spaces_count visual_refresh_start_ms visual_refresh_duration_ms
+  spaces_count="$(cached_space_items_count 2>/dev/null || true)"
+  [ -n "$spaces_count" ] || return 1
+
+  visual_refresh_start_ms="$(now_ms)"
+  dispatch_space_active_refresh_if_needed
+  visual_refresh_duration_ms=$(( $(now_ms) - visual_refresh_start_ms ))
+  if [ "$visual_refresh_duration_ms" -lt 0 ]; then
+    visual_refresh_duration_ms=0
+  fi
+  record_perf "$spaces_count" "$visual_refresh_duration_ms"
+  exit 0
+}
+
 space_items_present() {
-  [ -n "$SKETCHYBAR_BIN" ] || return 1
   [ -n "$CURRENT_SPACE_INDEXES_CSV" ] || return 1
 
   local found_space=0
   local space_index=""
   if [ "$BAR_SPACE_ITEMS_LOADED" -eq 0 ]; then
     BAR_SPACE_ITEMS_LOADED=1
-    if [ -n "$JQ_BIN" ]; then
+    if [ -f "$SPACE_ITEM_LOOKUP_FILE" ]; then
+      local bar_items=""
+      bar_items="$(tr -d '\r' < "$SPACE_ITEM_LOOKUP_FILE" 2>/dev/null || true)"
+      if [ -n "$bar_items" ]; then
+        BAR_SPACE_ITEMS_LOOKUP=$'\n'"$bar_items"$'\n'
+      fi
+    elif [ -n "$SKETCHYBAR_BIN" ] && [ -n "$JQ_BIN" ]; then
       local bar_items=""
       bar_items="$("$SKETCHYBAR_BIN" --query bar 2>/dev/null | "$JQ_BIN" -r '.items[] | select(test("^space\\.[0-9]+$"))' 2>/dev/null || true)"
       if [ -n "$bar_items" ]; then
         BAR_SPACE_ITEMS_LOOKUP=$'\n'"$bar_items"$'\n'
+        mkdir -p "$(dirname "$SPACE_ITEM_LOOKUP_FILE")" 2>/dev/null || true
+        printf '%s\n' "$bar_items" > "$SPACE_ITEM_LOOKUP_FILE" 2>/dev/null || true
       fi
     fi
   fi
@@ -251,6 +292,8 @@ cleanup_lock() {
 }
 trap cleanup_lock EXIT
 
+fast_active_refresh_from_cache || true
+
 # Skip work if neither display topology nor space mapping changed
 # PERF: Single yabai query, derive all three signatures via jq
 current_display_state=""
@@ -281,9 +324,8 @@ if [ -n "$current_display_state$current_space_state" ]; then
       cached_active_state="$(cat "$ACTIVE_CACHE_FILE" 2>/dev/null || true)"
       if [ -n "$current_active_state" ] && [ "$current_active_state" != "$cached_active_state" ]; then
         printf '%s' "$current_active_state" >"$ACTIVE_CACHE_FILE" || true
-        trigger_space_active_refresh_if_needed
         visual_refresh_start_ms="$(now_ms)"
-        refresh_space_visuals "space_active_refresh" "$ALL_SPACES_DATA"
+        dispatch_space_active_refresh_if_needed
         visual_refresh_duration_ms=$(( $(now_ms) - visual_refresh_start_ms ))
         if [ "$visual_refresh_duration_ms" -lt 0 ]; then
           visual_refresh_duration_ms=0
@@ -311,9 +353,9 @@ fi
 # OPTIMIZED: Removed sleep - the cache check above provides sufficient debouncing
 
 create_metrics_file
-BARISTA_SPACE_METRICS_FILE="$SPACE_METRICS_FILE" "$CONFIG_DIR/plugins/simple_spaces.sh"
+BARISTA_SPACE_METRICS_FILE="$SPACE_METRICS_FILE" BARISTA_ALL_SPACES_DATA="${ALL_SPACES_DATA:-}" "$CONFIG_DIR/plugins/simple_spaces.sh"
 
-trigger_space_active_refresh_if_needed
+dispatch_space_active_refresh_if_needed
 trigger_space_mode_refresh
 visual_refresh_start_ms="$(now_ms)"
 refresh_space_visuals "${SENDER:-${BARISTA_REASON:-space_topology_refresh}}" "${ALL_SPACES_DATA:-}"

@@ -16,6 +16,7 @@ STATE_FILE="$CONFIG_DIR/state.json"
 SPACE_ACTION_SCRIPT="$CONFIG_DIR/scripts/space_action.sh"
 SPACE_MANAGER_BIN="$CONFIG_DIR/bin/space_manager"
 SPACE_METRICS_FILE="${BARISTA_SPACE_METRICS_FILE:-}"
+BARISTA_ALL_SPACES_DATA="${BARISTA_ALL_SPACES_DATA:-}"
 # OPTIMIZED: Reduced retry attempts and delays for faster startup
 MAX_SPACE_QUERY_ATTEMPTS=3
 SPACE_QUERY_DELAY=0.05
@@ -258,6 +259,18 @@ snapshot_space_items() {
   done <<< "$BAR_ITEMS_SNAPSHOT"
 }
 
+snapshot_creator_items() {
+  [ -n "$BAR_ITEMS_SNAPSHOT" ] || return 0
+  local item
+  while IFS= read -r item; do
+    case "$item" in
+      space_creator|space_creator.[0-9]*)
+        printf '%s\n' "$item"
+        ;;
+    esac
+  done <<< "$BAR_ITEMS_SNAPSHOT"
+}
+
 count_snapshot_space_items() {
   if [ -n "$BAR_SPACE_ITEM_COUNT" ]; then
     printf '%s' "$BAR_SPACE_ITEM_COUNT"
@@ -422,7 +435,10 @@ initialize_action_prefixes
 
 RAW_SPACES_DATA=""
 SPACE_PARSE_OK=0
-if [ -n "$YABAI_BIN" ]; then
+if [ -n "$BARISTA_ALL_SPACES_DATA" ] && [ -n "$JQ_BIN" ] && parse_spaces_payload "$BARISTA_ALL_SPACES_DATA"; then
+  RAW_SPACES_DATA="$BARISTA_ALL_SPACES_DATA"
+  SPACE_PARSE_OK=1
+elif [ -n "$YABAI_BIN" ]; then
   for ((attempt=1; attempt<=MAX_SPACE_QUERY_ATTEMPTS; attempt++)); do
     RAW_SPACES_DATA=$("$YABAI_BIN" -m query --spaces 2>/dev/null || true)
     if [ -n "$JQ_BIN" ] && parse_spaces_payload "$RAW_SPACES_DATA"; then
@@ -619,13 +635,11 @@ fi
 FULL_REBUILD_DISCOVERY_END_MS="$(now_ms)"
 load_cached_space_icons
 
-rebuild_creator_items_only() {
+sync_creator_items() {
   local anchor_item="${1:-}"
   local last_creator="$anchor_item"
-  local creator_target creator_item creator_cmd
+  local creator_target creator_item creator_cmd existing_item expected_lookup=""
   local -a creator_args=()
-
-  "$SKETCHYBAR_BIN" --remove '/space_creator\..*/' --remove space_creator >/dev/null 2>&1 || true
 
   for creator_target in "${CREATOR_TARGETS[@]-}"; do
     creator_item="space_creator"
@@ -634,7 +648,11 @@ rebuild_creator_items_only() {
     fi
     creator_cmd="$(creator_click_action "$creator_target")"
 
-    creator_args+=(--add item "$creator_item" left)
+    expected_lookup+=$'\n'"$creator_item"
+    if ! snapshot_item_exists "$creator_item"; then
+      creator_args+=(--add item "$creator_item" left)
+      creator_args+=(--subscribe "$creator_item" mouse.entered mouse.exited)
+    fi
     creator_args+=(--set "$creator_item"
       display="$creator_target"
       ignore_association="on"
@@ -650,12 +668,19 @@ rebuild_creator_items_only() {
       background.height="$SPACE_ITEM_HEIGHT"
       script="$CONFIG_DIR/plugins/space_creator.sh"
       click_script="$creator_cmd")
-    creator_args+=(--subscribe "$creator_item" mouse.entered mouse.exited)
     if [ -n "$last_creator" ]; then
       creator_args+=(--move "$creator_item" after "$last_creator")
     fi
     last_creator="$creator_item"
   done
+
+  while IFS= read -r existing_item; do
+    [ -n "$existing_item" ] || continue
+    case "$expected_lookup" in
+      *$'\n'"$existing_item") ;;
+      *) creator_args=(--remove "$existing_item" "${creator_args[@]}") ;;
+    esac
+  done < <(snapshot_creator_items)
 
   if [ ${#creator_args[@]} -gt 0 ]; then
     "$SKETCHYBAR_BIN" "${creator_args[@]}" >/dev/null 2>&1 || true
@@ -972,7 +997,7 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ] && [ "$FORCE_FULL_REBUILD" -eq 0 ]; then
           "$SKETCHYBAR_BIN" "${FAST_ARGS[@]}" >/dev/null 2>&1 || true
           FAST_ARGS=()
         fi
-        rebuild_creator_items_only "${SPACE_ITEMS[${#SPACE_ITEMS[@]}-1]}"
+        sync_creator_items "${SPACE_ITEMS[${#SPACE_ITEMS[@]}-1]}"
         write_space_metrics "creator_only" 0 0 0
         write_signatures "$SPACE_TOPOLOGY_SIG" "$CREATOR_TOPOLOGY_SIG" "$VISIBLE_SIG" "$VISIBLE_BY_DISPLAY_SIG" "$ACTIVE_DISPLAY_SIG" "$SPACE_PROPS_SIG" "$CREATOR_PROPS_SIG"
         exit 0
@@ -995,7 +1020,7 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ] && [ "$FORCE_FULL_REBUILD" -eq 0 ]; then
 
   if [ -n "$cached_topology" ] && [ "$cached_topology" != "$SPACE_TOPOLOGY_SIG" ]; then
     apply_incremental_space_items "$anchor_item"
-    rebuild_creator_items_only "${SPACE_ITEMS[${#SPACE_ITEMS[@]}-1]}"
+    sync_creator_items "${SPACE_ITEMS[${#SPACE_ITEMS[@]}-1]}"
     write_signatures "$SPACE_TOPOLOGY_SIG" "$CREATOR_TOPOLOGY_SIG" "$VISIBLE_SIG" "$VISIBLE_BY_DISPLAY_SIG" "$ACTIVE_DISPLAY_SIG" "$SPACE_PROPS_SIG" "$CREATOR_PROPS_SIG"
     exit 0
   fi

@@ -11,6 +11,8 @@ CALLS_LOG="$TMP_DIR/calls.log"
 METRICS_PATH_LOG="$TMP_DIR/metrics_path.log"
 EXTERNAL_BAR_LOG="$TMP_DIR/external_bar.log"
 VISUAL_ENV_LOG="$TMP_DIR/visual_env.log"
+TOPOLOGY_ENV_LOG="$TMP_DIR/topology_env.log"
+YABAI_LOG="$TMP_DIR/yabai.log"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -19,12 +21,14 @@ trap cleanup EXIT
 
 mkdir -p "$CONFIG_DIR/plugins" "$CONFIG_DIR/bin" "$CONFIG_DIR/cache" "$BIN_DIR"
 mkdir -p "$CONFIG_DIR/scripts"
+mkdir -p "$CONFIG_DIR/cache/space_visuals"
 MODE_FILE="$TMP_DIR/mode"
 printf 'topology\n' > "$MODE_FILE"
 
 cat > "$BIN_DIR/yabai" <<'EOF'
 #!/bin/bash
 set -euo pipefail
+printf '%s\n' "$*" >> "__YABAI_LOG__"
 MODE="$(cat "__MODE_FILE__" 2>/dev/null || printf 'topology')"
 if [ "${1:-}" = "-m" ] && [ "${2:-}" = "query" ] && [ "${3:-}" = "--spaces" ]; then
   if [ "$MODE" = "active_only" ]; then
@@ -36,12 +40,15 @@ if [ "${1:-}" = "-m" ] && [ "${2:-}" = "query" ] && [ "${3:-}" = "--spaces" ]; t
 fi
 exit 1
 EOF
-python3 - <<'PY' "$BIN_DIR/yabai" "$MODE_FILE"
+python3 - <<'PY' "$BIN_DIR/yabai" "$MODE_FILE" "$YABAI_LOG"
 from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
-path.write_text(path.read_text().replace("__MODE_FILE__", sys.argv[2]), encoding="utf-8")
+text = path.read_text()
+text = text.replace("__MODE_FILE__", sys.argv[2])
+text = text.replace("__YABAI_LOG__", sys.argv[3])
+path.write_text(text, encoding="utf-8")
 PY
 chmod +x "$BIN_DIR/yabai"
 
@@ -49,8 +56,15 @@ cat > "$BIN_DIR/sketchybar" <<EOF
 #!/bin/bash
 set -euo pipefail
 CALLS_LOG="$CALLS_LOG"
+CONFIG_DIR="$CONFIG_DIR"
 if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "bar" ]; then
+  printf 'query bar\n' >> "\$CALLS_LOG"
   printf '{"items":["space.1","space.2"]}\n'
+  exit 0
+fi
+if [ "\${1:-}" = "--trigger" ] && [ "\${2:-}" = "space_active_refresh" ]; then
+  printf '%s\n' "\$*" >> "\$CALLS_LOG"
+  NAME="space_runtime" SENDER="space_active_refresh" CONFIG_DIR="\$CONFIG_DIR" "\$CONFIG_DIR/plugins/space_visuals.sh"
   exit 0
 fi
 printf '%s\n' "\$*" >> "\$CALLS_LOG"
@@ -69,6 +83,7 @@ cat > "$CONFIG_DIR/plugins/simple_spaces.sh" <<EOF
 #!/bin/bash
 set -euo pipefail
 printf '%s\n' "\${BARISTA_SPACE_METRICS_FILE:-}" >> "$METRICS_PATH_LOG"
+printf '%s\n' "\${BARISTA_ALL_SPACES_DATA:-}" >> "$TOPOLOGY_ENV_LOG"
 cat > "\${BARISTA_SPACE_METRICS_FILE}" <<'METRICS'
 strategy=full_rebuild
 added=1
@@ -129,10 +144,14 @@ if find "$CONFIG_DIR" -maxdepth 1 -name '.space_topology_metrics.*' | grep -q .;
 fi
 [ "$(wc -l < "$EXTERNAL_BAR_LOG" | tr -d ' ')" = "1" ] || { echo "FAIL: first topology refresh should apply external bar height once" >&2; exit 1; }
 [ "$(wc -l < "$VISUAL_ENV_LOG" | tr -d ' ')" = "1" ] || { echo "FAIL: topology refresh should invoke space_visuals exactly once" >&2; exit 1; }
+[ "$(wc -l < "$TOPOLOGY_ENV_LOG" | tr -d ' ')" = "1" ] || { echo "FAIL: topology refresh should invoke simple_spaces exactly once with the shared spaces payload" >&2; exit 1; }
+grep -Fq '"index":1' "$TOPOLOGY_ENV_LOG" || { echo "FAIL: refresh_spaces should pass cached spaces data into simple_spaces" >&2; exit 1; }
 grep -Fq '"index":1' "$VISUAL_ENV_LOG" || { echo "FAIL: refresh_spaces should pass cached spaces data into space_visuals" >&2; exit 1; }
 
 printf '' > "$CALLS_LOG"
+printf '' > "$YABAI_LOG"
 printf 'active_only\n' > "$MODE_FILE"
+printf 'space.1\nspace.2\n' > "$CONFIG_DIR/cache/space_visuals/space_items"
 PATH="$BIN_DIR:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
   BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
   BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
@@ -150,6 +169,14 @@ fi
 [ "$(wc -l < "$EXTERNAL_BAR_LOG" | tr -d ' ')" = "1" ] || { echo "FAIL: active-only refresh should not reapply unchanged external bar height" >&2; exit 1; }
 [ "$(wc -l < "$VISUAL_ENV_LOG" | tr -d ' ')" = "2" ] || { echo "FAIL: active-only refresh should invoke space_visuals once" >&2; exit 1; }
 grep -Fqx -- '--trigger space_active_refresh' "$CALLS_LOG" || { echo "FAIL: active-only refresh should emit space_active_refresh when the focused space changes" >&2; exit 1; }
+if grep -Fqx -- 'query bar' "$CALLS_LOG"; then
+  echo "FAIL: active-only refresh should reuse cached space item lookup instead of querying the full bar" >&2
+  exit 1
+fi
+if grep -Fqx -- '-m query --spaces' "$YABAI_LOG"; then
+  echo "FAIL: active-only refresh should reuse cached topology state instead of querying yabai spaces" >&2
+  exit 1
+fi
 if grep -Fqx -- '--trigger space_change' "$CALLS_LOG"; then
   echo "FAIL: active-only refresh should not fall back to the legacy space_change trigger" >&2
   exit 1

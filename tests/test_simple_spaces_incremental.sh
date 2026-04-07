@@ -115,6 +115,16 @@ if ! grep -Fq -- "--move space.1 after front_app_divider" "$LOG_FILE"; then
   exit 1
 fi
 
+if grep -Fq -- "--remove space_creator" "$LOG_FILE"; then
+  echo "FAIL: incremental diff path should not rebuild an unchanged creator item" >&2
+  exit 1
+fi
+
+if grep -Fq -- "--add item space_creator" "$LOG_FILE"; then
+  echo "FAIL: incremental diff path should not recreate an unchanged creator item" >&2
+  exit 1
+fi
+
 grep -Fxq 'strategy=incremental_add_remove' "$METRICS_FILE" || { echo "FAIL: incremental add/remove path should emit incremental_add_remove metrics" >&2; exit 1; }
 grep -Fxq 'added=1' "$METRICS_FILE" || { echo "FAIL: incremental add/remove path should report added spaces" >&2; exit 1; }
 grep -Fxq 'removed=1' "$METRICS_FILE" || { echo "FAIL: incremental add/remove path should report removed spaces" >&2; exit 1; }

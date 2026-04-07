@@ -100,13 +100,18 @@ if grep -Fq -- "--add space space.1" "$LOG_FILE"; then
   exit 1
 fi
 
-if ! grep -Fq -- "--remove /space_creator\\..*/ --remove space_creator" "$LOG_FILE"; then
-  echo "FAIL: creator-only change should rebuild creator items" >&2
+if grep -Fq -- "--remove /space_creator\\..*/ --remove space_creator" "$LOG_FILE"; then
+  echo "FAIL: creator-only change should not force a full creator rebuild" >&2
   exit 1
 fi
 
-if ! grep -Fq -- "--add item space_creator" "$LOG_FILE"; then
-  echo "FAIL: creator-only change should add creator item back" >&2
+if grep -Fq -- "--add item space_creator" "$LOG_FILE"; then
+  echo "FAIL: creator-only change should not recreate an unchanged creator item" >&2
+  exit 1
+fi
+
+if ! grep -Fq -- "--set space_creator" "$LOG_FILE"; then
+  echo "FAIL: creator-only change should update the creator item in place" >&2
   exit 1
 fi
 

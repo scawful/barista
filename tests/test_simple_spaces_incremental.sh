@@ -61,7 +61,7 @@ cat > "$BIN_DIR/sketchybar" <<EOF
 set -euo pipefail
 LOG_FILE="$LOG_FILE"
 if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "bar" ]; then
-  printf '{"height":28,"items":["front_app","space.1","space.2","space_creator"]}\n'
+  printf '{"height":28,"items":["front_app","front_app_divider","space.1","space.2","space_creator"]}\n'
   exit 0
 fi
 if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "front_app" ]; then
@@ -107,6 +107,11 @@ fi
 
 if ! grep -Fq -- "--set space.3 space=3" "$LOG_FILE"; then
   echo "FAIL: incremental diff path should configure the new space.3 item" >&2
+  exit 1
+fi
+
+if ! grep -Fq -- "--move space.1 after front_app_divider" "$LOG_FILE"; then
+  echo "FAIL: incremental diff path should keep surviving spaces anchored after the front-app divider" >&2
   exit 1
 fi
 

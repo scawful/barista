@@ -105,6 +105,57 @@ query_all_windows_json() {
   query_json query --windows
 }
 
+emit_focused_space_context_from_window() {
+  local focused_window_json focused_app focused_space focused_display focused_minimized requested_app
+
+  [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ] || return 1
+  focused_window_json="$(query_focused_window_json)"
+  [ -n "$focused_window_json" ] || return 1
+
+  focused_minimized="$(printf '%s\n' "$focused_window_json" | "$JQ_BIN" -r '."is-minimized" // false' 2>/dev/null || echo false)"
+  [ "$focused_minimized" != "true" ] || return 1
+
+  focused_app="$(printf '%s\n' "$focused_window_json" | "$JQ_BIN" -r '.app // empty' 2>/dev/null || true)"
+  focused_space="$(printf '%s\n' "$focused_window_json" | "$JQ_BIN" -r '.space // empty' 2>/dev/null || true)"
+  focused_display="$(printf '%s\n' "$focused_window_json" | "$JQ_BIN" -r '.display // empty' 2>/dev/null || true)"
+  [ -n "$focused_app" ] || return 1
+  [ -n "$focused_space" ] || return 1
+  [ -n "$focused_display" ] || return 1
+
+  requested_app="${APP_NAME:-}"
+  if [ -n "$requested_app" ] && [ "$(printf '%s' "$focused_app" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$requested_app" | tr '[:upper:]' '[:lower:]')" ]; then
+    return 1
+  fi
+
+  emit app_name "$focused_app"
+  emit space_index "$focused_space"
+  emit display_index "$focused_display"
+  emit space_visible true
+}
+
+emit_current_visible_space_context() {
+  local app_name current_space_json current_space_index current_display_index current_space_visible
+
+  [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ] || return 1
+  current_space_json="$(query_current_space_json)"
+  [ -n "$current_space_json" ] || return 1
+
+  current_space_index="$(printf '%s\n' "$current_space_json" | "$JQ_BIN" -r '.index // empty' 2>/dev/null || true)"
+  current_display_index="$(printf '%s\n' "$current_space_json" | "$JQ_BIN" -r '.display // empty' 2>/dev/null || true)"
+  current_space_visible="$(printf '%s\n' "$current_space_json" | "$JQ_BIN" -r '."is-visible" // false' 2>/dev/null || echo false)"
+  [ -n "$current_space_index" ] || return 1
+  [ -n "$current_display_index" ] || return 1
+  [ "$current_space_visible" = "true" ] || return 1
+
+  app_name="$(resolve_front_app_name)"
+  [ -n "$app_name" ] || return 1
+
+  emit app_name "$app_name"
+  emit space_index "$current_space_index"
+  emit display_index "$current_display_index"
+  emit space_visible "$current_space_visible"
+}
+
 resolve_front_app_name() {
   local app_name="${APP_NAME:-}"
   local focused_window_json
@@ -244,6 +295,15 @@ main() {
   local app_name current_space_json current_space_index current_display_index current_space_visible
   local window_json window_space window_display window_focused window_space_type window_app
   local runtime_output
+
+  if [ "$MODE" = "focused-space" ]; then
+    if emit_focused_space_context_from_window; then
+      exit 0
+    fi
+    if emit_current_visible_space_context; then
+      exit 0
+    fi
+  fi
 
   runtime_output="$(query_runtime_context || true)"
   if [ -n "$runtime_output" ]; then

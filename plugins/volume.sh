@@ -29,16 +29,16 @@ case "$SENDER" in
     VOLUME="$INFO"
     ;;
   "mouse.entered")
-    animate_set "$NAME" background.drawing=on background.color="$HIGHLIGHT"
+    highlight_with_timeout "$NAME" "background.drawing=on background.color=$HIGHLIGHT" "background.drawing=off"
     exit 0
     ;;
   "mouse.exited")
-    animate_set "$NAME" background.drawing=off
+    clear_highlight "$NAME" "background.drawing=off"
     exit 0
     ;;
   "mouse.exited.global")
     sketchybar --set "$NAME" popup.drawing=off
-    animate_set "$NAME" background.drawing=off
+    clear_highlight "$NAME" "background.drawing=off"
     exit 0
     ;;
   *)

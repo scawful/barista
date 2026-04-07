@@ -14,6 +14,8 @@ trap cleanup EXIT
 
 mkdir -p "$BIN_DIR"
 
+RUNTIME_CONTEXT_LOG="$TMP_DIR/runtime_context.log"
+
 cat > "$BIN_DIR/yabai" <<'EOF'
 #!/bin/bash
 set -euo pipefail
@@ -84,6 +86,14 @@ esac
 EOF
 chmod +x "$BIN_DIR/osascript"
 
+cat > "$TMP_DIR/runtime_context.sh" <<EOF
+#!/bin/bash
+set -euo pipefail
+printf '%s\n' "\$*" >> "$RUNTIME_CONTEXT_LOG"
+exit 1
+EOF
+chmod +x "$TMP_DIR/runtime_context.sh"
+
 JQ_BIN="$(command -v jq)"
 [ -n "$JQ_BIN" ] || { echo "FAIL: jq is required for test_front_app_context.sh" >&2; exit 1; }
 
@@ -152,12 +162,13 @@ BACKFILL_OUTPUT="$(
     BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
     BARISTA_JQ_BIN="$JQ_BIN" \
     BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
-    BARISTA_RUNTIME_CONTEXT_SCRIPT="$TMP_DIR/missing_runtime_context.sh" \
+    BARISTA_RUNTIME_CONTEXT_SCRIPT="$TMP_DIR/runtime_context.sh" \
     "$SCRIPT" --mode focused-space --app Ghostty
 )"
 
 printf '%s\n' "$BACKFILL_OUTPUT" | grep -Fxq $'space_index\t8' || { echo "FAIL: focused-space mode should backfill raw space index from the selected window when current-space discovery is missing" >&2; exit 1; }
 printf '%s\n' "$BACKFILL_OUTPUT" | grep -Fxq $'display_index\t2' || { echo "FAIL: focused-space mode should backfill raw display index from the selected window when current-space discovery is missing" >&2; exit 1; }
 printf '%s\n' "$BACKFILL_OUTPUT" | grep -Fxq $'space_visible\ttrue' || { echo "FAIL: focused-space mode should mark the selected focused window as visible when backfilling" >&2; exit 1; }
+[ ! -s "$RUNTIME_CONTEXT_LOG" ] || { echo "FAIL: focused-space fast path should not invoke runtime_context.sh when focused window context is already available" >&2; exit 1; }
 
 printf 'test_front_app_context.sh: ok\n'

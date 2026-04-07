@@ -63,7 +63,7 @@ cat > "$BIN_DIR/sketchybar" <<EOF
 set -euo pipefail
 LOG_FILE="$LOG_FILE"
 if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "bar" ]; then
-  printf '{"height":28,"items":["front_app"]}\n'
+  printf '{"height":28,"items":["front_app","front_app_divider"]}\n'
   exit 0
 fi
 if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "front_app" ]; then
@@ -84,6 +84,11 @@ PATH="$BIN_DIR:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
 
 if ! grep -Fq -- "--add space space.1" "$LOG_FILE"; then
   echo "FAIL: empty bar snapshot should force full rebuild and add space.1" >&2
+  exit 1
+fi
+
+if ! grep -Fq -- "--move space.1 after front_app_divider" "$LOG_FILE"; then
+  echo "FAIL: full rebuild should anchor spaces after the front-app divider" >&2
   exit 1
 fi
 

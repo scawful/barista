@@ -74,6 +74,7 @@ local function test_items_left_layout()
 
   -- Check for front_app
   local found_front_app = false
+  local found_front_app_divider = false
   local found_front_app_state = false
   local found_front_app_location = false
   local front_app_hide = nil
@@ -85,6 +86,10 @@ local function test_items_left_layout()
     if entry.type == "item" and entry.name == "front_app" then
       found_front_app = true
       assert(entry.props.position == "left", "front_app should be on the left")
+      assert_equal(entry.props.label.drawing, false, "front_app should default to icon-only label state")
+    elseif entry.type == "item" and entry.name == "front_app_divider" then
+      found_front_app_divider = true
+      assert_equal(entry.props.label.string, "┆", "front_app divider should render a slim separator")
     elseif entry.type == "item" and entry.name == "front_app.state" then
       found_front_app_state = true
     elseif entry.type == "item" and entry.name == "front_app.location" then
@@ -102,6 +107,7 @@ local function test_items_left_layout()
     end
   end
   assert(found_front_app, "front_app item not found in layout")
+  assert(found_front_app_divider, "front_app divider not found in layout")
   assert(found_front_app_state, "front_app state row not found in popup layout")
   assert(found_front_app_location, "front_app location row not found in popup layout")
   assert(front_app_hide ~= nil, "front_app hide action not found in popup layout")

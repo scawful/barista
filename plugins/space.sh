@@ -10,66 +10,82 @@ export LANG="${LANG:-en_US.UTF-8}"
 _d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
 
 SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-$(command -v sketchybar 2>/dev/null || true)}"
-JQ_BIN="${BARISTA_JQ_BIN:-$(command -v jq 2>/dev/null || true)}"
 CONFIG_DIR="${CONFIG_DIR:-${HOME}/.config/sketchybar}"
-HOVER_STATE_DIR="${BARISTA_SPACE_HOVER_STATE_DIR:-$CONFIG_DIR/cache/space_hover}"
+SPACE_VISUALS_STATE_DIR="${BARISTA_SPACE_VISUALS_STATE_DIR:-$CONFIG_DIR/cache/space_visuals}"
+LAST_SELECTED_SPACE_FILE="$SPACE_VISUALS_STATE_DIR/last_selected_space"
 
 HOVER_BG="0x60cba6f7"
+IDLE_BG="0x00000000"
 IDLE_ICON_COLOR="0xFFa6adc8"
+SELECTED_BG="0xFFcba6f7"
+SELECTED_ICON_COLOR="0xFF11111b"
 
-state_file() {
-  local key="${NAME:-space}"
-  key="$(printf '%s' "$key" | tr -cs '[:alnum:]._-' '_')"
-  printf '%s/%s.state' "$HOVER_STATE_DIR" "$key"
-}
-
-cache_current_style() {
-  [ -n "$SKETCHYBAR_BIN" ] || return 1
-  [ -n "$JQ_BIN" ] || return 1
-  [ -n "${NAME:-}" ] || return 1
-
-  local current_style cache_file
-  cache_file="$(state_file)"
-  mkdir -p "$HOVER_STATE_DIR" 2>/dev/null || true
-  current_style="$("$SKETCHYBAR_BIN" --query "$NAME" 2>/dev/null | "$JQ_BIN" -r '[.geometry.background.drawing, .geometry.background.color, .icon.color] | @tsv' 2>/dev/null || true)"
-  [ -n "$current_style" ] || return 1
-  printf '%s\n' "$current_style" > "$cache_file" 2>/dev/null || true
-}
-
-restore_cached_style() {
-  [ -n "$SKETCHYBAR_BIN" ] || return 1
-  [ -n "${NAME:-}" ] || return 1
-
-  local cache_file background_drawing background_color icon_color
-  cache_file="$(state_file)"
-  [ -f "$cache_file" ] || return 1
-
-  IFS=$'\t' read -r background_drawing background_color icon_color < "$cache_file" || return 1
-  rm -f "$cache_file" >/dev/null 2>&1 || true
-  [ -n "$background_drawing" ] || return 1
-  [ -n "$background_color" ] || return 1
-  [ -n "$icon_color" ] || return 1
-
-  "$SKETCHYBAR_BIN" --set "$NAME" \
-    background.drawing="$background_drawing" \
-    background.color="$background_color" \
-    icon.color="$icon_color"
+space_index() {
+  case "${NAME:-}" in
+    space.[0-9]*)
+      printf '%s' "${NAME#space.}"
+      ;;
+  esac
 }
 
 restore_visual_state() {
-  restore_cached_style || true
+  [ -n "$SKETCHYBAR_BIN" ] || return 1
+  [ -n "${NAME:-}" ] || return 1
+
+  local current_index last_selected_space
+  current_index="$(space_index)"
+  [ -n "$current_index" ] || return 1
+
+  last_selected_space=""
+  if [ -f "$LAST_SELECTED_SPACE_FILE" ]; then
+    IFS= read -r last_selected_space < "$LAST_SELECTED_SPACE_FILE" || true
+  fi
+
+  if [ -n "$last_selected_space" ] && [ "$last_selected_space" = "$current_index" ]; then
+    "$SKETCHYBAR_BIN" --set "$NAME" \
+      background.drawing=on \
+      background.color="$SELECTED_BG" \
+      icon.color="$SELECTED_ICON_COLOR"
+    return 0
+  fi
+
+  "$SKETCHYBAR_BIN" --set "$NAME" \
+    background.drawing=off \
+    background.color="$IDLE_BG" \
+    icon.color="$IDLE_ICON_COLOR"
 }
 
 case "${SENDER:-}" in
   mouse.entered)
-    if cache_current_style; then
-      "$SKETCHYBAR_BIN" --set "$NAME" \
-        background.drawing=on \
-        background.color="$HOVER_BG" \
-        icon.color="$IDLE_ICON_COLOR"
-    fi
+    state_path="$(hover_state_file "$NAME")"
+    token="$(hover_token)"
+    printf '%s' "$token" > "$state_path"
+    "$SKETCHYBAR_BIN" --set "$NAME" \
+      background.drawing=on \
+      background.color="$HOVER_BG" \
+      icon.color="$IDLE_ICON_COLOR"
+    case "$HOVER_TIMEOUT" in
+      ""|0|0.0|false|off)
+        ;;
+      *)
+        (
+          sleep "$HOVER_TIMEOUT"
+          current=""
+          if [ -f "$state_path" ]; then
+            IFS= read -r current < "$state_path" || true
+          fi
+          if [ "$current" = "$token" ]; then
+            NAME="$NAME" SKETCHYBAR_BIN="$SKETCHYBAR_BIN" LAST_SELECTED_SPACE_FILE="$LAST_SELECTED_SPACE_FILE" \
+              IDLE_BG="$IDLE_BG" IDLE_ICON_COLOR="$IDLE_ICON_COLOR" \
+              SELECTED_BG="$SELECTED_BG" SELECTED_ICON_COLOR="$SELECTED_ICON_COLOR" \
+              restore_visual_state
+          fi
+        ) >/dev/null 2>&1 &
+        ;;
+    esac
     ;;
   mouse.exited)
+    rm -f "$(hover_state_file "$NAME")" >/dev/null 2>&1 || true
     restore_visual_state
     ;;
 esac

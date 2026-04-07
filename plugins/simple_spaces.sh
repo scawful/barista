@@ -769,14 +769,17 @@ if [ "$SNAPSHOT_SPACE_COUNT" -eq 0 ]; then
   FORCE_FULL_REBUILD=1
 fi
 
-# Do not block startup waiting for front_app. If it is not present yet, fall
-# back to the next available anchor and let the async reorder path repair the
-# final placement once front_app appears.
-anchor_item="front_app"
-needs_front_app_reorder=0
+# Do not block startup waiting for the front-app divider. If it is not present
+# yet, fall back to the front-app anchor or the next available anchor and let
+# the async reorder path repair final placement once the divider appears.
+preferred_anchor_item="front_app_divider"
+anchor_item="$preferred_anchor_item"
+needs_anchor_reorder=0
 if ! snapshot_item_exists "$anchor_item"; then
-  needs_front_app_reorder=1
-  if snapshot_item_exists "apple_menu"; then
+  needs_anchor_reorder=1
+  if snapshot_item_exists "front_app"; then
+    anchor_item="front_app"
+  elif snapshot_item_exists "apple_menu"; then
     anchor_item="apple_menu"
   else
     anchor_item=""
@@ -1050,14 +1053,15 @@ write_space_metrics "full_rebuild" "$(count_desired_space_items)" "$existing_spa
 write_signatures "$SPACE_TOPOLOGY_SIG" "$CREATOR_TOPOLOGY_SIG" "$VISIBLE_SIG" "$VISIBLE_BY_DISPLAY_SIG" "$ACTIVE_DISPLAY_SIG" "$SPACE_PROPS_SIG" "$CREATOR_PROPS_SIG"
 
 
-# If front_app wasn't ready yet, reorder spaces once it appears.
-if [ "$needs_front_app_reorder" -eq 1 ]; then
+# If the preferred front-app divider was not ready yet, reorder spaces once it
+# appears.
+if [ "$needs_anchor_reorder" -eq 1 ]; then
   (
     for i in {1..30}; do
-      if item_exists "front_app"; then
+      if item_exists "$preferred_anchor_item"; then
         # PERF: Batch all reorder moves into a single sketchybar call
         declare -a REORDER_ARGS=()
-        last="front_app"
+        last="$preferred_anchor_item"
         for space_item in "${SPACE_ITEMS[@]}"; do
           REORDER_ARGS+=(--move "$space_item" after "$last")
           last="$space_item"

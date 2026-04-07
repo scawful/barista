@@ -1,6 +1,6 @@
 #!/bin/bash
 # OPTIMIZED: Avoid expensive osascript, use yabai if available
-# Updated: Show app name only (icon shown in space widget instead)
+# Updated: Show current app glyph in the bar and full name in the popup
 
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
 export LC_ALL="${LC_ALL:-en_US.UTF-8}"
@@ -10,6 +10,7 @@ _d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/l
 
 APP_NAME="${INFO:-}"
 FRONT_APP_CONTEXT_SCRIPT="${BARISTA_FRONT_APP_CONTEXT_SCRIPT:-$SCRIPTS_DIR/front_app_context.sh}"
+APP_ICON_SCRIPT="${BARISTA_APP_ICON_SCRIPT:-$SCRIPTS_DIR/app_icon.sh}"
 OSASCRIPT_BIN="${BARISTA_OSASCRIPT_BIN:-$(command -v osascript 2>/dev/null || true)}"
 
 # Barista's own binaries to filter out
@@ -18,15 +19,15 @@ BARISTA_APPS="config_menu|config_menu_v2|BaristaControlPanel|Barista Control Pan
 case "${SENDER:-}" in
   mouse.exited.global)
     sketchybar --set "$NAME" popup.drawing=off
-    animate_set "$NAME" background.drawing=off
+    clear_highlight "$NAME" "background.drawing=off"
     exit 0
     ;;
   mouse.entered)
-    animate_set "$NAME" background.drawing=on background.color="$HIGHLIGHT"
+    highlight_with_timeout "$NAME" "background.drawing=on background.color=$HIGHLIGHT" "background.drawing=off"
     exit 0
     ;;
   mouse.exited)
-    animate_set "$NAME" background.drawing=off
+    clear_highlight "$NAME" "background.drawing=off"
     exit 0
     ;;
 esac
@@ -34,6 +35,7 @@ esac
 STATE_ICON="󰋽"
 STATE_LABEL="No managed window"
 LOCATION_LABEL="Space ? · Display ?"
+APP_ICON="󰣆"
 
 if [ -x "$FRONT_APP_CONTEXT_SCRIPT" ]; then
   while IFS=$'\t' read -r key value; do
@@ -63,8 +65,15 @@ case "$APP_NAME" in
     ;;
 esac
 
-# Show app name only - icon is shown in the space widget
-sketchybar --set "$NAME" icon.drawing=off label="$APP_NAME"
+if [ -x "$APP_ICON_SCRIPT" ]; then
+  APP_ICON="$("$APP_ICON_SCRIPT" "$APP_NAME" 2>/dev/null || true)"
+fi
+
+if [ -z "$APP_ICON" ]; then
+  APP_ICON="󰣆"
+fi
+
+sketchybar --set "$NAME" icon="$APP_ICON" icon.drawing=on label="" label.drawing=off
 sketchybar --set front_app.header label="App · $APP_NAME" >/dev/null 2>&1 || true
 
 sketchybar --set front_app.state \

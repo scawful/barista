@@ -71,7 +71,7 @@ cat > "$BIN_DIR/sketchybar" <<EOF
 set -euo pipefail
 LOG_FILE="$LOG_FILE"
 if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "bar" ]; then
-  printf '{"height":28,"items":["front_app","space.1","space.2","space_creator"]}\n'
+  printf '{"height":28,"items":["front_app","front_app_divider","space.1","space.2","space_creator"]}\n'
   exit 0
 fi
 if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "front_app" ]; then

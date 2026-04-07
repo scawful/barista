@@ -139,8 +139,9 @@ sketchybar --reload
 - Popup action rows still close the popup after firing.
 
 ### 8. Apple Menu Reload Stability
-**Current path**: `modules/menu.lua` + `modules/apple_menu_enhanced.lua` + `plugins/popup_anchor.sh`
-- The Apple menu is click-open only.
+**Current path**: `modules/menu.lua` + `modules/apple_menu_enhanced.lua` + `helpers/popup_anchor.c` + `plugins/popup_anchor.sh`
+- The Apple menu hover now highlights the anchor, but click still opens the popup.
+- The hover highlight now clears itself after the short bar timer, so anchors do not stay lit while you linger.
 - `apple_menu` still uses the popup-anchor helper for pointer-exit dismissal, but it no longer sets `POPUP_OPEN_ON_ENTER=1`.
 - SketchyBar still rejects `env` as an item subdomain; when that regresses, reloads can leave the bar temporarily empty while the config pass is poisoned.
 - Barista now also stops its widget/runtime daemons before `begin_config`, so reloads do not keep spamming updates into items that were just removed.

@@ -1,6 +1,6 @@
 local apple_menu = require("apple_menu_enhanced")
 
-run_test("apple_menu_enhanced: apple menu stays click-only", function()
+run_test("apple_menu_enhanced: apple menu stays hover-highlight + click-open", function()
   local added = {}
   local subscribed = {}
 

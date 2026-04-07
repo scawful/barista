@@ -48,3 +48,12 @@ run_test("shortcuts.get_command: toggle_control_center is a popup toggle command
   assert_true(command:match("%-%-set") ~= nil, "toggle command sets an item")
   assert_true(command:match("popup%.drawing=toggle") ~= nil, "toggle command toggles popup drawing")
 end)
+
+run_test("shortcuts.get_command: window display moves route through yabai_control", function()
+  local next_command = shortcuts.get_command("window_display_next")
+  local prev_command = shortcuts.get_command("window_display_prev")
+  assert_type(next_command, "string", "window_display_next command")
+  assert_type(prev_command, "string", "window_display_prev command")
+  assert_true(next_command:match("yabai_control%.sh window%-display%-next") ~= nil, "next display move should route through yabai_control.sh")
+  assert_true(prev_command:match("yabai_control%.sh window%-display%-prev") ~= nil, "prev display move should route through yabai_control.sh")
+end)

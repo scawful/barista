@@ -79,6 +79,8 @@ local function test_items_left_layout()
   local front_app_hide = nil
   local found_adopt_space_mode = false
   local found_send_float_space = false
+  local front_app_move_prev = nil
+  local front_app_move_next = nil
   for _, entry in ipairs(layout) do
     if entry.type == "item" and entry.name == "front_app" then
       found_front_app = true
@@ -93,6 +95,10 @@ local function test_items_left_layout()
       found_adopt_space_mode = true
     elseif entry.type == "item" and entry.name == "front_app.move.float_space" then
       found_send_float_space = true
+    elseif entry.type == "item" and entry.name == "front_app.move.display_prev" then
+      front_app_move_prev = entry
+    elseif entry.type == "item" and entry.name == "front_app.move.display_next" then
+      front_app_move_next = entry
     end
   end
   assert(found_front_app, "front_app item not found in layout")
@@ -101,7 +107,11 @@ local function test_items_left_layout()
   assert(front_app_hide ~= nil, "front_app hide action not found in popup layout")
   assert(found_adopt_space_mode, "front_app adopt-space-mode action not found in popup layout")
   assert(found_send_float_space, "front_app send-to-float-space action not found in popup layout")
+  assert(front_app_move_prev ~= nil, "front_app move-to-prev-display action not found in popup layout")
+  assert(front_app_move_next ~= nil, "front_app move-to-next-display action not found in popup layout")
   assert(front_app_hide.props.click_script:find("popup.drawing=off", 1, true) ~= nil, "front_app actions should close the popup after execution")
+  assert(front_app_move_prev.props.click_script:find("yabai_control%.sh window%-display%-prev") ~= nil, "front_app prev-display action should route through yabai_control.sh")
+  assert(front_app_move_next.props.click_script:find("yabai_control%.sh window%-display%-next") ~= nil, "front_app next-display action should route through yabai_control.sh")
 
   -- Check for effects
   local found_refresh_spaces = false

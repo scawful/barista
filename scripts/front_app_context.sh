@@ -91,6 +91,12 @@ query_current_space_json() {
   ' 2>/dev/null || true
 }
 
+query_space_json_by_index() {
+  local space_index="${1:-}"
+  [ -n "$space_index" ] || return 0
+  query_json query --spaces --space "$space_index"
+}
+
 query_focused_window_json() {
   query_json query --windows --window
 }
@@ -157,8 +163,52 @@ select_matching_window_json() {
     ' 2>/dev/null || true
 }
 
+space_type_for_index() {
+  local space_index="${1:-}"
+  local current_space_json="${2:-}"
+  local current_space_index current_space_type
+
+  [ -n "$space_index" ] || return 0
+
+  if [ -n "$current_space_json" ]; then
+    current_space_index="$(printf '%s\n' "$current_space_json" | "$JQ_BIN" -r '.index // empty' 2>/dev/null || true)"
+    if [ -n "$current_space_index" ] && [ "$current_space_index" = "$space_index" ]; then
+      current_space_type="$(printf '%s\n' "$current_space_json" | "$JQ_BIN" -r '.type // empty' 2>/dev/null || true)"
+      if [ -n "$current_space_type" ] && [ "$current_space_type" != "null" ]; then
+        printf '%s' "$current_space_type"
+        return 0
+      fi
+    fi
+  fi
+
+  query_space_json_by_index "$space_index" | "$JQ_BIN" -r '.type // empty' 2>/dev/null || true
+}
+
+append_space_context_label() {
+  local label="${1:-}"
+  local floating="${2:-false}"
+  local space_type="${3:-}"
+
+  case "$space_type" in
+    float)
+      printf '%s' "$label · Float Space"
+      ;;
+    bsp|stack)
+      if [ "$floating" = "true" ]; then
+        printf '%s' "$label · Managed Space"
+      else
+        printf '%s' "$label"
+      fi
+      ;;
+    *)
+      printf '%s' "$label"
+      ;;
+  esac
+}
+
 build_state_label() {
   local window_json="${1:-}"
+  local space_type="${2:-}"
   local floating sticky fullscreen layer label
 
   floating="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."is-floating" // false' 2>/dev/null || echo false)"
@@ -186,12 +236,13 @@ build_state_label() {
     below) label="$label · Below" ;;
   esac
 
+  label="$(append_space_context_label "$label" "$floating" "$space_type")"
   emit state_label "$label"
 }
 
 main() {
   local app_name current_space_json current_space_index current_display_index current_space_visible
-  local window_json window_space window_display window_focused
+  local window_json window_space window_display window_focused window_space_type
   local runtime_output
 
   runtime_output="$(query_runtime_context || true)"
@@ -228,6 +279,7 @@ main() {
     window_space="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.space // empty' 2>/dev/null || true)"
     window_display="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.display // empty' 2>/dev/null || true)"
     window_focused="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."has-focus" // false' 2>/dev/null || echo false)"
+    window_space_type="$(space_type_for_index "${window_space:-${current_space_index:-}}" "$current_space_json")"
 
     if [ -z "$current_space_index" ] && [ -n "$window_space" ]; then
       current_space_index="$window_space"
@@ -250,7 +302,7 @@ main() {
 
   if [ -n "$window_json" ]; then
     emit window_available "true"
-    build_state_label "$window_json"
+    build_state_label "$window_json" "$window_space_type"
     emit location_label "Space ${window_space:-${current_space_index:-?}} · Display ${window_display:-${current_display_index:-?}}"
     exit 0
   fi

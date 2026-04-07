@@ -77,6 +77,8 @@ local function test_items_left_layout()
   local found_front_app_state = false
   local found_front_app_location = false
   local front_app_hide = nil
+  local found_adopt_space_mode = false
+  local found_send_float_space = false
   for _, entry in ipairs(layout) do
     if entry.type == "item" and entry.name == "front_app" then
       found_front_app = true
@@ -87,12 +89,18 @@ local function test_items_left_layout()
       found_front_app_location = true
     elseif entry.type == "item" and entry.name == "front_app.hide" then
       front_app_hide = entry
+    elseif entry.type == "item" and entry.name == "front_app.window.adopt_space_mode" then
+      found_adopt_space_mode = true
+    elseif entry.type == "item" and entry.name == "front_app.move.float_space" then
+      found_send_float_space = true
     end
   end
   assert(found_front_app, "front_app item not found in layout")
   assert(found_front_app_state, "front_app state row not found in popup layout")
   assert(found_front_app_location, "front_app location row not found in popup layout")
   assert(front_app_hide ~= nil, "front_app hide action not found in popup layout")
+  assert(found_adopt_space_mode, "front_app adopt-space-mode action not found in popup layout")
+  assert(found_send_float_space, "front_app send-to-float-space action not found in popup layout")
   assert(front_app_hide.props.click_script:find("popup.drawing=off", 1, true) ~= nil, "front_app actions should close the popup after execution")
 
   -- Check for effects

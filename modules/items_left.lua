@@ -244,6 +244,7 @@ local function get_layout(ctx)
   if yabai_controls_enabled then
     local window_actions = {
       { name = "front_app.window.float", icon = "󰒄", icon_color = tc("SAPPHIRE"), label = "Toggle Float", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-float") },
+      { name = "front_app.window.adopt_space_mode", icon = "󰆾", icon_color = tc("TEAL"), label = "Adopt Current Space Mode", action = call_script(YABAI_CONTROL_SCRIPT, "window-adopt-space-mode") },
       { name = "front_app.window.fullscreen", icon = "󰊓", icon_color = tc("GREEN"), label = "Toggle Fullscreen", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-fullscreen") },
       { name = "front_app.window.sticky", icon = "󰐊", icon_color = tc("YELLOW"), label = "Toggle Sticky", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-sticky") },
       { name = "front_app.window.topmost", icon = "󰁜", icon_color = tc("MAUVE", "LAVENDER"), label = "Toggle Topmost", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-topmost") },
@@ -275,6 +276,7 @@ local function get_layout(ctx)
     }))
 
     local move_actions = {
+      { name = "front_app.move.float_space", icon = "󰒄", icon_color = tc("TEAL"), label = "Send to Float Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-float") },
       { name = "front_app.move.display_prev", icon = "󰍺", icon_color = tc("SKY"), label = "Move to Prev Display", action = call_script(YABAI_CONTROL_SCRIPT, "window-display-prev") },
       { name = "front_app.move.display_next", icon = "󰍹", icon_color = tc("SKY"), label = "Move to Next Display", action = call_script(YABAI_CONTROL_SCRIPT, "window-display-next") },
       { name = "front_app.move.space_prev", icon = "󱂬", icon_color = tc("PEACH"), label = "Move to Prev Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-prev-wrap") },

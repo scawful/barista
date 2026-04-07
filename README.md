@@ -59,6 +59,13 @@ The popup manager, helper popups, and the `toggle_control_center` shortcut all
 target the same resolved control-center item name; the default remains
 `control_center`.
 
+Window move commands now normalize the destination state when a managed window
+is sent into a `float` space: the window is moved first, then floated if the
+target space is actually `float`. Moves into managed (`bsp` / `stack`) spaces
+preserve the current window float state instead of forcing tiling.
+The `front_app` popup now exposes two explicit rule-aware window actions on top
+of the raw toggles: `Adopt Current Space Mode` and `Send to Float Space`.
+
 - **Enable**: Run installer and select "Window Manager Mode: Required".
 - **Disable**: Run `./scripts/set_mode.sh <profile> disabled`.
 

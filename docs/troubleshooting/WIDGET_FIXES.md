@@ -162,8 +162,12 @@ sketchybar --reload
 - `front_app` no longer relies only on `yabai --windows --window` for popup state/location.
 - The helper prefers the shared `scripts/runtime_context.sh` cache when available, then falls back to direct discovery.
 - The shared helper first tries the focused window, then falls back to the best matching window for the current app on the active space/display.
+- The compiled runtime helper now also prefers the focused yabai window's app name before falling back to `NSWorkspace`, so live Ghostty/managed-window state no longer degrades to `No managed window` when AppKit focus naming diverges from yabai.
 - If no managed window matches, `front_app` now still shows the current space/display and labels the state as `No managed window` instead of falling back to `Space ? · Display ?`.
 - If current-space discovery misses but the selected app window is still known, the helper now backfills raw `space_index` / `display_index` from that window instead of leaving those fields blank.
+- The front-app state label now distinguishes `Floating · Float Space` from `Floating · Managed Space`, so a per-window float inside a tiled space is not conflated with a true float-space workflow.
+- `scripts/yabai_control.sh` now applies the same rule on window moves: when the destination space is `float`, the moved window is normalized to floating after the move instead of landing in a mismatched tiled state.
+- The `front_app` popup now exposes the same policy directly through `Adopt Current Space Mode` and `Send to Float Space`, so recovery does not require remembering a lower-level yabai command.
 
 ### 11. Runtime Context Helper
 **Current path**: `main.lua` + `modules/runtime_daemon.lua` + `scripts/runtime_context.sh` + `bin/runtime_context_helper`

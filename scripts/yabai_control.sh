@@ -152,6 +152,11 @@ display_space_indices() {
   run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --spaces --display | "$JQ_BIN" -r '.[].index'
 }
 
+all_spaces_json() {
+  require_jq
+  run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --spaces 2>/dev/null || true
+}
+
 neighbor_space_index() {
   local direction="$1"
   mapfile -t spaces < <(display_space_indices)
@@ -179,6 +184,182 @@ neighbor_space_index() {
   else
     echo "${spaces[$(( (pos - 1 + count) % count ))]}"
   fi
+}
+
+focused_window_json() {
+  require_jq
+  run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --windows --window 2>/dev/null || true
+}
+
+window_id_from_json() {
+  local window_json="${1:-}"
+  [ -n "$window_json" ] || return 0
+  printf '%s\n' "$window_json" | "$JQ_BIN" -r '.id // empty' 2>/dev/null | head -n 1
+}
+
+window_space_for_id() {
+  local window_id="${1:-}"
+  [ -n "$window_id" ] || return 0
+  require_jq
+  run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --windows --window "$window_id" 2>/dev/null \
+    | "$JQ_BIN" -r '.space // empty' 2>/dev/null \
+    | head -n 1
+}
+
+window_is_floating_for_id() {
+  local window_id="${1:-}"
+  [ -n "$window_id" ] || return 0
+  require_jq
+  run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --windows --window "$window_id" 2>/dev/null \
+    | "$JQ_BIN" -r '."is-floating" // false' 2>/dev/null \
+    | head -n 1
+}
+
+window_display_for_id() {
+  local window_id="${1:-}"
+  [ -n "$window_id" ] || return 0
+  require_jq
+  run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --windows --window "$window_id" 2>/dev/null \
+    | "$JQ_BIN" -r '.display // empty' 2>/dev/null \
+    | head -n 1
+}
+
+space_layout_for_index() {
+  local target_space="${1:-}"
+  [ -n "$target_space" ] || return 0
+  require_jq
+  run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --spaces --space "$target_space" 2>/dev/null \
+    | "$JQ_BIN" -r '.type // empty' 2>/dev/null \
+    | head -n 1
+}
+
+normalize_window_for_space_layout() {
+  local window_id="${1:-}"
+  local target_space="${2:-}"
+  local target_layout floating_state
+
+  [ -n "$window_id" ] || return 0
+  [ -n "$target_space" ] || return 0
+
+  target_layout="$(space_layout_for_index "$target_space")"
+  case "$target_layout" in
+    float)
+      floating_state="$(window_is_floating_for_id "$window_id")"
+      if [[ "$floating_state" != "true" ]]; then
+        "$YABAI_BIN" -m window "$window_id" --toggle float >/dev/null 2>&1 || true
+      fi
+      ;;
+  esac
+}
+
+adopt_window_to_space_layout() {
+  local window_id="${1:-}"
+  local target_space="${2:-}"
+  local target_layout floating_state
+
+  [ -n "$window_id" ] || return 0
+  [ -n "$target_space" ] || return 0
+
+  target_layout="$(space_layout_for_index "$target_space")"
+  floating_state="$(window_is_floating_for_id "$window_id")"
+  case "$target_layout" in
+    float)
+      if [[ "$floating_state" != "true" ]]; then
+        "$YABAI_BIN" -m window "$window_id" --toggle float >/dev/null 2>&1 || true
+      fi
+      ;;
+    bsp|stack)
+      if [[ "$floating_state" = "true" ]]; then
+        "$YABAI_BIN" -m window "$window_id" --toggle float >/dev/null 2>&1 || true
+      fi
+      ;;
+  esac
+}
+
+preferred_space_for_layout() {
+  local target_layout="${1:-}"
+  local current_space="${2:-0}"
+  local current_display="${3:-0}"
+  local spaces_json
+
+  [ -n "$target_layout" ] || return 1
+  spaces_json="$(all_spaces_json)"
+  [ -n "$spaces_json" ] || return 1
+
+  printf '%s\n' "$spaces_json" | "$JQ_BIN" -r \
+    --arg layout "$target_layout" \
+    --argjson current_space "$current_space" \
+    --argjson current_display "$current_display" '
+      map(select((.type // "") == $layout))
+      | sort_by(
+          (if (.display // 0) == $current_display then 0 else 1 end),
+          (if (.index // 0) == $current_space then 1 else 0 end),
+          (.display // 0),
+          (.index // 0)
+        )
+      | map(select((.index // 0) != $current_space))
+      | .[0].index // empty
+    ' 2>/dev/null | head -n 1
+}
+
+focused_window_id() {
+  local focused_json
+  focused_json="$(focused_window_json)"
+  window_id_from_json "$focused_json"
+}
+
+move_window_with_rules() {
+  if [[ -z "$JQ_BIN" ]]; then
+    "$YABAI_BIN" -m window "$@"
+    return
+  fi
+
+  local focused_json window_id target_space
+  focused_json="$(focused_window_json)"
+  window_id="$(window_id_from_json "$focused_json")"
+
+  if [[ -z "$window_id" ]]; then
+    "$YABAI_BIN" -m window "$@"
+    return
+  fi
+
+  "$YABAI_BIN" -m window "$window_id" "$@"
+
+  target_space="$(window_space_for_id "$window_id")"
+  if [[ -n "$target_space" && "$target_space" != "null" ]]; then
+    normalize_window_for_space_layout "$window_id" "$target_space"
+  fi
+}
+
+window_adopt_space_mode() {
+  local window_id target_space
+
+  window_id="$(focused_window_id)"
+  [[ -n "$window_id" ]] || return 1
+
+  target_space="${1:-}"
+  if [[ -z "$target_space" ]]; then
+    target_space="$(window_space_for_id "$window_id")"
+  fi
+  [[ -n "$target_space" ]] || return 1
+
+  adopt_window_to_space_layout "$window_id" "$target_space"
+}
+
+window_move_to_layout_space() {
+  local target_layout="${1:-}"
+  local window_id current_space current_display target_space
+
+  [[ -n "$target_layout" ]] || return 1
+  window_id="$(focused_window_id)"
+  [[ -n "$window_id" ]] || return 1
+
+  current_space="$(window_space_for_id "$window_id")"
+  current_display="$(window_display_for_id "$window_id")"
+  target_space="$(preferred_space_for_layout "$target_layout" "${current_space:-0}" "${current_display:-0}")"
+  [[ -n "$target_space" ]] || return 1
+
+  move_window_with_rules --space "$target_space"
 }
 
 space_focus_safe() {
@@ -246,7 +427,7 @@ window_space_wrap() {
   local direction="$1"
   local target
   target=$(neighbor_space_index "$direction") || return 1
-  "$YABAI_BIN" -m window --space "$target"
+  move_window_with_rules --space "$target"
 }
 
 space_focus_app() {
@@ -639,20 +820,23 @@ case "$command" in
   window-toggle-topmost)
     "$YABAI_BIN" -m window --toggle topmost
     ;;
+  window-adopt-space-mode)
+    window_adopt_space_mode "${1:-}"
+    ;;
   window-center)
     window_center
     ;;
   window-display-next)
-    "$YABAI_BIN" -m window --display next
+    move_window_with_rules --display next
     ;;
   window-display-prev)
-    "$YABAI_BIN" -m window --display prev
+    move_window_with_rules --display prev
     ;;
   window-space-next)
-    "$YABAI_BIN" -m window --space next
+    move_window_with_rules --space next
     ;;
   window-space-prev)
-    "$YABAI_BIN" -m window --space prev
+    move_window_with_rules --space prev
     ;;
   window-space)
     target=${1:-}
@@ -660,7 +844,10 @@ case "$command" in
       echo "Usage: $0 window-space <index>" >&2
       exit 1
     fi
-    "$YABAI_BIN" -m window --space "$target"
+    move_window_with_rules --space "$target"
+    ;;
+  window-space-float)
+    window_move_to_layout_space float
     ;;
   space-focus-prev-wrap)
     space_focus_wrap prev
@@ -713,10 +900,12 @@ Commands:
   window-toggle-sticky
   window-toggle-fullscreen
   window-toggle-topmost
+  window-adopt-space-mode [space]
   window-center
   window-display-next|window-display-prev
   window-space-next|window-space-prev
   window-space <index>
+  window-space-float
   space-focus-prev-wrap|space-focus-next-wrap
   space-prev|space-next|space-recent|space-first|space-last
   window-space-prev-wrap|window-space-next-wrap

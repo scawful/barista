@@ -129,26 +129,6 @@ static NSArray *query_array(NSArray<NSString *> *arguments) {
 
 static BOOL bool_value(id value);
 
-static NSDictionary *current_space_record(void) {
-  NSArray *spaces = query_array(@[@"-m", @"query", @"--spaces"]);
-  NSDictionary *firstVisible = nil;
-
-  for (id candidate in spaces) {
-    if (![candidate isKindOfClass:[NSDictionary class]]) {
-      continue;
-    }
-    NSDictionary *space = (NSDictionary *)candidate;
-    if (bool_value(space[@"has-focus"])) {
-      return space;
-    }
-    if (firstVisible == nil && bool_value(space[@"is-visible"])) {
-      firstVisible = space;
-    }
-  }
-
-  return firstVisible;
-}
-
 static NSNumber *number_value(id value) {
   return [value isKindOfClass:[NSNumber class]] ? value : nil;
 }
@@ -167,6 +147,48 @@ static NSString *string_value(id value) {
   return nil;
 }
 
+static NSArray *all_space_records(void) {
+  return query_array(@[@"-m", @"query", @"--spaces"]);
+}
+
+static NSDictionary *current_space_record_from_array(NSArray *spaces) {
+  NSDictionary *firstVisible = nil;
+
+  for (id candidate in spaces) {
+    if (![candidate isKindOfClass:[NSDictionary class]]) {
+      continue;
+    }
+    NSDictionary *space = (NSDictionary *)candidate;
+    if (bool_value(space[@"has-focus"])) {
+      return space;
+    }
+    if (firstVisible == nil && bool_value(space[@"is-visible"])) {
+      firstVisible = space;
+    }
+  }
+
+  return firstVisible;
+}
+
+static NSDictionary *space_record_for_index(NSArray *spaces, NSNumber *index) {
+  if (index == nil) {
+    return nil;
+  }
+
+  for (id candidate in spaces) {
+    if (![candidate isKindOfClass:[NSDictionary class]]) {
+      continue;
+    }
+    NSDictionary *space = (NSDictionary *)candidate;
+    NSNumber *candidateIndex = number_value(space[@"index"]);
+    if (candidateIndex != nil && [candidateIndex isEqualToNumber:index]) {
+      return space;
+    }
+  }
+
+  return nil;
+}
+
 static NSString *frontmost_app_name(void) {
   NSString *override = env_value(@"BARISTA_RUNTIME_CONTEXT_FRONT_APP_NAME");
   if (override.length > 0) {
@@ -174,8 +196,17 @@ static NSString *frontmost_app_name(void) {
   }
 
   NSRunningApplication *frontmost = NSWorkspace.sharedWorkspace.frontmostApplication;
-  if (frontmost.localizedName.length > 0) {
-    return frontmost.localizedName;
+  NSString *workspaceName = frontmost.localizedName;
+  NSDictionary *focusedWindow = query_object(@[@"-m", @"query", @"--windows", @"--window"]);
+  NSString *focusedApp = string_value(focusedWindow[@"app"]);
+  if (focusedApp.length > 0 && !bool_value(focusedWindow[@"is-minimized"])) {
+    if (workspaceName.length > 0 && [focusedApp caseInsensitiveCompare:workspaceName] == NSOrderedSame) {
+      return workspaceName;
+    }
+    return focusedApp;
+  }
+  if (workspaceName.length > 0) {
+    return workspaceName;
   }
   return @"";
 }
@@ -233,7 +264,8 @@ static NSDictionary *select_matching_window(NSString *appName, NSNumber *spaceIn
 
 static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
   NSString *appName = frontmost_app_name();
-  NSDictionary *currentSpace = current_space_record();
+  NSArray *spaces = all_space_records();
+  NSDictionary *currentSpace = current_space_record_from_array(spaces);
   NSNumber *spaceIndex = number_value(currentSpace[@"index"]);
   NSNumber *displayIndex = number_value(currentSpace[@"display"]);
   BOOL spaceVisible = bool_value(currentSpace[@"is-visible"]);
@@ -262,6 +294,11 @@ static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
       stateLabel = @"Tiled";
     }
 
+    NSNumber *windowSpace = number_value(window[@"space"]);
+    NSNumber *windowDisplay = number_value(window[@"display"]);
+    NSDictionary *windowSpaceRecord = space_record_for_index(spaces, windowSpace ?: spaceIndex);
+    NSString *spaceType = string_value(windowSpaceRecord[@"type"]) ?: string_value(currentSpace[@"type"]);
+
     if (sticky) {
       stateLabel = [stateLabel stringByAppendingString:@" · Sticky"];
     }
@@ -270,9 +307,12 @@ static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
     } else if ([layer isEqualToString:@"below"]) {
       stateLabel = [stateLabel stringByAppendingString:@" · Below"];
     }
+    if ([spaceType isEqualToString:@"float"]) {
+      stateLabel = [stateLabel stringByAppendingString:@" · Float Space"];
+    } else if (floating && ([spaceType isEqualToString:@"bsp"] || [spaceType isEqualToString:@"stack"])) {
+      stateLabel = [stateLabel stringByAppendingString:@" · Managed Space"];
+    }
 
-    NSNumber *windowSpace = number_value(window[@"space"]);
-    NSNumber *windowDisplay = number_value(window[@"display"]);
     if (spaceIndex == nil && windowSpace != nil) {
       spaceIndex = windowSpace;
     }

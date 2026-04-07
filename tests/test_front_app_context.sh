@@ -36,6 +36,24 @@ case "${FRONT_APP_CONTEXT_TEST_MODE:-window_match}:${1:-}:${2:-}:${3:-}:${4:-}" 
   no_window:-m:query:--windows:)
     printf '[]\n'
     ;;
+  float_space_window:-m:query:--spaces:)
+    printf '[{"index":9,"display":1,"type":"float","is-visible":true,"has-focus":true}]\n'
+    ;;
+  float_space_window:-m:query:--windows:--window)
+    printf ''
+    ;;
+  float_space_window:-m:query:--windows:)
+    printf '[{"id":31,"app":"Ghostty","space":9,"display":1,"is-floating":true,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","is-minimized":false}]\n'
+    ;;
+  managed_floating_window:-m:query:--spaces:)
+    printf '[{"index":6,"display":2,"type":"bsp","is-visible":true,"has-focus":true}]\n'
+    ;;
+  managed_floating_window:-m:query:--windows:--window)
+    printf ''
+    ;;
+  managed_floating_window:-m:query:--windows:)
+    printf '[{"id":32,"app":"Ghostty","space":6,"display":2,"is-floating":true,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","is-minimized":false}]\n'
+    ;;
   backfill_window:-m:query:--spaces:)
     printf '[]\n'
     ;;
@@ -100,6 +118,32 @@ printf '%s\n' "$NO_WINDOW_OUTPUT" | grep -Fxq $'state_label\tNo managed window' 
 printf '%s\n' "$NO_WINDOW_OUTPUT" | grep -Fxq $'location_label\tSpace 5 · Display 1' || { echo "FAIL: helper should preserve current space/display fallback" >&2; exit 1; }
 printf '%s\n' "$NO_WINDOW_OUTPUT" | grep -Fxq $'space_index\t5' || { echo "FAIL: helper should emit raw current space index in unmanaged fallback" >&2; exit 1; }
 printf '%s\n' "$NO_WINDOW_OUTPUT" | grep -Fxq $'display_index\t1' || { echo "FAIL: helper should emit raw current display index in unmanaged fallback" >&2; exit 1; }
+
+FLOAT_SPACE_OUTPUT="$(
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    INFO="" \
+    FRONT_APP_CONTEXT_TEST_MODE=float_space_window \
+    BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+    BARISTA_JQ_BIN="$JQ_BIN" \
+    BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
+    BARISTA_RUNTIME_CONTEXT_SCRIPT="$TMP_DIR/missing_runtime_context.sh" \
+    "$SCRIPT" --app Ghostty
+)"
+
+printf '%s\n' "$FLOAT_SPACE_OUTPUT" | grep -Fxq $'state_label\tFloating · Float Space' || { echo "FAIL: helper should distinguish floating windows that live on a float space" >&2; exit 1; }
+
+MANAGED_FLOATING_OUTPUT="$(
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    INFO="" \
+    FRONT_APP_CONTEXT_TEST_MODE=managed_floating_window \
+    BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+    BARISTA_JQ_BIN="$JQ_BIN" \
+    BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
+    BARISTA_RUNTIME_CONTEXT_SCRIPT="$TMP_DIR/missing_runtime_context.sh" \
+    "$SCRIPT" --app Ghostty
+)"
+
+printf '%s\n' "$MANAGED_FLOATING_OUTPUT" | grep -Fxq $'state_label\tFloating · Managed Space' || { echo "FAIL: helper should distinguish floating windows inside managed spaces" >&2; exit 1; }
 
 BACKFILL_OUTPUT="$(
   PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \

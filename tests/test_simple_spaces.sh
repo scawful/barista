@@ -10,6 +10,7 @@ BIN_DIR="$TMP_DIR/bin"
 LOG_FILE="$TMP_DIR/sketchybar.log"
 METRICS_FILE="$TMP_DIR/space_metrics.env"
 YABAI_LOG="$TMP_DIR/yabai.log"
+PREFETCH_MARKER="$TMP_DIR/prefetch.marker"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -17,6 +18,12 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$CONFIG_DIR/plugins" "$CONFIG_DIR/scripts" "$BIN_DIR"
+
+cat > "$CONFIG_DIR/plugins/space_icons_prefetch.sh" <<EOF
+#!/bin/bash
+set -euo pipefail
+printf 'ok\n' > "$PREFETCH_MARKER"
+EOF
 
 cat > "$CONFIG_DIR/state.json" <<'EOF'
 {
@@ -90,6 +97,8 @@ PATH="$BIN_DIR:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
   CONFIG_DIR="$CONFIG_DIR" \
   "$SCRIPT"
 
+sleep 0.1
+
 if grep -Fq -- "--remove /space\\..*/" "$LOG_FILE"; then
   echo "FAIL: creator-only change should not remove space items" >&2
   exit 1
@@ -97,6 +106,11 @@ fi
 
 if grep -Fq -- "--add space space.1" "$LOG_FILE"; then
   echo "FAIL: creator-only change should not recreate space items" >&2
+  exit 1
+fi
+
+if [ ! -f "$PREFETCH_MARKER" ]; then
+  echo "FAIL: creator-only path should still launch background icon prefetch when cache is missing" >&2
   exit 1
 fi
 

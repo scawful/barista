@@ -302,6 +302,35 @@ load_cached_space_icons() {
   shopt -u nullglob
 }
 
+prefetch_space_icons_if_needed() {
+  [ -f "$CONFIG_DIR/plugins/space_icons_prefetch.sh" ] || return 0
+
+  local entry space_index cached_icon
+  for entry in "${SPACE_LINES[@]-}"; do
+    space_index="${entry##* }"
+    cached_icon="${CACHED_SPACE_ICONS[$space_index]-}"
+    if [ -z "$cached_icon" ]; then
+      if command -v nohup >/dev/null 2>&1; then
+        nohup env \
+          CONFIG_DIR="$CONFIG_DIR" \
+          BARISTA_SCRIPTS_DIR="${SCRIPTS_DIR:-$CONFIG_DIR/scripts}" \
+          BARISTA_SKETCHYBAR_BIN="${SKETCHYBAR_BIN:-}" \
+          BARISTA_YABAI_BIN="${YABAI_BIN:-}" \
+          BARISTA_JQ_BIN="${JQ_BIN:-}" \
+          bash "$CONFIG_DIR/plugins/space_icons_prefetch.sh" >/dev/null 2>&1 &
+      else
+        CONFIG_DIR="$CONFIG_DIR" \
+          BARISTA_SCRIPTS_DIR="${SCRIPTS_DIR:-$CONFIG_DIR/scripts}" \
+          BARISTA_SKETCHYBAR_BIN="${SKETCHYBAR_BIN:-}" \
+          BARISTA_YABAI_BIN="${YABAI_BIN:-}" \
+          BARISTA_JQ_BIN="${JQ_BIN:-}" \
+          bash "$CONFIG_DIR/plugins/space_icons_prefetch.sh" >/dev/null 2>&1 &
+      fi
+      return 0
+    fi
+  done
+}
+
 count_desired_space_items() {
   printf '%s' "${#SPACE_LINES[@]}"
 }
@@ -634,6 +663,7 @@ fi
 
 FULL_REBUILD_DISCOVERY_END_MS="$(now_ms)"
 load_cached_space_icons
+prefetch_space_icons_if_needed
 
 sync_creator_items() {
   local anchor_item="${1:-}"

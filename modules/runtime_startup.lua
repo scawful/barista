@@ -1,20 +1,34 @@
 local runtime_startup = {}
 
-function runtime_startup.wall_time_ms()
-  local handle = io.popen("python3 - <<'PY'\nimport time\nprint(time.time_ns() // 1_000_000)\nPY\n")
-  if not handle then
-    return os.time() * 1000
+local function read_wall_time_ms(commands, opts)
+  opts = opts or {}
+  local popen = opts.popen or io.popen
+
+  for _, command in ipairs(commands or {}) do
+    local handle = popen(command)
+    if handle then
+      local value = (handle:read("*a") or ""):gsub("%s+", "")
+      handle:close()
+      local numeric = tonumber(value)
+      if numeric then
+        return numeric
+      end
+    end
   end
 
-  local value = (handle:read("*a") or ""):gsub("%s+", "")
-  handle:close()
+  local fallback_time = opts.fallback_time or os.time
+  return fallback_time() * 1000
+end
 
-  local numeric = tonumber(value)
-  if numeric then
-    return numeric
-  end
-
-  return os.time() * 1000
+function runtime_startup.wall_time_ms(opts)
+  return read_wall_time_ms({
+    [[perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)']],
+    [[python3 - <<'PY'
+import time
+print(time.time_ns() // 1_000_000)
+PY
+]],
+  }, opts)
 end
 
 function runtime_startup.current_time_ms()

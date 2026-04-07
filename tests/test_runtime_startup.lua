@@ -1,5 +1,44 @@
 local runtime_startup = require("runtime_startup")
 
+run_test("runtime_startup.wall_time_ms: prefers fast helper and falls back", function()
+  local commands = {}
+  local responses = {
+    false,
+    {
+      read = function()
+        return "4567\n"
+      end,
+      close = function() end,
+    },
+  }
+
+  local value = runtime_startup.wall_time_ms({
+    popen = function(command)
+      table.insert(commands, command)
+      return table.remove(responses, 1)
+    end,
+    fallback_time = function()
+      return 9
+    end,
+  })
+
+  assert_equal(value, 4567, "wall time should use the first successful helper result")
+  assert_equal(#commands, 2, "wall time should try the next helper when the first one is unavailable")
+  assert_true(commands[1]:find("Time::HiRes", 1, true) ~= nil, "perl helper should be attempted first")
+  assert_true(commands[2]:find("python3", 1, true) ~= nil, "python helper should be the fallback")
+
+  local fallback_value = runtime_startup.wall_time_ms({
+    popen = function()
+      return nil
+    end,
+    fallback_time = function()
+      return 7
+    end,
+  })
+
+  assert_equal(fallback_value, 7000, "wall time should fall back to second-resolution time when helpers are unavailable")
+end)
+
 run_test("runtime_startup.record_reload_metrics: records reload commands and traces duration", function()
   local executed = {}
   local traces = {}

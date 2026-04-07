@@ -112,21 +112,22 @@ local function matching_pids(expected_fragment, extra_fragments)
   if #fragments == 0 then
     return {}
   end
+
   local pids = {}
   local seen = {}
 
-  for _, fragment in ipairs(fragments) do
-    local handle = io.popen(string.format("pgrep -f %s 2>/dev/null", shell_quote(fragment)))
-    if handle then
-      local output = handle:read("*a") or ""
-      handle:close()
-      for line in output:gmatch("[^\r\n]+") do
-        local pid = trim(line):match("^(%d+)$")
-        if pid and not seen[pid] then
-          seen[pid] = true
-          table.insert(pids, pid)
-        end
-      end
+  local handle = io.popen("ps -axo pid=,command= 2>/dev/null")
+  if not handle then
+    return pids
+  end
+
+  local output = handle:read("*a") or ""
+  handle:close()
+  for line in output:gmatch("[^\r\n]+") do
+    local pid, command = line:match("^%s*(%d+)%s+(.-)%s*$")
+    if pid and command and command_matches(command, fragments) and not seen[pid] then
+      seen[pid] = true
+      table.insert(pids, pid)
     end
   end
 
@@ -135,16 +136,23 @@ end
 
 local function kill_pids(pids, tracef, reason)
   local seen = {}
+  local killed_any = false
   for _, pid in ipairs(pids or {}) do
     if pid and pid ~= "" and not seen[pid] then
       seen[pid] = true
       os.execute(string.format("kill %s >/dev/null 2>&1", pid))
+      killed_any = true
       if type(tracef) == "function" then
         tracef(string.format("runtime_daemon:widget_manager_%s %s", reason or "killed", pid))
       end
     end
   end
-  os.execute("sleep 0.1")
+
+  if not killed_any then
+    return
+  end
+
+  os.execute("sleep 0.05")
   for pid in pairs(seen) do
     if process_command(pid) then
       os.execute(string.format("kill -9 %s >/dev/null 2>&1", pid))

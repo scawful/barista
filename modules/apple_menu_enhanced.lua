@@ -216,12 +216,10 @@ local function resolve_menu_action(ctx, config_dir)
   return nil
 end
 
-local function wrap_action(ctx, popup_name, entry_name, action)
+local function wrap_action(menu_action, popup_name, entry_name, action)
   if not action or action == "" then
     return ""
   end
-  local config_dir = resolve_config_dir(ctx)
-  local menu_action = resolve_menu_action(ctx, config_dir)
   if menu_action and menu_action ~= "" then
     return string.format(
       "MENU_ACTION_CMD=%q %s %q %q",
@@ -241,6 +239,7 @@ local function build_prepared(ctx)
   local state = type(ctx.state) == "table" and ctx.state or load_state(config_dir)
   local menu_config = read_menu_config(config_dir, state)
   local style = menu_style.compute(ctx)
+  local menu_action = resolve_menu_action(ctx, config_dir)
   local font_small = style.font_small
   local font_bold = style.font_header
   local popup_item_height = style.item_height
@@ -750,6 +749,7 @@ local function build_prepared(ctx)
     popup_item_corner_radius = popup_item_corner_radius,
     popup_padding = popup_padding,
     hover_script_cmd = hover_script_cmd,
+    menu_action = menu_action,
     rendered = menu_model.rendered,
     sections = menu_model.sections,
   }
@@ -774,6 +774,7 @@ function apple_menu.setup(ctx)
   local popup_item_corner_radius = prepared.popup_item_corner_radius
   local popup_padding = prepared.popup_padding
   local hover_script_cmd = prepared.hover_script_cmd
+  local menu_action = prepared.menu_action
   local rendered = prepared.rendered
   local sections = prepared.sections
 
@@ -920,7 +921,7 @@ function apple_menu.setup(ctx)
       local fallback = ctx.call_script and ctx.call_script(launcher, "--panel") or ""
       action = fallback
     end
-    local click_script = wrap_action(ctx, parent_popup or popup_name, entry.name, action)
+    local click_script = wrap_action(menu_action, parent_popup or popup_name, entry.name, action)
     local popup_config = nil
     local hover_enabled = entry.hover == true
     if entry.submenu and entry.items and #entry.items > 0 then

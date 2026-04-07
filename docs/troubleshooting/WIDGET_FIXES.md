@@ -140,12 +140,13 @@ sketchybar --reload
 
 ### 8. Apple Menu Reload Stability
 **Current path**: `modules/menu.lua` + `modules/apple_menu_enhanced.lua` + `plugins/popup_anchor.sh`
-- The Apple menu still uses `POPUP_OPEN_ON_ENTER=1` for hover-open behavior.
-- That flag must be carried in the `script` command string for the popup-anchor helper, not as an `env` item property.
-- SketchyBar rejects `env` as an item subdomain; when that regresses, reloads can leave the bar temporarily empty while the config pass is poisoned.
+- The Apple menu is click-open only.
+- `apple_menu` still uses the popup-anchor helper for pointer-exit dismissal, but it no longer sets `POPUP_OPEN_ON_ENTER=1`.
+- SketchyBar still rejects `env` as an item subdomain; when that regresses, reloads can leave the bar temporarily empty while the config pass is poisoned.
 - Barista now also stops its widget/runtime daemons before `begin_config`, so reloads do not keep spamming updates into items that were just removed.
 - The active fix is:
-  - `script = "env POPUP_OPEN_ON_ENTER=1 .../popup_anchor"`
+  - `script = ".../popup_anchor"`
+  - no `POPUP_OPEN_ON_ENTER=1` on `apple_menu`
   - no `env = { ... }` table on the `apple_menu` item
 
 ### 9. Volume Popup Click Path

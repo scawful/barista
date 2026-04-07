@@ -322,9 +322,6 @@ function menu.render_all_menus(ctx)
     apple_menu_click = ctx.popup_toggle_action()
   end
   local apple_menu_script = ctx.popup_anchor_script
-  if apple_menu_script and apple_menu_script ~= "" then
-    apple_menu_script = "env POPUP_OPEN_ON_ENTER=1 " .. apple_menu_script
-  end
 
   sbar.add("item", "apple_menu", {
     position = "left",

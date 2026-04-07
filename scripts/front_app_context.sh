@@ -242,7 +242,7 @@ build_state_label() {
 
 main() {
   local app_name current_space_json current_space_index current_display_index current_space_visible
-  local window_json window_space window_display window_focused window_space_type
+  local window_json window_space window_display window_focused window_space_type window_app
   local runtime_output
 
   runtime_output="$(query_runtime_context || true)"
@@ -267,8 +267,6 @@ main() {
     fi
   fi
 
-  emit app_name "$app_name"
-
   if [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ]; then
     window_json="$(select_matching_window_json "$app_name" "${current_space_index:-0}" "${current_display_index:-0}")"
   else
@@ -276,6 +274,10 @@ main() {
   fi
 
   if [ -n "$window_json" ]; then
+    window_app="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.app // empty' 2>/dev/null || true)"
+    if [ -n "$window_app" ] && [ "$(printf '%s' "$window_app" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$app_name" | tr '[:upper:]' '[:lower:]')" ]; then
+      app_name="$window_app"
+    fi
     window_space="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.space // empty' 2>/dev/null || true)"
     window_display="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.display // empty' 2>/dev/null || true)"
     window_focused="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."has-focus" // false' 2>/dev/null || echo false)"
@@ -292,6 +294,7 @@ main() {
     fi
   fi
 
+  emit app_name "$app_name"
   emit space_index "${current_space_index:-}"
   emit display_index "${current_display_index:-}"
   emit space_visible "${current_space_visible:-false}"

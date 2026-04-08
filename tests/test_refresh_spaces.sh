@@ -52,24 +52,40 @@ path.write_text(text, encoding="utf-8")
 PY
 chmod +x "$BIN_DIR/yabai"
 
-cat > "$BIN_DIR/sketchybar" <<EOF
+cat > "$BIN_DIR/sketchybar" <<'EOF'
 #!/bin/bash
 set -euo pipefail
-CALLS_LOG="$CALLS_LOG"
-CONFIG_DIR="$CONFIG_DIR"
-if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "bar" ]; then
-  printf 'query bar\n' >> "\$CALLS_LOG"
-  printf '{"items":["space.1","space.2"]}\n'
+CALLS_LOG="__CALLS_LOG__"
+CONFIG_DIR="__CONFIG_DIR__"
+MODE_FILE="__MODE_FILE__"
+if [ "${1:-}" = "--query" ] && [ "${2:-}" = "bar" ]; then
+  printf 'query bar\n' >> "$CALLS_LOG"
+  MODE="$(cat "$MODE_FILE" 2>/dev/null || printf 'topology')"
+  if [ "$MODE" = "empty_bar" ]; then
+    printf '{"items":["front_app","front_app_divider"]}\n'
+  else
+    printf '{"items":["space.1","space.2"]}\n'
+  fi
   exit 0
 fi
-if [ "\${1:-}" = "--trigger" ] && [ "\${2:-}" = "space_active_refresh" ]; then
-  printf '%s\n' "\$*" >> "\$CALLS_LOG"
-  NAME="space_runtime" SENDER="space_active_refresh" CONFIG_DIR="\$CONFIG_DIR" "\$CONFIG_DIR/plugins/space_visuals.sh"
+if [ "${1:-}" = "--trigger" ] && [ "${2:-}" = "space_active_refresh" ]; then
+  printf '%s\n' "$*" >> "$CALLS_LOG"
   exit 0
 fi
-printf '%s\n' "\$*" >> "\$CALLS_LOG"
+printf '%s\n' "$*" >> "$CALLS_LOG"
 exit 0
 EOF
+python3 - <<'PY' "$BIN_DIR/sketchybar" "$MODE_FILE" "$CALLS_LOG" "$CONFIG_DIR"
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace("__MODE_FILE__", sys.argv[2])
+text = text.replace("__CALLS_LOG__", sys.argv[3])
+text = text.replace("__CONFIG_DIR__", sys.argv[4])
+path.write_text(text, encoding="utf-8")
+PY
 chmod +x "$BIN_DIR/sketchybar"
 
 cat > "$CONFIG_DIR/bin/barista-stats.sh" <<'EOF'
@@ -185,5 +201,18 @@ if grep -Fqx -- '--trigger space_mode_refresh' "$CALLS_LOG"; then
   echo "FAIL: active-only refresh should not emit redundant space_mode_refresh" >&2
   exit 1
 fi
+
+printf '' > "$CALLS_LOG"
+printf '' > "$YABAI_LOG"
+printf 'empty_bar\n' > "$MODE_FILE"
+PATH="$BIN_DIR:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
+  BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+  CONFIG_DIR="$CONFIG_DIR" \
+  SCRIPTS_DIR="$CONFIG_DIR/scripts" \
+  "$SCRIPT"
+
+[ "$(wc -l < "$METRICS_PATH_LOG" | tr -d ' ')" = "2" ] || { echo "FAIL: reload/no-reason path should rebuild spaces when the live bar is empty despite cached lookup data" >&2; exit 1; }
+grep -Fqx -- 'query bar' "$CALLS_LOG" || { echo "FAIL: reload/no-reason path should verify the live bar instead of trusting cached space item lookup" >&2; exit 1; }
 
 printf 'test_refresh_spaces.sh: ok\n'

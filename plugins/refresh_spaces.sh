@@ -224,6 +224,7 @@ fast_active_refresh_from_cache() {
   [ -n "$spaces_count" ] || return 1
 
   visual_refresh_start_ms="$(now_ms)"
+  refresh_space_visuals "space_active_refresh"
   dispatch_space_active_refresh_if_needed
   visual_refresh_duration_ms=$(( $(now_ms) - visual_refresh_start_ms ))
   if [ "$visual_refresh_duration_ms" -lt 0 ]; then
@@ -240,7 +241,7 @@ space_items_present() {
   local space_index=""
   if [ "$BAR_SPACE_ITEMS_LOADED" -eq 0 ]; then
     BAR_SPACE_ITEMS_LOADED=1
-    if [ -f "$SPACE_ITEM_LOOKUP_FILE" ]; then
+    if [ "${BARISTA_REASON:-}" = "space_changed" ] && [ -f "$SPACE_ITEM_LOOKUP_FILE" ]; then
       local bar_items=""
       bar_items="$(tr -d '\r' < "$SPACE_ITEM_LOOKUP_FILE" 2>/dev/null || true)"
       if [ -n "$bar_items" ]; then
@@ -253,6 +254,12 @@ space_items_present() {
         BAR_SPACE_ITEMS_LOOKUP=$'\n'"$bar_items"$'\n'
         mkdir -p "$(dirname "$SPACE_ITEM_LOOKUP_FILE")" 2>/dev/null || true
         printf '%s\n' "$bar_items" > "$SPACE_ITEM_LOOKUP_FILE" 2>/dev/null || true
+      fi
+    elif [ -f "$SPACE_ITEM_LOOKUP_FILE" ]; then
+      local bar_items=""
+      bar_items="$(tr -d '\r' < "$SPACE_ITEM_LOOKUP_FILE" 2>/dev/null || true)"
+      if [ -n "$bar_items" ]; then
+        BAR_SPACE_ITEMS_LOOKUP=$'\n'"$bar_items"$'\n'
       fi
     fi
   fi
@@ -325,6 +332,7 @@ if [ -n "$current_display_state$current_space_state" ]; then
       if [ -n "$current_active_state" ] && [ "$current_active_state" != "$cached_active_state" ]; then
         printf '%s' "$current_active_state" >"$ACTIVE_CACHE_FILE" || true
         visual_refresh_start_ms="$(now_ms)"
+        refresh_space_visuals "space_active_refresh"
         dispatch_space_active_refresh_if_needed
         visual_refresh_duration_ms=$(( $(now_ms) - visual_refresh_start_ms ))
         if [ "$visual_refresh_duration_ms" -lt 0 ]; then

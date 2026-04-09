@@ -46,12 +46,17 @@ if ! grep -Fq -- 'background.drawing=on' "$LOG_FILE"; then
   exit 1
 fi
 
-if ! grep -Fq -- 'background.drawing=off' "$LOG_FILE"; then
-  echo "FAIL: space hover should auto-clear after timeout" >&2
+if ! grep -Fq -- 'background.drawing=on' "$LOG_FILE"; then
+  echo "FAIL: space hover should restore chip drawing after timeout" >&2
   exit 1
 fi
 
-if ! grep -Fq -- 'icon.color=0xFFa6adc8' "$LOG_FILE"; then
+if ! grep -Fq -- 'background.color=0x18313a46' "$LOG_FILE"; then
+  echo "FAIL: space hover should restore idle chip background after timeout" >&2
+  exit 1
+fi
+
+if ! grep -Fq -- 'icon.color=0xFFbac2de' "$LOG_FILE"; then
   echo "FAIL: space hover should restore idle icon color after timeout" >&2
   exit 1
 fi

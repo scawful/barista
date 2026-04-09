@@ -40,9 +40,9 @@ declare -a SPACE_APP_BY_INDEX
 declare -a SPACE_APP_LOADED
 declare -a SPACE_ITEM_PRESENT
 
-IDLE_BG="0x00000000"
-SELECTED_BG="0xFFcba6f7"
-IDLE_ICON_COLOR="0xFFa6adc8"
+IDLE_BG="0x18313a46"
+SELECTED_BG="0xFFFAB387"
+IDLE_ICON_COLOR="0xFFbac2de"
 SELECTED_ICON_COLOR="0xFF11111b"
 EMPTY_ICON="○"
 ACTIVE_EMPTY_ICON="•"
@@ -512,7 +512,7 @@ while IFS=' ' read -r space_index _display is_visible has_focus space_type; do
     FAST_ARGS+=(--set "$item"
       icon="$icon_value"
       label.drawing=off
-      background.drawing=off
+      background.drawing=on
       background.color="$IDLE_BG"
       icon.color="$IDLE_ICON_COLOR")
   fi

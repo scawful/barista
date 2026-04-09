@@ -52,7 +52,7 @@ local function get_layout(ctx)
   local control_center_status = nil
   local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
   local font_bold = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small)
-  local separator_color = theme.SUBTEXT0 or theme.OVERLAY0 or group_border_color
+  local separator_color = theme.OVERLAY1 or theme.SUBTEXT0 or group_border_color
 
   -- Front App indicator
   local front_app_start_ms = current_time_ms()
@@ -81,10 +81,10 @@ local function get_layout(ctx)
   table.insert(layout, factory.create_item("front_app_divider", {
     position = "left",
     icon = { drawing = false },
-    label = { drawing = true, string = "┆", color = separator_color },
+    label = { drawing = true, string = "·", color = separator_color },
     ["label.font"] = font_small,
-    ["label.padding_left"] = 1,
-    ["label.padding_right"] = 1,
+    ["label.padding_left"] = 4,
+    ["label.padding_right"] = 4,
     associated_display = associated_displays,
     associated_space = "all",
     background = { drawing = false },

@@ -89,7 +89,7 @@ local function test_items_left_layout()
       assert_equal(entry.props.label.drawing, false, "front_app should default to icon-only label state")
     elseif entry.type == "item" and entry.name == "front_app_divider" then
       found_front_app_divider = true
-      assert_equal(entry.props.label.string, "┆", "front_app divider should render a slim separator")
+      assert_equal(entry.props.label.string, "·", "front_app divider should render a subtle dot separator")
     elseif entry.type == "item" and entry.name == "front_app.state" then
       found_front_app_state = true
     elseif entry.type == "item" and entry.name == "front_app.location" then

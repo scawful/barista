@@ -14,10 +14,10 @@ CONFIG_DIR="${CONFIG_DIR:-${HOME}/.config/sketchybar}"
 SPACE_VISUALS_STATE_DIR="${BARISTA_SPACE_VISUALS_STATE_DIR:-$CONFIG_DIR/cache/space_visuals}"
 LAST_SELECTED_SPACE_FILE="$SPACE_VISUALS_STATE_DIR/last_selected_space"
 
-HOVER_BG="0x60cba6f7"
-IDLE_BG="0x00000000"
-IDLE_ICON_COLOR="0xFFa6adc8"
-SELECTED_BG="0xFFcba6f7"
+HOVER_BG="0x50FAB387"
+IDLE_BG="0x18313a46"
+IDLE_ICON_COLOR="0xFFbac2de"
+SELECTED_BG="0xFFFAB387"
 SELECTED_ICON_COLOR="0xFF11111b"
 
 space_index() {
@@ -50,7 +50,7 @@ restore_visual_state() {
   fi
 
   "$SKETCHYBAR_BIN" --set "$NAME" \
-    background.drawing=off \
+    background.drawing=on \
     background.color="$IDLE_BG" \
     icon.color="$IDLE_ICON_COLOR"
 }

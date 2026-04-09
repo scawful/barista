@@ -9,6 +9,9 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 LOG_FILE="$TMP_DIR/sketchybar.log"
 STATE_DIR="$TMP_DIR/state"
 mkdir -p "$STATE_DIR"
+CONFIG_DIR="$TMP_DIR/config"
+mkdir -p "$CONFIG_DIR/cache/hover" "$CONFIG_DIR/cache/space_visuals"
+printf '12\n' > "$CONFIG_DIR/cache/space_visuals/last_selected_space"
 
 cat > "$TMP_DIR/sketchybar" <<'EOF'
 #!/bin/bash
@@ -19,7 +22,7 @@ LOG_FILE="${BARISTA_TEST_LOG:?}"
 case "${1:-}" in
   --query)
     cat <<'JSON'
-{"geometry":{"background":{"drawing":"on","color":"0xFFcba6f7"}},"icon":{"color":"0xff11111b"}}
+{"geometry":{"background":{"drawing":"on","color":"0xFFFAB387"}},"icon":{"color":"0xff11111b"}}
 JSON
     ;;
   --set)
@@ -36,9 +39,9 @@ chmod +x "$TMP_DIR/sketchybar"
 
 COMMON_ENV=(
   BARISTA_SKETCHYBAR_BIN="$TMP_DIR/sketchybar"
-  BARISTA_JQ_BIN="$(command -v jq)"
-  BARISTA_SPACE_HOVER_STATE_DIR="$STATE_DIR"
   BARISTA_TEST_LOG="$LOG_FILE"
+  BARISTA_HOVER_STATE_DIR="$STATE_DIR"
+  CONFIG_DIR="$CONFIG_DIR"
   NAME="space.12"
 )
 
@@ -46,7 +49,7 @@ env "${COMMON_ENV[@]}" SENDER="mouse.entered" "$SCRIPT"
 
 CACHE_FILE="$STATE_DIR/space.12.state"
 [ -f "$CACHE_FILE" ] || { echo "FAIL: expected hover state cache file after mouse.entered" >&2; exit 1; }
-grep -Fq $'set\tspace.12 background.drawing=on background.color=0x60cba6f7 icon.color=0xFFa6adc8' "$LOG_FILE" || {
+grep -Fq $'set\tspace.12 background.drawing=on background.color=0x50FAB387 icon.color=0xFFbac2de' "$LOG_FILE" || {
   echo "FAIL: expected hover set command on mouse.entered" >&2
   exit 1
 }
@@ -54,7 +57,7 @@ grep -Fq $'set\tspace.12 background.drawing=on background.color=0x60cba6f7 icon.
 env "${COMMON_ENV[@]}" SENDER="mouse.exited" "$SCRIPT"
 
 [ ! -f "$CACHE_FILE" ] || { echo "FAIL: expected hover state cache file to be removed after mouse.exited" >&2; exit 1; }
-grep -Fq $'set\tspace.12 background.drawing=on background.color=0xFFcba6f7 icon.color=0xff11111b' "$LOG_FILE" || {
+grep -Fq $'set\tspace.12 background.drawing=on background.color=0xFFFAB387 icon.color=0xFF11111b' "$LOG_FILE" || {
   echo "FAIL: expected cached visual state to be restored on mouse.exited" >&2
   exit 1
 }
@@ -65,9 +68,9 @@ fi
 
 rm -f "$LOG_FILE"
 env "${COMMON_ENV[@]}" SENDER="mouse.exited" "$SCRIPT"
-if [ -s "$LOG_FILE" ]; then
-  echo "FAIL: mouse.exited without cached state should no-op instead of forcing a visual refresh" >&2
+grep -Fq $'set\tspace.12 background.drawing=on background.color=0xFFFAB387 icon.color=0xFF11111b' "$LOG_FILE" || {
+  echo "FAIL: mouse.exited should restore the selected chip state even without a hover token" >&2
   exit 1
-fi
+}
 
 echo "PASS: space hover restores cached visual state"

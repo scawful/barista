@@ -590,20 +590,23 @@ space_props_signature() {
       space_display="active"
     fi
     click_action="$(space_click_action "$space_index")"
-    printf '%s|%s|%s|%s\n' "$space_index" "$space_display" "$SPACE_ITEM_HEIGHT" "$click_action"
+    printf '%s|%s|%s|%s|%s|%s|%s\n' "$space_index" "$space_display" "$SPACE_ITEM_HEIGHT" "$click_action" "7" "0x18313a46" "10"
   done | join_lines_with_comma
 }
 
 creator_props_signature() {
-  local creator_target creator_item creator_cmd
+  local creator_target creator_item creator_cmd creator_ignore_association creator_associated_display
   for creator_target in "${CREATOR_TARGETS[@]-}"; do
     creator_item="space_creator"
+    creator_associated_display=""
+    creator_ignore_association="on"
     if [ "$CREATOR_MODE" = "per_display" ] && [ "$creator_target" != "active" ]; then
       creator_item="space_creator.$creator_target"
+      creator_associated_display="$creator_target"
     fi
     creator_cmd="$(creator_click_action "$creator_target")"
-    printf '%s|%s|%s|%s\n' \
-      "$creator_item" "$creator_target" "$SPACE_ITEM_HEIGHT" "$creator_cmd"
+    printf '%s|%s|%s|%s|%s|%s\n' \
+      "$creator_item" "$creator_target" "$SPACE_ITEM_HEIGHT" "$creator_cmd" "$creator_ignore_association" "$creator_associated_display"
   done | join_lines_with_comma
 }
 
@@ -670,6 +673,7 @@ sync_creator_items() {
   local last_creator="$anchor_item"
   local creator_target creator_item creator_cmd existing_item expected_lookup=""
   local -a creator_args=()
+  local creator_associated_display creator_ignore_association
 
   for creator_target in "${CREATOR_TARGETS[@]-}"; do
     creator_item="space_creator"
@@ -677,6 +681,12 @@ sync_creator_items() {
       creator_item="space_creator.$creator_target"
     fi
     creator_cmd="$(creator_click_action "$creator_target")"
+    creator_associated_display=""
+    creator_ignore_association="on"
+    if [ "$CREATOR_MODE" = "per_display" ] && [ "$creator_target" != "active" ]; then
+      creator_associated_display="$creator_target"
+      creator_ignore_association="on"
+    fi
 
     expected_lookup+=$'\n'"$creator_item"
     if ! snapshot_item_exists "$creator_item"; then
@@ -685,7 +695,7 @@ sync_creator_items() {
     fi
     creator_args+=(--set "$creator_item"
       display="$creator_target"
-      ignore_association="on"
+      ignore_association="$creator_ignore_association"
       icon="󰐕"
       icon.color="0x80a6adc8"
       icon.padding_left=8
@@ -698,6 +708,9 @@ sync_creator_items() {
       background.height="$SPACE_ITEM_HEIGHT"
       script="$CONFIG_DIR/plugins/space_creator.sh"
       click_script="$creator_cmd")
+    if [ -n "$creator_associated_display" ]; then
+      creator_args+=(associated_display="$creator_associated_display")
+    fi
     if [ -n "$last_creator" ]; then
       creator_args+=(--move "$creator_item" after "$last_creator")
     fi
@@ -760,8 +773,8 @@ apply_incremental_space_items() {
         associated_space="$space_index"
         ignore_association=off
         icon="$icon"
-        icon.padding_left=8
-        icon.padding_right=8
+        icon.padding_left=7
+        icon.padding_right=7
         icon.color=0xffbac2de
         label=""
         label.drawing=off
@@ -784,8 +797,8 @@ apply_incremental_space_items() {
         associated_space="$space_index"
         ignore_association=off
         icon="$icon"
-        icon.padding_left=8
-        icon.padding_right=8
+        icon.padding_left=7
+        icon.padding_right=7
         icon.color=0xffbac2de
         label=""
         label.drawing=off
@@ -866,8 +879,8 @@ for entry in "${SPACE_LINES[@]}"; do
                           associated_space="$space_index" \
                           ignore_association=off \
                           icon="$icon" \
-                          icon.padding_left=8 \
-                          icon.padding_right=8 \
+                          icon.padding_left=7 \
+                          icon.padding_right=7 \
                           icon.color=0xffbac2de \
                           label="" \
                           label.drawing=off \
@@ -1003,6 +1016,11 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ] && [ "$FORCE_FULL_REBUILD" -eq 0 ]; then
           click_action="$(space_click_action "$space_index")"
           FAST_ARGS+=(--set "space.$space_index"
             click_script="$click_action"
+            icon.padding_left=7
+            icon.padding_right=7
+            background.drawing=on
+            background.color=0x18313a46
+            background.corner_radius=10
             background.height="$SPACE_ITEM_HEIGHT")
         done
       fi
@@ -1015,11 +1033,19 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ] && [ "$FORCE_FULL_REBUILD" -eq 0 ]; then
               creator_item="space_creator.$creator_target"
             fi
             creator_cmd="$(creator_click_action "$creator_target")"
+            creator_associated_display=""
+            creator_ignore_association="on"
+            if [ "$CREATOR_MODE" = "per_display" ] && [ "$creator_target" != "active" ]; then
+              creator_associated_display="$creator_target"
+            fi
             FAST_ARGS+=(--set "$creator_item"
               display="$creator_target"
-              ignore_association="on"
+              ignore_association="$creator_ignore_association"
               click_script="$creator_cmd"
               background.height="$SPACE_ITEM_HEIGHT")
+            if [ -n "$creator_associated_display" ]; then
+              FAST_ARGS+=(associated_display="$creator_associated_display")
+            fi
           done
         fi
       else
@@ -1057,17 +1083,25 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ] && [ "$FORCE_FULL_REBUILD" -eq 0 ]; then
 fi
 
 declare -a CREATOR_ITEMS=()
+creator_associated_display=""
+creator_ignore_association="on"
 for creator_target in "${CREATOR_TARGETS[@]-}"; do
   creator_item="space_creator"
   if [ "$CREATOR_MODE" = "per_display" ] && [ "$creator_target" != "active" ]; then
     creator_item="space_creator.$creator_target"
   fi
   creator_cmd="$(creator_click_action "$creator_target")"
+  creator_associated_display=""
+  creator_ignore_association="on"
+  if [ "$CREATOR_MODE" = "per_display" ] && [ "$creator_target" != "active" ]; then
+    creator_associated_display="$creator_target"
+    creator_ignore_association="on"
+  fi
 
   SB_ARGS+=(--add item "$creator_item" left)
   SB_ARGS+=(--set "$creator_item" \
                   display="$creator_target" \
-                  ignore_association="on" \
+                  ignore_association="$creator_ignore_association" \
                   icon="󰐕" \
                   icon.color="0x80a6adc8" \
                   icon.padding_left=8 \
@@ -1080,6 +1114,9 @@ for creator_target in "${CREATOR_TARGETS[@]-}"; do
                   background.height="$SPACE_ITEM_HEIGHT" \
                   script="$CONFIG_DIR/plugins/space_creator.sh" \
                   click_script="$creator_cmd")
+  if [ -n "$creator_associated_display" ]; then
+    SB_ARGS+=(associated_display="$creator_associated_display")
+  fi
   SB_ARGS+=(--subscribe "$creator_item" mouse.entered mouse.exited)
   if [ -n "$last_item" ]; then
     SB_ARGS+=(--move "$creator_item" after "$last_item")

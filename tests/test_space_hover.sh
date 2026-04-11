@@ -22,7 +22,7 @@ LOG_FILE="${BARISTA_TEST_LOG:?}"
 case "${1:-}" in
   --query)
     cat <<'JSON'
-{"geometry":{"background":{"drawing":"on","color":"0xFFFAB387"}},"icon":{"color":"0xff11111b"}}
+{"geometry":{"background":{"drawing":"on","color":"0xFFD8C4FF"}},"icon":{"color":"0xff11111b"}}
 JSON
     ;;
   --set)
@@ -49,7 +49,7 @@ env "${COMMON_ENV[@]}" SENDER="mouse.entered" "$SCRIPT"
 
 CACHE_FILE="$STATE_DIR/space.12.state"
 [ -f "$CACHE_FILE" ] || { echo "FAIL: expected hover state cache file after mouse.entered" >&2; exit 1; }
-grep -Fq $'set\tspace.12 background.drawing=on background.color=0x50FAB387 icon.color=0xFFbac2de' "$LOG_FILE" || {
+grep -Fq $'set\tspace.12 background.drawing=on background.color=0x50D8C4FF icon.color=0xFFbac2de' "$LOG_FILE" || {
   echo "FAIL: expected hover set command on mouse.entered" >&2
   exit 1
 }
@@ -57,7 +57,7 @@ grep -Fq $'set\tspace.12 background.drawing=on background.color=0x50FAB387 icon.
 env "${COMMON_ENV[@]}" SENDER="mouse.exited" "$SCRIPT"
 
 [ ! -f "$CACHE_FILE" ] || { echo "FAIL: expected hover state cache file to be removed after mouse.exited" >&2; exit 1; }
-grep -Fq $'set\tspace.12 background.drawing=on background.color=0xFFFAB387 icon.color=0xFF11111b' "$LOG_FILE" || {
+grep -Fq $'set\tspace.12 background.drawing=on background.color=0xFFD8C4FF icon.color=0xFF11111b' "$LOG_FILE" || {
   echo "FAIL: expected cached visual state to be restored on mouse.exited" >&2
   exit 1
 }
@@ -68,7 +68,7 @@ fi
 
 rm -f "$LOG_FILE"
 env "${COMMON_ENV[@]}" SENDER="mouse.exited" "$SCRIPT"
-grep -Fq $'set\tspace.12 background.drawing=on background.color=0xFFFAB387 icon.color=0xFF11111b' "$LOG_FILE" || {
+grep -Fq $'set\tspace.12 background.drawing=on background.color=0xFFD8C4FF icon.color=0xFF11111b' "$LOG_FILE" || {
   echo "FAIL: mouse.exited should restore the selected chip state even without a hover token" >&2
   exit 1
 }

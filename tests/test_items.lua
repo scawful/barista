@@ -87,6 +87,8 @@ local function test_items_left_layout()
       found_front_app = true
       assert(entry.props.position == "left", "front_app should be on the left")
       assert_equal(entry.props.label.drawing, false, "front_app should default to icon-only label state")
+      assert_equal(entry.props.background.drawing, true, "front_app should render as a visible chip")
+      assert_equal(entry.props.background.color, "0x18313a46", "front_app should use the shared idle chip background")
     elseif entry.type == "item" and entry.name == "front_app_divider" then
       found_front_app_divider = true
       assert_equal(entry.props.label.string, "·", "front_app divider should render a subtle dot separator")

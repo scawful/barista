@@ -15,19 +15,22 @@ OSASCRIPT_BIN="${BARISTA_OSASCRIPT_BIN:-$(command -v osascript 2>/dev/null || tr
 
 # Barista's own binaries to filter out
 BARISTA_APPS="config_menu|config_menu_v2|BaristaControlPanel|Barista Control Panel|help_center|icon_browser|sketchybar"
+FRONT_APP_IDLE_BG="0x18313a46"
+FRONT_APP_HOVER_BG="0x28505a6a"
+FRONT_APP_ICON_COLOR="0xFFcad3f5"
 
 case "${SENDER:-}" in
   mouse.exited.global)
     sketchybar --set "$NAME" popup.drawing=off
-    clear_highlight "$NAME" "background.drawing=off"
+    clear_highlight "$NAME" "background.drawing=on background.color=$FRONT_APP_IDLE_BG icon.color=$FRONT_APP_ICON_COLOR"
     exit 0
     ;;
   mouse.entered)
-    highlight_with_timeout "$NAME" "background.drawing=on background.color=$HIGHLIGHT" "background.drawing=off"
+    highlight_with_timeout "$NAME" "background.drawing=on background.color=$FRONT_APP_HOVER_BG icon.color=$FRONT_APP_ICON_COLOR" "background.drawing=on background.color=$FRONT_APP_IDLE_BG icon.color=$FRONT_APP_ICON_COLOR"
     exit 0
     ;;
   mouse.exited)
-    clear_highlight "$NAME" "background.drawing=off"
+    clear_highlight "$NAME" "background.drawing=on background.color=$FRONT_APP_IDLE_BG icon.color=$FRONT_APP_ICON_COLOR"
     exit 0
     ;;
 esac
@@ -73,7 +76,7 @@ if [ -z "$APP_ICON" ]; then
   APP_ICON="󰣆"
 fi
 
-sketchybar --set "$NAME" icon="$APP_ICON" icon.drawing=on label="" label.drawing=off
+animate_set "$NAME" icon="$APP_ICON" icon.drawing=on icon.color="$FRONT_APP_ICON_COLOR" icon.padding_left=8 icon.padding_right=8 label="" label.drawing=off background.drawing=on background.color="$FRONT_APP_IDLE_BG"
 sketchybar --set front_app.header label="App · $APP_NAME" >/dev/null 2>&1 || true
 
 sketchybar --set front_app.state \

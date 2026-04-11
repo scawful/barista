@@ -58,13 +58,14 @@ local function get_layout(ctx)
   local front_app_start_ms = current_time_ms()
   table.insert(layout, factory.create_item("front_app", {
     position = "left",
-    icon = { drawing = true, string = "󰣆" },
+    icon = { drawing = true, string = "󰣆", padding_left = 8, padding_right = 8, color = theme.TEXT or theme.WHITE },
     label = { drawing = false },
     script = PLUGIN_DIR .. "/front_app.sh",
     click_script = popup_toggle_action(),
     background = {
-      color = "0x00000000",
-      corner_radius = widget_corner_radius,
+      drawing = true,
+      color = "0x18313a46",
+      corner_radius = math.max(widget_corner_radius, 10),
       height = widget_height,
     },
     popup = {

@@ -43,12 +43,12 @@ mkdir -p "$BIN_DIR"
   printf '%s\n' 'printf "%s\n" "$*" >> "$LOG_FILE"'
   printf '%s\n' ''
   printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "query" ] && [ "${3:-}" = "--windows" ] && [ "${4:-}" = "--window" ] && [ $# -eq 4 ]; then'
-  printf '%s\n' '  printf '\''{"id":42,"app":"Ghostty","space":%s,"display":%s,"has-focus":true,"is-floating":%s,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","sub-layer":"%s","is-minimized":false}\n'\'' "$(read_state space)" "$(read_state display)" "$(read_state floating)" "$(read_state sub_layer)"'
+  printf '%s\n' '  printf '\''{"id":42,"app":"Ghostty","space":%s,"display":%s,"has-focus":true,"is-floating":%s,"is-sticky":false,"has-fullscreen-zoom":%s,"layer":"normal","sub-layer":"%s","is-minimized":false}\n'\'' "$(read_state space)" "$(read_state display)" "$(read_state floating)" "$(read_state fullscreen)" "$(read_state sub_layer)"'
   printf '%s\n' '  exit 0'
   printf '%s\n' 'fi'
   printf '%s\n' ''
   printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "query" ] && [ "${3:-}" = "--windows" ] && [ "${4:-}" = "--window" ] && [ $# -eq 5 ]; then'
-  printf '%s\n' '  printf '\''{"id":42,"app":"Ghostty","space":%s,"display":%s,"has-focus":true,"is-floating":%s,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","sub-layer":"%s","is-minimized":false}\n'\'' "$(read_state space)" "$(read_state display)" "$(read_state floating)" "$(read_state sub_layer)"'
+  printf '%s\n' '  printf '\''{"id":42,"app":"Ghostty","space":%s,"display":%s,"has-focus":true,"is-floating":%s,"is-sticky":false,"has-fullscreen-zoom":%s,"layer":"normal","sub-layer":"%s","is-minimized":false}\n'\'' "$(read_state space)" "$(read_state display)" "$(read_state floating)" "$(read_state fullscreen)" "$(read_state sub_layer)"'
   printf '%s\n' '  exit 0'
   printf '%s\n' 'fi'
   printf '%s\n' ''
@@ -115,8 +115,37 @@ mkdir -p "$BIN_DIR"
   printf '%s\n' '  exit 0'
   printf '%s\n' 'fi'
   printf '%s\n' ''
+  printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "window" ] && [ "${3:-}" = "42" ] && [ "${4:-}" = "--toggle" ] && [ "${5:-}" = "zoom-fullscreen" ]; then'
+  printf '%s\n' '  if [ "$(read_state fullscreen)" = "true" ]; then'
+  printf '%s\n' '    write_state fullscreen false'
+  printf '%s\n' '  else'
+  printf '%s\n' '    write_state fullscreen true'
+  printf '%s\n' '  fi'
+  printf '%s\n' '  exit 0'
+  printf '%s\n' 'fi'
+  printf '%s\n' ''
+  printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "window" ] && [ "${3:-}" = "42" ] && [ "${4:-}" = "--grid" ]; then'
+  printf '%s\n' '  write_state grid "${5:-}"'
+  printf '%s\n' '  exit 0'
+  printf '%s\n' 'fi'
+  printf '%s\n' ''
   printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "window" ] && [ "${3:-}" = "42" ] && [ "${4:-}" = "--sub-layer" ]; then'
   printf '%s\n' '  write_state sub_layer "${5:-auto}"'
+  printf '%s\n' '  exit 0'
+  printf '%s\n' 'fi'
+  printf '%s\n' ''
+  printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "space" ] && [ "${3:-}" = "--balance" ]; then'
+  printf '%s\n' '  write_state balanced true'
+  printf '%s\n' '  exit 0'
+  printf '%s\n' 'fi'
+  printf '%s\n' ''
+  printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "space" ] && [ "${3:-}" = "--rotate" ]; then'
+  printf '%s\n' '  write_state rotated "${4:-}"'
+  printf '%s\n' '  exit 0'
+  printf '%s\n' 'fi'
+  printf '%s\n' ''
+  printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "space" ] && [ "${3:-}" = "--toggle" ]; then'
+  printf '%s\n' '  write_state "toggle_${4:-unknown}" true'
   printf '%s\n' '  exit 0'
   printf '%s\n' 'fi'
   printf '%s\n' ''
@@ -128,7 +157,7 @@ JQ_BIN="$(command -v jq)"
 [ -n "$JQ_BIN" ] || { echo "FAIL: jq is required for test_yabai_control_window_rules.sh" >&2; exit 1; }
 
 reset_state() {
-  printf '%s\n' 'space=1' 'display=1' 'floating=false' 'sub_layer=auto' > "$STATE_FILE"
+  printf '%s\n' 'space=1' 'display=1' 'floating=false' 'fullscreen=false' 'sub_layer=auto' > "$STATE_FILE"
   : > "$LOG_FILE"
 }
 
@@ -179,14 +208,14 @@ assert_log_contains "-m window 42 --space 3"
 assert_log_contains "-m query --spaces --space 3"
 assert_log_not_contains "-m window 42 --toggle float"
 
-printf '%s\n' 'space=1' 'display=1' 'floating=true' > "$STATE_FILE"
+printf '%s\n' 'space=1' 'display=1' 'floating=true' 'fullscreen=false' 'sub_layer=auto' > "$STATE_FILE"
 : > "$LOG_FILE"
 run_control window-space next
 assert_log_contains "-m window 42 --space next"
 assert_log_contains "-m query --spaces --space 9"
 assert_log_not_contains "-m window 42 --toggle float"
 
-printf '%s\n' 'space=9' 'display=2' 'floating=true' > "$STATE_FILE"
+printf '%s\n' 'space=9' 'display=2' 'floating=true' 'fullscreen=false' 'sub_layer=auto' > "$STATE_FILE"
 : > "$LOG_FILE"
 run_control window-display-prev
 assert_log_contains "-m window 42 --display prev"
@@ -205,7 +234,7 @@ assert_log_contains "-m query --spaces"
 assert_log_contains "-m window 42 --space 9"
 assert_log_contains "-m window 42 --toggle float"
 
-printf '%s\n' 'space=9' 'display=2' 'floating=false' > "$STATE_FILE"
+printf '%s\n' 'space=9' 'display=2' 'floating=false' 'fullscreen=false' 'sub_layer=auto' > "$STATE_FILE"
 : > "$LOG_FILE"
 run_control window-adopt-space-mode
 assert_log_contains "-m query --windows --window"
@@ -213,13 +242,13 @@ assert_log_contains "-m query --windows --window 42"
 assert_log_contains "-m query --spaces --space 9"
 assert_log_contains "-m window 42 --toggle float"
 
-printf '%s\n' 'space=1' 'display=1' 'floating=true' > "$STATE_FILE"
+printf '%s\n' 'space=1' 'display=1' 'floating=true' 'fullscreen=false' 'sub_layer=auto' > "$STATE_FILE"
 : > "$LOG_FILE"
 run_control window-adopt-space-mode
 assert_log_contains "-m query --spaces --space 1"
 assert_log_contains "-m window 42 --toggle float"
 
-printf '%s\n' 'space=1' 'display=1' 'floating=false' 'sub_layer=above' > "$STATE_FILE"
+printf '%s\n' 'space=1' 'display=1' 'floating=false' 'fullscreen=false' 'sub_layer=above' > "$STATE_FILE"
 : > "$LOG_FILE"
 run_control window-adopt-space-mode
 assert_log_contains "-m query --spaces --space 1"
@@ -249,5 +278,69 @@ grep -Fxq 'sub_layer=auto' "$STATE_FILE" || {
   cat "$STATE_FILE" >&2
   exit 1
 }
+
+printf '%s\n' 'space=1' 'display=1' 'floating=false' 'fullscreen=false' 'sub_layer=above' > "$STATE_FILE"
+: > "$LOG_FILE"
+run_control window-preset-utility
+assert_log_contains "-m window 42 --toggle float"
+assert_log_contains "-m window 42 --sub-layer auto"
+assert_log_contains "-m window 42 --grid 4:4:1:1:2:2"
+grep -Fxq 'floating=true' "$STATE_FILE" || {
+  echo "FAIL: utility preset should float the window" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
+grep -Fxq 'sub_layer=auto' "$STATE_FILE" || {
+  echo "FAIL: utility preset should clear topmost" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
+
+printf '%s\n' 'space=1' 'display=1' 'floating=true' 'fullscreen=false' 'sub_layer=above' > "$STATE_FILE"
+: > "$LOG_FILE"
+run_control window-preset-focus
+assert_log_contains "-m window 42 --toggle float"
+assert_log_contains "-m window 42 --sub-layer auto"
+assert_log_contains "-m space --balance"
+grep -Fxq 'floating=false' "$STATE_FILE" || {
+  echo "FAIL: focus preset should tile the window on a managed space" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
+grep -Fxq 'balanced=true' "$STATE_FILE" || {
+  echo "FAIL: focus preset should balance the current space" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
+
+reset_state
+run_control window-preset-presentation
+assert_log_contains "-m window 42 --toggle zoom-fullscreen"
+grep -Fxq 'fullscreen=true' "$STATE_FILE" || {
+  echo "FAIL: presentation preset should enter fullscreen" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
+
+printf '%s\n' 'space=1' 'display=1' 'floating=true' 'fullscreen=false' 'sub_layer=above' > "$STATE_FILE"
+: > "$LOG_FILE"
+run_control window-preset-tile-here
+assert_log_contains "-m window 42 --toggle float"
+assert_log_contains "-m window 42 --sub-layer auto"
+grep -Fxq 'floating=false' "$STATE_FILE" || {
+  echo "FAIL: tile-here preset should adopt managed tiling" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
+grep -Fxq 'sub_layer=auto' "$STATE_FILE" || {
+  echo "FAIL: tile-here preset should clear topmost" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
+
+reset_state
+run_control space-toggle-padding-gap
+assert_log_contains "-m space --toggle padding"
+assert_log_contains "-m space --toggle gap"
 
 printf 'test_yabai_control_window_rules.sh: ok\n'

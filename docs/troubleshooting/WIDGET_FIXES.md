@@ -172,6 +172,8 @@ sketchybar --reload
 - `scripts/yabai_control.sh` now applies the same rule on window moves: when the destination space is `float`, the moved window is normalized to floating after the move instead of landing in a mismatched tiled state.
 - Cross-display window moves now adopt the visible destination space mode in both directions. A floating window moved onto a managed display is re-tiled, and a tiled window moved onto a float display is floated.
 - The `Toggle Topmost` action now maps to yabai's current window `sub-layer` control (`above` / `auto`) instead of the removed `--toggle topmost` flag, so the popup and skhd shortcut no longer emit runtime errors on yabai 7.x.
+- The `front_app` popup now updates its float/fullscreen/topmost row labels from the current window state, so the row explains the next action instead of always saying `Toggle`.
+- Conservative presets live in the same popup: `Utility`, `Focus`, `Presentation`, and `Tile Here`. They do not move windows across spaces or displays and they clear topmost state where a preset returns a window to normal tiling.
 - The `front_app` popup now exposes the same policy directly through `Adopt Current Space Mode` and `Send to Float Space`, so recovery does not require remembering a lower-level yabai command.
 
 ### 11. Runtime Context Helper
@@ -188,8 +190,14 @@ sketchybar --reload
 - `reload_sketchybar.sh` now uses a short-lived lock directory under `TMPDIR` to serialize overlapping reload requests.
 - Callers that arrive while another reload is already in flight now wait for that reload to finish and exit early if `front_app` is already live, instead of issuing a second LaunchAgent stop/bootstrap cycle.
 - This prevents rapid repeat invocations from leaving SketchyBar running without its runtime daemons after competing launchctl restarts.
+- skhd reload shortcuts now route through `plugins/reload_sketchybar.sh` instead of raw `sketchybar --reload`.
 
-### 13. Control Panel Launch
+### 13. Shortcut Doctor
+**Current path**: `scripts/yabai_control.sh doctor`
+- The doctor reports the active skhd config path, the generated Barista shortcuts path, loaded skhd files, generated-shortcut include health, duplicate bindings, recent skhd log warnings, and a minimal yabai space-focus check.
+- `doctor --fix` keeps the existing repair behavior for missing generated shortcut includes and skhd restart/reload paths.
+
+### 14. Control Panel Launch
 **Current path**: `bin/open_control_panel.sh`
 - SketchyBar's Barista Settings menu row launches the native `Barista.app` through LaunchServices (`open -na ... --args`) instead of directly executing the bundle binary.
 - Direct bundle execution can create the window and then exit immediately; LaunchServices keeps the app registered and the settings panel visible.

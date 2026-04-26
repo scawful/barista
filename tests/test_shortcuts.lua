@@ -58,6 +58,13 @@ run_test("shortcuts.get_command: window display moves route through yabai_contro
   assert_true(prev_command:match("yabai_control%.sh window%-display%-prev") ~= nil, "prev display move should route through yabai_control.sh")
 end)
 
+run_test("shortcuts.get_command: reload uses serialized reload helper", function()
+  local command = shortcuts.get_command("reload_sketchybar")
+  assert_type(command, "string", "reload command")
+  assert_true(command:match("plugins/reload_sketchybar%.sh") ~= nil, "reload should use serialized helper")
+  assert_true(command:match("sketchybar %-%-reload") == nil, "reload shortcut should not call raw sketchybar --reload")
+end)
+
 run_test("shortcuts.get_command: open_terminal prefers Ghostty-style launch", function()
   local command = shortcuts.get_command("open_terminal")
   assert_type(command, "string", "open_terminal command")

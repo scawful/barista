@@ -55,7 +55,7 @@ ctrl + alt - t : ~/.config/sketchybar/scripts/yabai_control.sh window-toggle-top
 ctrl + alt - return : ~/.config/sketchybar/scripts/yabai_control.sh window-toggle-fullscreen
 
 # --- SketchyBar ---
-ctrl + alt - r : sketchybar --reload
+ctrl + alt - r : ~/.config/sketchybar/plugins/reload_sketchybar.sh
 
 # =============================================================================
 # Leader Mode (Alt + Space)
@@ -76,11 +76,11 @@ alt - space ; leader
 leader < escape ; default
 
 # --- Leader: Window Management ---
-leader < b : yabai -m space --balance ; skhd -k "escape"
-leader < r : yabai -m space --rotate 90 ; skhd -k "escape"
-leader < f : yabai -m window --toggle float ; skhd -k "escape"
-leader < m : yabai -m window --toggle zoom-fullscreen ; skhd -k "escape"
-leader < g : yabai -m space --toggle padding ; yabai -m space --toggle gap ; skhd -k "escape"
+leader < b : ~/.config/sketchybar/scripts/yabai_control.sh balance ; skhd -k "escape"
+leader < r : ~/.config/sketchybar/scripts/yabai_control.sh space-rotate ; skhd -k "escape"
+leader < f : ~/.config/sketchybar/scripts/yabai_control.sh window-toggle-float ; skhd -k "escape"
+leader < m : ~/.config/sketchybar/scripts/yabai_control.sh window-toggle-fullscreen ; skhd -k "escape"
+leader < g : ~/.config/sketchybar/scripts/yabai_control.sh space-toggle-padding-gap ; skhd -k "escape"
 leader < t : ~/.config/sketchybar/scripts/yabai_control.sh window-toggle-topmost ; skhd -k "escape"
 
 # --- Leader: System ---

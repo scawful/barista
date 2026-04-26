@@ -5,6 +5,7 @@ YABAI_BIN="${YABAI_BIN:-$(command -v yabai || true)}"
 JQ_BIN="${JQ_BIN:-$(command -v jq || true)}"
 SKHD_BIN="${SKHD_BIN:-$(command -v skhd || true)}"
 CONFIG_DIR="${BARISTA_CONFIG_DIR:-$HOME/.config/sketchybar}"
+SKETCHYBAR_BIN="${SKETCHYBAR_BIN:-$(command -v sketchybar || true)}"
 FRONT_APP_SCRIPT="${BARISTA_FRONT_APP_SCRIPT:-$CONFIG_DIR/plugins/front_app.sh}"
 RUNTIME_CONTEXT_SCRIPT="${BARISTA_RUNTIME_CONTEXT_SCRIPT:-$CONFIG_DIR/scripts/runtime_context.sh}"
 YABAI_LABEL="${BARISTA_YABAI_LABEL:-}"
@@ -217,6 +218,15 @@ window_is_floating_for_id() {
     | head -n 1
 }
 
+window_is_fullscreen_for_id() {
+  local window_id="${1:-}"
+  [ -n "$window_id" ] || return 0
+  require_jq
+  run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --windows --window "$window_id" 2>/dev/null \
+    | "$JQ_BIN" -r '."has-fullscreen-zoom" // ."is-native-fullscreen" // false' 2>/dev/null \
+    | head -n 1
+}
+
 window_display_for_id() {
   local window_id="${1:-}"
   [ -n "$window_id" ] || return 0
@@ -267,8 +277,46 @@ clear_window_topmost_for_id() {
   fi
 }
 
+set_window_floating_for_id() {
+  local window_id="${1:-}"
+  local desired="${2:-}"
+  local current
+
+  [ -n "$window_id" ] || return 0
+  [ -n "$desired" ] || return 0
+
+  current="$(window_is_floating_for_id "$window_id")"
+  if [[ "$desired" == "true" && "$current" != "true" ]]; then
+    "$YABAI_BIN" -m window "$window_id" --toggle float >/dev/null 2>&1 || true
+  elif [[ "$desired" == "false" && "$current" == "true" ]]; then
+    "$YABAI_BIN" -m window "$window_id" --toggle float >/dev/null 2>&1 || true
+  fi
+}
+
+set_window_fullscreen_for_id() {
+  local window_id="${1:-}"
+  local desired="${2:-}"
+  local current
+
+  [ -n "$window_id" ] || return 0
+  [ -n "$desired" ] || return 0
+
+  current="$(window_is_fullscreen_for_id "$window_id")"
+  if [[ "$desired" == "true" && "$current" != "true" ]]; then
+    "$YABAI_BIN" -m window "$window_id" --toggle zoom-fullscreen >/dev/null 2>&1 || true
+  elif [[ "$desired" == "false" && "$current" == "true" ]]; then
+    "$YABAI_BIN" -m window "$window_id" --toggle zoom-fullscreen >/dev/null 2>&1 || true
+  fi
+}
+
+refresh_space_state() {
+  if [[ -n "${SKETCHYBAR_BIN:-}" ]]; then
+    "$SKETCHYBAR_BIN" --trigger space_mode_refresh >/dev/null 2>&1 || true
+  fi
+}
+
 refresh_front_app_state() {
-  if ! command -v sketchybar >/dev/null 2>&1; then
+  if [[ -z "${SKETCHYBAR_BIN:-}" ]]; then
     return 0
   fi
 
@@ -287,6 +335,19 @@ refresh_front_app_state() {
       SENDER=routine \
       "$FRONT_APP_SCRIPT" >/dev/null 2>&1 || true
   fi
+}
+
+run_space_command() {
+  "$YABAI_BIN" -m space "$@"
+  refresh_space_state
+  refresh_front_app_state
+}
+
+space_toggle_padding_gap() {
+  "$YABAI_BIN" -m space --toggle padding
+  "$YABAI_BIN" -m space --toggle gap
+  refresh_space_state
+  refresh_front_app_state
 }
 
 space_layout_for_index() {
@@ -579,6 +640,51 @@ window_toggle_topmost() {
   refresh_front_app_state
 }
 
+window_preset_utility() {
+  local window_id
+  window_id="$(focused_window_id)"
+  [[ -n "$window_id" ]] || return 1
+
+  set_window_fullscreen_for_id "$window_id" false
+  set_window_floating_for_id "$window_id" true
+  clear_window_topmost_for_id "$window_id"
+  "$YABAI_BIN" -m window "$window_id" --grid 4:4:1:1:2:2 >/dev/null 2>&1 || true
+  refresh_front_app_state
+}
+
+window_preset_focus() {
+  local window_id target_space
+  window_id="$(focused_window_id)"
+  [[ -n "$window_id" ]] || return 1
+
+  set_window_fullscreen_for_id "$window_id" false
+  target_space="$(window_space_for_id "$window_id")"
+  if [[ -n "$target_space" ]]; then
+    adopt_window_to_space_layout "$window_id" "$target_space"
+  fi
+  "$YABAI_BIN" -m space --balance >/dev/null 2>&1 || true
+  refresh_space_state
+  refresh_front_app_state
+}
+
+window_preset_presentation() {
+  local window_id
+  window_id="$(focused_window_id)"
+  [[ -n "$window_id" ]] || return 1
+
+  set_window_fullscreen_for_id "$window_id" true
+  refresh_front_app_state
+}
+
+window_preset_tile_here() {
+  local window_id
+  window_id="$(focused_window_id)"
+  [[ -n "$window_id" ]] || return 1
+
+  set_window_fullscreen_for_id "$window_id" false
+  window_adopt_space_mode
+}
+
 restart_yabai() {
   if "$YABAI_BIN" --restart-service >/dev/null 2>&1; then
     echo "yabai restarted"
@@ -737,6 +843,77 @@ skhd_check_load_line() {
   return 3
 }
 
+expand_user_path() {
+  local value="${1:-}"
+  case "$value" in
+    "~/"*) printf '%s\n' "$HOME/${value#~/}" ;;
+    *) printf '%s\n' "$value" ;;
+  esac
+}
+
+skhd_loaded_files() {
+  local config="$1"
+  [[ -f "$config" ]] || return 0
+  printf '%s\n' "$config"
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^[[:space:]]*\.load[[:space:]]+\"([^\"]+)\" ]]; then
+      expand_user_path "${BASH_REMATCH[1]}"
+    fi
+  done < "$config"
+}
+
+skhd_print_loaded_files() {
+  local config="$1"
+  local file
+  echo "skhd loaded files:"
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    if [[ -f "$file" ]]; then
+      echo "  ok  $file"
+    else
+      echo "  miss $file" >&2
+    fi
+  done < <(skhd_loaded_files "$config")
+}
+
+skhd_duplicate_bindings() {
+  local config="$1"
+  mapfile -t files < <(skhd_loaded_files "$config")
+  ((${#files[@]} > 0)) || return 0
+  awk '
+    /^[[:space:]]*($|#)/ { next }
+    /^[[:space:]]*::/ { next }
+    /^[[:space:]]*[^:]+[;:]/ {
+      combo = $0
+      sub(/[;:].*$/, "", combo)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", combo)
+      if (combo == "" || combo ~ /^\\.load/) next
+      count[combo]++
+      source[combo] = source[combo] FILENAME "\n"
+    }
+    END {
+      for (combo in count) {
+        if (count[combo] > 1) {
+          printf "%s\t%d\n", combo, count[combo]
+        }
+      }
+    }
+  ' "${files[@]}" 2>/dev/null | sort
+}
+
+skhd_report_duplicates() {
+  local config="$1"
+  local duplicates
+  duplicates="$(skhd_duplicate_bindings "$config")"
+  if [[ -z "$duplicates" ]]; then
+    echo "skhd duplicates: none"
+    return 0
+  fi
+  echo "skhd duplicates:" >&2
+  printf '%s\n' "$duplicates" | sed 's/^/  /' >&2
+  return 1
+}
+
 skhd_fix_load_line() {
   local config="$1"
   local expected
@@ -820,6 +997,9 @@ run_doctor() {
     local skhd_shortcuts
     skhd_config=$(skhd_config_path)
     skhd_shortcuts=$(skhd_shortcuts_path)
+    echo "skhd config: $skhd_config"
+    echo "skhd shortcuts path: $skhd_shortcuts"
+    skhd_print_loaded_files "$skhd_config"
 
     if [[ -f "$skhd_shortcuts" ]] && [[ -s "$skhd_shortcuts" ]]; then
       echo "skhd shortcuts: present"
@@ -839,6 +1019,10 @@ run_doctor() {
         skhd_fix_load_line "$skhd_config"
         echo "skhd config: load updated"
       fi
+    fi
+
+    if ! skhd_report_duplicates "$skhd_config"; then
+      ok=0
     fi
 
     local err_log
@@ -905,19 +1089,22 @@ case "$command" in
     restart_yabai
     ;;
   balance)
-    "$YABAI_BIN" -m space --balance
+    run_space_command --balance
     ;;
   space-rotate|rotate)
-    "$YABAI_BIN" -m space --rotate 90
+    run_space_command --rotate 90
     ;;
   mirror)
-    "$YABAI_BIN" -m space --mirror x-axis
+    run_space_command --mirror x-axis
     ;;
   space-mirror-x)
-    "$YABAI_BIN" -m space --mirror x-axis
+    run_space_command --mirror x-axis
     ;;
   space-mirror-y)
-    "$YABAI_BIN" -m space --mirror y-axis
+    run_space_command --mirror y-axis
+    ;;
+  space-toggle-padding-gap)
+    space_toggle_padding_gap
     ;;
   toggle-layout)
     layout=$(current_space_layout)
@@ -927,7 +1114,7 @@ case "$command" in
       float) target="bsp" ;;
       *) target="bsp" ;;
     esac
-    "$YABAI_BIN" -m space --layout "$target"
+    run_space_command --layout "$target"
     ;;
   space-layout)
     layout=${1:-}
@@ -935,7 +1122,7 @@ case "$command" in
       echo "Usage: $0 space-layout <bsp|stack|float>" >&2
       exit 1
     fi
-    "$YABAI_BIN" -m space --layout "$layout"
+    run_space_command --layout "$layout"
     ;;
   window-toggle-float)
     window_toggle_property float
@@ -954,6 +1141,18 @@ case "$command" in
     ;;
   window-center)
     window_center
+    ;;
+  window-preset-utility)
+    window_preset_utility
+    ;;
+  window-preset-focus)
+    window_preset_focus
+    ;;
+  window-preset-presentation)
+    window_preset_presentation
+    ;;
+  window-preset-tile-here)
+    window_preset_tile_here
     ;;
   window-display-next)
     move_window_with_rules --policy adopt_destination --display next
@@ -1023,12 +1222,14 @@ Commands:
   space-rotate|rotate
   mirror
   space-mirror-x|space-mirror-y
+  space-toggle-padding-gap
   toggle-layout
   space-layout <bsp|stack|float>
   window-toggle-float
   window-toggle-sticky
   window-toggle-fullscreen
   window-toggle-topmost
+  window-preset-utility|window-preset-focus|window-preset-presentation|window-preset-tile-here
   window-adopt-space-mode [space]
   window-center
   window-display-next|window-display-prev

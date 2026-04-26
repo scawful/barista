@@ -67,6 +67,14 @@ onto a managed (`bsp` / `stack`) display is re-tiled and a tiled window dropped
 onto a float display is floated.
 The `front_app` popup now exposes two explicit rule-aware window actions on top
 of the raw toggles: `Adopt Current Space Mode` and `Send to Float Space`.
+It also includes conservative presets: `Utility` floats and centers the current
+window without making it topmost, `Focus` tiles/adopts the current space mode and
+balances the layout, `Presentation` enters fullscreen, and `Tile Here` clears
+topmost state while adopting the current space mode.
+
+Reload shortcuts should use `plugins/reload_sketchybar.sh`; avoid raw
+`sketchybar --reload` for normal use so overlapping reload requests stay
+serialized and health-checked against `front_app`.
 
 - **Enable**: Run installer and select "Window Manager Mode: Required".
 - **Disable**: Run `./scripts/set_mode.sh <profile> disabled`.
@@ -86,6 +94,9 @@ ln -s ~/src/lab/barista ~/.config/sketchybar
 Optionally pass the target dir (default: `~/.config/sketchybar`). If the runtime is a symlink to lab/barista, the overlay is written into the repo. See `config/dotfiles/sketchybar-overlay/README.md`.
 
 **Skhd and yabai_control:** Space/layout keybindings in skhd call `yabai_control.sh`. To support both "Barista deploy" and "dotfiles-only" setups, use the wrapper: `~/.local/bin/yabai_control_wrapper.sh` (from `config/dotfiles/bin/yabai_control_wrapper.sh`). Ensure that wrapper is on your PATH and installed (e.g. dotfiles link `bin/` to `~/.local/bin`).
+For shortcut health, run `~/.config/sketchybar/scripts/yabai_control.sh doctor`
+to list loaded skhd files, verify the generated Barista shortcut include, and
+flag duplicate bindings.
 
 **LaunchAgents:** The single place to edit the Barista orchestrator (SketchyBar + yabai + skhd at login) is `lab/barista/launch_agents/`. See [launch_agents/README.md](launch_agents/README.md). Recommended: use either this LaunchAgent or `brew services` for the three daemons, not both.
 

@@ -8,6 +8,12 @@ export LANG="${LANG:-en_US.UTF-8}"
 
 _d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
 
+if [ -n "${BARISTA_SKETCHYBAR_BIN:-}" ]; then
+  sketchybar() {
+    "$BARISTA_SKETCHYBAR_BIN" "$@"
+  }
+fi
+
 APP_NAME="${INFO:-}"
 FRONT_APP_CONTEXT_SCRIPT="${BARISTA_FRONT_APP_CONTEXT_SCRIPT:-$SCRIPTS_DIR/front_app_context.sh}"
 APP_ICON_SCRIPT="${BARISTA_APP_ICON_SCRIPT:-$SCRIPTS_DIR/app_icon.sh}"
@@ -39,6 +45,7 @@ STATE_ICON="󰋽"
 STATE_LABEL="No managed window"
 LOCATION_LABEL="Space ? · Display ?"
 APP_ICON="󰣆"
+WINDOW_AVAILABLE="false"
 
 if [ -x "$FRONT_APP_CONTEXT_SCRIPT" ]; then
   while IFS=$'\t' read -r key value; do
@@ -47,6 +54,7 @@ if [ -x "$FRONT_APP_CONTEXT_SCRIPT" ]; then
       state_icon) STATE_ICON="$value" ;;
       state_label) STATE_LABEL="$value" ;;
       location_label) LOCATION_LABEL="$value" ;;
+      window_available) WINDOW_AVAILABLE="$value" ;;
     esac
   done < <("$FRONT_APP_CONTEXT_SCRIPT" --app "$APP_NAME" 2>/dev/null || true)
 fi
@@ -59,6 +67,10 @@ fi
 
 if [ -z "$APP_NAME" ]; then
   exit 0
+fi
+
+if [ "$WINDOW_AVAILABLE" != "true" ] && [ "$STATE_LABEL" != "No managed window" ]; then
+  WINDOW_AVAILABLE="true"
 fi
 
 # Filter out barista's own apps - keep previous app visible
@@ -84,3 +96,30 @@ sketchybar --set front_app.state \
   label="$STATE_LABEL" >/dev/null 2>&1 || true
 sketchybar --set front_app.location \
   label="$LOCATION_LABEL" >/dev/null 2>&1 || true
+
+FLOAT_ACTION_LABEL="Float Window"
+FULLSCREEN_ACTION_LABEL="Enter Fullscreen"
+TOPMOST_ACTION_LABEL="Make Topmost"
+TILE_PRESET_LABEL="Tile Here"
+
+if [ "$WINDOW_AVAILABLE" != "true" ]; then
+  FLOAT_ACTION_LABEL="No Window to Float"
+  FULLSCREEN_ACTION_LABEL="No Window to Fullscreen"
+  TOPMOST_ACTION_LABEL="No Window to Layer"
+  TILE_PRESET_LABEL="No Window to Tile"
+else
+  case "$STATE_LABEL" in
+    *Floating*) FLOAT_ACTION_LABEL="Tile Window" ;;
+  esac
+  case "$STATE_LABEL" in
+    *Fullscreen*) FULLSCREEN_ACTION_LABEL="Exit Fullscreen" ;;
+  esac
+  case "$STATE_LABEL" in
+    *Above*) TOPMOST_ACTION_LABEL="Normal Layer" ;;
+  esac
+fi
+
+sketchybar --set front_app.window.float label="$FLOAT_ACTION_LABEL" >/dev/null 2>&1 || true
+sketchybar --set front_app.window.fullscreen label="$FULLSCREEN_ACTION_LABEL" >/dev/null 2>&1 || true
+sketchybar --set front_app.window.topmost label="$TOPMOST_ACTION_LABEL" >/dev/null 2>&1 || true
+sketchybar --set front_app.preset.tile_here label="$TILE_PRESET_LABEL" >/dev/null 2>&1 || true

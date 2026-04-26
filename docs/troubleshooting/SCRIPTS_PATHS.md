@@ -28,7 +28,7 @@
    - Control Panel → Advanced → Scripts Directory, or
    - `BARISTA_SCRIPTS_DIR`, or
    - `paths.scripts_dir` in `state.json`
-4. Reload the bar: `sketchybar --reload`
+4. Reload the bar: `~/.config/sketchybar/plugins/reload_sketchybar.sh`
 5. If Control Panel actions still fail, verify helper scripts exist and are executable:
    - `set_appearance.sh`, `widget_toggle.sh`, `set_widget_color.sh`
    - `set_space_icon.sh`, `set_menu_icon.sh`, `set_clock_font.sh`
@@ -37,7 +37,7 @@
    - Fix with `chmod +x <script>` or reinstall scripts.
 6. If skhd shortcuts still do nothing, run the doctor with auto-fix:
    - `~/.config/sketchybar/scripts/yabai_control.sh doctor --fix`
-   - The doctor will also clean up duplicate skhd processes and restart skhd if needed.
+   - The doctor reports loaded skhd files, duplicate bindings, and generated-shortcut include health. With `--fix`, it also cleans up duplicate skhd processes and restarts skhd if needed.
 
 ## Notes
 

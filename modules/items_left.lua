@@ -256,14 +256,45 @@ local function get_layout(ctx)
 
   if yabai_controls_enabled then
     local window_actions = {
-      { name = "front_app.window.float", icon = "󰒄", icon_color = tc("SAPPHIRE"), label = "Toggle Float", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-float") },
+      { name = "front_app.window.float", icon = "󰒄", icon_color = tc("SAPPHIRE"), label = "Float Window", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-float") },
       { name = "front_app.window.adopt_space_mode", icon = "󰆾", icon_color = tc("TEAL"), label = "Adopt Current Space Mode", action = call_script(YABAI_CONTROL_SCRIPT, "window-adopt-space-mode") },
-      { name = "front_app.window.fullscreen", icon = "󰊓", icon_color = tc("GREEN"), label = "Toggle Fullscreen", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-fullscreen") },
+      { name = "front_app.window.fullscreen", icon = "󰊓", icon_color = tc("GREEN"), label = "Enter Fullscreen", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-fullscreen") },
       { name = "front_app.window.sticky", icon = "󰐊", icon_color = tc("YELLOW"), label = "Toggle Sticky", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-sticky") },
-      { name = "front_app.window.topmost", icon = "󰁜", icon_color = tc("MAUVE", "LAVENDER"), label = "Toggle Topmost", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-topmost") },
+      { name = "front_app.window.topmost", icon = "󰁜", icon_color = tc("MAUVE", "LAVENDER"), label = "Make Topmost", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-topmost") },
       { name = "front_app.window.center", icon = "󰘞", icon_color = tc("BLUE"), label = "Center Window", action = call_script(YABAI_CONTROL_SCRIPT, "window-center") },
     }
     for _, entry in ipairs(window_actions) do
+      table.insert(layout, add_fa(entry.name, {
+        icon = { string = entry.icon, color = entry.icon_color },
+        label = entry.label,
+        click_script = close_front_app_after(entry.action),
+        ["label.font"] = font_small,
+      }))
+    end
+
+    table.insert(layout, add_fa("front_app.sep_presets", {
+      icon = "",
+      label = "───────────────",
+      ["label.font"] = font_small,
+      ["label.color"] = "0x40cdd6f4",
+      background = { drawing = false },
+    }))
+
+    table.insert(layout, add_fa("front_app.presets_header", {
+      icon = "",
+      label = "Presets",
+      ["label.font"] = font_bold,
+      ["label.color"] = tc("YELLOW"),
+      background = { drawing = false },
+    }))
+
+    local preset_actions = {
+      { name = "front_app.preset.utility", icon = "󰉼", icon_color = tc("SAPPHIRE"), label = "Utility", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-utility") },
+      { name = "front_app.preset.focus", icon = "󰓅", icon_color = tc("GREEN"), label = "Focus", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-focus") },
+      { name = "front_app.preset.presentation", icon = "󰊓", icon_color = tc("PEACH"), label = "Presentation", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-presentation") },
+      { name = "front_app.preset.tile_here", icon = "󰆾", icon_color = tc("TEAL"), label = "Tile Here", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-tile-here") },
+    }
+    for _, entry in ipairs(preset_actions) do
       table.insert(layout, add_fa(entry.name, {
         icon = { string = entry.icon, color = entry.icon_color },
         label = entry.label,

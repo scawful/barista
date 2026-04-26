@@ -80,6 +80,10 @@ local function test_items_left_layout()
   local front_app_hide = nil
   local found_adopt_space_mode = false
   local found_send_float_space = false
+  local found_utility_preset = false
+  local found_focus_preset = false
+  local found_presentation_preset = false
+  local found_tile_here_preset = false
   local front_app_move_prev = nil
   local front_app_move_next = nil
   for _, entry in ipairs(layout) do
@@ -102,6 +106,18 @@ local function test_items_left_layout()
       found_adopt_space_mode = true
     elseif entry.type == "item" and entry.name == "front_app.move.float_space" then
       found_send_float_space = true
+    elseif entry.type == "item" and entry.name == "front_app.preset.utility" then
+      found_utility_preset = true
+      assert_true(entry.props.click_script:find("yabai_control%.sh window%-preset%-utility") ~= nil, "utility preset should route through yabai_control.sh")
+    elseif entry.type == "item" and entry.name == "front_app.preset.focus" then
+      found_focus_preset = true
+      assert_true(entry.props.click_script:find("yabai_control%.sh window%-preset%-focus") ~= nil, "focus preset should route through yabai_control.sh")
+    elseif entry.type == "item" and entry.name == "front_app.preset.presentation" then
+      found_presentation_preset = true
+      assert_true(entry.props.click_script:find("yabai_control%.sh window%-preset%-presentation") ~= nil, "presentation preset should route through yabai_control.sh")
+    elseif entry.type == "item" and entry.name == "front_app.preset.tile_here" then
+      found_tile_here_preset = true
+      assert_true(entry.props.click_script:find("yabai_control%.sh window%-preset%-tile%-here") ~= nil, "tile-here preset should route through yabai_control.sh")
     elseif entry.type == "item" and entry.name == "front_app.move.display_prev" then
       front_app_move_prev = entry
     elseif entry.type == "item" and entry.name == "front_app.move.display_next" then
@@ -115,6 +131,10 @@ local function test_items_left_layout()
   assert(front_app_hide ~= nil, "front_app hide action not found in popup layout")
   assert(found_adopt_space_mode, "front_app adopt-space-mode action not found in popup layout")
   assert(found_send_float_space, "front_app send-to-float-space action not found in popup layout")
+  assert(found_utility_preset, "front_app utility preset not found in popup layout")
+  assert(found_focus_preset, "front_app focus preset not found in popup layout")
+  assert(found_presentation_preset, "front_app presentation preset not found in popup layout")
+  assert(found_tile_here_preset, "front_app tile-here preset not found in popup layout")
   assert(front_app_move_prev ~= nil, "front_app move-to-prev-display action not found in popup layout")
   assert(front_app_move_next ~= nil, "front_app move-to-next-display action not found in popup layout")
   assert(front_app_hide.props.click_script:find("popup.drawing=off", 1, true) ~= nil, "front_app actions should close the popup after execution")

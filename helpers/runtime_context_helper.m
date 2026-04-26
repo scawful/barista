@@ -278,9 +278,11 @@ static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
   NSString *locationLabel = [NSString stringWithFormat:@"Space %@ · Display %@",
                              spaceIndex ? spaceIndex.stringValue : @"?",
                              displayIndex ? displayIndex.stringValue : @"?"];
+  BOOL windowAvailable = NO;
 
   NSDictionary *window = select_matching_window(appName, spaceIndex, displayIndex);
   if (window != nil) {
+    windowAvailable = YES;
     NSString *windowApp = string_value(window[@"app"]);
     if (windowApp.length > 0 && [windowApp caseInsensitiveCompare:appName] == NSOrderedSame) {
       appName = windowApp;
@@ -338,6 +340,7 @@ static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
 
   return @{
     @"app_name": sanitize_value(appName),
+    @"window_available": windowAvailable ? @"true" : @"false",
     @"state_icon": sanitize_value(stateIcon),
     @"state_label": sanitize_value(stateLabel),
     @"location_label": sanitize_value(locationLabel),
@@ -350,6 +353,7 @@ static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
 static NSString *record_to_tsv(NSDictionary<NSString *, NSString *> *record) {
   NSArray<NSString *> *order = @[
     @"app_name",
+    @"window_available",
     @"state_icon",
     @"state_label",
     @"location_label",

@@ -499,7 +499,7 @@ shortcuts.global = {
 -- Action handlers (maps action names to actual commands)
 shortcuts.actions = {
   -- SketchyBar
-  reload_sketchybar = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh --reload-only",
+  reload_sketchybar = CONFIG_DIR .. "/plugins/reload_sketchybar.sh",
   rebuild_and_reload = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh",
   open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh --tab home",
   toggle_control_center = build_control_center_toggle_command(shortcuts.resolve_control_center_item_name(runtime_state)),

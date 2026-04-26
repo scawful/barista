@@ -5,6 +5,7 @@
 local oracle = {}
 
 local locator = require("tool_locator")
+local menu_style = require("menu_style")
 
 local json_ok, json = pcall(require, "json")
 
@@ -27,6 +28,7 @@ oracle.config = {
 
 local section_defaults = {
   play = { label = "Oracle Session", order = 10, color_key = "GREEN", enabled = true, limit = 5, icon = "󰐃", presentation = "direct" },
+  apps = { label = "Apps", order = 20, color_key = "LAVENDER", enabled = true, limit = 5, icon = "󰀻", presentation = "direct" },
 }
 
 local function normalize_bool(value)
@@ -68,6 +70,55 @@ end
 
 local function shell_quote(value)
   return string.format("%q", tostring(value or ""))
+end
+
+local function bash_literal(value)
+  return "'" .. tostring(value or ""):gsub("'", "'\"'\"'") .. "'"
+end
+
+local function open_app_action(path)
+  if type(path) ~= "string" or path == "" then
+    return ""
+  end
+  return string.format("open %s", shell_quote(path))
+end
+
+local function terminal_action(command, ctx)
+  local function debounced_command(key, raw_command)
+    if not raw_command or raw_command == "" then
+      return ""
+    end
+    local raw_key = tostring(key or "action"):gsub("[^%w]+", "_")
+    local lock_dir = string.format("/tmp/barista_popup_%s.lock", raw_key)
+    local wrapped = string.format(
+      "lock_dir=%s; if ! mkdir \"$lock_dir\" 2>/dev/null; then exit 0; fi; trap 'rmdir \"$lock_dir\"' EXIT; %s; sleep 0.75",
+      shell_quote(lock_dir),
+      raw_command
+    )
+    return "bash -lc " .. bash_literal(wrapped)
+  end
+
+  local ghostty_app = select(1, locator.resolve_ghostty_app(ctx or {}))
+  if ghostty_app and ghostty_app ~= "" then
+    if command and command ~= "" then
+      return debounced_command(
+        "ghostty_terminal",
+        string.format("open -na %s --args -e /bin/zsh -lc %s", shell_quote(ghostty_app), shell_quote(command))
+      )
+    end
+    return debounced_command("ghostty_terminal", string.format("open -na %s", shell_quote(ghostty_app)))
+  end
+  if command and command ~= "" then
+    return string.format("osascript -e 'tell application \"Terminal\" to do script %q'", command)
+  end
+  return "open -a Terminal"
+end
+
+local function binary_action(path)
+  if type(path) ~= "string" or path == "" then
+    return ""
+  end
+  return shell_quote(path)
 end
 
 local function truncate_label(value, max_len)
@@ -128,15 +179,46 @@ local function popup_font(ctx, style, size)
   return nil
 end
 
-local function popup_item(name, props, parent_popup)
+local function popup_style(ctx)
+  local style_ctx = ctx or {}
+  if type(style_ctx.appearance) ~= "table" then
+    style_ctx = setmetatable({
+      appearance = type(style_ctx.state) == "table" and style_ctx.state.appearance or {},
+    }, { __index = style_ctx })
+  end
+
+  local style = menu_style.compute(style_ctx)
+  return {
+    raw = style,
+    font_small = style.font_small,
+    font_header = style.font_header,
+    item_height = style.item_height,
+    header_height = style.header_height,
+    item_corner_radius = style.item_corner_radius,
+    padding = style.padding or {},
+    label_color = style.label_color or theme_color(ctx, "WHITE"),
+    header_bg_color = theme_color(ctx, "BG_SEC_COLR", "WHITE"),
+    separator_color = theme_color(ctx, "DARK_WHITE", "SUBTEXT1"),
+  }
+end
+
+local function popup_item(name, props, parent_popup, style)
+  local padding = style and style.padding or {}
+  local background = {
+    drawing = false,
+    corner_radius = style and style.item_corner_radius or 6,
+  }
+  if style and style.item_height then
+    background.height = style.item_height
+  end
   local item = {
     name = name,
     position = "popup." .. (parent_popup or "triforce"),
-    background = { drawing = false },
-    ["icon.padding_left"] = 6,
-    ["icon.padding_right"] = 6,
-    ["label.padding_left"] = 8,
-    ["label.padding_right"] = 8,
+    background = background,
+    ["icon.padding_left"] = padding.icon_left or 6,
+    ["icon.padding_right"] = padding.icon_right or 6,
+    ["label.padding_left"] = padding.label_left or 8,
+    ["label.padding_right"] = padding.label_right or 8,
   }
   for key, value in pairs(props or {}) do
     item[key] = value
@@ -305,8 +387,44 @@ local function build_state(ctx)
   local panel_action = ""
   if ctx and ctx.scripts and ctx.scripts.open_oracle_agent_manager and ctx.call_script then
     panel_action = ctx.call_script(ctx.scripts.open_oracle_agent_manager)
-  elseif ctx and ctx.scripts and ctx.scripts.open_control_panel and ctx.call_script then
+  else
+    local oam_bin, oam_ok = locator.resolve_oracle_agent_manager(ctx or {})
+    if oam_ok and oam_bin then
+      panel_action = binary_action(oam_bin)
+    end
+  end
+  if panel_action == "" and ctx and ctx.scripts and ctx.scripts.open_control_panel and ctx.call_script then
     panel_action = ctx.call_script(ctx.scripts.open_control_panel, "--oracle")
+  end
+
+  local yaze_action = ""
+  local yaze_enabled = not (ctx and ctx.integration_flags and ctx.integration_flags.yaze == false)
+  if yaze_enabled then
+    local yaze_app, yaze_ok = locator.resolve_yaze_app(ctx or {})
+    local yaze_launcher, yaze_launcher_ok = locator.resolve_yaze_launcher()
+    if yaze_ok and yaze_app then
+      yaze_action = open_app_action(yaze_app)
+    elseif yaze_launcher_ok and yaze_launcher then
+      yaze_action = binary_action(yaze_launcher)
+    end
+  end
+
+  local mesen_action = ""
+  local mesen_run_bin, mesen_run_ok = locator.resolve_mesen_run(ctx or {})
+  if mesen_run_ok and mesen_run_bin then
+    mesen_action = binary_action(mesen_run_bin)
+  end
+
+  local z3ed_action = ""
+  local z3ed_launcher, z3ed_ok = locator.resolve_z3ed_launcher(ctx or {})
+  if z3ed_ok and z3ed_launcher then
+    local yaze_dir = select(1, locator.resolve_yaze_dir(ctx or {})) or (CODE_DIR .. "/hobby/yaze")
+    local command = string.format(
+      "cd %s && clear && printf 'z3ed\\n\\n' && %s --help; printf '\\n'; exec /bin/zsh -l",
+      shell_quote(yaze_dir),
+      shell_quote(z3ed_launcher)
+    )
+    z3ed_action = terminal_action(command, ctx)
   end
   local continue_action = repo_action(focus.command or "./scripts/oos-session.sh maku --crystals 0")
   local patch_and_play_action = repo_action("./scripts/oos-triforce.sh patch-and-play")
@@ -328,6 +446,9 @@ local function build_state(ctx)
     repo_ok = repo_ok,
     ui = ui,
     panel_action = panel_action,
+    yaze_action = yaze_action,
+    mesen_action = mesen_action,
+    z3ed_action = z3ed_action,
     continue_action = continue_action,
     patch_and_play_action = patch_and_play_action,
     menu_title = menu_title,
@@ -404,10 +525,30 @@ function oracle.build_menu_model(ctx)
     make_entry("continue", continue_label, "󰐃", state.continue_action, { prominent = true }),
     make_entry("patch_continue", "Patch + Launch", "󰑐", state.patch_and_play_action),
   }
-  if state.panel_action ~= "" then
-    table.insert(play_entries, make_entry("panel", "Open Oracle Hub", "󰒋", state.panel_action))
-  end
   add_section(sections, "play", play_entries)
+
+  local app_entries = {}
+  if state.panel_action ~= "" then
+    table.insert(app_entries, make_entry("oracle_hub", "Oracle Hub", "󰒋", state.panel_action, {
+      icon_color = theme_color(ctx, "MAGENTA", "MAUVE"),
+    }))
+  end
+  if state.yaze_action ~= "" then
+    table.insert(app_entries, make_entry("yaze", "Yaze", "󰯙", state.yaze_action, {
+      icon_color = theme_color(ctx, "YELLOW"),
+    }))
+  end
+  if state.z3ed_action ~= "" then
+    table.insert(app_entries, make_entry("z3ed", "z3ed", "", state.z3ed_action, {
+      icon_color = theme_color(ctx, "SKY"),
+    }))
+  end
+  if state.mesen_action ~= "" then
+    table.insert(app_entries, make_entry("mesen_oos", "Mesen2 OoS", "󰁆", state.mesen_action, {
+      icon_color = theme_color(ctx, "RED"),
+    }))
+  end
+  add_section(sections, "apps", app_entries)
 
   table.sort(sections, function(a, b)
     if a.order == b.order then
@@ -479,9 +620,9 @@ local function flatten_model(model, include_header)
   return items
 end
 
-local function append_popup_entries(items, ctx, parent_popup, name_prefix, section)
-  local title_font = popup_font(ctx, "Bold", ctx and ctx.settings and ctx.settings.font and ctx.settings.font.sizes and ctx.settings.font.sizes.small or 11)
-  local row_font = popup_font(ctx, "Semibold", ctx and ctx.settings and ctx.settings.font and ctx.settings.font.sizes and ctx.settings.font.sizes.small or 11)
+local function append_popup_entries(items, ctx, parent_popup, name_prefix, section, style)
+  local title_font = style.font_header or popup_font(ctx, "Bold", ctx and ctx.settings and ctx.settings.font and ctx.settings.font.sizes and ctx.settings.font.sizes.small or 11)
+  local row_font = style.font_small or popup_font(ctx, "Semibold", ctx and ctx.settings and ctx.settings.font and ctx.settings.font.sizes and ctx.settings.font.sizes.small or 11)
 
   for _, entry in ipairs(section.entries or {}) do
     local base_name = name_prefix .. "." .. entry.id
@@ -491,38 +632,52 @@ local function append_popup_entries(items, ctx, parent_popup, name_prefix, secti
         label = entry.label,
         ["label.font"] = title_font,
         ["label.color"] = section.color,
-      }, parent_popup))
+        background = {
+          drawing = true,
+          color = style.header_bg_color,
+          corner_radius = style.item_corner_radius,
+          height = style.header_height,
+        },
+      }, parent_popup, style))
     elseif entry.type == "separator" then
       table.insert(items, popup_item(base_name, {
         icon = { string = "", drawing = false },
         label = "───────────────",
         ["label.font"] = row_font,
-        ["label.color"] = theme_color(ctx, "SUBTEXT1", "WHITE"),
-      }, parent_popup))
+        ["label.color"] = style.separator_color,
+        background = { drawing = false },
+      }, parent_popup, style))
     else
-      local background = { drawing = false }
+      local background = {
+        drawing = false,
+        corner_radius = style.item_corner_radius,
+        height = style.item_height,
+      }
       if entry.prominent then
         background = {
           drawing = true,
           color = "0x20343a58",
-          corner_radius = 6,
+          corner_radius = style.item_corner_radius,
+          height = style.item_height,
         }
       end
       table.insert(items, popup_item(base_name, {
         icon = { string = entry.icon, color = entry.icon_color or section.color },
         label = truncate_label(entry.label, 40),
         ["label.font"] = row_font,
+        ["label.color"] = entry.label_color or style.label_color,
         click_script = close_after(entry.action, "triforce"),
         background = background,
         hover = true,
-      }, parent_popup))
+      }, parent_popup, style))
     end
   end
 end
 
 local function popup_items_from_model(model, ctx)
   local items = {}
-  local title_font = popup_font(ctx, "Bold", ctx and ctx.settings and ctx.settings.font and ctx.settings.font.sizes and ctx.settings.font.sizes.small or 11)
+  local style = popup_style(ctx)
+  local title_font = style.font_header or popup_font(ctx, "Bold", ctx and ctx.settings and ctx.settings.font and ctx.settings.font.sizes and ctx.settings.font.sizes.small or 11)
   local accent = finishline_color(model.state.alerts_level)
 
   table.insert(items, popup_item("oracle.triforce.header", {
@@ -530,30 +685,62 @@ local function popup_items_from_model(model, ctx)
     label = model.title or "Oracle Workflow",
     ["label.font"] = title_font,
     ["label.color"] = theme_color(ctx, "WHITE"),
-  }, "triforce"))
+    background = {
+      drawing = true,
+      color = style.header_bg_color,
+      corner_radius = style.item_corner_radius,
+      height = style.header_height,
+    },
+  }, "triforce", style))
 
   table.insert(items, popup_item("oracle.triforce.rom", {
     icon = { string = "󰍛", color = theme_color(ctx, "BLUE") },
     label = "ROM: " .. tostring(model.state.rom_label or "patched ROM"),
-    ["label.font"] = title_font,
+    ["label.font"] = style.font_small or title_font,
     ["label.color"] = theme_color(ctx, "SUBTEXT1", "WHITE"),
     background = { drawing = false },
-  }, "triforce"))
+  }, "triforce", style))
 
-  local direct_seen = false
+  local visible_sections = {}
   for _, section in ipairs(model.sections or {}) do
     if section.presentation == "direct" then
-      if not direct_seen and #model.sections > 1 then
-        table.insert(items, popup_item("oracle.triforce.direct.header", {
-          icon = { string = "", drawing = false },
-          label = section.label,
-          ["label.font"] = title_font,
-          ["label.color"] = section.color,
-        }, "triforce"))
-        direct_seen = true
-      end
-      append_popup_entries(items, ctx, "triforce", "oracle.triforce." .. section.id, section)
+      table.insert(visible_sections, section)
     end
+  end
+
+  if #visible_sections > 0 then
+    table.insert(items, popup_item("oracle.triforce.meta.sep", {
+      icon = { string = "", drawing = false },
+      label = "───────────────",
+      ["label.font"] = style.font_small,
+      ["label.color"] = style.separator_color,
+      background = { drawing = false },
+    }, "triforce", style))
+  end
+
+  for index, section in ipairs(visible_sections) do
+    if index > 1 then
+      table.insert(items, popup_item("oracle.triforce.sep." .. section.id, {
+        icon = { string = "", drawing = false },
+        label = "───────────────",
+        ["label.font"] = style.font_small,
+        ["label.color"] = style.separator_color,
+        background = { drawing = false },
+      }, "triforce", style))
+    end
+    table.insert(items, popup_item("oracle.triforce." .. section.id .. ".header", {
+      icon = { string = "", drawing = false },
+      label = section.label,
+      ["label.font"] = title_font,
+      ["label.color"] = section.color,
+      background = {
+        drawing = true,
+        color = style.header_bg_color,
+        corner_radius = style.item_corner_radius,
+        height = style.header_height,
+      },
+    }, "triforce", style))
+    append_popup_entries(items, ctx, "triforce", "oracle.triforce." .. section.id, section, style)
   end
 
   return items

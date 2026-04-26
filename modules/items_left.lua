@@ -15,7 +15,6 @@ local function get_layout(ctx)
   local widget_height = ctx.widget_height
   local popup_background = ctx.popup_background
   local hover_script_cmd = ctx.hover_script_cmd
-  local triforce_hover_script_cmd = ctx.triforce_hover_script_cmd or hover_script_cmd
   local popup_toggle_action = ctx.popup_toggle_action
   local POST_CONFIG_DELAY = ctx.POST_CONFIG_DELAY
   local SPACE_POST_CONFIG_DELAY = ctx.SPACE_POST_CONFIG_DELAY or POST_CONFIG_DELAY
@@ -163,7 +162,7 @@ local function get_layout(ctx)
           local should_hover = popup_item.hover == true
           popup_item.hover = nil
           if should_hover and not popup_item.script then
-            popup_item.script = triforce_hover_script_cmd
+            popup_item.script = hover_script_cmd
           end
           table.insert(layout, { type = "item", name = item_name, props = popup_item, attach_hover = should_hover })
         end

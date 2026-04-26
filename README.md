@@ -102,14 +102,19 @@ Use Oracle Hub when you want session planning, Oracle status, build/test buttons
 ./bin/open_oracle_agent_manager.sh
 ```
 
-Oracle Hub is intended to replace deep SketchyBar popup interaction for Oracle work. The SketchyBar side should stay shallow and quick.
+Oracle Hub is intended to replace deep SketchyBar popup interaction for Oracle work. The SketchyBar side should stay shallow and quick, but it now keeps one launcher section for the core Zelda tools that belong beside the session controls.
+Those Zelda launchers live in the Triforce popup rather than being duplicated in the Apple menu.
 
-In practice, the Triforce popup should stay close to three actions plus ROM context:
+In practice, the Triforce popup should stay close to:
 
-- `Continue: <current focus>`
-- `Patch + Launch`
-- `Open Oracle Hub`
-- `ROM: oosNNNx.sfc`
+- a `ROM: oosNNNx.sfc` context row
+- a session section with `Continue: <current focus>` and `Patch + Launch`
+- an app launcher section with `Oracle Hub`, `Yaze`, `z3ed`, and `Mesen2 OoS`
+
+For quick terminal access, the generated skhd shortcuts now include:
+
+- `⌘⌥T` to open a terminal window (Ghostty when installed, Terminal as fallback)
+- `⌘⌥Z` to launch `z3ed` in Ghostty
 
 ## Customization
 

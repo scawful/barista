@@ -15,6 +15,7 @@ Quick reference: which file defines each bar item, which plugin script runs for 
 | `control_center` | `plugins/control_center.sh` | `mouse.entered`, `mouse.exited`, `mouse.exited.global`, `space_change`, `space_mode_refresh`, `system_woke` | Default item name. Active name is runtime-resolved; popup now focuses on layout actions and shortcut state only, and global pointer exit dismisses the popup. |
 | `front_app` | `plugins/front_app.sh` | `front_app_switched` | Click opens popup (app/window controls). Widget state/location come from `scripts/front_app_context.sh`, which prefers the shared `runtime_context` cache and falls back to current space/display when yabai has no matching managed window. |
 | `triforce` | `plugins/oracle_triforce.sh` | `mouse.entered`, `mouse.exited`, `mouse.exited.global`, `system_woke`, `space_change`, `space_mode_refresh`, `display_changed`, `display_added`, `display_removed` | Hover only highlights the anchor, click toggles the popup, and leaving the popup area dismisses it. The controller delegates status updates to `oos-triforce-widget` when available. |
+| `triforce.*` (popup) | (hover script) | — | Popup rows now use the shared menu-style sizing and hover treatment: title + ROM context, a session section (`Continue`, `Patch + Launch`), and an apps section (`Oracle Hub`, `Yaze`, `z3ed`, `Mesen2 OoS`) with Apple-style headers, separators, and per-app icon colors. The `z3ed` row launches a Ghostty-backed terminal session when Ghostty is installed. |
 | `front_app.*` (popup) | (hover script) | — | Popup items: state, location, app actions, window actions, move actions. Action rows close the popup after firing. |
 | `space.1` … `space.N` | `plugins/space.sh` | `mouse.entered`, `mouse.exited` | Dynamic; created by `plugins/refresh_spaces.sh` → `plugins/simple_spaces.sh`. Visual state is batch-updated by `space_runtime`, unused per-space popup menu rows are gone, and topology-only reorder changes now update existing `space.*` items in place when possible. |
 | `space_creator*` | `plugins/space_creator.sh` | `mouse.entered`, `mouse.exited` | Dynamic add-space affordance. Creator items stay display-visible and no longer bind themselves to one associated space. |
@@ -27,6 +28,7 @@ Legacy note: the standalone `yabai_status` widget path was removed. Window-manag
 
 | Item(s) | Plugin script | Events subscribed to | Notes |
 |--------|----------------|----------------------|--------|
+| `lmstudio` | `plugins/lmstudio_model.sh` | `system_woke` | Click opens a quick model picker popup for scawfulbot MLX / long-context / GGUF / echo, and the main label reflects the currently loaded LM Studio profile (`off`, `mlx`, `long`, `gguf`, `echo`, `oracle`, etc.). The popup status row deeplinks into the primary loaded model via `lmstudio://open_from_hf?model=<indexedModelIdentifier>` when possible, and falls back to activating LM Studio otherwise. |
 | `clock` | `plugins/clock.sh` (or C `clock_widget`) | — | When `modes.widget_daemon` resolves on, routine updates come from `widget_manager daemon`; popup = calendar |
 | `clock.calendar.*` | `plugins/calendar.sh` (header) | — | Popup items for calendar |
 | `ai_resource` | `plugins/ai_resource_toggle.sh` | `ai_resource_update` | AI resource indicator |
@@ -42,7 +44,7 @@ Legacy note: the standalone `yabai_status` widget path was removed. Window-manag
 ## Brackets (visual grouping)
 
 - `control_center` + `front_app` (left group)
-- `clock` + `system_info` (right group)
+- `lmstudio` + `clock` + `system_info` (right group)
 - `volume` + `battery` (right group)
 
 ## Control Center Path
@@ -85,6 +87,6 @@ is set in `state.json`, the runtime uses that value consistently across those pa
 - **Add/remove a left-side item:** main.lua (search for `sbar.add("item",` and `position = "left"`) or items_left module after refactor.
 - **Add/remove a right-side item:** main.lua (search for `position = "right"`) or items_right module after refactor.
 - **Change what a widget does:** Edit the corresponding script in `plugins/` (e.g. `plugins/clock.sh`, `plugins/volume.sh`).
-- **Change popup contents:** main.lua (search for `add_front_app_popup_item`, `add_volume_popup_item`, `add_battery_popup_item`, or calendar/system_info item loops).
+- **Change popup contents:** main.lua (search for `add_front_app_popup_item`, `add_volume_popup_item`, `add_battery_popup_item`, or calendar/system_info item loops) and `modules/items_right.lua` for the LM Studio picker.
 - **Change control-center popup rows:** `modules/integrations/control_center.lua`.
 - **Change control-center item placement/wiring:** `modules/items_left.lua` and `main.lua`.

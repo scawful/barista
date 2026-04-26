@@ -118,19 +118,34 @@ cpu_load=$(sysctl -n vm.loadavg | awk '{print $2}')
 core_count=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
 cpu_usage=$(awk -v l="$cpu_load" -v cores="$core_count" 'BEGIN {printf "%.0f", (l / cores) * 100}')
 
-# Memory: Use vm_stat (instant kernel stats) instead of slow ps -A
-# Calculate used memory percentage from vm_stat pages
+# Memory: prefer the kernel's memory-pressure view so the widget tracks the
+# amount of RAM that is actually unavailable, not every cached/kernel page.
 page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 16384)
 total_mem=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
-vm_stats=$(vm_stat 2>/dev/null)
-pages_active=$(echo "$vm_stats" | awk '/Pages active/ {gsub(/\./,"",$3); print $3}')
-pages_wired=$(echo "$vm_stats" | awk '/Pages wired/ {gsub(/\./,"",$4); print $4}')
-pages_compressed=$(echo "$vm_stats" | awk '/Pages occupied by compressor/ {gsub(/\./,"",$5); print $5}')
-used_mem=$(( (${pages_active:-0} + ${pages_wired:-0} + ${pages_compressed:-0}) * page_size ))
-if [ "$total_mem" -gt 0 ]; then
-  mem_usage=$(awk -v used="$used_mem" -v total="$total_mem" 'BEGIN {printf "%.0f", (used / total) * 100}')
+memory_pressure_stats=$(memory_pressure 2>/dev/null || true)
+memory_free_pct=$(printf '%s\n' "$memory_pressure_stats" | awk '/System-wide memory free percentage/ {print $NF; exit}')
+memory_free_pct="${memory_free_pct%%%}"
+if [ -n "$memory_free_pct" ] && [ "$total_mem" -gt 0 ] 2>/dev/null; then
+  mem_usage=$(( 100 - memory_free_pct ))
+  if [ "$mem_usage" -lt 0 ]; then
+    mem_usage=0
+  fi
+  used_mem=$(( total_mem * mem_usage / 100 ))
 else
-  mem_usage=0
+  vm_stats=$(vm_stat 2>/dev/null)
+  pages_anonymous=$(echo "$vm_stats" | awk '/Anonymous pages/ {gsub(/\./,"",$3); print $3}')
+  pages_compressed=$(echo "$vm_stats" | awk '/Pages occupied by compressor/ {gsub(/\./,"",$5); print $5}')
+  pages_purgeable=$(echo "$vm_stats" | awk '/Pages purgeable/ {gsub(/\./,"",$3); print $3}')
+  used_pages=$(( ${pages_anonymous:-0} + ${pages_compressed:-0} - ${pages_purgeable:-0} ))
+  if [ "$used_pages" -lt 0 ]; then
+    used_pages=0
+  fi
+  used_mem=$(( used_pages * page_size ))
+  if [ "$total_mem" -gt 0 ]; then
+    mem_usage=$(awk -v used="$used_mem" -v total="$total_mem" 'BEGIN {printf "%.0f", (used / total) * 100}')
+  else
+    mem_usage=0
+  fi
 fi
 
 if [ "$total_mem" -gt 0 ]; then

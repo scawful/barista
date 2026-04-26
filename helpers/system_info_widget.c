@@ -9,6 +9,7 @@
 #include <mach/mach_host.h>
 #include <sys/types.h>
 #include <sys/mount.h>
+#include <unistd.h>
 
 #define CMD_SIZE 512
 #define LABEL_SIZE 256
@@ -54,12 +55,12 @@ void get_cpu_info(SystemInfo *info) {
 // Get memory info
 void get_memory_info(SystemInfo *info) {
     int64_t memsize = 0;
+    int64_t page_size = 0;
     size_t len = sizeof(memsize);
-    vm_size_t page_size = 0;
-    mach_port_t mach_port = mach_host_self();
-    vm_statistics64_data_t vm_stat;
-    mach_msg_type_number_t host_size = HOST_VM_INFO64_COUNT;
+    size_t page_len = sizeof(page_size);
     unsigned long long used_bytes = 0;
+    char free_pct_buf[32];
+    char used_pages_buf[32];
 
     info->mem_used_gb = 0;
     info->mem_total_gb = 0;
@@ -68,18 +69,31 @@ void get_memory_info(SystemInfo *info) {
         info->mem_total_gb = (unsigned long long)(memsize / (1024ULL * 1024ULL * 1024ULL));
     }
 
-    if (host_page_size(mach_port, &page_size) != KERN_SUCCESS) {
+    read_cmd("memory_pressure 2>/dev/null | awk '/System-wide memory free percentage/ {print $NF; exit}'",
+             free_pct_buf, sizeof(free_pct_buf));
+    if (free_pct_buf[0] != '\0' && memsize > 0) {
+        int free_pct = atoi(free_pct_buf);
+        if (free_pct < 0) free_pct = 0;
+        if (free_pct > 100) free_pct = 100;
+        used_bytes = ((unsigned long long)memsize * (unsigned long long)(100 - free_pct)) / 100ULL;
+        info->mem_used_gb = used_bytes / (1024ULL * 1024ULL * 1024ULL);
         return;
     }
 
-    if (host_statistics64(mach_port, HOST_VM_INFO64, (host_info64_t)&vm_stat, &host_size) != KERN_SUCCESS) {
-        return;
+    if (sysctlbyname("hw.pagesize", &page_size, &page_len, NULL, 0) != 0 || page_size <= 0) {
+        page_size = 16384;
     }
-
-    used_bytes = ((unsigned long long)vm_stat.active_count +
-                  (unsigned long long)vm_stat.wire_count +
-                  (unsigned long long)vm_stat.compressor_page_count) * (unsigned long long)page_size;
-    info->mem_used_gb = used_bytes / (1024ULL * 1024ULL * 1024ULL);
+    read_cmd("vm_stat 2>/dev/null | awk '"
+             "/Anonymous pages/ {gsub(/\\./,\"\",$3); a=$3} "
+             "/Pages occupied by compressor/ {gsub(/\\./,\"\",$5); c=$5} "
+             "/Pages purgeable/ {gsub(/\\./,\"\",$3); p=$3} "
+             "END {u=a+c-p; if (u<0) u=0; print u}'",
+             used_pages_buf, sizeof(used_pages_buf));
+    if (used_pages_buf[0] != '\0') {
+        unsigned long long used_pages = strtoull(used_pages_buf, NULL, 10);
+        used_bytes = used_pages * (unsigned long long)page_size;
+        info->mem_used_gb = used_bytes / (1024ULL * 1024ULL * 1024ULL);
+    }
 }
 
 // Get disk info
@@ -103,6 +117,7 @@ void get_disk_info(SystemInfo *info) {
 
 // Get network info (with timeout protection)
 void get_network_info(SystemInfo *info) {
+    const char *airport_path = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport";
     char wifi_iface[32] = "";
     char active_iface[32] = "";
     read_cmd(
@@ -132,11 +147,13 @@ void get_network_info(SystemInfo *info) {
         read_cmd(cmd, info->net_ip, sizeof(info->net_ip));
     }
 
-    read_cmd(
-        "perl -e 'alarm 1; exec @ARGV' "
-        "\"/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I "
-        "| awk -F': ' '/ SSID/ {print $2; exit}'\"",
-        info->net_name, sizeof(info->net_name));
+    if (access(airport_path, X_OK) == 0) {
+        read_cmd(
+            "perl -e 'alarm 1; exec @ARGV' "
+            "\"/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I "
+            "| awk -F': ' '/ SSID/ {print $2; exit}'\"",
+            info->net_name, sizeof(info->net_name));
+    }
     if (info->net_name[0] == '\0' && wifi_iface[0] != '\0') {
         snprintf(cmd, sizeof(cmd),
                  "perl -e 'alarm 1; exec @ARGV' "

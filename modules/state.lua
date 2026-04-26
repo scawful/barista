@@ -22,6 +22,7 @@ local save_immediate
 local default_state = {
   _version = STATE_VERSION,  -- Track state schema version
   widgets = {
+    lmstudio = true,
     system_info = true,
     network = true,
     clock = true,

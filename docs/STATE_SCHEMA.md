@@ -84,6 +84,19 @@
 
 ## Important Nested Keys
 
+### `widgets`
+
+Common keys:
+
+- `lmstudio`
+- `clock`
+- `system_info`
+- `volume`
+- `battery`
+- `network`
+
+`lmstudio` controls the dedicated LM Studio quick-switch widget on the right side of the bar.
+
 ### `appearance`
 
 Common keys:

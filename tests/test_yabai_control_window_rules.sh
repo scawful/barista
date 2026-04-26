@@ -43,12 +43,12 @@ mkdir -p "$BIN_DIR"
   printf '%s\n' 'printf "%s\n" "$*" >> "$LOG_FILE"'
   printf '%s\n' ''
   printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "query" ] && [ "${3:-}" = "--windows" ] && [ "${4:-}" = "--window" ] && [ $# -eq 4 ]; then'
-  printf '%s\n' '  printf '\''{"id":42,"app":"Ghostty","space":%s,"display":%s,"has-focus":true,"is-floating":%s,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","is-minimized":false}\n'\'' "$(read_state space)" "$(read_state display)" "$(read_state floating)"'
+  printf '%s\n' '  printf '\''{"id":42,"app":"Ghostty","space":%s,"display":%s,"has-focus":true,"is-floating":%s,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","sub-layer":"%s","is-minimized":false}\n'\'' "$(read_state space)" "$(read_state display)" "$(read_state floating)" "$(read_state sub_layer)"'
   printf '%s\n' '  exit 0'
   printf '%s\n' 'fi'
   printf '%s\n' ''
   printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "query" ] && [ "${3:-}" = "--windows" ] && [ "${4:-}" = "--window" ] && [ $# -eq 5 ]; then'
-  printf '%s\n' '  printf '\''{"id":42,"app":"Ghostty","space":%s,"display":%s,"has-focus":true,"is-floating":%s,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","is-minimized":false}\n'\'' "$(read_state space)" "$(read_state display)" "$(read_state floating)"'
+  printf '%s\n' '  printf '\''{"id":42,"app":"Ghostty","space":%s,"display":%s,"has-focus":true,"is-floating":%s,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","sub-layer":"%s","is-minimized":false}\n'\'' "$(read_state space)" "$(read_state display)" "$(read_state floating)" "$(read_state sub_layer)"'
   printf '%s\n' '  exit 0'
   printf '%s\n' 'fi'
   printf '%s\n' ''
@@ -115,6 +115,11 @@ mkdir -p "$BIN_DIR"
   printf '%s\n' '  exit 0'
   printf '%s\n' 'fi'
   printf '%s\n' ''
+  printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "window" ] && [ "${3:-}" = "42" ] && [ "${4:-}" = "--sub-layer" ]; then'
+  printf '%s\n' '  write_state sub_layer "${5:-auto}"'
+  printf '%s\n' '  exit 0'
+  printf '%s\n' 'fi'
+  printf '%s\n' ''
   printf '%s\n' 'exit 1'
 } > "$BIN_DIR/yabai"
 chmod +x "$BIN_DIR/yabai"
@@ -123,7 +128,7 @@ JQ_BIN="$(command -v jq)"
 [ -n "$JQ_BIN" ] || { echo "FAIL: jq is required for test_yabai_control_window_rules.sh" >&2; exit 1; }
 
 reset_state() {
-  printf '%s\n' 'space=1' 'display=1' 'floating=false' > "$STATE_FILE"
+  printf '%s\n' 'space=1' 'display=1' 'floating=false' 'sub_layer=auto' > "$STATE_FILE"
   : > "$LOG_FILE"
 }
 
@@ -213,5 +218,36 @@ printf '%s\n' 'space=1' 'display=1' 'floating=true' > "$STATE_FILE"
 run_control window-adopt-space-mode
 assert_log_contains "-m query --spaces --space 1"
 assert_log_contains "-m window 42 --toggle float"
+
+printf '%s\n' 'space=1' 'display=1' 'floating=false' 'sub_layer=above' > "$STATE_FILE"
+: > "$LOG_FILE"
+run_control window-adopt-space-mode
+assert_log_contains "-m query --spaces --space 1"
+assert_log_contains "-m window 42 --sub-layer auto"
+grep -Fxq 'sub_layer=auto' "$STATE_FILE" || {
+  echo "FAIL: expected sub_layer=auto after adopting current managed space mode" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
+
+reset_state
+run_control window-toggle-topmost
+assert_log_contains "-m query --windows --window"
+assert_log_contains "-m window 42 --sub-layer above"
+grep -Fxq 'sub_layer=above' "$STATE_FILE" || {
+  echo "FAIL: expected sub_layer=above after enabling topmost" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
+
+: > "$LOG_FILE"
+run_control window-toggle-topmost
+assert_log_contains "-m query --windows --window"
+assert_log_contains "-m window 42 --sub-layer auto"
+grep -Fxq 'sub_layer=auto' "$STATE_FILE" || {
+  echo "FAIL: expected sub_layer=auto after disabling topmost" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
 
 printf 'test_yabai_control_window_rules.sh: ok\n'

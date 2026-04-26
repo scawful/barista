@@ -5,6 +5,8 @@ YABAI_BIN="${YABAI_BIN:-$(command -v yabai || true)}"
 JQ_BIN="${JQ_BIN:-$(command -v jq || true)}"
 SKHD_BIN="${SKHD_BIN:-$(command -v skhd || true)}"
 CONFIG_DIR="${BARISTA_CONFIG_DIR:-$HOME/.config/sketchybar}"
+FRONT_APP_SCRIPT="${BARISTA_FRONT_APP_SCRIPT:-$CONFIG_DIR/plugins/front_app.sh}"
+RUNTIME_CONTEXT_SCRIPT="${BARISTA_RUNTIME_CONTEXT_SCRIPT:-$CONFIG_DIR/scripts/runtime_context.sh}"
 YABAI_LABEL="${BARISTA_YABAI_LABEL:-}"
 YABAI_LABEL_NEW="com.asmvik.yabai"
 YABAI_LABEL_OLD="com.koekeishiya.yabai"
@@ -224,6 +226,69 @@ window_display_for_id() {
     | head -n 1
 }
 
+window_layer_for_id() {
+  local window_id="${1:-}"
+  [ -n "$window_id" ] || return 0
+  require_jq
+  run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --windows --window "$window_id" 2>/dev/null \
+    | "$JQ_BIN" -r '.layer // empty' 2>/dev/null \
+    | head -n 1
+}
+
+window_sub_layer_for_id() {
+  local window_id="${1:-}"
+  [ -n "$window_id" ] || return 0
+  require_jq
+  run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --windows --window "$window_id" 2>/dev/null \
+    | "$JQ_BIN" -r '."sub-layer" // empty' 2>/dev/null \
+    | head -n 1
+}
+
+window_is_topmost_for_id() {
+  local window_id="${1:-}"
+  local current_sub_layer current_layer
+
+  [ -n "$window_id" ] || return 1
+  current_sub_layer="$(window_sub_layer_for_id "$window_id")"
+  if [[ "$current_sub_layer" == "above" ]]; then
+    return 0
+  fi
+
+  current_layer="$(window_layer_for_id "$window_id")"
+  [[ "$current_layer" == "above" ]]
+}
+
+clear_window_topmost_for_id() {
+  local window_id="${1:-}"
+  [ -n "$window_id" ] || return 0
+
+  if window_is_topmost_for_id "$window_id"; then
+    "$YABAI_BIN" -m window "$window_id" --sub-layer auto >/dev/null 2>&1 || true
+  fi
+}
+
+refresh_front_app_state() {
+  if ! command -v sketchybar >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [[ -x "$RUNTIME_CONTEXT_SCRIPT" ]]; then
+    BARISTA_CONFIG_DIR="$CONFIG_DIR" \
+      BARISTA_YABAI_BIN="$YABAI_BIN" \
+      BARISTA_JQ_BIN="$JQ_BIN" \
+      "$RUNTIME_CONTEXT_SCRIPT" refresh front-app >/dev/null 2>&1 || true
+  fi
+
+  if [[ -x "$FRONT_APP_SCRIPT" ]]; then
+    BARISTA_CONFIG_DIR="$CONFIG_DIR" \
+      BARISTA_YABAI_BIN="$YABAI_BIN" \
+      BARISTA_JQ_BIN="$JQ_BIN" \
+      NAME=front_app \
+      SENDER=routine \
+      "$FRONT_APP_SCRIPT" >/dev/null 2>&1 || true
+  fi
+}
+
 space_layout_for_index() {
   local target_space="${1:-}"
   [ -n "$target_space" ] || return 0
@@ -292,6 +357,8 @@ adopt_window_to_space_layout() {
       fi
       ;;
   esac
+
+  clear_window_topmost_for_id "$window_id"
 }
 
 preferred_space_for_layout() {
@@ -354,6 +421,8 @@ move_window_with_rules() {
   if [[ -n "$target_space" && "$target_space" != "null" ]]; then
     apply_window_move_policy "$policy" "$window_id" "$target_space"
   fi
+
+  refresh_front_app_state
 }
 
 window_adopt_space_mode() {
@@ -369,6 +438,7 @@ window_adopt_space_mode() {
   [[ -n "$target_space" ]] || return 1
 
   adopt_window_to_space_layout "$window_id" "$target_space"
+  refresh_front_app_state
 }
 
 window_move_to_layout_space() {
@@ -473,6 +543,40 @@ space_focus_app() {
 
 window_center() {
   "$YABAI_BIN" -m window --grid 4:4:1:1:2:2
+  refresh_front_app_state
+}
+
+window_toggle_property() {
+  local property="${1:-}"
+  [ -n "$property" ] || return 1
+  "$YABAI_BIN" -m window --toggle "$property"
+  refresh_front_app_state
+}
+
+window_toggle_topmost() {
+  local window_id target_sub_layer
+
+  if [[ -z "$JQ_BIN" ]]; then
+    "$YABAI_BIN" -m window --raise >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  window_id="$(focused_window_id)"
+  if [[ -z "$window_id" ]]; then
+    "$YABAI_BIN" -m window --raise >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  if window_is_topmost_for_id "$window_id"; then
+    target_sub_layer="auto"
+  else
+    target_sub_layer="above"
+  fi
+
+  "$YABAI_BIN" -m window "$window_id" --sub-layer "$target_sub_layer" >/dev/null 2>&1 \
+    || "$YABAI_BIN" -m window --raise >/dev/null 2>&1 \
+    || true
+  refresh_front_app_state
 }
 
 restart_yabai() {
@@ -834,16 +938,16 @@ case "$command" in
     "$YABAI_BIN" -m space --layout "$layout"
     ;;
   window-toggle-float)
-    "$YABAI_BIN" -m window --toggle float
+    window_toggle_property float
     ;;
   window-toggle-sticky)
-    "$YABAI_BIN" -m window --toggle sticky
+    window_toggle_property sticky
     ;;
   window-toggle-fullscreen)
-    "$YABAI_BIN" -m window --toggle zoom-fullscreen
+    window_toggle_property zoom-fullscreen
     ;;
   window-toggle-topmost)
-    "$YABAI_BIN" -m window --toggle topmost
+    window_toggle_topmost
     ;;
   window-adopt-space-mode)
     window_adopt_space_mode "${1:-}"

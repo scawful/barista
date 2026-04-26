@@ -112,6 +112,7 @@ Legacy note: the old `plugins/yabai_status.sh` widget path is retired from the l
 - `space_active_refresh` now shares the focused-space fast path with `front_app_switched`, so an active-space-only refresh does not fall back to the full spaces/windows snapshot path.
 - Active-space updates now use the dedicated `space_active_refresh` event instead of the older broad `space_change` fan-out, so only the popup-manager and control-center consumers still wake up on focused-space changes.
 - `refresh_spaces.sh` no longer emits a redundant `space_mode_refresh` on pure active-space changes.
+- `refresh_spaces.sh` now uses the live SketchyBar bar height when repairing yabai `external_bar`, avoiding stale 28px reservations when display-profile scaling raises the rendered bar to a taller height.
 - The delayed startup visual sync now runs as `startup_sync` and uses its own wider cooldown window, so reload should not show an extra follow-up visual pass unless the topology path really missed.
 - `space_visuals.sh` now resolves visible-space apps with scoped `yabai query --windows --space <index>` calls instead of a single global window snapshot, which materially reduces the visual-refresh hot path while keeping visible-space icons current.
 - `space_runtime` now keeps `updates=false`, `space_visuals.sh` ignores `forced` sender runs, and `space.sh` no longer falls back to a forced batch refresh on hover-exit cache misses. That removes redundant `sender=forced` visual passes during reload.
@@ -170,6 +171,7 @@ sketchybar --reload
 - The front-app state label now distinguishes `Floating · Float Space` from `Floating · Managed Space`, so a per-window float inside a tiled space is not conflated with a true float-space workflow.
 - `scripts/yabai_control.sh` now applies the same rule on window moves: when the destination space is `float`, the moved window is normalized to floating after the move instead of landing in a mismatched tiled state.
 - Cross-display window moves now adopt the visible destination space mode in both directions. A floating window moved onto a managed display is re-tiled, and a tiled window moved onto a float display is floated.
+- The `Toggle Topmost` action now maps to yabai's current window `sub-layer` control (`above` / `auto`) instead of the removed `--toggle topmost` flag, so the popup and skhd shortcut no longer emit runtime errors on yabai 7.x.
 - The `front_app` popup now exposes the same policy directly through `Adopt Current Space Mode` and `Send to Float Space`, so recovery does not require remembering a lower-level yabai command.
 
 ### 11. Runtime Context Helper
@@ -179,6 +181,18 @@ sketchybar --reload
 - The shared cache under `cache/runtime_context/` is the current source for front-app state, focused-space fast-path refreshes, media state, and audio output switching.
 - `runtime_daemon.stop_runtime_context_daemon()` now kills the whole runtime-context family on restart, including stale `runtime_context_helper daemon` and `refresh-front-app` children, so reloads do not accumulate orphaned helper/query processes.
 - `runtime_context.sh daemon` now backgrounds the helper binary directly instead of backgrounding a shell function, so the live runtime settles to one shell supervisor plus one helper daemon instead of leaving a redundant nested shell layer.
+- `runtime_daemon.ensure_runtime_context_daemon()` now writes a per-launch start token and the final launcher shell only `exec`s when its token is still current, so overlapping config passes cannot both spawn the daemon family.
+
+### 12. Reload Serialization
+**Current path**: `plugins/reload_sketchybar.sh`
+- `reload_sketchybar.sh` now uses a short-lived lock directory under `TMPDIR` to serialize overlapping reload requests.
+- Callers that arrive while another reload is already in flight now wait for that reload to finish and exit early if `front_app` is already live, instead of issuing a second LaunchAgent stop/bootstrap cycle.
+- This prevents rapid repeat invocations from leaving SketchyBar running without its runtime daemons after competing launchctl restarts.
+
+### 13. Control Panel Launch
+**Current path**: `bin/open_control_panel.sh`
+- SketchyBar's Barista Settings menu row launches the native `Barista.app` through LaunchServices (`open -na ... --args`) instead of directly executing the bundle binary.
+- Direct bundle execution can create the window and then exit immediately; LaunchServices keeps the app registered and the settings panel visible.
 
 ## C Performance Widgets
 

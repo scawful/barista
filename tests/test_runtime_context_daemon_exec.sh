@@ -71,8 +71,36 @@ esac
 EOF
 chmod +x "$BIN_DIR/SwitchAudioSource"
 
+cat > "$BIN_DIR/yabai" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+case "$*" in
+  '-m query --spaces')
+    cat <<'JSON'
+[{"index":1,"display":1,"type":"bsp","is-visible":true,"has-focus":true}]
+JSON
+    ;;
+  '-m query --windows --window')
+    cat <<'JSON'
+{"id":9,"app":"Finder","space":1,"display":1,"has-focus":true,"is-floating":true,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","sub-layer":"auto","is-minimized":false}
+JSON
+    ;;
+  '-m query --windows')
+    cat <<'JSON'
+[{"id":9,"app":"Finder","space":1,"display":1,"has-focus":true,"is-floating":true,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","sub-layer":"auto","is-minimized":false}]
+JSON
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+EOF
+chmod +x "$BIN_DIR/yabai"
+
 PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   BARISTA_RUNTIME_CONTEXT_HELPER_BIN="$HELPER_BIN" \
+  BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+  BARISTA_JQ_BIN="$(command -v jq)" \
   BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
   BARISTA_SWITCH_AUDIO_SOURCE_BIN="$BIN_DIR/SwitchAudioSource" \
   BARISTA_RUNTIME_CONTEXT_INTERVAL=5 \

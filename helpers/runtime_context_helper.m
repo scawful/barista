@@ -290,6 +290,7 @@ static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
     BOOL sticky = bool_value(window[@"is-sticky"]);
     BOOL fullscreen = bool_value(window[@"has-fullscreen-zoom"]) || bool_value(window[@"is-native-fullscreen"]);
     NSString *layer = string_value(window[@"layer"]) ?: @"normal";
+    NSString *subLayer = string_value(window[@"sub-layer"]) ?: @"";
 
     if (fullscreen) {
       stateIcon = @"󰊓";
@@ -310,7 +311,7 @@ static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
     if (sticky) {
       stateLabel = [stateLabel stringByAppendingString:@" · Sticky"];
     }
-    if ([layer isEqualToString:@"above"]) {
+    if ([subLayer isEqualToString:@"above"] || [layer isEqualToString:@"above"]) {
       stateLabel = [stateLabel stringByAppendingString:@" · Above"];
     } else if ([layer isEqualToString:@"below"]) {
       stateLabel = [stateLabel stringByAppendingString:@" · Below"];

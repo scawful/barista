@@ -43,6 +43,15 @@ case "${RUNTIME_CONTEXT_TEST_MODE:-default}:$*" in
   'backfill:-m query --windows')
     printf '[{"id":41,"app":"Ghostty","space":7,"display":2,"has-focus":true,"is-floating":false,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","is-minimized":false}]\n'
     ;;
+  'topmost:-m query --spaces')
+    printf '[{"index":4,"display":1,"type":"bsp","is-visible":true,"has-focus":true}]\n'
+    ;;
+  'topmost:-m query --windows --window')
+    printf ''
+    ;;
+  'topmost:-m query --windows')
+    printf '[{"id":52,"app":"Ghostty","space":4,"display":1,"is-floating":false,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","sub-layer":"above","is-minimized":false}]\n'
+    ;;
   *)
     exit 1
     ;;
@@ -145,6 +154,26 @@ BACKFILL_OUTPUT="$({
 printf '%s\n' "$BACKFILL_OUTPUT" | grep -Fxq $'space_index\t7' || { echo "FAIL: runtime context should backfill raw space index from the selected window when current-space discovery is missing" >&2; exit 1; }
 printf '%s\n' "$BACKFILL_OUTPUT" | grep -Fxq $'display_index\t2' || { echo "FAIL: runtime context should backfill raw display index from the selected window when current-space discovery is missing" >&2; exit 1; }
 printf '%s\n' "$BACKFILL_OUTPUT" | grep -Fxq $'space_visible\ttrue' || { echo "FAIL: runtime context should mark the focused selected window as visible when backfilling" >&2; exit 1; }
+
+TOPMOST_OUTPUT="$({
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    RUNTIME_CONTEXT_TEST_MODE=topmost \
+    BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+    BARISTA_JQ_BIN="$(command -v jq)" \
+    BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
+    BARISTA_SWITCH_AUDIO_SOURCE_BIN="$BIN_DIR/SwitchAudioSource" \
+    CONFIG_DIR="$CONFIG_DIR" \
+    "$SCRIPT" refresh front-app >/dev/null 2>&1
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    RUNTIME_CONTEXT_TEST_MODE=topmost \
+    BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+    BARISTA_JQ_BIN="$(command -v jq)" \
+    BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
+    BARISTA_SWITCH_AUDIO_SOURCE_BIN="$BIN_DIR/SwitchAudioSource" \
+    CONFIG_DIR="$CONFIG_DIR" \
+    "$SCRIPT" front-app
+})"
+printf '%s\n' "$TOPMOST_OUTPUT" | grep -Fxq $'state_label\tTiled · Above' || { echo "FAIL: runtime context should surface sub-layer above as an Above state" >&2; exit 1; }
 
 MEDIA_OUTPUT="$({
   PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \

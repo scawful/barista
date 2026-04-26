@@ -40,10 +40,11 @@ end)
 run_test("runtime_daemon.stop_runtime_context_daemon: stops helper family", function()
   local seen_fragments = nil
   local killed = {}
-  local removed = nil
+  local removed = {}
 
   local stopped = runtime_daemon.stop_runtime_context_daemon({
     pid_file = "/tmp/runtime-context-test.pid",
+    start_token_file = "/tmp/runtime-context-test.start",
     read_text = function(path)
       assert_equal(path, "/tmp/runtime-context-test.pid", "pid file path")
       return "123\n"
@@ -62,14 +63,79 @@ run_test("runtime_daemon.stop_runtime_context_daemon: stops helper family", func
       table.insert(killed, { pids = pids, reason = reason })
     end,
     remove = function(path)
-      removed = path
+      table.insert(removed, path)
     end,
   })
 
   assert_true(stopped, "stop should report success when family members are found")
-  assert_equal(removed, "/tmp/runtime-context-test.pid", "pid file removed")
+  assert_equal(table.concat(removed, "|"), "/tmp/runtime-context-test.pid|/tmp/runtime-context-test.start", "pid and token files removed")
   assert_equal(#killed, 2, "expected targeted pid stop and stale family cleanup")
   assert_equal(killed[1].reason, "stopped", "first reason")
   assert_equal(killed[2].reason, "killed_stale", "second reason")
   assert_equal(table.concat(seen_fragments, "|"), "runtime_context.sh daemon|runtime_context_helper daemon|runtime_context_helper refresh-front-app", "family fragments")
+end)
+
+run_test("runtime_daemon.ensure_runtime_context_daemon: superseded launcher does not start", function()
+  local files = {}
+  local execute_calls = 0
+
+  local ok, reason = runtime_daemon.ensure_runtime_context_daemon("/tmp/runtime_context.sh", {
+    pid_file = "/tmp/runtime-context-test.pid",
+    start_token_file = "/tmp/runtime-context-test.start",
+    read_text = function(path)
+      if path == "/tmp/runtime-context-test.pid" then
+        return nil
+      end
+      if path == "/tmp/runtime-context-test.start" then
+        return "newer-launch-token\n"
+      end
+      return files[path]
+    end,
+    write_text = function(path, content)
+      files[path] = content
+      return true
+    end,
+    matching_pids = function()
+      return {}
+    end,
+    execute = function()
+      execute_calls = execute_calls + 1
+      return true
+    end,
+  })
+
+  assert_true(not ok, "superseded launch should abort")
+  assert_equal(reason, "superseded", "superseded reason")
+  assert_equal(execute_calls, 0, "superseded launch should not execute")
+end)
+
+run_test("runtime_daemon.ensure_runtime_context_daemon: launch command is token-guarded", function()
+  local files = {}
+  local launched = nil
+
+  local ok, reason = runtime_daemon.ensure_runtime_context_daemon("/tmp/runtime_context.sh", {
+    pid_file = "/tmp/runtime-context-test.pid",
+    start_token_file = "/tmp/runtime-context-test.start",
+    read_text = function(path)
+      return files[path]
+    end,
+    write_text = function(path, content)
+      files[path] = content
+      return true
+    end,
+    matching_pids = function()
+      return {}
+    end,
+    execute = function(command)
+      launched = command
+      return true
+    end,
+  })
+
+  assert_true(ok, "guarded launch should succeed")
+  assert_equal(reason, "started", "launch reason")
+  assert_true(type(launched) == "string" and launched:find("nohup /bin/sh %-c ", 1, false) ~= nil, "launch should use a guarded shell wrapper")
+  assert_true(launched:find("cat \"$token_file\"", 1, true) ~= nil, "launch should verify the current start token")
+  assert_true(launched:find("echo $$ > \"$pid_file\"", 1, true) ~= nil, "launch should write the pid from the wrapper shell")
+  assert_true(launched:find("exec ", 1, true) ~= nil and launched:find("/tmp/runtime_context.sh", 1, true) ~= nil, "launch should still exec the requested daemon")
 end)

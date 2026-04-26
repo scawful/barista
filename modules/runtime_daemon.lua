@@ -25,8 +25,26 @@ local function read_text(path)
   return content
 end
 
+local function write_text(path, content)
+  local file = io.open(path, "w")
+  if not file then
+    return false
+  end
+  file:write(content)
+  file:close()
+  return true
+end
+
 local function pid_file(name)
   return string.format("%s/barista-%s.pid", TMPDIR, name)
+end
+
+local function start_token_file(name)
+  return string.format("%s/barista-%s.start", TMPDIR, name)
+end
+
+local function unique_start_token(name)
+  return string.format("%s-%d-%s", tostring(name or "daemon"), os.time(), tostring({}))
 end
 
 local function collect_fragments(primary, extras)
@@ -134,16 +152,17 @@ local function matching_pids(expected_fragment, extra_fragments)
   return pids
 end
 
-local function kill_pids(pids, tracef, reason)
+local function kill_pids(pids, tracef, reason, trace_prefix)
   local seen = {}
   local killed_any = false
+  trace_prefix = trace_prefix or "runtime_daemon:daemon"
   for _, pid in ipairs(pids or {}) do
     if pid and pid ~= "" and not seen[pid] then
       seen[pid] = true
       os.execute(string.format("kill %s >/dev/null 2>&1", pid))
       killed_any = true
       if type(tracef) == "function" then
-        tracef(string.format("runtime_daemon:widget_manager_%s %s", reason or "killed", pid))
+        tracef(string.format("%s_%s %s", trace_prefix, reason or "killed", pid))
       end
     end
   end
@@ -157,7 +176,7 @@ local function kill_pids(pids, tracef, reason)
     if process_command(pid) then
       os.execute(string.format("kill -9 %s >/dev/null 2>&1", pid))
       if type(tracef) == "function" then
-        tracef(string.format("runtime_daemon:widget_manager_%s_force %s", reason or "killed", pid))
+        tracef(string.format("%s_%s_force %s", trace_prefix, reason or "killed", pid))
       end
     end
   end
@@ -216,6 +235,7 @@ local function ensure_named_daemon(name, command, expected_fragment, opts)
 
   local trace = opts.trace
   local read = opts.read_text or read_text
+  local write = opts.write_text or write_text
   local running = opts.process_running or process_running
   local find_pids = opts.matching_pids or matching_pids
   local killer = opts.kill_pids or kill_pids
@@ -227,8 +247,8 @@ local function ensure_named_daemon(name, command, expected_fragment, opts)
   end
 
   local file = opts.pid_file or pid_file(name)
+  local token_path = opts.start_token_file or start_token_file(name)
   local fragments = collect_fragments(expected_fragment, opts.match_fragments)
-  local primary_fragment = fragments[1] or expected_fragment
   local previous_pid = trim(read(file) or ""):match("^(%d+)$")
   local force_restart = opts.force_restart == true
   local trace_prefix = string.format("runtime_daemon:%s", name:gsub("[^%w]+", "_"))
@@ -237,7 +257,7 @@ local function ensure_named_daemon(name, command, expected_fragment, opts)
     local alive, existing_command = running(previous_pid, fragments)
     if alive then
       if force_restart then
-        killer({ previous_pid }, tracef, "restarting")
+        killer({ previous_pid }, tracef, "restarting", trace_prefix)
       else
         tracef(trace_prefix .. "_already_running " .. previous_pid)
         return true, "already_running"
@@ -245,7 +265,7 @@ local function ensure_named_daemon(name, command, expected_fragment, opts)
     else
       local old_alive = running(previous_pid, fragments)
       if old_alive then
-        killer({ previous_pid }, tracef, "killed_previous")
+        killer({ previous_pid }, tracef, "killed_previous", trace_prefix)
       elseif existing_command then
         tracef(trace_prefix .. "_pid_mismatch " .. previous_pid)
       end
@@ -253,13 +273,32 @@ local function ensure_named_daemon(name, command, expected_fragment, opts)
   end
 
   if force_restart then
-    killer(find_pids(fragments), tracef, "killed_stale")
+    killer(find_pids(fragments), tracef, "killed_stale", trace_prefix)
   end
 
+  local launch_token = unique_start_token(name)
+  if not write(token_path, launch_token .. "\n") then
+    tracef(trace_prefix .. "_token_write_failed")
+    return false, "token_write_failed"
+  end
+  tracef(trace_prefix .. "_token_written")
+  if trim(read(token_path) or "") ~= launch_token then
+    tracef(trace_prefix .. "_superseded")
+    return false, "superseded"
+  end
+
+  local launch_script = table.concat({
+    "expected=" .. shell_quote(launch_token),
+    "token_file=" .. shell_quote(token_path),
+    "pid_file=" .. shell_quote(file),
+    "current=$(cat \"$token_file\" 2>/dev/null || true)",
+    "[ \"$current\" = \"$expected\" ] || exit 0",
+    "echo $$ > \"$pid_file\"",
+    "exec " .. command,
+  }, "; ")
   local launch_command = string.format(
-    "nohup %s >/dev/null 2>&1 & echo $! > %s",
-    command,
-    shell_quote(file)
+    "nohup /bin/sh -c %s >/dev/null 2>&1 &",
+    shell_quote(launch_script)
   )
   local ok = execute(launch_command)
   if ok then
@@ -286,22 +325,24 @@ local function stop_named_daemon(name, expected_fragment, opts)
   end
 
   local file = opts.pid_file or pid_file(name)
+  local token_path = opts.start_token_file or start_token_file(name)
   local fragments = collect_fragments(expected_fragment, opts.match_fragments)
   local stopped = false
   local pid = trim(read(file) or ""):match("^(%d+)$")
   if pid then
     local alive = running(pid, fragments)
     if alive then
-      killer({ pid }, tracef, "stopped")
+      killer({ pid }, tracef, "stopped", string.format("runtime_daemon:%s", name:gsub("[^%w]+", "_")))
       stopped = true
     end
   end
   local stale = find_pids(fragments)
   if #stale > 0 then
-    killer(stale, tracef, "killed_stale")
+    killer(stale, tracef, "killed_stale", string.format("runtime_daemon:%s", name:gsub("[^%w]+", "_")))
     stopped = true
   end
   remove(file)
+  remove(token_path)
   return stopped or pid ~= nil
 end
 

@@ -56,6 +56,15 @@ case "${FRONT_APP_CONTEXT_TEST_MODE:-window_match}:${1:-}:${2:-}:${3:-}:${4:-}" 
   managed_floating_window:-m:query:--windows:)
     printf '[{"id":32,"app":"Ghostty","space":6,"display":2,"is-floating":true,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","is-minimized":false}]\n'
     ;;
+  topmost_window:-m:query:--spaces:)
+    printf '[{"index":4,"display":1,"type":"bsp","is-visible":true,"has-focus":true}]\n'
+    ;;
+  topmost_window:-m:query:--windows:--window)
+    printf ''
+    ;;
+  topmost_window:-m:query:--windows:)
+    printf '[{"id":33,"app":"Ghostty","space":4,"display":1,"is-floating":false,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","sub-layer":"above","is-minimized":false}]\n'
+    ;;
   backfill_window:-m:query:--spaces:)
     printf '[]\n'
     ;;
@@ -154,6 +163,19 @@ MANAGED_FLOATING_OUTPUT="$(
 )"
 
 printf '%s\n' "$MANAGED_FLOATING_OUTPUT" | grep -Fxq $'state_label\tFloating · Managed Space' || { echo "FAIL: helper should distinguish floating windows inside managed spaces" >&2; exit 1; }
+
+TOPMOST_OUTPUT="$(
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    INFO="" \
+    FRONT_APP_CONTEXT_TEST_MODE=topmost_window \
+    BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+    BARISTA_JQ_BIN="$JQ_BIN" \
+    BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
+    BARISTA_RUNTIME_CONTEXT_SCRIPT="$TMP_DIR/missing_runtime_context.sh" \
+    "$SCRIPT" --app Ghostty
+)"
+
+printf '%s\n' "$TOPMOST_OUTPUT" | grep -Fxq $'state_label\tTiled · Above' || { echo "FAIL: helper should surface sub-layer above as an Above state" >&2; exit 1; }
 
 BACKFILL_OUTPUT="$(
   PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \

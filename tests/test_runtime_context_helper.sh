@@ -116,8 +116,36 @@ esac
 EOF
 chmod +x "$BIN_DIR/SwitchAudioSource"
 
+cat > "$BIN_DIR/yabai" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+case "$*" in
+  '-m query --spaces')
+    cat <<'JSON'
+[{"index":2,"display":1,"type":"bsp","is-visible":true,"has-focus":true}]
+JSON
+    ;;
+  '-m query --windows --window')
+    cat <<'JSON'
+{"id":17,"app":"Finder","space":2,"display":1,"has-focus":true,"is-floating":false,"is-sticky":true,"has-fullscreen-zoom":false,"layer":"normal","sub-layer":"auto","is-minimized":false}
+JSON
+    ;;
+  '-m query --windows')
+    cat <<'JSON'
+[{"id":17,"app":"Finder","space":2,"display":1,"has-focus":true,"is-floating":false,"is-sticky":true,"has-fullscreen-zoom":false,"layer":"normal","sub-layer":"auto","is-minimized":false}]
+JSON
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+EOF
+chmod +x "$BIN_DIR/yabai"
+
 PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   BARISTA_RUNTIME_CONTEXT_HELPER_BIN="$HELPER_BIN" \
+  BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+  BARISTA_JQ_BIN="$(command -v jq)" \
   BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
   BARISTA_SWITCH_AUDIO_SOURCE_BIN="$BIN_DIR/SwitchAudioSource" \
   CONFIG_DIR="$CONFIG_DIR" \
@@ -129,6 +157,8 @@ grep -Fxq $'track\tClock Town' "$CONFIG_DIR/cache/runtime_context/media.tsv" || 
 FRONT_OUTPUT="$(
   PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
     BARISTA_RUNTIME_CONTEXT_HELPER_BIN="$HELPER_BIN" \
+    BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+    BARISTA_JQ_BIN="$(command -v jq)" \
     CONFIG_DIR="$CONFIG_DIR" \
     "$SCRIPT" front-app
 )"
@@ -137,6 +167,8 @@ printf '%s\n' "$FRONT_OUTPUT" | grep -Fxq $'location_label\tSpace 2 · Display 1
 FOCUSED_OUTPUT="$(
   PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
     BARISTA_RUNTIME_CONTEXT_HELPER_BIN="$HELPER_BIN" \
+    BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+    BARISTA_JQ_BIN="$(command -v jq)" \
     CONFIG_DIR="$CONFIG_DIR" \
     "$SCRIPT" focused-space
 )"
@@ -145,6 +177,8 @@ printf '%s\n' "$FOCUSED_OUTPUT" | grep -Fxq $'location_label\tSpace 4 · Display
 
 PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   BARISTA_RUNTIME_CONTEXT_HELPER_BIN="$HELPER_BIN" \
+  BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+  BARISTA_JQ_BIN="$(command -v jq)" \
   BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
   BARISTA_SWITCH_AUDIO_SOURCE_BIN="$BIN_DIR/SwitchAudioSource" \
   BARISTA_RUNTIME_CONTEXT_INTERVAL=0.1 \

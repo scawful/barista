@@ -50,6 +50,13 @@ run_runtime_context_helper() {
     "$RUNTIME_CONTEXT_HELPER_BIN" "$@"
 }
 
+front_app_field_value() {
+  local output="${1:-}"
+  local field="${2:-}"
+  [ -n "$field" ] || return 0
+  printf '%s\n' "$output" | awk -F'\t' -v target="$field" '$1 == target { print $2; exit }'
+}
+
 lowercase_value() {
   printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'
 }
@@ -111,6 +118,78 @@ normalize_front_app_cache_file() {
   printf '%s\n' "$normalized" | write_atomic "$FRONT_APP_FILE"
 }
 
+front_app_output_matches_focus() {
+  local output="${1:-}"
+  local focused_window_json focused_minimized focused_app focused_space focused_display
+  local output_app output_space output_display output_state_label
+
+  [ -n "$output" ] || return 1
+  [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ] || return 0
+
+  focused_window_json="$(query_focused_window_json)"
+  [ -n "$focused_window_json" ] || return 0
+
+  focused_minimized="$(printf '%s\n' "$focused_window_json" | "$JQ_BIN" -r '."is-minimized" // false' 2>/dev/null || echo false)"
+  [ "$focused_minimized" != "true" ] || return 0
+
+  focused_app="$(printf '%s\n' "$focused_window_json" | "$JQ_BIN" -r '.app // empty' 2>/dev/null || true)"
+  focused_space="$(printf '%s\n' "$focused_window_json" | "$JQ_BIN" -r '.space // empty' 2>/dev/null || true)"
+  focused_display="$(printf '%s\n' "$focused_window_json" | "$JQ_BIN" -r '.display // empty' 2>/dev/null || true)"
+  [ -n "$focused_app" ] || return 0
+  [ -n "$focused_space" ] || return 0
+  [ -n "$focused_display" ] || return 0
+
+  output_app="$(front_app_field_value "$output" app_name)"
+  output_space="$(front_app_field_value "$output" space_index)"
+  output_display="$(front_app_field_value "$output" display_index)"
+  output_state_label="$(front_app_field_value "$output" state_label)"
+
+  [ "$output_state_label" != "No managed window" ] || return 1
+  [ -n "$output_space" ] || return 1
+  [ -n "$output_display" ] || return 1
+  [ "$output_space" = "$focused_space" ] || return 1
+  [ "$output_display" = "$focused_display" ] || return 1
+
+  if [ -n "$output_app" ] && [ "$(lowercase_value "$output_app")" != "$(lowercase_value "$focused_app")" ]; then
+    return 1
+  fi
+
+  return 0
+}
+
+helper_front_app_output() {
+  local command_name="${1:-front-app}"
+  local output
+
+  runtime_context_helper_available || return 1
+  output="$(normalize_front_app_output "$(run_runtime_context_helper "$command_name" 2>/dev/null || true)")"
+  [ -n "$output" ] || return 1
+  front_app_output_matches_focus "$output" || return 1
+  printf '%s\n' "$output"
+}
+
+helper_refreshed_front_app_output() {
+  local output temp_state_dir temp_file
+
+  runtime_context_helper_available || return 1
+  mkdir -p "$STATE_DIR" 2>/dev/null || true
+  temp_state_dir="$(mktemp -d "$STATE_DIR/.helper_front_app.XXXXXX")" || return 1
+  temp_file="$temp_state_dir/front_app.tsv"
+  if ! BARISTA_RUNTIME_CONTEXT_DIR="$temp_state_dir" \
+      BARISTA_YABAI_BIN="$YABAI_BIN" \
+      BARISTA_RUNTIME_CONTEXT_INTERVAL="$INTERVAL_SECONDS" \
+      "$RUNTIME_CONTEXT_HELPER_BIN" refresh-front-app >/dev/null 2>&1; then
+    rm -rf "$temp_state_dir"
+    return 1
+  fi
+  output="$(cat "$temp_file" 2>/dev/null || true)"
+  rm -rf "$temp_state_dir"
+  [ -n "$output" ] || return 1
+  output="$(normalize_front_app_output "$output")"
+  front_app_output_matches_focus "$output" || return 1
+  printf '%s\n' "$output"
+}
+
 write_atomic() {
   local target="$1"
   local temp_file
@@ -121,11 +200,10 @@ write_atomic() {
 }
 
 refresh_front_app_cache() {
-  if runtime_context_helper_available; then
-    if run_runtime_context_helper refresh-front-app >/dev/null 2>&1; then
-      normalize_front_app_cache_file
-      return 0
-    fi
+  local helper_output=""
+  if helper_output="$(helper_refreshed_front_app_output)"; then
+    printf '%s\n' "$helper_output" | write_atomic "$FRONT_APP_FILE"
+    return 0
   fi
   write_front_app_cache
 }
@@ -279,9 +357,29 @@ append_space_context_label() {
   esac
 }
 
+window_stack_label() {
+  local window_json="${1:-}"
+  local sub_layer layer
+
+  sub_layer="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."sub-layer" // empty' 2>/dev/null || true)"
+  layer="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.layer // "normal"' 2>/dev/null || echo normal)"
+
+  if [ "$sub_layer" = "above" ] || [ "$layer" = "above" ]; then
+    printf '%s' "Above"
+    return 0
+  fi
+
+  if [ "$layer" = "below" ]; then
+    printf '%s' "Below"
+    return 0
+  fi
+
+  printf '%s' ""
+}
+
 write_front_app_cache() {
   local app_name current_space_json current_space_index current_display_index current_space_visible
-  local window_json window_space window_display window_focused window_space_type floating sticky fullscreen layer state_icon state_label location_label
+  local window_json window_space window_display window_focused window_space_type floating sticky fullscreen stack_label state_icon state_label location_label
 
   app_name="$(resolve_front_app_name)"
   current_space_json=""
@@ -326,7 +424,7 @@ write_front_app_cache() {
     floating="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."is-floating" // false' 2>/dev/null || echo false)"
     sticky="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."is-sticky" // false' 2>/dev/null || echo false)"
     fullscreen="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."has-fullscreen-zoom" // ."is-native-fullscreen" // false' 2>/dev/null || echo false)"
-    layer="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.layer // "normal"' 2>/dev/null || echo normal)"
+    stack_label="$(window_stack_label "$window_json")"
 
     if [ "$fullscreen" = "true" ]; then
       state_icon="󰊓"
@@ -343,10 +441,9 @@ write_front_app_cache() {
       state_label="$state_label · Sticky"
     fi
 
-    case "$layer" in
-      above) state_label="$state_label · Above" ;;
-      below) state_label="$state_label · Below" ;;
-    esac
+    if [ -n "$stack_label" ]; then
+      state_label="$state_label · $stack_label"
+    fi
 
     state_label="$(append_space_context_label "$state_label" "$floating" "$window_space_type")"
     location_label="Space ${window_space:-${current_space_index:-?}} · Display ${window_display:-${current_display_index:-?}}"
@@ -507,22 +604,27 @@ switch_output_by_index() {
 
 daemon_loop() {
   local helper_pid=""
+  local helper_output=""
   trap 'exit 0' INT TERM
 
   if runtime_context_helper_available; then
-    refresh_front_app_cache >/dev/null 2>&1 || true
-    BARISTA_RUNTIME_CONTEXT_DIR="$STATE_DIR" \
-      BARISTA_YABAI_BIN="$YABAI_BIN" \
-      BARISTA_RUNTIME_CONTEXT_INTERVAL="$INTERVAL_SECONDS" \
-      "$RUNTIME_CONTEXT_HELPER_BIN" daemon >/dev/null 2>&1 &
-    helper_pid=$!
-    trap '
-      if [ -n "$helper_pid" ]; then
-        kill "$helper_pid" >/dev/null 2>&1 || true
-        wait "$helper_pid" >/dev/null 2>&1 || true
-      fi
-      exit 0
-    ' INT TERM
+    if helper_output="$(helper_refreshed_front_app_output)"; then
+      printf '%s\n' "$helper_output" | write_atomic "$FRONT_APP_FILE"
+      BARISTA_RUNTIME_CONTEXT_DIR="$STATE_DIR" \
+        BARISTA_YABAI_BIN="$YABAI_BIN" \
+        BARISTA_RUNTIME_CONTEXT_INTERVAL="$INTERVAL_SECONDS" \
+        "$RUNTIME_CONTEXT_HELPER_BIN" daemon >/dev/null 2>&1 &
+      helper_pid=$!
+      trap '
+        if [ -n "$helper_pid" ]; then
+          kill "$helper_pid" >/dev/null 2>&1 || true
+          wait "$helper_pid" >/dev/null 2>&1 || true
+        fi
+        exit 0
+      ' INT TERM
+    else
+      write_front_app_cache >/dev/null 2>&1 || true
+    fi
   fi
 
   while true; do
@@ -556,9 +658,10 @@ case "$COMMAND" in
     daemon_loop
     ;;
   front-app)
-    if runtime_context_helper_available; then
-      normalize_front_app_output "$(run_runtime_context_helper "$COMMAND")"
+    if helper_front_app_output "$COMMAND"; then
+      :
     else
+      write_front_app_cache
       print_cache "$FRONT_APP_FILE" front-app
     fi
     ;;

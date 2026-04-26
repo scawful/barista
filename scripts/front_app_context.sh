@@ -257,15 +257,35 @@ append_space_context_label() {
   esac
 }
 
+window_stack_label() {
+  local window_json="${1:-}"
+  local sub_layer layer
+
+  sub_layer="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."sub-layer" // empty' 2>/dev/null || true)"
+  layer="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.layer // "normal"' 2>/dev/null || echo normal)"
+
+  if [ "$sub_layer" = "above" ] || [ "$layer" = "above" ]; then
+    printf '%s' "Above"
+    return 0
+  fi
+
+  if [ "$layer" = "below" ]; then
+    printf '%s' "Below"
+    return 0
+  fi
+
+  printf '%s' ""
+}
+
 build_state_label() {
   local window_json="${1:-}"
   local space_type="${2:-}"
-  local floating sticky fullscreen layer label
+  local floating sticky fullscreen stack_label label
 
   floating="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."is-floating" // false' 2>/dev/null || echo false)"
   sticky="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."is-sticky" // false' 2>/dev/null || echo false)"
   fullscreen="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."has-fullscreen-zoom" // ."is-native-fullscreen" // false' 2>/dev/null || echo false)"
-  layer="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.layer // "normal"' 2>/dev/null || echo normal)"
+  stack_label="$(window_stack_label "$window_json")"
 
   if [ "$fullscreen" = "true" ]; then
     emit state_icon "󰊓"
@@ -282,10 +302,9 @@ build_state_label() {
     label="$label · Sticky"
   fi
 
-  case "$layer" in
-    above) label="$label · Above" ;;
-    below) label="$label · Below" ;;
-  esac
+  if [ -n "$stack_label" ]; then
+    label="$label · $stack_label"
+  fi
 
   label="$(append_space_context_label "$label" "$floating" "$space_type")"
   emit state_label "$label"

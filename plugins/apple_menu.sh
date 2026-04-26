@@ -6,7 +6,7 @@ OPEN_PANEL_SCRIPT="${CONFIG_DIR}/bin/open_control_panel.sh"
 
 launch_panel() {
   if [ -x "$OPEN_PANEL_SCRIPT" ]; then
-    "$OPEN_PANEL_SCRIPT" --tab appearance
+    "$OPEN_PANEL_SCRIPT" --tab home
   else
     local message
     message="Control panel launcher missing at ${OPEN_PANEL_SCRIPT}"

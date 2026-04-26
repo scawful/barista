@@ -283,9 +283,9 @@ function M.setup(opts)
   local default_click_script = opts.apple_click_script
   if not default_click_script or default_click_script == "" then
     if ctx.call_script then
-      default_click_script = ctx.call_script(launcher, "--tab", "appearance")
+      default_click_script = ctx.call_script(launcher, "--tab", "home")
     else
-      default_click_script = string.format("bash %q --tab appearance", launcher)
+      default_click_script = string.format("bash %q --tab home", launcher)
     end
   end
 

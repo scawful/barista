@@ -500,8 +500,8 @@ function menu.render_all_menus(ctx)
     type = "item",
     name = "menu.tools.barista.config",
     icon = "󰒓",
-    label = "Barista Config",
-    action = ctx.call_script(ctx.paths.apple_launcher, "--tab", "appearance"),
+    label = "Barista",
+    action = ctx.call_script(ctx.paths.apple_launcher, "--tab", "home"),
     shortcut = "⌘⌥P",
   })
   table.insert(apple_menu_items, {

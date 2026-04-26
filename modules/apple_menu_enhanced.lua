@@ -698,11 +698,11 @@ local function build_prepared(ctx)
     },
     {
       id = "barista_config",
-      label = "Barista Config",
+      label = "Barista",
       icon = "󰒓",
       icon_color = tc("SKY"),
       section = "controls",
-      action = ctx.call_script(config_dir .. "/bin/open_control_panel.sh", "--tab", "appearance"),
+      action = ctx.call_script(config_dir .. "/bin/open_control_panel.sh", "--tab", "home"),
       shortcut_action = "open_control_panel",
       available = true,
       default_enabled = true,

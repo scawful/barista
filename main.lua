@@ -226,14 +226,6 @@ local emacs_enabled  = integration_enabled("emacs")
 local halext_enabled = integration_enabled("halext")
 local halext_module  = halext_enabled and require("halext") or nil
 
-local janice_enabled = integration_enabled("janice")
-local janice_module  = nil
-if janice_enabled then
-  local ok, mod = pcall(require, "janice")
-  if ok then janice_module = mod
-  else print("Barista: janice integration enabled but module not found") end
-end
-
 local premia_enabled = integration_enabled("premia")
 local premia_module  = nil
 if premia_enabled then
@@ -345,7 +337,6 @@ local integrations = {
   oracle = oracle_enabled and oracle_module or nil,
   emacs  = emacs_enabled  and emacs_module  or nil,
   halext = halext_enabled  and halext_module or nil,
-  janice = janice_module,
   premia = premia_module,
   control_center = control_center_module,
 }

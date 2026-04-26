@@ -23,8 +23,6 @@ usage() {
     "  afs-context         Show AFS context overview in a terminal" \
     "  scawfulbot          Open the local scawfulbot macOS app" \
     "  scawfulbot-repo     Open the scawfulbot repo" \
-    "  janice              Open the local Janice macOS app" \
-    "  janice-repo         Open the Janice repo" \
     "  yaze                Launch Yaze" \
     "  yaze-repo           Open the Yaze repo" \
     "  z3ed                Open a z3ed terminal session" \
@@ -86,7 +84,6 @@ AFS_ROOT="$(resolve_dir "$SRC_DIR/lab/afs" "$SRC_DIR/afs" "$SRC_DIR/tools/afs")"
 AFS_STUDIO_LAUNCHER="$(resolve_dir "$SRC_DIR/lab/afs-scawful/scripts/afs/utils" "$SRC_DIR/afs-scawful/scripts/afs/utils")/afs-studio"
 HALEXT_ROOT="$(resolve_dir "$SRC_DIR/lab/halext-org" "$SRC_DIR/halext-org")"
 SCAWFULBOT_ROOT="$(resolve_dir "$SRC_DIR/lab/scawfulbot" "$SRC_DIR/scawfulbot")"
-JANICE_ROOT="$(resolve_dir "$SRC_DIR/lab/janice-studio" "$SRC_DIR/janice-studio")"
 YAZE_ROOT="$(resolve_dir "$SRC_DIR/hobby/yaze" "$SRC_DIR/yaze")"
 LOOM_ROOT="$(resolve_dir "$SRC_DIR/lab/loom-studio" "$SRC_DIR/loom-studio")"
 PREMIA_ROOT="$(resolve_dir "$SRC_DIR/lab/premia" "$SRC_DIR/premia")"
@@ -133,12 +130,6 @@ case "$workflow" in
     ;;
   scawfulbot-repo)
     open_path "$SCAWFULBOT_ROOT"
-    ;;
-  janice|janice-code)
-    open_app_or_repo "$JANICE_ROOT/build-macos-unsigned/Build/Products/Debug/JaniceCode.app" "$JANICE_ROOT"
-    ;;
-  janice-repo)
-    open_path "$JANICE_ROOT"
     ;;
   yaze)
     if command -v yaze-nightly >/dev/null 2>&1; then

@@ -97,7 +97,7 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
                  buttonRows:@[
                    @[
                      [self workflowButtonWithTitle:@"Open scawfulbot" workflow:@"scawfulbot"],
-                     [self workflowButtonWithTitle:@"Open Janice Code" workflow:@"janice"]
+                     [self workflowButtonWithTitle:@"Open scawfulbot Repo" workflow:@"scawfulbot-repo"]
                    ],
                    @[
                      [self workflowButtonWithTitle:@"Launch Yaze" workflow:@"yaze"],

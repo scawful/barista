@@ -326,10 +326,6 @@
     @{@"title": @"Open scawfulbot", @"workflow": @"scawfulbot"},
     @{@"title": @"Open scawfulbot Repo", @"workflow": @"scawfulbot-repo"}
   ] toStack:quickStack];
-  [self addWorkflowRowWithItems:@[
-    @{@"title": @"Open Janice Code", @"workflow": @"janice"},
-    @{@"title": @"Open Janice Repo", @"workflow": @"janice-repo"}
-  ] toStack:quickStack];
 
   [self addWorkflowRowWithItems:@[
     @{@"title": @"Open LM Studio", @"workflow": @"lmstudio"},

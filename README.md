@@ -18,9 +18,9 @@ Barista is the ambient menu bar layer.
 - Barista owns glanceable status, popup sections, quick launch, and one-click entry into deeper tools.
 - Cortex owns the native host/runtime, notifications, secrets, and module shell.
 - Oracle inside Cortex owns persistent AI sessions, agent modes, provider/model routing, and Zelda-first AI work.
-- Janice Code owns cross-device persona/avatar and model-fleet workflows.
+- Scawfulbot owns cross-device persona/avatar and model-fleet workflows.
 
-Barista may launch Oracle, Janice Code, or Cortex, but it should not duplicate Oracle's AI settings, Janice Code's model-fleet behavior, or Cortex host logic.
+Barista may launch Oracle, scawfulbot, or Cortex, but it should not duplicate Oracle's AI settings, scawfulbot's model-fleet behavior, or Cortex host logic.
 
 ## Quick Install
 

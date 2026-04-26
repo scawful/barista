@@ -61,7 +61,7 @@ Help Center + Barista metadata lives in:
 
 The native Home and Integrations tabs call `scripts/open_local_workflow.sh` for machine-local exits. Keep local path resolution in that script rather than duplicating hard-coded repo/app paths in Objective-C views.
 
-Current launch targets include Ghostty, LM Studio/status, AFS Studio/context/repo, scawfulbot, Janice Code, Yaze/z3ed, Loom Studio, premia, halext-org, and the Barista repo.
+Current launch targets include Ghostty, LM Studio/status, AFS Studio/context/repo, scawfulbot, Yaze/z3ed, Loom Studio, premia, halext-org, and the Barista repo.
 
 ## Native Settings UX
 

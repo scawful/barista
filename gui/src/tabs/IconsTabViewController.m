@@ -23,6 +23,8 @@
 @property (strong) NSMutableDictionary *appIconMap;
 @property (strong) NSArray *appIconKeys;
 @property (strong) NSArray *filteredAppKeys;
+@property (copy) NSString *iconMapPath;
+@property (strong) NSTextField *librarySourceLabel;
 
 @property (strong) NSArray *allIcons;
 @property (strong) NSArray *filteredIcons;
@@ -55,6 +57,51 @@
   ];
 }
 
+- (NSString *)shortPath:(NSString *)path {
+  if (!path.length) {
+    return @"";
+  }
+  NSString *home = NSHomeDirectory();
+  if ([path hasPrefix:home]) {
+    return [@"~" stringByAppendingString:[path substringFromIndex:home.length]];
+  }
+  return path;
+}
+
+- (NSArray<NSString *> *)iconMapCandidatePaths {
+  NSString *configDir = [self configDir];
+  return @[
+    [configDir stringByAppendingPathComponent:@"icon_map.json"],
+    [configDir stringByAppendingPathComponent:@"config/icon_map.json"],
+  ];
+}
+
+- (NSDictionary *)iconMapFromPath:(NSString *)path {
+  NSData *data = [NSData dataWithContentsOfFile:path];
+  if (!data) {
+    return nil;
+  }
+
+  NSError *error = nil;
+  NSDictionary *iconMap = [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingMutableContainers error:&error];
+  if (error || ![iconMap isKindOfClass:[NSDictionary class]]) {
+    return nil;
+  }
+  return iconMap;
+}
+
+- (NSDictionary *)loadIconMap {
+  for (NSString *path in [self iconMapCandidatePaths]) {
+    NSDictionary *iconMap = [self iconMapFromPath:path];
+    if (iconMap.count > 0) {
+      self.iconMapPath = path;
+      return iconMap;
+    }
+  }
+  self.iconMapPath = nil;
+  return nil;
+}
+
 - (void)viewDidLoad {
   [super viewDidLoad];
 
@@ -64,19 +111,21 @@
   NSStackView *rootStack = nil;
   [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(20, 24, 20, 24) spacing:20];
 
-  // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  title.stringValue = @"Icon Settings";
-  title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
-  title.bordered = NO;
-  title.editable = NO;
-  title.backgroundColor = [NSColor clearColor];
-  [rootStack addView:title inGravity:NSStackViewGravityTop];
+  [rootStack addView:[self titleLabel:@"Icons" fontSize:26] inGravity:NSStackViewGravityTop];
+  [rootStack addView:[self helperLabel:@"Adjust widget glyph overrides, edit the app icon map, and copy glyphs from the built-in library."] inGravity:NSStackViewGravityTop];
+
+  NSString *sourceText = self.iconMapPath.length
+    ? [NSString stringWithFormat:@"%lu icons from %@", (unsigned long)self.allIcons.count, [self shortPath:self.iconMapPath]]
+    : @"Using the small built-in fallback library";
+  self.librarySourceLabel = [self helperLabel:sourceText];
+  self.librarySourceLabel.usesSingleLineMode = YES;
+  self.librarySourceLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+  [rootStack addView:self.librarySourceLabel inGravity:NSStackViewGravityTop];
 
   // Mode toggle
   self.modeControl = [[NSSegmentedControl alloc] initWithFrame:NSZeroRect];
   [self.modeControl setSegmentCount:2];
-  [self.modeControl setLabel:@"Mappings" forSegment:0];
+  [self.modeControl setLabel:@"Overrides" forSegment:0];
   [self.modeControl setLabel:@"Library" forSegment:1];
   self.modeControl.selectedSegment = 0;
   self.modeControl.target = self;
@@ -106,6 +155,7 @@
 
   [self buildMappingUI];
   [self buildLibraryUI];
+  [self selectFirstLibraryIconIfNeeded];
   [self modeChanged:self.modeControl];
 }
 
@@ -344,7 +394,7 @@
   // Fallback notice when icon_map.json is missing
   if (self.allIcons.count <= 10) {
     NSTextField *fallbackLabel = [[NSTextField alloc] initWithFrame:NSZeroRect];
-    fallbackLabel.stringValue = @"Using built-in icons. Place icon_map.json in your SketchyBar config directory for a full library.";
+    fallbackLabel.stringValue = @"Using built-in icons. Add icon_map.json to your SketchyBar config directory, or keep the bundled config/icon_map.json in place, for the full library.";
     fallbackLabel.font = [NSFont systemFontOfSize:11];
     fallbackLabel.textColor = [NSColor secondaryLabelColor];
     fallbackLabel.bordered = NO;
@@ -356,6 +406,16 @@
   }
 }
 
+- (void)selectFirstLibraryIconIfNeeded {
+  if (!self.tableView || self.filteredIcons.count == 0) {
+    return;
+  }
+  [self.tableView reloadData];
+  [self.tableView selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+  NSDictionary *icon = self.filteredIcons[0];
+  self.previewField.stringValue = icon[@"glyph"] ?: @"";
+}
+
 - (void)modeChanged:(NSSegmentedControl *)sender {
   BOOL showMappings = sender.selectedSegment == 0;
   self.mappingContainer.hidden = !showMappings;
@@ -363,22 +423,20 @@
 }
 
 - (void)loadIcons {
-  NSString *iconMapPath = [[self configDir] stringByAppendingPathComponent:@"icon_map.json"];
-  NSData *data = [NSData dataWithContentsOfFile:iconMapPath];
-
-  if (data) {
-    NSError *error = nil;
-    NSDictionary *iconMap = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
-    if (iconMap && [iconMap isKindOfClass:[NSDictionary class]]) {
-      NSMutableArray *icons = [NSMutableArray array];
-      for (NSString *name in iconMap) {
-        NSString *glyph = iconMap[name];
-        [icons addObject:@{ @"name": name, @"glyph": glyph ?: @"", @"category": @"Custom" }];
+  NSDictionary *iconMap = [self loadIconMap];
+  if (iconMap.count > 0) {
+    NSMutableArray *icons = [NSMutableArray array];
+    NSArray *sortedNames = [[iconMap allKeys] sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
+    for (NSString *name in sortedNames) {
+      NSString *glyph = iconMap[name];
+      if (![glyph isKindOfClass:[NSString class]]) {
+        glyph = @"";
       }
-      self.allIcons = icons;
-      self.filteredIcons = [self.allIcons copy];
-      return;
+      [icons addObject:@{ @"name": name, @"glyph": glyph, @"category": @"Applications" }];
     }
+    self.allIcons = icons;
+    self.filteredIcons = [self.allIcons copy];
+    return;
   }
 
   self.allIcons = @[
@@ -397,18 +455,8 @@
 }
 
 - (void)loadAppIconMap {
-  NSString *iconMapPath = [[self configDir] stringByAppendingPathComponent:@"icon_map.json"];
-  NSData *data = [NSData dataWithContentsOfFile:iconMapPath];
-  if (!data) {
-    self.appIconMap = [NSMutableDictionary dictionary];
-    self.appIconKeys = @[];
-    self.filteredAppKeys = @[];
-    return;
-  }
-
-  NSError *error = nil;
-  NSDictionary *iconMap = [NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingMutableContainers error:&error];
-  if (error || ![iconMap isKindOfClass:[NSDictionary class]]) {
+  NSDictionary *iconMap = self.iconMapPath.length ? [self iconMapFromPath:self.iconMapPath] : [self loadIconMap];
+  if (![iconMap isKindOfClass:[NSDictionary class]] || iconMap.count == 0) {
     self.appIconMap = [NSMutableDictionary dictionary];
     self.appIconKeys = @[];
     self.filteredAppKeys = @[];
@@ -422,13 +470,20 @@
 }
 
 - (void)saveAppIconMap {
-  NSString *iconMapPath = [[self configDir] stringByAppendingPathComponent:@"icon_map.json"];
+  NSString *iconMapPath = self.iconMapPath.length
+    ? self.iconMapPath
+    : [[self configDir] stringByAppendingPathComponent:@"config/icon_map.json"];
   NSError *error = nil;
   NSData *data = [NSJSONSerialization dataWithJSONObject:self.appIconMap options:NSJSONWritingPrettyPrinted error:&error];
   if (!data || error) {
     return;
   }
+  [[NSFileManager defaultManager] createDirectoryAtPath:[iconMapPath stringByDeletingLastPathComponent]
+                            withIntermediateDirectories:YES
+                                             attributes:nil
+                                                  error:nil];
   [data writeToFile:iconMapPath atomically:YES];
+  self.iconMapPath = iconMapPath;
 }
 
 - (void)searchChanged:(id)sender {
@@ -449,6 +504,13 @@
   }
 
   [self.tableView reloadData];
+  if (self.filteredIcons.count > 0) {
+    [self.tableView selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+    NSDictionary *icon = self.filteredIcons[0];
+    self.previewField.stringValue = icon[@"glyph"] ?: @"";
+  } else {
+    self.previewField.stringValue = @"";
+  }
 }
 
 - (void)appSearchChanged:(id)sender {

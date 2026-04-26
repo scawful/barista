@@ -13,9 +13,7 @@
 - (void)viewDidLoad {
   [super viewDidLoad];
 
-  // Scan themes directory
   ConfigurationManager *config = [ConfigurationManager sharedManager];
-  BaristaStyle *style = [BaristaStyle sharedStyle];
   NSString *configDir = config.configPath ?: [NSHomeDirectory() stringByAppendingPathComponent:@".config/sketchybar"];
   NSString *themesPath = [configDir stringByAppendingPathComponent:@"themes"];
   NSFileManager *fm = [NSFileManager defaultManager];
@@ -28,19 +26,24 @@
       [themes addObject:themeName];
     }
   }
+  if (themes.count == 0) {
+    [themes addObject:@"default"];
+  }
   self.availableThemes = [themes sortedArrayUsingSelector:@selector(compare:)];
 
   NSStackView *rootStack = nil;
   [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(24, 24, 28, 24) spacing:20];
 
-  // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  title.stringValue = @"Theme Selection";
-  title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
-  title.bordered = NO;
-  title.editable = NO;
-  title.backgroundColor = [NSColor clearColor];
-  [rootStack addView:title inGravity:NSStackViewGravityTop];
+  NSString *currentTheme = [config valueForKeyPath:@"appearance.theme" defaultValue:@"default"] ?: @"default";
+  [rootStack addView:[self titleLabel:@"Themes" fontSize:26] inGravity:NSStackViewGravityTop];
+  [rootStack addView:[self helperLabel:@"Choose the color system for Barista, preview its palette, and apply it to the live bar."] inGravity:NSStackViewGravityTop];
+
+  NSTextField *summary = [self helperLabel:[NSString stringWithFormat:@"%lu installed themes · Active: %@",
+                                                                      (unsigned long)self.availableThemes.count,
+                                                                      currentTheme]];
+  summary.usesSingleLineMode = YES;
+  summary.lineBreakMode = NSLineBreakByTruncatingTail;
+  [rootStack addView:summary inGravity:NSStackViewGravityTop];
 
   // Theme Selector Row
   NSStackView *selectorRow = [[NSStackView alloc] initWithFrame:NSZeroRect];
@@ -65,8 +68,6 @@
   [self.themeSelector.widthAnchor constraintEqualToConstant:250].active = YES;
   [selectorRow addView:self.themeSelector inGravity:NSStackViewGravityLeading];
 
-  // Load current theme from state
-  NSString *currentTheme = [config valueForKeyPath:@"appearance.theme" defaultValue:@"default"];
   [self.themeSelector selectItemWithTitle:currentTheme];
   if (![self.themeSelector selectedItem] && self.themeSelector.numberOfItems > 0) {
     [self.themeSelector selectItemAtIndex:0];
@@ -114,7 +115,7 @@
   NSButton *openThemesButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [openThemesButton setButtonType:NSButtonTypeMomentaryPushIn];
   [openThemesButton setBezelStyle:NSBezelStyleRounded];
-  openThemesButton.title = @"Themes Folder";
+  openThemesButton.title = @"Open Themes Folder";
   openThemesButton.target = self;
   openThemesButton.action = @selector(openThemesFolder:);
   [buttonRow addView:openThemesButton inGravity:NSStackViewGravityLeading];
@@ -122,7 +123,7 @@
   NSButton *openOverrideButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [openOverrideButton setButtonType:NSButtonTypeMomentaryPushIn];
   [openOverrideButton setBezelStyle:NSBezelStyleRounded];
-  openOverrideButton.title = @"Edit Local Overrides";
+  openOverrideButton.title = @"Edit Overrides";
   openOverrideButton.target = self;
   openOverrideButton.action = @selector(openThemeOverride:);
   [buttonRow addView:openOverrideButton inGravity:NSStackViewGravityLeading];

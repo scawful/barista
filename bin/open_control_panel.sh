@@ -9,10 +9,13 @@ GUI_DIR="$CONFIG_DIR/gui"
 PANEL_BIN="$GUI_DIR/bin/config_menu"
 PANEL_FALLBACKS=("$GUI_DIR/bin/config_menu_v2" "$GUI_DIR/bin/config_menu_enhanced")
 LOG_FILE="${TMPDIR:-/tmp}/barista_control_panel.log"
-PANEL_APP="$GUI_DIR/BaristaControlPanel.app"
-APP_EXEC="BaristaControlPanel"
-APP_NAME="Barista Control Panel"
-APP_BUNDLE_ID="com.scawful.barista.controlpanel"
+PANEL_APP="$GUI_DIR/Barista.app"
+APP_EXEC="Barista"
+APP_NAME="Barista"
+APP_BUNDLE_ID="com.scawful.barista"
+LEGACY_APP_EXEC="BaristaControlPanel"
+LEGACY_APP_BUNDLE_ID="com.scawful.barista.controlpanel"
+INSTALLED_PANEL_APP="${BARISTA_CONTROL_PANEL_APP:-$HOME/Applications/${APP_NAME}.app}"
 STATE_FILE="$CONFIG_DIR/state.json"
 DOC_FALLBACK="$CONFIG_DIR/docs/guides/TUI_CONFIGURATION.md"
 ORACLE_MANAGER_SCRIPT="$CONFIG_DIR/bin/open_oracle_agent_manager.sh"
@@ -97,23 +100,75 @@ WINDOW_MODE="${WINDOW_MODE:-standard}"
 
 SOURCE_DIR="${BARISTA_SOURCE_DIR:-$CODE_DIR/lab/barista}"
 
+panel_app_exec() {
+  local app="$1"
+  if [[ -x "$app/Contents/MacOS/$APP_EXEC" ]]; then
+    printf '%s/Contents/MacOS/%s' "$app" "$APP_EXEC"
+  elif [[ -x "$app/Contents/MacOS/$LEGACY_APP_EXEC" ]]; then
+    printf '%s/Contents/MacOS/%s' "$app" "$LEGACY_APP_EXEC"
+  else
+    printf '%s/Contents/MacOS/%s' "$app" "$APP_EXEC"
+  fi
+}
+
+panel_app_is_runnable() {
+  local app="$1"
+  [[ -x "$(panel_app_exec "$app")" ]]
+}
+
+install_stable_panel_app_if_needed() {
+  local source_app="$SOURCE_DIR/build/bin/${APP_EXEC}.app"
+  local legacy_source_app="$SOURCE_DIR/build/bin/${LEGACY_APP_EXEC}.app"
+  local source_exec installed_exec
+  if [[ ! -x "$(panel_app_exec "$source_app")" && -x "$(panel_app_exec "$legacy_source_app")" ]]; then
+    source_app="$legacy_source_app"
+  fi
+  source_exec="$(panel_app_exec "$source_app")"
+  installed_exec="$(panel_app_exec "$INSTALLED_PANEL_APP")"
+
+  if [[ ! -x "$source_exec" ]]; then
+    return 0
+  fi
+  if [[ -x "$installed_exec" && ! "$source_exec" -nt "$installed_exec" ]]; then
+    return 0
+  fi
+  if [[ -x "$SOURCE_DIR/scripts/install_control_panel_app.sh" ]]; then
+    "$SOURCE_DIR/scripts/install_control_panel_app.sh" \
+      --source "$source_app" \
+      --dest "$INSTALLED_PANEL_APP" >/dev/null 2>&1 || true
+  fi
+}
+
 resolve_panel_app() {
   local source_app="$SOURCE_DIR/build/bin/${APP_EXEC}.app"
+  local legacy_source_app="$SOURCE_DIR/build/bin/${LEGACY_APP_EXEC}.app"
   local config_app="$CONFIG_DIR/build/bin/${APP_EXEC}.app"
+  local legacy_config_app="$CONFIG_DIR/build/bin/${LEGACY_APP_EXEC}.app"
+  local legacy_panel_app="$GUI_DIR/${LEGACY_APP_EXEC}.app"
   local selected=""
 
-  if [[ -x "$source_app/Contents/MacOS/$APP_EXEC" ]]; then
+  install_stable_panel_app_if_needed
+
+  if panel_app_is_runnable "$INSTALLED_PANEL_APP"; then
+    selected="$INSTALLED_PANEL_APP"
+  fi
+  if [[ -z "$selected" ]] && panel_app_is_runnable "$source_app"; then
     selected="$source_app"
   fi
-  if [[ -x "$config_app/Contents/MacOS/$APP_EXEC" ]]; then
-    if [[ -z "$selected" || "$config_app" -nt "$selected" ]]; then
-      selected="$config_app"
-    fi
+  if [[ -z "$selected" ]] && panel_app_is_runnable "$legacy_source_app"; then
+    selected="$legacy_source_app"
   fi
-  if [[ -x "$PANEL_APP/Contents/MacOS/$APP_EXEC" ]]; then
-    if [[ -z "$selected" || "$PANEL_APP" -nt "$selected" ]]; then
-      selected="$PANEL_APP"
-    fi
+  if [[ -z "$selected" ]] && panel_app_is_runnable "$config_app"; then
+    selected="$config_app"
+  fi
+  if [[ -z "$selected" ]] && panel_app_is_runnable "$legacy_config_app"; then
+    selected="$legacy_config_app"
+  fi
+  if [[ -z "$selected" ]] && panel_app_is_runnable "$PANEL_APP"; then
+    selected="$PANEL_APP"
+  fi
+  if [[ -z "$selected" ]] && panel_app_is_runnable "$legacy_panel_app"; then
+    selected="$legacy_panel_app"
   fi
 
   if [[ -n "$selected" ]]; then
@@ -240,6 +295,9 @@ launch_oracle_manager() {
 
 apply_native_window_mode() {
   local launched_pid="$1"
+  if [[ -z "$launched_pid" ]]; then
+    return 0
+  fi
   local normalized_mode
   normalized_mode="$(printf '%s' "$WINDOW_MODE" | tr '[:upper:]' '[:lower:]')"
 
@@ -253,7 +311,7 @@ apply_native_window_mode() {
   (
     for _ in $(seq 1 40); do
       local window_json
-      window_json="$(yabai -m query --windows 2>/dev/null | jq -c --argjson pid "$launched_pid" 'first(.[] | select(.pid == $pid and (((.app // "") == "Barista Control Panel") or ((.app // "") == "BaristaControlPanel") or ((.app // "") == "config_menu"))))' 2>/dev/null || true)"
+      window_json="$(yabai -m query --windows 2>/dev/null | jq -c --argjson pid "$launched_pid" 'first(.[] | select(.pid == $pid and (((.app // "") == "Barista") or ((.app // "") == "Barista Control Panel") or ((.app // "") == "BaristaControlPanel") or ((.app // "") == "config_menu"))))' 2>/dev/null || true)"
       if [[ -n "$window_json" && "$window_json" != "null" ]]; then
         local window_id is_floating
         window_id="$(jq -r '.id // empty' <<<"$window_json")"
@@ -266,6 +324,39 @@ apply_native_window_mode() {
       sleep 0.1
     done
   ) >/dev/null 2>&1 &
+}
+
+find_launched_panel_pid() {
+  local process_name pid
+  for _ in $(seq 1 30); do
+    for process_name in "${APP_EXEC}" "${LEGACY_APP_EXEC}" "config_menu"; do
+      pid="$(pgrep -x "$process_name" 2>/dev/null | tail -n 1 || true)"
+      if [[ -n "$pid" ]]; then
+        printf '%s' "$pid"
+        return 0
+      fi
+    done
+    sleep 0.1
+  done
+  return 1
+}
+
+launch_panel_app_bundle() {
+  if ! command -v open >/dev/null 2>&1; then
+    return 1
+  fi
+
+  echo "[barista] Launching control panel via app bundle"
+  if [[ -n "$CONTROL_TAB" ]]; then
+    open -na "$PANEL_APP" --args --tab "$CONTROL_TAB" >"$LOG_FILE" 2>&1
+  else
+    open -na "$PANEL_APP" >"$LOG_FILE" 2>&1
+  fi
+
+  local launched_pid
+  launched_pid="$(find_launched_panel_pid || true)"
+  apply_native_window_mode "$launched_pid"
+  return 0
 }
 
 if (( OPEN_ORACLE_MANAGER == 1 )); then
@@ -311,7 +402,7 @@ fi
 resolve_panel_app || true
 resolve_panel_bin || true
 
-if [[ ! -x "$PANEL_APP/Contents/MacOS/$APP_EXEC" && ! -x "$PANEL_BIN" ]]; then
+if ! panel_app_is_runnable "$PANEL_APP" && [[ ! -x "$PANEL_BIN" ]]; then
   if [[ -d "$GUI_DIR" ]]; then
     echo "[barista] Building control panel…"
     cd "$GUI_DIR" || exit 1
@@ -338,7 +429,7 @@ if [[ ! -x "$PANEL_APP/Contents/MacOS/$APP_EXEC" && ! -x "$PANEL_BIN" ]]; then
   fi
 fi
 
-for process_name in "${APP_EXEC}" "config_menu"; do
+for process_name in "${APP_EXEC}" "${LEGACY_APP_EXEC}" "config_menu"; do
   if pgrep -x "$process_name" >/dev/null 2>&1; then
     pkill -x "$process_name" >/dev/null 2>&1 || true
   fi
@@ -346,9 +437,9 @@ done
 sleep 0.2
 
 LAUNCH_BIN=""
-if [[ -x "$PANEL_APP/Contents/MacOS/$APP_EXEC" ]]; then
+if panel_app_is_runnable "$PANEL_APP"; then
   echo "[barista] Using panel bundle: $PANEL_APP"
-  LAUNCH_BIN="$PANEL_APP/Contents/MacOS/$APP_EXEC"
+  LAUNCH_BIN="$(panel_app_exec "$PANEL_APP")"
 elif [[ -x "$PANEL_BIN" ]]; then
   echo "[barista] Using panel binary: $PANEL_BIN"
   LAUNCH_BIN="$PANEL_BIN"
@@ -362,15 +453,19 @@ else
 fi
 
 if [[ "$LAUNCH_BIN" == *".app/Contents/MacOS/"* ]]; then
-  echo "[barista] Launching control panel via bundle executable"
-  if [[ -n "$CONTROL_TAB" ]]; then
-    nohup "$LAUNCH_BIN" --tab "$CONTROL_TAB" >"$LOG_FILE" 2>&1 &
+  if launch_panel_app_bundle; then
+    true
   else
-    nohup "$LAUNCH_BIN" >"$LOG_FILE" 2>&1 &
+    echo "[barista] LaunchServices unavailable; launching bundle executable directly"
+    if [[ -n "$CONTROL_TAB" ]]; then
+      nohup "$LAUNCH_BIN" --tab "$CONTROL_TAB" >"$LOG_FILE" 2>&1 &
+    else
+      nohup "$LAUNCH_BIN" >"$LOG_FILE" 2>&1 &
+    fi
+    launched_pid=$!
+    apply_native_window_mode "$launched_pid"
+    disown
   fi
-  launched_pid=$!
-  apply_native_window_mode "$launched_pid"
-  disown
 else
   echo "[barista] Launching control panel from raw binary (logs: $LOG_FILE)"
   if [[ -n "$CONTROL_TAB" ]]; then
@@ -384,5 +479,5 @@ else
 fi
 
 if command -v osascript >/dev/null 2>&1; then
-  (sleep 0.3; osascript -e "tell application id \"${APP_BUNDLE_ID}\" to activate" >/dev/null 2>&1 || true) &
+  (sleep 0.3; osascript -e "tell application id \"${APP_BUNDLE_ID}\" to activate" >/dev/null 2>&1 || osascript -e "tell application id \"${LEGACY_APP_BUNDLE_ID}\" to activate" >/dev/null 2>&1 || true) &
 fi

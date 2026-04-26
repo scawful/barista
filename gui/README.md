@@ -152,7 +152,7 @@ This is the supported entry point for Oracle Hub.
 
 ### App Bundle
 
-The native panel bundle is built as `build/bin/BaristaControlPanel.app` via the `barista_control_panel_app` target.
+The native panel bundle is built as `build/bin/Barista.app` via the `barista_control_panel_app` target.
 `bin/open_control_panel.sh` now prefers that build artifact instead of generating an app bundle at launch time.
 
 ## Troubleshooting

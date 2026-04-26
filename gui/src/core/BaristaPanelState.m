@@ -4,7 +4,7 @@
 
 static NSString *const BaristaPanelLastTabKeyPath = @"control_panel.window.last_tab";
 static NSString *const BaristaPanelModeKeyPath = @"control_panel.window_mode";
-static NSString *const BaristaPanelAutosaveName = @"BaristaControlPanelWindow";
+static NSString *const BaristaPanelAutosaveName = @"BaristaWindow";
 
 static BOOL BaristaShouldPersistAsGeneralTab(NSString *identifier) {
   return [identifier isKindOfClass:[NSString class]] && identifier.length > 0;

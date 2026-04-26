@@ -59,9 +59,12 @@ yabai -m rule --add app="^Taskwarrior$" manage=off
 yabai -m rule --add app="^Lazygit$" manage=off grid=10:10:1:1:8:8 title="lazygit"
 
 # Barista + Halext tools
-# Native Barista panel is managed by default; utility mode floats it at launch.
+# Barista settings should stay unmanaged by default; it is a utility surface, not a tiled workspace app.
 yabai -m rule --add app="^barista_config$" manage=off
 yabai -m rule --add app="^Barista Config$" manage=off
+yabai -m rule --add app="^Barista$" manage=off
+yabai -m rule --add app="^Barista Control Panel$" manage=off
+yabai -m rule --add app="^BaristaControlPanel$" manage=off
 yabai -m rule --add app="^afs_studio$" manage=off
 yabai -m rule --add app="^AFS Studio$" manage=off
 yabai -m rule --add app="^afs-browser$" manage=off
@@ -70,7 +73,8 @@ yabai -m rule --add app="^cortex$" manage=off
 yabai -m rule --add app="^Cortex$" manage=off
 yabai -m rule --add app="^sys_manual$" manage=off
 yabai -m rule --add app="^System Manual$" manage=off
-yabai -m rule --add app="^Picture View$" manage=off
+# PictureView reports its app name without a space in yabai.
+yabai -m rule --add app="^(Picture View|PictureView)$" manage=off
 
 # Browser Popups
 yabai -m rule --add app="^Safari$" title="^(General|Tabs|Passwords|Preferences)$" manage=off

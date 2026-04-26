@@ -44,6 +44,10 @@
   return [NSFont monospacedSystemFontOfSize:size weight:weight];
 }
 
+- (NSFont *)interfaceFontOfSize:(CGFloat)size weight:(NSFontWeight)weight {
+  return [NSFont systemFontOfSize:size weight:weight];
+}
+
 - (NSString *)normalizedHexStringFromValue:(NSString *)value {
   if (![value isKindOfClass:[NSString class]]) {
     return nil;
@@ -163,7 +167,6 @@
 
 - (void)refreshFromConfig {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
-  NSColor *fallback = [NSColor colorWithCalibratedRed:0.07 green:0.08 blue:0.11 alpha:1.0];
   NSString *defaultBarHex = [config valueForKeyPath:@"appearance.bar_color" defaultValue:@"0xC021162F"];
   NSString *themeOverride = [[[NSProcessInfo processInfo] environment] objectForKey:@"BARISTA_THEME"];
   NSString *themeName = themeOverride.length
@@ -179,30 +182,22 @@
   self.themeBarHex = themeBarHex;
 
   NSString *barHex = themeBarHex ?: defaultBarHex;
-  NSColor *baseColor = [self colorFromHexString:barHex fallback:fallback];
-  baseColor = [baseColor colorUsingColorSpace:NSColorSpace.deviceRGBColorSpace] ?: fallback;
-
-  NSColor *bgPrimary = self.themePalette[@"BG_PRI_COLR"];
-  NSColor *bgSecondary = self.themePalette[@"BG_SEC_COLR"];
-  NSColor *text = self.themePalette[@"WHITE"];
-  NSColor *muted = self.themePalette[@"DARK_WHITE"];
-  NSColor *accent = self.themePalette[@"GREEN"] ?: self.themePalette[@"BLUE"];
-
-  NSColor *black = [NSColor colorWithCalibratedWhite:0 alpha:1.0];
-  self.backgroundColor = bgPrimary ?: ([baseColor blendedColorWithFraction:0.28 ofColor:black] ?: fallback);
-  self.panelColor = bgSecondary ?: ([self.backgroundColor blendedColorWithFraction:0.12 ofColor:black] ?: fallback);
-  self.sidebarColor = [self.backgroundColor blendedColorWithFraction:0.18 ofColor:black] ?: fallback;
-  self.textColor = text ?: [NSColor colorWithCalibratedWhite:0.92 alpha:1.0];
-  self.mutedTextColor = muted ?: [self.textColor colorWithAlphaComponent:0.62];
+  NSColor *accent = self.themePalette[@"TEAL"] ?: self.themePalette[@"SKY"] ?: self.themePalette[@"GREEN"] ?: self.themePalette[@"BLUE"];
+  NSColor *barAccent = [self colorFromHexString:barHex fallback:nil];
+  self.backgroundColor = [NSColor windowBackgroundColor];
+  self.panelColor = [NSColor controlBackgroundColor];
+  self.sidebarColor = [NSColor controlBackgroundColor];
+  self.textColor = [NSColor labelColor];
+  self.mutedTextColor = [NSColor secondaryLabelColor];
   self.accentColor = accent ?: [self colorFromHexString:@"0xFF89DCEB"
-                                               fallback:[NSColor colorWithCalibratedRed:0.31 green:0.71 blue:1.0 alpha:1.0]];
-  self.dividerColor = [self.textColor colorWithAlphaComponent:0.14];
-  self.gridColor = [self.textColor colorWithAlphaComponent:0.06];
-  self.selectionColor = [self.accentColor colorWithAlphaComponent:0.18];
+                                               fallback:(barAccent ?: [NSColor controlAccentColor])];
+  self.dividerColor = [NSColor separatorColor];
+  self.gridColor = [NSColor gridColor];
+  self.selectionColor = [NSColor selectedContentBackgroundColor];
 
-  self.titleFont = [self monoFontOfSize:18.0 weight:NSFontWeightSemibold];
-  self.sectionFont = [self monoFontOfSize:14.0 weight:NSFontWeightSemibold];
-  self.bodyFont = [self monoFontOfSize:13.0 weight:NSFontWeightRegular];
+  self.titleFont = [self interfaceFontOfSize:22.0 weight:NSFontWeightSemibold];
+  self.sectionFont = [self interfaceFontOfSize:13.5 weight:NSFontWeightMedium];
+  self.bodyFont = [self interfaceFontOfSize:12.5 weight:NSFontWeightRegular];
 }
 
 - (void)applyWindowStyle:(NSWindow *)window {
@@ -210,10 +205,10 @@
     return;
   }
   [self refreshFromConfig];
-  window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+  window.appearance = nil;
   window.backgroundColor = self.backgroundColor;
-  window.titleVisibility = NSWindowTitleHidden;
-  window.titlebarAppearsTransparent = YES;
+  window.titleVisibility = NSWindowTitleVisible;
+  window.titlebarAppearsTransparent = NO;
 }
 
 - (void)applyStyleToViewHierarchy:(NSView *)view {
@@ -225,11 +220,11 @@
     NSTextField *field = (NSTextField *)view;
     CGFloat size = field.font.pointSize;
     if (size >= 18.0) {
-      field.font = self.titleFont;
-    } else if (size >= 13.0) {
-      field.font = self.sectionFont;
+      field.font = [self interfaceFontOfSize:size weight:NSFontWeightSemibold];
+    } else if (size >= 13.5) {
+      field.font = [self interfaceFontOfSize:size weight:NSFontWeightMedium];
     } else {
-      field.font = self.bodyFont;
+      field.font = [self interfaceFontOfSize:MAX(size, 11.0) weight:NSFontWeightRegular];
     }
     if (field.tag != 9901) {
       NSColor *labelColor = (size <= 11.0) ? self.mutedTextColor : self.textColor;
@@ -243,18 +238,16 @@
     }
   } else if ([view isKindOfClass:[NSButton class]]) {
     NSButton *button = (NSButton *)view;
-    button.font = self.bodyFont;
+    button.font = [self interfaceFontOfSize:12.5 weight:NSFontWeightMedium];
   } else if ([view isKindOfClass:[NSTableView class]]) {
     NSTableView *table = (NSTableView *)view;
-    table.backgroundColor = self.panelColor;
-    table.gridColor = self.dividerColor;
+    table.gridColor = [NSColor gridColor];
   } else if ([view isKindOfClass:[NSScrollView class]]) {
     NSScrollView *scroll = (NSScrollView *)view;
-    scroll.drawsBackground = YES;
-    scroll.backgroundColor = self.panelColor;
+    scroll.drawsBackground = NO;
   } else if ([view isKindOfClass:[NSSegmentedControl class]]) {
     NSSegmentedControl *segmented = (NSSegmentedControl *)view;
-    segmented.font = self.sectionFont;
+    segmented.font = [self interfaceFontOfSize:12.5 weight:NSFontWeightMedium];
   }
 
   for (NSView *subview in view.subviews) {

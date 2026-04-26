@@ -18,54 +18,10 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
 @property (strong) NSArray<NSDictionary *> *sidebarItems;
 @end
 
-@interface BaristaSidebarRowView : NSTableRowView
-@end
-
-@implementation BaristaSidebarRowView
-
-- (void)drawBackgroundInRect:(NSRect)dirtyRect {
-  BaristaStyle *style = [BaristaStyle sharedStyle];
-  [style.sidebarColor setFill];
-  NSRectFill(dirtyRect);
-}
-
-- (void)drawSelectionInRect:(NSRect)dirtyRect {
-  if (!self.isSelected) {
-    return;
-  }
-  BaristaStyle *style = [BaristaStyle sharedStyle];
-  NSRect inset = NSInsetRect(self.bounds, 6.0, 2.0);
-  NSBezierPath *highlight = [NSBezierPath bezierPathWithRoundedRect:inset xRadius:4.0 yRadius:4.0];
-  [style.selectionColor setFill];
-  [highlight fill];
-
-  NSRect barRect = NSMakeRect(2.0, 3.0, 2.0, self.bounds.size.height - 6.0);
-  [[style.accentColor colorWithAlphaComponent:0.85] setFill];
-  NSRectFill(barRect);
-}
-
-@end
-
 @implementation MainWindowController
 
-- (NSFont *)preferredSidebarIconFontWithSize:(CGFloat)size {
-  NSArray<NSString *> *candidates = @[
-    @"Hack Nerd Font",
-    @"JetBrainsMono Nerd Font",
-    @"Symbols Nerd Font",
-    @"MesloLGS NF"
-  ];
-  for (NSString *name in candidates) {
-    NSFont *font = [NSFont fontWithName:name size:size];
-    if (font) {
-      return font;
-    }
-  }
-  return [NSFont monospacedSystemFontOfSize:size weight:NSFontWeightRegular];
-}
-
 - (instancetype)init {
-  NSRect frame = NSMakeRect(0, 0, 720, 560);
+  NSRect frame = NSMakeRect(0, 0, 820, 620);
   BaristaPanelState *panelState = [BaristaPanelState sharedState];
   NSScreen *screen = [NSScreen mainScreen];
   if (screen) {
@@ -73,8 +29,8 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
     CGFloat margin = 80.0;
     CGFloat maxWidth = MAX(560.0, visible.size.width - margin);
     CGFloat maxHeight = MAX(420.0, visible.size.height - margin);
-    CGFloat width = MIN(760.0, maxWidth);
-    CGFloat height = MIN(600.0, maxHeight);
+    CGFloat width = MIN(840.0, maxWidth);
+    CGFloat height = MIN(660.0, maxHeight);
     frame = NSMakeRect(0, 0, width, height);
   }
   NSWindow *window = [[BaristaPanelWindow alloc] initWithContentRect:frame];
@@ -90,7 +46,7 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
       self.requestedInitialTabIdentifier = [panelState lastSelectedTabIdentifier];
     }
     if (!self.requestedInitialTabIdentifier.length) {
-      self.requestedInitialTabIdentifier = @"appearance";
+      self.requestedInitialTabIdentifier = @"home";
     }
     NSLog(@"[barista] created window=%@", window);
     NSLog(@"[barista] before setupTabView");
@@ -171,10 +127,6 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
   self.tabView.delegate = self;
   [self.tabView setTabViewType:NSNoTabsNoBorder];
   self.tabView.drawsBackground = NO;
-  self.tabView.wantsLayer = YES;
-  self.tabView.layer.backgroundColor = style.panelColor.CGColor;
-  self.tabView.layer.borderColor = style.dividerColor.CGColor;
-  self.tabView.layer.borderWidth = 1.0;
 
   // --- Register tab descriptors ---
   NSMutableArray<NSDictionary *> *tabItems = [NSMutableArray array];
@@ -233,7 +185,7 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
   [self.sidebarTable reloadData];
   NSInteger initialRow = [self indexOfTabIdentifier:self.requestedInitialTabIdentifier];
   if (initialRow == NSNotFound) {
-    initialRow = [self indexOfTabIdentifier:@"appearance"];
+    initialRow = [self indexOfTabIdentifier:@"home"];
   }
   if (self.sidebarItems.count > 0 && initialRow >= 0 && initialRow < (NSInteger)self.sidebarItems.count) {
     [self.sidebarTable selectRowIndexes:[NSIndexSet indexSetWithIndex:initialRow] byExtendingSelection:NO];
@@ -366,7 +318,7 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
 - (void)saveWindowFrame {
   if (self.window) {
     NSString *frameString = NSStringFromRect(self.window.frame);
-    [[NSUserDefaults standardUserDefaults] setObject:frameString forKey:@"BaristaControlPanelWindowFrame"];
+    [[NSUserDefaults standardUserDefaults] setObject:frameString forKey:@"BaristaWindowFrame"];
   }
 }
 
@@ -421,7 +373,7 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
 
   NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
   title.stringValue = @"Barista";
-  title.font = [NSFont systemFontOfSize:15 weight:NSFontWeightBold];
+  title.font = [style interfaceFontOfSize:17 weight:NSFontWeightSemibold];
   title.textColor = style.textColor;
   title.bordered = NO;
   title.editable = NO;
@@ -430,8 +382,8 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
 
   NSTextField *subtitle = [[NSTextField alloc] initWithFrame:NSZeroRect];
   subtitle.stringValue = [NSString stringWithFormat:@"%@ · %@", themeName, profileName];
-  subtitle.font = [NSFont systemFontOfSize:10 weight:NSFontWeightMedium];
-  subtitle.textColor = style.mutedTextColor;
+  subtitle.font = [style interfaceFontOfSize:10.5 weight:NSFontWeightMedium];
+  subtitle.textColor = style.accentColor;
   subtitle.bordered = NO;
   subtitle.editable = NO;
   subtitle.backgroundColor = [NSColor clearColor];
@@ -458,9 +410,12 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
   self.sidebarTable.delegate = self;
   self.sidebarTable.headerView = nil;
   self.sidebarTable.rowHeight = 30.0;
-  self.sidebarTable.backgroundColor = style.sidebarColor;
+  self.sidebarTable.backgroundColor = [NSColor clearColor];
   self.sidebarTable.focusRingType = NSFocusRingTypeNone;
-  self.sidebarTable.selectionHighlightStyle = NSTableViewSelectionHighlightStyleNone;
+  if (@available(macOS 11.0, *)) {
+    self.sidebarTable.style = NSTableViewStyleSourceList;
+  }
+  self.sidebarTable.selectionHighlightStyle = NSTableViewSelectionHighlightStyleRegular;
 
   NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"label"];
   column.resizingMask = NSTableColumnAutoresizingMask;
@@ -511,10 +466,6 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
   return allowed;
 }
 
-- (NSTableRowView *)tableView:(NSTableView *)tableView rowViewForRow:(NSInteger)row {
-  return [[BaristaSidebarRowView alloc] initWithFrame:NSZeroRect];
-}
-
 - (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
   NSDictionary *item = (row >= 0 && row < (NSInteger)self.sidebarItems.count) ? self.sidebarItems[row] : nil;
   if (!item) {
@@ -531,7 +482,7 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
       textField.editable = NO;
       textField.backgroundColor = [NSColor clearColor];
       textField.autoresizingMask = NSViewWidthSizable;
-      textField.font = [NSFont systemFontOfSize:9 weight:NSFontWeightBold];
+      textField.font = [style interfaceFontOfSize:9.5 weight:NSFontWeightSemibold];
       textField.textColor = style.mutedTextColor;
       textField.tag = 2001;
       [cell addSubview:textField];
@@ -560,11 +511,11 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
     textField = [cell.subviews firstObject];
   }
   NSString *label = item[@"label"] ?: @"";
-  NSString *icon = item[@"icon"] ?: @"";
-  textField.stringValue = icon.length ? [NSString stringWithFormat:@"%@  %@", icon, label] : label;
+  textField.stringValue = label;
   BOOL isSelected = (row == self.sidebarTable.selectedRow);
-  textField.font = [self preferredSidebarIconFontWithSize:(isSelected ? 12.0 : 11.5)];
-  textField.textColor = isSelected ? style.accentColor : style.textColor;
+  textField.font = [style interfaceFontOfSize:(isSelected ? 12.8 : 12.0)
+                                       weight:(isSelected ? NSFontWeightSemibold : NSFontWeightMedium)];
+  textField.textColor = isSelected ? [NSColor selectedControlTextColor] : style.textColor;
   return cell;
 }
 
@@ -637,7 +588,10 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
   [NSApp activateIgnoringOtherApps:YES];
   [NSApp unhide:nil];
 
-  NSString *savedFrame = [[NSUserDefaults standardUserDefaults] stringForKey:@"BaristaControlPanelWindowFrame"];
+  NSString *savedFrame = [[NSUserDefaults standardUserDefaults] stringForKey:@"BaristaWindowFrame"];
+  if (!savedFrame.length) {
+    savedFrame = [[NSUserDefaults standardUserDefaults] stringForKey:@"BaristaControlPanelWindowFrame"];
+  }
   if (savedFrame.length) {
     NSRect frame = NSRectFromString(savedFrame);
     if (frame.size.width > 0 && frame.size.height > 0) {
@@ -659,7 +613,7 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
 - (void)configureWindowIfNeeded {
   if (self.windowConfigured || !self.window) { return; }
 
-  self.window.title = @"Barista Control Panel";
+  self.window.title = @"Barista";
   self.window.delegate = self;
   [[BaristaStyle sharedStyle] applyWindowStyle:self.window];
   NSSize currentSize = self.window.frame.size;

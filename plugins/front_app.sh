@@ -14,7 +14,7 @@ APP_ICON_SCRIPT="${BARISTA_APP_ICON_SCRIPT:-$SCRIPTS_DIR/app_icon.sh}"
 OSASCRIPT_BIN="${BARISTA_OSASCRIPT_BIN:-$(command -v osascript 2>/dev/null || true)}"
 
 # Barista's own binaries to filter out
-BARISTA_APPS="config_menu|config_menu_v2|BaristaControlPanel|Barista Control Panel|help_center|icon_browser|sketchybar"
+BARISTA_APPS="config_menu|config_menu_v2|Barista|BaristaControlPanel|Barista Control Panel|help_center|icon_browser|sketchybar"
 FRONT_APP_IDLE_BG="0x18313a46"
 FRONT_APP_HOVER_BG="0x28505a6a"
 FRONT_APP_ICON_COLOR="0xFFcad3f5"

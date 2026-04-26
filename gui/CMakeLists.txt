@@ -7,7 +7,7 @@ if(APPLE)
   
   # Compiler flags for Objective-C
   set(OBJC_FLAGS "-fobjc-arc")
-  set(BARISTA_PANEL_APP_NAME "BaristaControlPanel")
+  set(BARISTA_PANEL_APP_NAME "Barista")
   set(BARISTA_PANEL_BUNDLE_DIR "${CMAKE_BINARY_DIR}/bin/${BARISTA_PANEL_APP_NAME}.app")
   set(BARISTA_PANEL_BUNDLE_EXEC "${BARISTA_PANEL_BUNDLE_DIR}/Contents/MacOS/${BARISTA_PANEL_APP_NAME}")
   set(BARISTA_PANEL_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/${BARISTA_PANEL_APP_NAME}-Info.plist")
@@ -102,7 +102,7 @@ if(APPLE)
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${BARISTA_PANEL_INFO_PLIST} ${BARISTA_PANEL_BUNDLE_DIR}/Contents/Info.plist
     DEPENDS config_menu ${BARISTA_PANEL_INFO_PLIST}
     BYPRODUCTS ${BARISTA_PANEL_BUNDLE_DIR}/Contents/Info.plist
-    COMMENT "Creating Barista Control Panel app bundle"
+    COMMENT "Creating Barista app bundle"
     VERBATIM
   )
 

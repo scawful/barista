@@ -46,7 +46,7 @@ Examples:
 
 The script will:
   1. Configure CMake (if needed)
-  2. Build config_menu, BaristaControlPanel.app, and related GUI tools
+  2. Build config_menu, Barista.app, and related GUI tools
   3. Show build status
 
 Built artifacts will be in: build/bin/
@@ -100,14 +100,20 @@ build_gui() {
         echo ""
         print_info "Built components:"
         ls -lh build/bin/config_menu build/bin/icon_browser build/bin/help_center 2>/dev/null | awk '{print "  - " $9 " (" $5 ")"}'
-        if [[ -d build/bin/BaristaControlPanel.app ]]; then
-          print_info "  - build/bin/BaristaControlPanel.app"
+        if [[ -d build/bin/Barista.app ]]; then
+          print_info "  - build/bin/Barista.app"
+        fi
+        if [[ "${BARISTA_INSTALL_CONTROL_PANEL_APP:-1}" == "1" && -x scripts/install_control_panel_app.sh ]]; then
+          installed_app="$(scripts/install_control_panel_app.sh)"
+          print_info "Installed control panel app: $installed_app"
+        else
+          print_warn "Skipping ~/Applications install (set BARISTA_INSTALL_CONTROL_PANEL_APP=1 to copy)."
         fi
         if [[ "${BARISTA_SYNC_GUI_BIN:-0}" == "1" ]]; then
           mkdir -p gui/bin
-          rm -rf gui/BaristaControlPanel.app
-          if [[ -d build/bin/BaristaControlPanel.app ]]; then
-            cp -R build/bin/BaristaControlPanel.app gui/
+          rm -rf gui/Barista.app gui/BaristaControlPanel.app
+          if [[ -d build/bin/Barista.app ]]; then
+            cp -R build/bin/Barista.app gui/
           fi
           cp -f build/bin/config_menu build/bin/icon_browser build/bin/help_center gui/bin/
           print_info "Synced GUI artifacts to gui/bin/ and gui/"

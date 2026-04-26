@@ -98,7 +98,7 @@ clean_build() {
 # Function to build GUI components
 build_gui() {
     print_section "Building GUI Components"
-    print_info "Building config_menu, BaristaControlPanel.app, icon_browser, help_center..."
+    print_info "Building config_menu, Barista.app, icon_browser, help_center..."
     
     if cmake --build build --target config_menu barista_control_panel_app icon_browser help_center; then
         print_info "✓ GUI build successful!"

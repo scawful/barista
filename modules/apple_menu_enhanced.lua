@@ -153,6 +153,10 @@ local function resolve_afs_studio_root(ctx, afs_root)
   return locator.resolve_afs_studio_root(ctx, afs_root)
 end
 
+local function resolve_afs_studio_launcher(ctx)
+  return locator.resolve_afs_studio_launcher(ctx)
+end
+
 local function resolve_afs_browser_app(ctx)
   return locator.resolve_afs_browser_app(ctx)
 end
@@ -165,24 +169,8 @@ local function resolve_stem_sampler_app(ctx)
   return locator.resolve_stem_sampler_app(ctx)
 end
 
-local function resolve_yaze_app(ctx)
-  return locator.resolve_yaze_app(ctx)
-end
-
-local function resolve_yaze_launcher()
-  return locator.resolve_yaze_launcher()
-end
-
-local function resolve_mesen_run(ctx)
-  return locator.resolve_mesen_run(ctx)
-end
-
 local function resolve_sys_manual_binary(ctx)
   return locator.resolve_sys_manual_binary(ctx)
-end
-
-local function resolve_oracle_agent_manager(ctx)
-  return locator.resolve_oracle_agent_manager(ctx)
 end
 
 local function afs_cli(afs_root, args)
@@ -353,18 +341,16 @@ local function build_prepared(ctx)
   end
 
   local afs_root, afs_ok = resolve_afs_root(ctx)
+  local afs_suite_root, afs_suite_ok = resolve_path(ctx, {
+    code_dir .. "/lab/afs_suite",
+    code_dir .. "/afs_suite",
+  }, true)
   local studio_root, studio_ok = resolve_afs_studio_root(ctx, afs_root)
-  local studio_launcher, studio_launcher_ok = locator.resolve_afs_studio_launcher(ctx)
+  local afs_studio_launcher, afs_studio_launcher_ok = resolve_afs_studio_launcher(ctx)
+  local afs_studio_bin, afs_studio_bin_ok = locator.resolve_afs_studio_binary(studio_root)
   local afs_browser_app, afs_browser_ok = resolve_afs_browser_app(ctx)
   local stemforge_app, stemforge_ok = resolve_stemforge_app(ctx)
   local stem_sampler_app, stem_sampler_ok = resolve_stem_sampler_app(ctx)
-  local yaze_app, yaze_ok = resolve_yaze_app(ctx)
-  local yaze_launcher, yaze_launcher_ok = resolve_yaze_launcher()
-  local yaze_available = yaze_ok or yaze_launcher_ok
-  local yaze_enabled = (ctx.integrations and ctx.integrations.yaze ~= nil)
-  if ctx.integration_flags and ctx.integration_flags.yaze == false then
-    yaze_enabled = false
-  end
   local help_center_bin, help_center_ok = resolve_executable_path({
     ctx.helpers and ctx.helpers.help_center or nil,
     config_dir .. "/gui/bin/help_center",
@@ -424,63 +410,57 @@ local function build_prepared(ctx)
     sys_manual_available = true
   end
   local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
-
-  local mesen_run_bin, mesen_run_ok = resolve_mesen_run(ctx)
-  local mesen_run_action = ""
-  if mesen_run_ok and mesen_run_bin then
-    mesen_run_action = shell_quote(mesen_run_bin)
-  end
-
-  local oam_bin, oam_ok = resolve_oracle_agent_manager(ctx)
-  local oam_action = ""
   local reload_action = ctx.call_script and ctx.call_script(config_dir .. "/plugins/reload_sketchybar.sh")
   if not reload_action or reload_action == "" then
     reload_action = string.format("%q --reload", sketchybar_bin)
   end
-  if ctx.call_script and config_dir and path_exists(config_dir .. "/bin/open_oracle_agent_manager.sh", false) then
-    oam_action = ctx.call_script(config_dir .. "/bin/open_oracle_agent_manager.sh")
-    oam_ok = true
-  elseif oam_ok and oam_bin then
-    oam_action = shell_quote(oam_bin)
-  end
-
-  local yaze_dir = select(1, locator.resolve_yaze_dir(ctx)) or (code_dir .. "/yaze")
-  local afs_action = afs_browser_app and string.format("open %s", shell_quote(afs_browser_app)) or ""
-  local studio_bin, studio_bin_ok = locator.resolve_afs_studio_binary(studio_root)
-  local studio_action
-  local studio_cmd
-  if studio_launcher_ok and studio_launcher then
-    studio_action = shell_quote(studio_launcher)
-  elseif studio_bin_ok and studio_bin then
-    if studio_bin:match("%.app/?$") then
-      studio_action = string.format("open %s", shell_quote(studio_bin))
+  local afs_action = ""
+  local afs_available = false
+  local afs_build_action = ""
+  local afs_missing_action = ""
+  local afs_missing_message = "No local AFS desktop surface was found. Set AFS_BROWSER_APP or build afs-studio."
+  local afs_missing_label = "Build AFS Browser"
+  if afs_browser_app and afs_browser_ok then
+    afs_action = string.format("open %s", shell_quote(afs_browser_app))
+    afs_available = true
+  elseif afs_studio_launcher and afs_studio_launcher_ok then
+    afs_action = shell_quote(afs_studio_launcher)
+    afs_available = true
+  elseif afs_studio_bin and afs_studio_bin_ok then
+    if afs_studio_bin:match("%.app/?$") then
+      afs_action = string.format("open %s", shell_quote(afs_studio_bin))
     else
-      studio_action = shell_quote(studio_bin)
+      afs_action = shell_quote(afs_studio_bin)
+    end
+    afs_available = true
+  elseif afs_suite_ok and afs_suite_root then
+    local build_dir = path_exists(afs_suite_root .. "/build_ai", true) and "build_ai" or "build"
+    afs_build_action = open_terminal(string.format(
+      "cd %s && cmake --build %s --target afs-browser -j$(sysctl -n hw.ncpu)",
+      shell_quote(afs_suite_root),
+      build_dir
+    ))
+  elseif studio_root then
+    afs_missing_label = "Build AFS"
+    if locator.afs_studio_layout(studio_root) == "suite" then
+      local build_dir = locator.afs_build_dir(studio_root)
+      afs_build_action = open_terminal(string.format(
+        "cd %s && cmake --build %s --target afs-studio -j$(sysctl -n hw.ncpu) && ./%s/apps/studio/afs-studio",
+        shell_quote(studio_root),
+        build_dir,
+        build_dir
+      ))
+    else
+      afs_build_action = open_terminal(string.format(
+        "cd %s && cmake --build build --target afs_studio -j$(sysctl -n hw.ncpu) && ./build/afs_studio",
+        shell_quote(studio_root)
+      ))
     end
   else
-    if afs_root then
-      studio_cmd = afs_cli(afs_root, "studio run --build")
-    elseif studio_root then
-      local build_dir = locator.afs_build_dir(studio_root)
-      if locator.afs_studio_layout(studio_root) == "suite" then
-        studio_cmd = string.format(
-          "cd %s && cmake --build %s --target afs-studio && ./%s/apps/studio/afs-studio",
-          shell_quote(studio_root),
-          build_dir,
-          build_dir
-        )
-      else
-        studio_cmd = string.format(
-          "cd %s && cmake --build build --target afs_studio && ./build/afs_studio",
-          shell_quote(studio_root)
-        )
-      end
-    end
-    studio_action = terminal_action("afs_studio", studio_cmd)
+    afs_missing_action = ":"
+    afs_missing_label = "Build AFS"
+    afs_missing_message = "No local AFS desktop surface was found. Barista looks for AFS Browser.app first, then afs-studio."
   end
-  local studio_available = studio_ok and (studio_launcher_ok or studio_bin_ok or studio_cmd ~= nil)
-  local studio_blocked = studio_ok and not studio_launcher_ok and studio_cmd ~= nil and studio_action == nil
-
   local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(studio_root)
   local labeler_csv = os.getenv("AFS_LABELER_CSV")
   local labeler_cmd
@@ -535,9 +515,15 @@ local function build_prepared(ctx)
       icon = "󰈙",
       icon_color = tc("SAPPHIRE"),
       section = "apps",
-      action = afs_action or "",
+      action = afs_action,
       shortcut_action = "launch_afs_browser",
-      available = afs_browser_ok,
+      available = afs_available,
+      build_action = afs_build_action,
+      build_label = afs_missing_label,
+      missing_label = afs_missing_label,
+      missing_message = afs_missing_message,
+      missing_title = "Barista · AFS Browser",
+      missing_action = afs_missing_action,
       default_enabled = true,
     },
     {
@@ -559,18 +545,6 @@ local function build_prepared(ctx)
       action = afs_scratchpad_action,
       available = afs_context_available,
       default_enabled = afs_context_available,
-    },
-    {
-      id = "afs_studio",
-      label = "AFS Studio",
-      icon = "󰆍",
-      icon_color = tc("LAVENDER"),
-      section = "apps",
-      action = studio_action or "",
-      shortcut_action = "launch_afs_studio",
-      available = studio_available,
-      blocked = studio_blocked,
-      default_enabled = true,
     },
     {
       id = "afs_labeler",
@@ -605,52 +579,6 @@ local function build_prepared(ctx)
       shortcut_action = "launch_stem_sampler",
       available = stem_sampler_ok,
       default_enabled = false,
-    },
-    {
-      id = "yaze",
-      label = "Yaze",
-      icon = "󰯙",
-      icon_color = tc("YELLOW"),
-      section = "oracle",
-      action = yaze_launcher_ok and shell_quote(yaze_launcher) or (yaze_app and string.format("open %s", shell_quote(yaze_app)) or ""),
-      -- Default to enabled if we found it
-      available = yaze_available,
-      default_enabled = true,
-      popup = "yaze.tools",
-      items = yaze_enabled and {
-        {
-          name = "yaze.repo",
-          label = "Open Repo",
-          icon = "󰋜",
-          action = ctx.open_path(yaze_dir),
-        },
-        {
-          name = "yaze.docs",
-          label = "Workflow Docs",
-          icon = "󰊕",
-          action = ctx.open_path(ctx.paths and ctx.paths.rom_doc or (code_dir .. "/docs/workflow/rom-hacking.org")),
-        }
-      } or nil
-    },
-    {
-      id = "mesen_oos",
-      label = "Mesen2 OoS",
-      icon = "󰁆",
-      icon_color = tc("RED"),
-      section = "oracle",
-      action = mesen_run_action,
-      available = mesen_run_ok,
-      default_enabled = true,
-    },
-    {
-      id = "oracle_agent_manager",
-      label = "Oracle Hub",
-      icon = "󰒋",
-      icon_color = tc("MAGENTA", "MAUVE"),
-      section = "oracle",
-      action = oam_action,
-      available = oam_ok,
-      default_enabled = true,
     },
     {
       id = "help_center",
@@ -912,11 +840,11 @@ function apple_menu.setup(ctx)
       or (ctx.appearance and ctx.appearance.menu_label_color)
       or theme.WHITE
     local action = entry.action
-    if entry.missing then
+    if entry.missing and (not action or action == "") then
       local launcher = config_dir .. "/bin/open_control_panel.sh"
       local fallback = ctx.call_script and ctx.call_script(launcher, "--panel") or ""
       action = fallback
-    elseif entry.blocked then
+    elseif entry.blocked and (not action or action == "") then
       local launcher = config_dir .. "/bin/open_control_panel.sh"
       local fallback = ctx.call_script and ctx.call_script(launcher, "--panel") or ""
       action = fallback
@@ -924,6 +852,12 @@ function apple_menu.setup(ctx)
     local click_script = wrap_action(menu_action, parent_popup or popup_name, entry.name, action)
     local popup_config = nil
     local hover_enabled = entry.hover == true
+      or (entry.hover ~= false and (
+        (entry.action and entry.action ~= "")
+        or entry.missing == true
+        or entry.blocked == true
+        or (entry.submenu and entry.items and #entry.items > 0)
+      ))
     if entry.submenu and entry.items and #entry.items > 0 then
       remember_popup(entry.name)
       remember_submenu(entry.name)

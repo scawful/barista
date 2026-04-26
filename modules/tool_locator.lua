@@ -240,6 +240,7 @@ end
 
 function locator.resolve_afs_browser_app(opts)
   local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
   return locator.resolve_path({
     option_value(opts, "afs_browser_app"),
     os.getenv("AFS_BROWSER_APP"),
@@ -255,10 +256,10 @@ function locator.resolve_afs_browser_app(opts)
     code_dir .. "/lab/afs/apps/browser/build_ai/afs-browser.app",
     code_dir .. "/lab/afs/apps/browser/build/Debug/afs-browser.app",
     code_dir .. "/lab/afs/apps/browser/build/Release/afs-browser.app",
-    HOME .. "/Applications/AFS Browser.app",
-    HOME .. "/Applications/afs-browser.app",
-    "/Applications/AFS Browser.app",
-    "/Applications/afs-browser.app",
+    use_global_apps and (HOME .. "/Applications/AFS Browser.app") or nil,
+    use_global_apps and (HOME .. "/Applications/afs-browser.app") or nil,
+    use_global_apps and "/Applications/AFS Browser.app" or nil,
+    use_global_apps and "/Applications/afs-browser.app" or nil,
   }, true)
 end
 

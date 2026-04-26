@@ -4,17 +4,17 @@
 
 _d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
 
-HOVER_BG="0x60cba6f7"  # Mauve with transparency
-IDLE_BG="0x00000000"   # Transparent
-HOVER_ICON_COLOR="0xFFcba6f7"  # Bright mauve
-IDLE_ICON_COLOR="0x80a6adc8"   # Dim subtext
+HOVER_BG="0x40D8C4FF"
+IDLE_BG="0x102a313c"
+HOVER_ICON_COLOR="0xFFF5EEFF"
+IDLE_ICON_COLOR="0xB0bac2de"
 ITEM_NAME="${NAME:-space_creator}"
 
 case "${SENDER:-}" in
   "mouse.entered")
-    highlight_with_timeout "$ITEM_NAME" "background.drawing=on background.color=$HOVER_BG icon.color=$HOVER_ICON_COLOR" "background.drawing=off background.color=$IDLE_BG icon.color=$IDLE_ICON_COLOR"
+    highlight_with_timeout "$ITEM_NAME" "background.drawing=on background.color=$HOVER_BG icon.color=$HOVER_ICON_COLOR" "background.drawing=on background.color=$IDLE_BG icon.color=$IDLE_ICON_COLOR"
     ;;
   "mouse.exited")
-    clear_highlight "$ITEM_NAME" "background.drawing=off background.color=$IDLE_BG icon.color=$IDLE_ICON_COLOR"
+    clear_highlight "$ITEM_NAME" "background.drawing=on background.color=$IDLE_BG icon.color=$IDLE_ICON_COLOR"
     ;;
 esac

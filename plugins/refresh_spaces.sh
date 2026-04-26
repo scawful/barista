@@ -73,6 +73,34 @@ update_external_bar_if_needed() {
   fi
 }
 
+resolve_external_bar_height() {
+  local fallback_height="${1:-}"
+  local live_height=""
+
+  if [ -n "$SKETCHYBAR_BIN" ] && [ -n "$JQ_BIN" ]; then
+    live_height="$("$SKETCHYBAR_BIN" --query bar 2>/dev/null | "$JQ_BIN" -r '.height // empty' 2>/dev/null || true)"
+    if [ -n "$live_height" ] && [ "$live_height" -eq "$live_height" ] 2>/dev/null; then
+      printf '%s' "$live_height"
+      return 0
+    fi
+  fi
+
+  if [ -n "$fallback_height" ] && [ "$fallback_height" != "null" ] && [ "$fallback_height" -eq "$fallback_height" ] 2>/dev/null; then
+    printf '%s' "$fallback_height"
+    return 0
+  fi
+
+  if [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ]; then
+    fallback_height="$("$JQ_BIN" -r '.appearance.bar_height // empty' "$STATE_FILE" 2>/dev/null || true)"
+    if [ -n "$fallback_height" ] && [ "$fallback_height" != "null" ] && [ "$fallback_height" -eq "$fallback_height" ] 2>/dev/null; then
+      printf '%s' "$fallback_height"
+      return 0
+    fi
+  fi
+
+  printf '28'
+}
+
 now_ms() {
   if command -v perl >/dev/null 2>&1; then
     perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)'
@@ -277,6 +305,50 @@ space_items_present() {
   [ "$found_space" -eq 1 ]
 }
 
+resolve_space_item_height() {
+  local bar_height=""
+
+  if [ -n "$SKETCHYBAR_BIN" ] && [ -n "$JQ_BIN" ]; then
+    bar_height="$("$SKETCHYBAR_BIN" --query bar 2>/dev/null | "$JQ_BIN" -r '.height // empty' 2>/dev/null || true)"
+  fi
+  if [ -z "$bar_height" ] && [ -n "$JQ_BIN" ] && [ -f "$CONFIG_DIR/state.json" ]; then
+    bar_height="$("$JQ_BIN" -r '.appearance.bar_height // empty' "$CONFIG_DIR/state.json" 2>/dev/null || true)"
+  fi
+  if [ -z "$bar_height" ] || ! [ "$bar_height" -eq "$bar_height" ] 2>/dev/null; then
+    bar_height=28
+  fi
+
+  local space_height=$((bar_height - 8))
+  if [ "$space_height" -lt 20 ]; then
+    space_height=20
+  fi
+  printf '%s' "$space_height"
+}
+
+space_items_match_expected_height() {
+  local expected_height=""
+  local space_index=""
+  local item_height=""
+
+  [ -n "$CURRENT_SPACE_INDEXES_CSV" ] || return 1
+  [ -n "$SKETCHYBAR_BIN" ] || return 1
+  [ -n "$JQ_BIN" ] || return 1
+
+  expected_height="$(resolve_space_item_height)"
+  [ -n "$expected_height" ] || return 1
+
+  IFS=',' read -r -a current_space_indexes <<< "$CURRENT_SPACE_INDEXES_CSV"
+  for space_index in "${current_space_indexes[@]}"; do
+    [ -n "$space_index" ] || continue
+    item_height="$("$SKETCHYBAR_BIN" --query "space.$space_index" 2>/dev/null | "$JQ_BIN" -r '.geometry.background.height // empty' 2>/dev/null || true)"
+    [ -n "$item_height" ] || return 1
+    [ "$item_height" = "$expected_height" ] || return 1
+    return 0
+  done
+
+  return 1
+}
+
 # Simple lock to avoid overlapping refreshes from rapid display events
 # Auto-recover stale locks older than 10 seconds (e.g. from killed processes)
 if [ -d "$LOCK_DIR" ]; then
@@ -326,7 +398,7 @@ if [ -n "$current_display_state$current_space_state" ]; then
   combined_state="${current_display_state}|${current_space_state}"
   cached_state="$(cat "$CACHE_FILE" 2>/dev/null || true)"
   if [ "$combined_state" = "$cached_state" ]; then
-    if space_items_present; then
+    if space_items_present && space_items_match_expected_height; then
       spaces_count="${CURRENT_SPACES_COUNT:-0}"
       cached_active_state="$(cat "$ACTIVE_CACHE_FILE" 2>/dev/null || true)"
       if [ -n "$current_active_state" ] && [ "$current_active_state" != "$cached_active_state" ]; then
@@ -375,11 +447,5 @@ fi
 spaces_count="${CURRENT_SPACES_COUNT:-0}"
 record_perf "$spaces_count" "$visual_refresh_duration_ms"
 
-bar_height="${1:-}"
-if [ -z "$bar_height" ] && [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ]; then
-  bar_height=$("$JQ_BIN" -r '.appearance.bar_height // empty' "$STATE_FILE" 2>/dev/null || true)
-fi
-if [ -z "$bar_height" ] || [ "$bar_height" = "null" ]; then
-  bar_height=28
-fi
+bar_height="$(resolve_external_bar_height "${1:-}")"
 update_external_bar_if_needed "$bar_height"

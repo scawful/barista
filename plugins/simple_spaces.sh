@@ -247,6 +247,32 @@ snapshot_item_exists() {
   esac
 }
 
+item_background_height() {
+  local item="${1:-}"
+  local query_json=""
+
+  [ -n "$item" ] || return 1
+  [ -n "$SKETCHYBAR_BIN" ] || return 1
+  [ -n "$JQ_BIN" ] || return 1
+
+  query_json="$("$SKETCHYBAR_BIN" --query "$item" 2>/dev/null || true)"
+  [ -n "$query_json" ] || return 1
+  printf '%s' "$query_json" | "$JQ_BIN" -r '.geometry.background.height // empty' 2>/dev/null | head -n 1
+}
+
+item_height_matches_live() {
+  local item="${1:-}"
+  local expected_height="${2:-}"
+  local actual_height=""
+
+  [ -n "$item" ] || return 1
+  [ -n "$expected_height" ] || return 1
+
+  actual_height="$(item_background_height "$item")"
+  [ -n "$actual_height" ] || return 1
+  [ "$actual_height" = "$expected_height" ]
+}
+
 snapshot_space_items() {
   [ -n "$BAR_ITEMS_SNAPSHOT" ] || return 0
   local item
@@ -697,14 +723,14 @@ sync_creator_items() {
       display="$creator_target"
       ignore_association="$creator_ignore_association"
       icon="󰐕"
-      icon.color="0x80a6adc8"
-      icon.padding_left=8
-      icon.padding_right=8
+      icon.color="0xB0bac2de"
+      icon.padding_left=7
+      icon.padding_right=7
       label=""
       label.drawing=off
-      background.drawing=off
-      background.color="0x00000000"
-      background.corner_radius=8
+      background.drawing=on
+      background.color="0x102a313c"
+      background.corner_radius=10
       background.height="$SPACE_ITEM_HEIGHT"
       script="$CONFIG_DIR/plugins/space_creator.sh"
       click_script="$creator_cmd")
@@ -985,6 +1011,14 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ] && [ "$FORCE_FULL_REBUILD" -eq 0 ]; then
 
       if [ "$cached_space_props" != "$SPACE_PROPS_SIG" ]; then
         space_props_changed=1
+      else
+        for entry in "${SPACE_LINES[@]-}"; do
+          space_index="${entry##* }"
+          if ! item_height_matches_live "space.$space_index" "$SPACE_ITEM_HEIGHT"; then
+            space_props_changed=1
+          fi
+          break
+        done
       fi
 
       if [ "$cached_creator_props" != "$CREATOR_PROPS_SIG" ]; then
@@ -1026,6 +1060,18 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ] && [ "$FORCE_FULL_REBUILD" -eq 0 ]; then
       fi
 
       if [ "$creator_items_present" -eq 1 ]; then
+        if [ "$creator_props_changed" -eq 0 ]; then
+          for creator_target in "${CREATOR_TARGETS[@]-}"; do
+            creator_item="space_creator"
+            if [ "$CREATOR_MODE" = "per_display" ] && [ "$creator_target" != "active" ]; then
+              creator_item="space_creator.$creator_target"
+            fi
+            if ! item_height_matches_live "$creator_item" "$SPACE_ITEM_HEIGHT"; then
+              creator_props_changed=1
+            fi
+            break
+          done
+        fi
         if [ "$creator_props_changed" -eq 1 ]; then
           for creator_target in "${CREATOR_TARGETS[@]-}"; do
             creator_item="space_creator"
@@ -1103,14 +1149,14 @@ for creator_target in "${CREATOR_TARGETS[@]-}"; do
                   display="$creator_target" \
                   ignore_association="$creator_ignore_association" \
                   icon="󰐕" \
-                  icon.color="0x80a6adc8" \
-                  icon.padding_left=8 \
-                  icon.padding_right=8 \
+                  icon.color="0xB0bac2de" \
+                  icon.padding_left=7 \
+                  icon.padding_right=7 \
                   label="" \
                   label.drawing=off \
-                  background.drawing=off \
-                  background.color="0x00000000" \
-                  background.corner_radius=8 \
+                  background.drawing=on \
+                  background.color="0x102a313c" \
+                  background.corner_radius=10 \
                   background.height="$SPACE_ITEM_HEIGHT" \
                   script="$CONFIG_DIR/plugins/space_creator.sh" \
                   click_script="$creator_cmd")

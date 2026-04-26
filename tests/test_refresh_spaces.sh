@@ -62,10 +62,15 @@ if [ "${1:-}" = "--query" ] && [ "${2:-}" = "bar" ]; then
   printf 'query bar\n' >> "$CALLS_LOG"
   MODE="$(cat "$MODE_FILE" 2>/dev/null || printf 'topology')"
   if [ "$MODE" = "empty_bar" ]; then
-    printf '{"items":["front_app","front_app_divider"]}\n'
+    printf '{"height":38,"items":["front_app","front_app_divider"]}\n'
   else
-    printf '{"items":["space.1","space.2"]}\n'
+    printf '{"height":38,"items":["space.1","space.2"]}\n'
   fi
+  exit 0
+fi
+if [ "${1:-}" = "--query" ] && [[ "${2:-}" == space.* ]]; then
+  printf '%s\n' "$*" >> "$CALLS_LOG"
+  printf '{"geometry":{"background":{"height":30}}}\n'
   exit 0
 fi
 if [ "${1:-}" = "--trigger" ] && [ "${2:-}" = "space_active_refresh" ]; then
@@ -159,6 +164,7 @@ if find "$CONFIG_DIR" -maxdepth 1 -name '.space_topology_metrics.*' | grep -q .;
   exit 1
 fi
 [ "$(wc -l < "$EXTERNAL_BAR_LOG" | tr -d ' ')" = "1" ] || { echo "FAIL: first topology refresh should apply external bar height once" >&2; exit 1; }
+[ "$(tail -n 1 "$EXTERNAL_BAR_LOG")" = "38" ] || { echo "FAIL: external bar height should follow live SketchyBar height" >&2; exit 1; }
 [ "$(wc -l < "$VISUAL_ENV_LOG" | tr -d ' ')" = "1" ] || { echo "FAIL: topology refresh should invoke space_visuals exactly once" >&2; exit 1; }
 [ "$(wc -l < "$TOPOLOGY_ENV_LOG" | tr -d ' ')" = "1" ] || { echo "FAIL: topology refresh should invoke simple_spaces exactly once with the shared spaces payload" >&2; exit 1; }
 grep -Fq '"index":1' "$TOPOLOGY_ENV_LOG" || { echo "FAIL: refresh_spaces should pass cached spaces data into simple_spaces" >&2; exit 1; }

@@ -123,6 +123,7 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
     - `space_topology_refresh` now records pure `simple_spaces.sh` topology time from the child metrics file instead of the entire `refresh_spaces.sh` runtime; the remaining orchestration is tracked separately as `space_refresh_overhead`
     - topology metrics temp files are now created lazily and live in `TMPDIR` instead of cluttering the Barista config/repo directory
     - `refresh_spaces.sh` now caches the last applied external-bar height and skips re-running `yabai -m config external_bar ...` on unchanged active-only refreshes
+    - `refresh_spaces.sh` now resolves that external-bar height from the live SketchyBar bar before falling back to persisted `state.json`, so display-profile height normalization cannot leave yabai reserving a stale baseline
     - `refresh_spaces.sh` now derives display state, space topology state, active-space state, space count, and desired space indexes from one jq pass over the shared `yabai query --spaces` payload instead of multiple independent jq calls
     - active-only `space_items_present` checks now reuse one cached bar snapshot lookup instead of piping the bar item list through `grep` for each desired space index
     - `refresh_spaces.sh` now passes the shared spaces payload into `simple_spaces.sh`, and active-only refreshes reuse the persisted `cache/space_visuals/space_items` lookup instead of querying the full bar again when topology is unchanged

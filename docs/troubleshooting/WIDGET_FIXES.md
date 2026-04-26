@@ -195,6 +195,9 @@ sketchybar --reload
 ### 13. Shortcut Doctor
 **Current path**: `scripts/yabai_control.sh doctor`
 - The doctor reports the active skhd config path, the generated Barista shortcuts path, loaded skhd files, generated-shortcut include health, duplicate bindings, recent skhd log warnings, and a minimal yabai space-focus check.
+- The doctor also prints a compact shortcut summary: active/disabled binding count, duplicate count, raw yabai command count, and missing command target count.
+- Use `scripts/yabai_control.sh shortcuts` for the full loaded skhd inventory, grouped by source file. Use `--json` when another tool needs the same data.
+- Use `scripts/yabai_control.sh rules-audit` to compare active yabai rules and live windows against Barista's unmanaged utility policy: `manage=off sub-layer=below`, with topmost treated as an explicit/manual state. Use `--json` for a machine-readable finding list.
 - `doctor --fix` keeps the existing repair behavior for missing generated shortcut includes and skhd restart/reload paths.
 
 ### 14. Control Panel Launch

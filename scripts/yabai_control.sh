@@ -16,11 +16,16 @@ SPACE_QUERY_TIMEOUT_SEC="${SPACE_QUERY_TIMEOUT_SEC:-1}"
 SPACE_FOCUS_LOCK_STALE_SEC="${SPACE_FOCUS_LOCK_STALE_SEC:-2}"
 SPACE_FOCUS_LOCK_DIR="/tmp/yabai_control_space_focus_${UID}.lock"
 SPACE_FOCUS_OSASCRIPT_FALLBACK="${SPACE_FOCUS_OSASCRIPT_FALLBACK:-0}"
+REQUESTED_COMMAND="${1:-}"
 
-if [[ -z "$YABAI_BIN" ]]; then
+if [[ -z "$YABAI_BIN" && "$REQUESTED_COMMAND" != "shortcuts" ]]; then
   echo "yabai not found in PATH." >&2
   exit 1
 fi
+
+python3_bin() {
+  command -v python3 2>/dev/null || command -v /usr/bin/python3 2>/dev/null || true
+}
 
 yabai_service_labels() {
   local labels=()
@@ -846,7 +851,7 @@ skhd_check_load_line() {
 expand_user_path() {
   local value="${1:-}"
   case "$value" in
-    "~/"*) printf '%s\n' "$HOME/${value#~/}" ;;
+    "~/"*) printf '%s\n' "$HOME/${value#\~/}" ;;
     *) printf '%s\n' "$value" ;;
   esac
 }
@@ -860,6 +865,397 @@ skhd_loaded_files() {
       expand_user_path "${BASH_REMATCH[1]}"
     fi
   done < "$config"
+}
+
+skhd_shortcut_inventory_tsv() {
+  local config="$1"
+  local files=()
+  local file
+  while IFS= read -r file; do
+    [[ -n "$file" ]] && files+=("$file")
+  done < <(skhd_loaded_files "$config")
+  ((${#files[@]} > 0)) || return 0
+
+  awk '
+    function trim(value) {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      return value
+    }
+    function strip_inline_comment(value) {
+      sub(/[[:space:]]+#.*/, "", value)
+      return trim(value)
+    }
+    function classify(file, command) {
+      if (file ~ /keychron/) return "keychron"
+      if (command ~ /yabai_control_wrapper\.sh/) return "barista-wrapper"
+      if (command ~ /\/yabai_control\.sh/) return "barista-yabai"
+      if (command ~ /reload_sketchybar\.sh/) return "reload"
+      if (command ~ /(^|[[:space:]])yabai[[:space:]]+-m/) return "raw-yabai"
+      if (command ~ /(^|[[:space:]])open[[:space:]]+/) return "app-launch"
+      if (command ~ /(^|[[:space:]])sketchybar([[:space:]]|$)/) return "sketchybar"
+      return "command"
+    }
+    function combo_looks_like_binding(combo) {
+      combo = trim(combo)
+      return combo ~ /(^|[[:space:]])(-|\+|<)[[:space:]]/ \
+        || combo ~ /^(f[0-9]+|leader|hyper|ctrl|alt|cmd|shift)([[:space:]]|$)/
+    }
+    function emit(status, line_no, file, combo, command, desc) {
+      command = strip_inline_comment(command)
+      desc = trim(desc)
+      if (desc == "") desc = "-"
+      printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", status, file, line_no, trim(combo), desc, command, classify(file, command)
+    }
+    function parse_binding(raw, status, line_no, file, desc, line, combo, command) {
+      line = raw
+      if (line ~ /^[[:space:]]*::/) return 0
+      if (line !~ /[;:]/) return 0
+      combo = line
+      sub(/[;:].*$/, "", combo)
+      command = line
+      sub(/^[^;:]+[;:][[:space:]]*/, "", command)
+      combo = trim(combo)
+      command = strip_inline_comment(command)
+      if (combo == "" || command == "" || combo ~ /^\.load/) return 0
+      if (status == "disabled" && !combo_looks_like_binding(combo)) return 0
+      emit(status, line_no, file, combo, command, desc)
+      return 1
+    }
+    {
+      if (FNR == 1) pending_desc = ""
+      original = $0
+      if (original ~ /^[[:space:]]*#/) {
+        commented = original
+        sub(/^[[:space:]]*#[[:space:]]?/, "", commented)
+        if (parse_binding(commented, "disabled", FNR, FILENAME, "commented binding") == 0) {
+          pending_desc = commented
+        }
+        next
+      }
+      if (original ~ /^[[:space:]]*($|\.load|::)/) next
+      if (parse_binding(original, "active", FNR, FILENAME, pending_desc) == 1) {
+        pending_desc = ""
+      }
+    }
+  ' "${files[@]}" 2>/dev/null
+}
+
+shortcut_command_missing_target() {
+  local command="${1:-}"
+  local token=""
+
+  case "$command" in
+    \"*\")
+      token="${command#\"}"
+      token="${token%%\"*}"
+      ;;
+    \'*\')
+      token="${command#\'}"
+      token="${token%%\'*}"
+      ;;
+    *)
+      token="${command%%[[:space:];]*}"
+      ;;
+  esac
+
+  [[ -n "$token" ]] || return 1
+  token="$(expand_user_path "$token")"
+  case "$token" in
+    /*)
+      [[ -e "$token" ]] || {
+        printf '%s\n' "$token"
+        return 0
+      }
+      ;;
+  esac
+  return 1
+}
+
+skhd_shortcut_inventory_enriched_tsv() {
+  local config="$1"
+  local status file line combo desc command kind missing
+  while IFS=$'\t' read -r status file line combo desc command kind; do
+    [[ -n "${status:-}" ]] || continue
+    missing="$(shortcut_command_missing_target "$command" || true)"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$status" "$file" "$line" "$combo" "$desc" "$command" "$kind" "$missing"
+  done < <(skhd_shortcut_inventory_tsv "$config")
+}
+
+skhd_shortcut_inventory_summary() {
+  local config="$1"
+  local duplicate_count
+  duplicate_count="$(skhd_duplicate_bindings "$config" | awk 'END { print NR + 0 }')"
+  skhd_shortcut_inventory_enriched_tsv "$config" | awk -F'\t' -v duplicates="$duplicate_count" '
+    $1 == "active" { active++ }
+    $1 == "disabled" { disabled++ }
+    $6 ~ /(^|[[:space:]])yabai[[:space:]]+-m/ && $1 == "active" { raw++ }
+    $8 != "" && $1 == "active" { missing++ }
+    END {
+      printf "active=%d disabled=%d duplicates=%d raw_yabai=%d missing_targets=%d\n", active + 0, disabled + 0, duplicates + 0, raw + 0, missing + 0
+    }
+  '
+}
+
+summary_value() {
+  local summary="${1:-}"
+  local key="${2:-}"
+  printf '%s\n' "$summary" | tr ' ' '\n' | awk -F= -v key="$key" '$1 == key { print $2; exit }'
+}
+
+run_shortcuts_inventory() {
+  local format="text"
+  case "${1:-}" in
+    --json) format="json" ;;
+    ""|"--text") ;;
+    *) echo "Usage: $0 shortcuts [--json]" >&2; return 1 ;;
+  esac
+
+  local skhd_config
+  skhd_config="$(skhd_config_path)"
+
+  if [[ "$format" == "json" ]]; then
+    local py
+    py="$(python3_bin)"
+    [[ -n "$py" ]] || { echo "python3 not found; cannot render JSON" >&2; return 1; }
+    skhd_shortcut_inventory_enriched_tsv "$skhd_config" | "$py" -c '
+import csv, json, sys
+rows = []
+for row in csv.reader(sys.stdin, delimiter="\t"):
+    if len(row) < 8:
+        continue
+    rows.append({
+        "status": row[0],
+        "source": row[1],
+        "line": int(row[2]) if row[2].isdigit() else row[2],
+        "combo": row[3],
+        "description": row[4],
+        "command": row[5],
+        "kind": row[6],
+        "missing_target": row[7] or None,
+    })
+print(json.dumps({"shortcuts": rows}, indent=2, sort_keys=True))
+'
+    return 0
+  fi
+
+  echo "skhd shortcuts inventory"
+  echo "config: $skhd_config"
+  skhd_print_loaded_files "$skhd_config"
+  echo "summary: $(skhd_shortcut_inventory_summary "$skhd_config")"
+  echo
+  skhd_shortcut_inventory_enriched_tsv "$skhd_config" | awk -F'\t' '
+    current != $2 {
+      current = $2
+      printf "\n[%s]\n", current
+    }
+    {
+      missing = ($8 == "") ? "" : sprintf(" missing=%s", $8)
+      printf "  %-8s %-18s %-15s %s%s\n", $1, $4, $7, $5, missing
+      printf "           %s\n", $6
+    }
+  '
+}
+
+rules_expected_json() {
+  cat <<'JSON'
+[
+  {"label":"System utilities","app":"^(System Settings|System Information|Activity Monitor|Calculator|Dictionary|Software Update|Archive Utility)$","sub_layer":"below"},
+  {"label":"Media utilities","app":"^(Photo Booth|QuickTime Player|VLC)$","sub_layer":"below"},
+  {"label":"Finder","app":"^Finder$","sub_layer":"below"},
+  {"label":"About This Mac","app":"System Information","title":"About This Mac","sub_layer":"below"},
+  {"label":"Emacs","app":"^Emacs$","sub_layer":"below"},
+  {"label":"Mesen","app":"^(Mesen|Mesen2.*)$","sub_layer":"below"},
+  {"label":"Yaze","app":"^Yaze$","sub_layer":"below"},
+  {"label":"Oracle manager","app":"^oracle_manager_gui$","sub_layer":"below"},
+  {"label":"Alfred","app":"^Alfred$","sub_layer":"below"},
+  {"label":"Raycast","app":"^Raycast$","sub_layer":"below"},
+  {"label":"Taskwarrior","app":"^Taskwarrior$","sub_layer":"below"},
+  {"label":"Lazygit","app":"^Lazygit$","title":"lazygit","sub_layer":"below"},
+  {"label":"Barista binary","app":"^barista_config$","sub_layer":"below"},
+  {"label":"Barista Config","app":"^Barista Config$","sub_layer":"below"},
+  {"label":"Barista app","app":"^Barista$","sub_layer":"below"},
+  {"label":"Barista Control Panel","app":"^Barista Control Panel$","sub_layer":"below"},
+  {"label":"BaristaControlPanel","app":"^BaristaControlPanel$","sub_layer":"below"},
+  {"label":"AFS Studio binary","app":"^afs_studio$","sub_layer":"below"},
+  {"label":"AFS Studio","app":"^AFS Studio$","sub_layer":"below"},
+  {"label":"AFS Browser binary","app":"^afs-browser$","sub_layer":"below"},
+  {"label":"AFS Browser","app":"^AFS Browser$","sub_layer":"below"},
+  {"label":"Cortex binary","app":"^cortex$","sub_layer":"below"},
+  {"label":"Cortex","app":"^Cortex$","sub_layer":"below"},
+  {"label":"System Manual binary","app":"^sys_manual$","sub_layer":"below"},
+  {"label":"System Manual","app":"^System Manual$","sub_layer":"below"},
+  {"label":"Picture View","app":"^(Picture View|PictureView)$","sub_layer":"below"}
+]
+JSON
+}
+
+run_rules_audit() {
+  local format="text"
+  case "${1:-}" in
+    --json) format="json" ;;
+    ""|"--text") ;;
+    *) echo "Usage: $0 rules-audit [--json]" >&2; return 1 ;;
+  esac
+
+  local py rules_json windows_json expected_json
+  py="$(python3_bin)"
+  [[ -n "$py" ]] || { echo "python3 not found; cannot audit rules" >&2; return 1; }
+
+  rules_json="$(run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m rule --list 2>/dev/null || true)"
+  windows_json="$(run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m query --windows 2>/dev/null || true)"
+  expected_json="${BARISTA_RULES_AUDIT_EXPECTED_JSON:-$(rules_expected_json)}"
+  [[ -n "$rules_json" ]] || rules_json="[]"
+  [[ -n "$windows_json" ]] || windows_json="[]"
+
+  RULES_JSON="$rules_json" WINDOWS_JSON="$windows_json" EXPECTED_RULES_JSON="$expected_json" AUDIT_FORMAT="$format" "$py" - <<'PY'
+import json
+import os
+import re
+import sys
+
+def load_json(name, fallback):
+    raw = os.environ.get(name, "")
+    try:
+        return json.loads(raw) if raw else fallback
+    except json.JSONDecodeError:
+        return fallback
+
+rules = load_json("RULES_JSON", [])
+windows = load_json("WINDOWS_JSON", [])
+expected = load_json("EXPECTED_RULES_JSON", [])
+output_format = os.environ.get("AUDIT_FORMAT", "text")
+findings = []
+
+def rule_matches_expected(rule, item):
+    if rule.get("app", "") != item.get("app", ""):
+        return False
+    if item.get("title") and rule.get("title", "") != item.get("title", ""):
+        return False
+    return True
+
+def is_unmanaged_below(rule):
+    return rule.get("manage") is False and rule.get("sub-layer") == "below"
+
+def window_matches_rule(window, rule):
+    app_pattern = rule.get("app") or ""
+    title_pattern = rule.get("title") or ""
+    app = window.get("app") or ""
+    title = window.get("title") or ""
+    try:
+        if app_pattern and not re.search(app_pattern, app):
+            return False
+        if title_pattern and not re.search(title_pattern, title):
+            return False
+        return bool(app_pattern)
+    except re.error:
+        return False
+
+for item in expected:
+    matching = [rule for rule in rules if rule_matches_expected(rule, item)]
+    if not matching:
+        findings.append({
+            "severity": "error",
+            "type": "missing-rule",
+            "label": item.get("label"),
+            "app": item.get("app"),
+            "title": item.get("title", ""),
+            "message": f"missing expected unmanaged-below rule: {item.get('label')}",
+        })
+        continue
+    if not any(is_unmanaged_below(rule) for rule in matching):
+        findings.append({
+            "severity": "error",
+            "type": "rule-without-below",
+            "label": item.get("label"),
+            "app": item.get("app"),
+            "message": f"expected rule is not manage=off sub-layer=below: {item.get('label')}",
+        })
+
+unmanaged_below_rules = [rule for rule in rules if is_unmanaged_below(rule)]
+for window in windows:
+    if window.get("is-minimized") is True:
+        continue
+    sub_layer = window.get("sub-layer") or ""
+    layer = window.get("layer") or ""
+    if sub_layer == "above" or layer == "above":
+        findings.append({
+            "severity": "info",
+            "type": "manual-topmost",
+            "id": window.get("id"),
+            "app": window.get("app", ""),
+            "title": window.get("title", ""),
+            "message": "window is manually topmost/above",
+        })
+    if any(window_matches_rule(window, rule) for rule in unmanaged_below_rules):
+        if sub_layer not in ("below", "above"):
+            findings.append({
+                "severity": "warn",
+                "type": "live-policy-mismatch",
+                "id": window.get("id"),
+                "app": window.get("app", ""),
+                "title": window.get("title", ""),
+                "sub_layer": sub_layer,
+                "message": "live unmanaged utility window is not below",
+            })
+
+family_hints = [
+    ("Barista", re.compile(r"barista", re.I)),
+    ("Cortex", re.compile(r"cortex", re.I)),
+    ("Oracle", re.compile(r"oracle", re.I)),
+    ("AFS", re.compile(r"\bafs\b|afs[_ -]", re.I)),
+    ("Scawfulbot", re.compile(r"scawfulbot", re.I)),
+]
+seen_variant = set()
+for window in windows:
+    app = window.get("app") or ""
+    if not app or any(window_matches_rule(window, rule) for rule in unmanaged_below_rules):
+        continue
+    for family, pattern in family_hints:
+        if pattern.search(app):
+            key = (family, app)
+            if key in seen_variant:
+                continue
+            seen_variant.add(key)
+            findings.append({
+                "severity": "warn",
+                "type": "app-variant-review",
+                "family": family,
+                "app": app,
+                "message": f"review app-name variant for {family}: {app}",
+            })
+
+summary = {
+    "expected_rules": len(expected),
+    "present_expected_rules": sum(1 for item in expected if any(rule_matches_expected(rule, item) for rule in rules)),
+    "rules": len(rules),
+    "windows": len(windows),
+    "findings": len(findings),
+    "errors": sum(1 for item in findings if item["severity"] == "error"),
+    "warnings": sum(1 for item in findings if item["severity"] == "warn"),
+    "info": sum(1 for item in findings if item["severity"] == "info"),
+}
+
+if output_format == "json":
+    print(json.dumps({"summary": summary, "findings": findings}, indent=2, sort_keys=True))
+else:
+    print("yabai rules audit")
+    print(f"expected unmanaged rules: {summary['present_expected_rules']}/{summary['expected_rules']} present")
+    print(f"rules: {summary['rules']} windows: {summary['windows']}")
+    print(f"findings: {summary['errors']} errors, {summary['warnings']} warnings, {summary['info']} info")
+    for finding in findings:
+        parts = [finding["severity"], finding["type"]]
+        if finding.get("id") is not None:
+            parts.append(f"id={finding['id']}")
+        if finding.get("app"):
+            parts.append(f"app={finding['app']}")
+        if finding.get("title"):
+            parts.append(f"title={finding['title']}")
+        print("  " + " ".join(parts) + " - " + finding["message"])
+    if not findings:
+        print("rules audit: ok")
+
+sys.exit(1 if summary["errors"] else 0)
+PY
 }
 
 skhd_print_loaded_files() {
@@ -878,7 +1274,11 @@ skhd_print_loaded_files() {
 
 skhd_duplicate_bindings() {
   local config="$1"
-  mapfile -t files < <(skhd_loaded_files "$config")
+  local files=()
+  local file
+  while IFS= read -r file; do
+    [[ -n "$file" ]] && files+=("$file")
+  done < <(skhd_loaded_files "$config")
   ((${#files[@]} > 0)) || return 0
   awk '
     /^[[:space:]]*($|#)/ { next }
@@ -1022,6 +1422,14 @@ run_doctor() {
     fi
 
     if ! skhd_report_duplicates "$skhd_config"; then
+      ok=0
+    fi
+
+    local shortcut_summary missing_targets
+    shortcut_summary="$(skhd_shortcut_inventory_summary "$skhd_config")"
+    echo "skhd shortcut summary: $shortcut_summary"
+    missing_targets="$(summary_value "$shortcut_summary" missing_targets)"
+    if [[ "${missing_targets:-0}" != "0" ]]; then
       ok=0
     fi
 
@@ -1207,6 +1615,12 @@ case "$command" in
   space-focus-app)
     space_focus_app "$@"
     ;;
+  shortcuts)
+    run_shortcuts_inventory "$@"
+    ;;
+  rules-audit)
+    run_rules_audit "$@"
+    ;;
   doctor)
     run_doctor "$@"
     ;;
@@ -1240,6 +1654,8 @@ Commands:
   space-prev|space-next|space-recent|space-first|space-last
   window-space-prev-wrap|window-space-next-wrap
   space-focus-app <AppName>
+  shortcuts [--json]
+  rules-audit [--json]
   doctor [--fix]
 USAGE
     exit 1

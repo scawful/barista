@@ -96,7 +96,13 @@ Optionally pass the target dir (default: `~/.config/sketchybar`). If the runtime
 **Skhd and yabai_control:** Space/layout keybindings in skhd call `yabai_control.sh`. To support both "Barista deploy" and "dotfiles-only" setups, use the wrapper: `~/.local/bin/yabai_control_wrapper.sh` (from `config/dotfiles/bin/yabai_control_wrapper.sh`). Ensure that wrapper is on your PATH and installed (e.g. dotfiles link `bin/` to `~/.local/bin`).
 For shortcut health, run `~/.config/sketchybar/scripts/yabai_control.sh doctor`
 to list loaded skhd files, verify the generated Barista shortcut include, and
-flag duplicate bindings.
+flag duplicate bindings. For a full shortcut map, run
+`~/.config/sketchybar/scripts/yabai_control.sh shortcuts`; it lists every loaded
+skhd binding by source file and flags raw yabai commands or missing script
+targets. For window-rule drift, run
+`~/.config/sketchybar/scripts/yabai_control.sh rules-audit`; unmanaged utility
+apps should default to `manage=off sub-layer=below`, with topmost kept as an
+explicit manual action.
 
 **LaunchAgents:** The single place to edit the Barista orchestrator (SketchyBar + yabai + skhd at login) is `lab/barista/launch_agents/`. See [launch_agents/README.md](launch_agents/README.md). Recommended: use either this LaunchAgent or `brew services` for the three daemons, not both.
 

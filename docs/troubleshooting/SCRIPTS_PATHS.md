@@ -37,7 +37,10 @@
    - Fix with `chmod +x <script>` or reinstall scripts.
 6. If skhd shortcuts still do nothing, run the doctor with auto-fix:
    - `~/.config/sketchybar/scripts/yabai_control.sh doctor --fix`
-   - The doctor reports loaded skhd files, duplicate bindings, and generated-shortcut include health. With `--fix`, it also cleans up duplicate skhd processes and restarts skhd if needed.
+   - The doctor reports loaded skhd files, duplicate bindings, shortcut summary counts, and generated-shortcut include health. With `--fix`, it also cleans up duplicate skhd processes and restarts skhd if needed.
+7. To inspect ergonomics without changing live state:
+   - `~/.config/sketchybar/scripts/yabai_control.sh shortcuts`
+   - `~/.config/sketchybar/scripts/yabai_control.sh rules-audit`
 
 ## Notes
 

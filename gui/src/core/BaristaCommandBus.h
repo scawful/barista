@@ -6,4 +6,5 @@
 - (void)runScriptNamed:(NSString *)scriptName arguments:(NSArray<NSString *> *)arguments;
 - (BOOL)openControlPanelForTab:(NSString *)tabIdentifier error:(NSError **)error;
 - (BOOL)openOracleAgentManagerWithError:(NSError **)error;
+- (BOOL)launchLocalWorkflow:(NSString *)workflowName error:(NSError **)error;
 @end

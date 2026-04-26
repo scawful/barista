@@ -232,7 +232,7 @@
     }
     if (field.isEditable) {
       field.drawsBackground = YES;
-      field.backgroundColor = [self.panelColor blendedColorWithFraction:0.2 ofColor:[NSColor blackColor]];
+      field.backgroundColor = [NSColor textBackgroundColor];
       field.bordered = YES;
       field.bezeled = YES;
     }

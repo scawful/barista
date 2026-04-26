@@ -64,4 +64,16 @@
   return [self launchConfigScript:@"bin/open_oracle_agent_manager.sh" arguments:nil error:error];
 }
 
+- (BOOL)launchLocalWorkflow:(NSString *)workflowName error:(NSError **)error {
+  if (![workflowName isKindOfClass:[NSString class]] || workflowName.length == 0) {
+    if (error) {
+      *error = [NSError errorWithDomain:@"BaristaCommandBus"
+                                   code:400
+                               userInfo:@{NSLocalizedDescriptionKey: @"Missing local workflow name"}];
+    }
+    return NO;
+  }
+  return [self launchConfigScript:@"scripts/open_local_workflow.sh" arguments:@[workflowName] error:error];
+}
+
 @end

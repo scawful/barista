@@ -85,9 +85,11 @@
 }
 
 - (NSTextField *)titleLabel:(NSString *)text fontSize:(CGFloat)fontSize {
+  BaristaStyle *style = [BaristaStyle sharedStyle];
   NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
   label.stringValue = text ?: @"";
-  label.font = [NSFont systemFontOfSize:fontSize weight:NSFontWeightBold];
+  label.font = [style interfaceFontOfSize:fontSize weight:NSFontWeightSemibold];
+  label.textColor = style.textColor;
   label.bordered = NO;
   label.editable = NO;
   label.backgroundColor = [NSColor clearColor];
@@ -95,10 +97,12 @@
 }
 
 - (NSTextField *)helperLabel:(NSString *)text {
+  BaristaStyle *style = [BaristaStyle sharedStyle];
   NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
   label.stringValue = text ?: @"";
-  label.font = [NSFont systemFontOfSize:12.5];
-  label.textColor = [NSColor secondaryLabelColor];
+  label.font = [style interfaceFontOfSize:12.5 weight:NSFontWeightRegular];
+  label.textColor = style.mutedTextColor ?: [NSColor secondaryLabelColor];
+  label.tag = 9901;
   label.bordered = NO;
   label.editable = NO;
   label.backgroundColor = [NSColor clearColor];
@@ -112,9 +116,11 @@
 }
 
 - (NSTextField *)fieldLabel:(NSString *)text width:(CGFloat)width {
+  BaristaStyle *style = [BaristaStyle sharedStyle];
   NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
   label.stringValue = text ?: @"";
-  label.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
+  label.font = [style interfaceFontOfSize:13 weight:NSFontWeightMedium];
+  label.textColor = style.textColor;
   label.bordered = NO;
   label.editable = NO;
   label.backgroundColor = [NSColor clearColor];
@@ -144,11 +150,9 @@
   NSBox *box = [[NSBox alloc] initWithFrame:NSZeroRect];
   box.boxType = NSBoxCustom;
   box.titlePosition = NSNoTitle;
-  box.cornerRadius = 12.0;
-  box.borderColor = [[NSColor whiteColor] colorWithAlphaComponent:0.08];
-  box.fillColor = [style.panelColor blendedColorWithFraction:0.3
-                                                     ofColor:[NSColor blackColor]]
-                  ?: [NSColor colorWithCalibratedRed:0.11 green:0.12 blue:0.15 alpha:0.95];
+  box.cornerRadius = 8.0;
+  box.borderColor = style.dividerColor ?: [NSColor separatorColor];
+  box.fillColor = style.panelColor ?: [NSColor controlBackgroundColor];
   box.transparent = NO;
 
   NSStackView *stack = [[NSStackView alloc] initWithFrame:NSZeroRect];
@@ -160,7 +164,8 @@
 
   NSTextField *sectionTitle = [[NSTextField alloc] initWithFrame:NSZeroRect];
   sectionTitle.stringValue = title ?: @"";
-  sectionTitle.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
+  sectionTitle.font = [style interfaceFontOfSize:16 weight:NSFontWeightSemibold];
+  sectionTitle.textColor = style.textColor;
   sectionTitle.bordered = NO;
   sectionTitle.editable = NO;
   sectionTitle.backgroundColor = [NSColor clearColor];

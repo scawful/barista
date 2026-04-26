@@ -1,6 +1,7 @@
 #import "IntegrationsTabViewController.h"
 #import "ConfigurationManager.h"
 #import "BaristaCommandBus.h"
+#import "BaristaStyle.h"
 
 @interface IntegrationsTabViewController ()
 @property (strong) NSScrollView *scrollView;
@@ -16,6 +17,7 @@
 @property (strong) NSSecureTextField *halextApiKeyField;
 @property (strong) NSTextField *halextStatus;
 @property (strong) NSButton *halextTestButton;
+@property (strong) NSTextField *quickStatusLabel;
 @end
 
 @implementation IntegrationsTabViewController
@@ -147,38 +149,16 @@
   NSStackView *rootStack = nil;
   self.scrollView = [self scrollViewWithRootStack:&rootStack edgeInsets:NSEdgeInsetsMake(28, 34, 34, 34) spacing:22];
 
-  // Title
-  NSTextField *title = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  title.stringValue = @"External Integrations";
-  title.font = [NSFont systemFontOfSize:24 weight:NSFontWeightBold];
-  title.bordered = NO;
-  title.editable = NO;
-  title.backgroundColor = [NSColor clearColor];
-  [rootStack addView:title inGravity:NSStackViewGravityTop];
-
-  NSTextField *subtitle = [[NSTextField alloc] initWithFrame:NSZeroRect];
-  subtitle.stringValue = @"Keep external tools connected without turning this panel into a second application launcher. Toggle integration presence, verify paths, and jump out when you need the real tool.";
-  subtitle.font = [NSFont systemFontOfSize:12.5];
-  subtitle.textColor = [NSColor secondaryLabelColor];
-  subtitle.bordered = NO;
-  subtitle.editable = NO;
-  subtitle.backgroundColor = [NSColor clearColor];
-  subtitle.usesSingleLineMode = NO;
-  subtitle.lineBreakMode = NSLineBreakByWordWrapping;
-  [rootStack addView:subtitle inGravity:NSStackViewGravityTop];
+  [rootStack addView:[self titleLabel:@"Integrations"] inGravity:NSStackViewGravityTop];
+  [rootStack addView:[self helperLabel:@"Toggle menu integrations, verify local paths, and launch the tools this machine uses every day."] inGravity:NSStackViewGravityTop];
 
   // MARK: Yaze Integration
-  NSBox *yazeBox = [[NSBox alloc] initWithFrame:NSZeroRect];
-  yazeBox.title = @"Yaze (ROM Hacking Tool)";
-  yazeBox.titlePosition = NSAtTop;
+  NSStackView *yazeStack = nil;
+  NSBox *yazeBox = [self sectionBoxWithTitle:@"Yaze"
+                                    subtitle:@"Local ROM tooling and nightly launcher detection."
+                                contentStack:&yazeStack];
   [rootStack addView:yazeBox inGravity:NSStackViewGravityTop];
   [yazeBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
-
-  NSStackView *yazeStack = [[NSStackView alloc] initWithFrame:NSInsetRect(yazeBox.bounds, 20, 20)];
-  yazeStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  yazeStack.alignment = NSLayoutAttributeLeading;
-  yazeStack.spacing = 12;
-  yazeBox.contentView = yazeStack;
 
   self.yazeToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.yazeToggle setButtonType:NSButtonTypeSwitch];
@@ -221,18 +201,12 @@
   [self updateYazeStatus];
 
   // MARK: Emacs Integration
-  NSBox *emacsBox = [[NSBox alloc] initWithFrame:NSZeroRect];
-  emacsBox.title = @"Emacs";
-  emacsBox.titlePosition = NSAtTop;
+  NSStackView *emacsStack = nil;
+  NSBox *emacsBox = [self sectionBoxWithTitle:@"Emacs"
+                                     subtitle:@"Editor presence and a quick launch path."
+                                 contentStack:&emacsStack];
   [rootStack addView:emacsBox inGravity:NSStackViewGravityTop];
   [emacsBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
-
-  NSStackView *emacsStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
-  emacsStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  emacsStack.alignment = NSLayoutAttributeLeading;
-  emacsStack.spacing = 12;
-  emacsStack.edgeInsets = NSEdgeInsetsMake(15, 20, 15, 20);
-  emacsBox.contentView = emacsStack;
 
   self.emacsToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.emacsToggle setButtonType:NSButtonTypeSwitch];
@@ -262,18 +236,12 @@
   [self updateEmacsStatus];
 
   // MARK: halext-org Integration
-  NSBox *halextBox = [[NSBox alloc] initWithFrame:NSZeroRect];
-  halextBox.title = @"halext-org Server (Tasks, Calendar, LLM)";
-  halextBox.titlePosition = NSAtTop;
+  NSStackView *halextStack = nil;
+  NSBox *halextBox = [self sectionBoxWithTitle:@"halext-org"
+                                      subtitle:@"Server URL and token for task, calendar, and LLM surfaces."
+                                  contentStack:&halextStack];
   [rootStack addView:halextBox inGravity:NSStackViewGravityTop];
   [halextBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
-
-  NSStackView *halextStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
-  halextStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  halextStack.alignment = NSLayoutAttributeLeading;
-  halextStack.spacing = 12;
-  halextStack.edgeInsets = NSEdgeInsetsMake(15, 20, 15, 20);
-  halextBox.contentView = halextStack;
 
   self.halextToggle = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.halextToggle setButtonType:NSButtonTypeSwitch];
@@ -338,60 +306,93 @@
   [halextButtons addView:halextSaveButton inGravity:NSStackViewGravityLeading];
 
   // MARK: Quick Actions
-  NSBox *quickBox = [[NSBox alloc] initWithFrame:NSZeroRect];
-  quickBox.title = @"Developer Quick Actions";
-  quickBox.titlePosition = NSAtTop;
+  NSStackView *quickStack = nil;
+  NSBox *quickBox = [self sectionBoxWithTitle:@"Local Workflows"
+                                     subtitle:@"Open the repos, apps, and status surfaces that Barista already knows how to resolve."
+                                 contentStack:&quickStack];
   [rootStack addView:quickBox inGravity:NSStackViewGravityTop];
   [quickBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
-  NSStackView *quickStack = [[NSStackView alloc] initWithFrame:NSZeroRect];
-  quickStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  quickStack.alignment = NSLayoutAttributeLeading;
-  quickStack.spacing = 16;
-  quickStack.edgeInsets = NSEdgeInsetsMake(15, 20, 15, 20);
-  quickBox.contentView = quickStack;
+  [self addWorkflowRowWithItems:@[
+    @{@"title": @"Launch AFS Studio", @"workflow": @"afs-studio"},
+    @{@"title": @"AFS Context Overview", @"workflow": @"afs-context"}
+  ] toStack:quickStack];
+  [self addWorkflowRowWithItems:@[
+    @{@"title": @"Open AFS Repo", @"workflow": @"afs-repo"},
+    @{@"title": @"Open Barista Repo", @"workflow": @"barista-repo"}
+  ] toStack:quickStack];
 
-  NSStackView *row1 = [[NSStackView alloc] initWithFrame:NSZeroRect];
-  row1.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-  row1.spacing = 12;
-  [quickStack addView:row1 inGravity:NSStackViewGravityTop];
+  [self addWorkflowRowWithItems:@[
+    @{@"title": @"Open scawfulbot", @"workflow": @"scawfulbot"},
+    @{@"title": @"Open scawfulbot Repo", @"workflow": @"scawfulbot-repo"}
+  ] toStack:quickStack];
+  [self addWorkflowRowWithItems:@[
+    @{@"title": @"Open Janice Code", @"workflow": @"janice"},
+    @{@"title": @"Open Janice Repo", @"workflow": @"janice-repo"}
+  ] toStack:quickStack];
 
-  for (NSString *title in @[@"Open AFS Repo", @"Launch AFS TUI"]) {
-    NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
-    [btn setButtonType:NSButtonTypeMomentaryPushIn];
-    [btn setBezelStyle:NSBezelStyleRounded];
-    btn.title = title;
-    btn.target = self;
-    if ([title containsString:@"AFS Repo"]) btn.action = @selector(openHafsRepo:);
-    else if ([title containsString:@"TUI"]) btn.action = @selector(openHafsTui:);
-    [row1 addView:btn inGravity:NSStackViewGravityLeading];
-  }
+  [self addWorkflowRowWithItems:@[
+    @{@"title": @"Open LM Studio", @"workflow": @"lmstudio"},
+    @{@"title": @"LM Studio Status", @"workflow": @"lmstudio-status"}
+  ] toStack:quickStack];
+  [self addWorkflowRowWithItems:@[
+    @{@"title": @"Open Ghostty", @"workflow": @"ghostty"},
+    @{@"title": @"Open halext-org Repo", @"workflow": @"halext-repo"}
+  ] toStack:quickStack];
 
-  NSStackView *row2 = [[NSStackView alloc] initWithFrame:NSZeroRect];
-  row2.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-  row2.spacing = 12;
-  [quickStack addView:row2 inGravity:NSStackViewGravityTop];
+  [self addWorkflowRowWithItems:@[
+    @{@"title": @"Launch Yaze", @"workflow": @"yaze"},
+    @{@"title": @"Launch z3ed", @"workflow": @"z3ed"}
+  ] toStack:quickStack];
+  [self addWorkflowRowWithItems:@[
+    @{@"title": @"Open Loom Studio", @"workflow": @"loom"},
+    @{@"title": @"Open Premia", @"workflow": @"premia"}
+  ] toStack:quickStack];
 
-  for (NSString *title in @[@"Open halext-org Repo"]) {
-    NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
-    [btn setButtonType:NSButtonTypeMomentaryPushIn];
-    [btn setBezelStyle:NSBezelStyleRounded];
-    btn.title = title;
-    btn.target = self;
-    if ([title containsString:@"halext"]) btn.action = @selector(openHalextRepo:);
-    [row2 addView:btn inGravity:NSStackViewGravityLeading];
-  }
+  self.quickStatusLabel = [self helperLabel:@""];
+  [quickStack addView:self.quickStatusLabel inGravity:NSStackViewGravityTop];
 }
 
 - (NSTextField *)label:(NSString *)text {
+  BaristaStyle *style = [BaristaStyle sharedStyle];
   NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
   label.stringValue = text;
-  label.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+  label.font = [style interfaceFontOfSize:13 weight:NSFontWeightMedium];
+  label.textColor = style.textColor;
   label.bordered = NO;
   label.editable = NO;
   label.backgroundColor = [NSColor clearColor];
   label.alignment = NSTextAlignmentRight;
   return label;
+}
+
+- (NSButton *)workflowButtonWithTitle:(NSString *)title workflow:(NSString *)workflowIdentifier {
+  BaristaStyle *style = [BaristaStyle sharedStyle];
+  NSButton *button = [[NSButton alloc] initWithFrame:NSZeroRect];
+  [button setButtonType:NSButtonTypeMomentaryPushIn];
+  [button setBezelStyle:NSBezelStyleRounded];
+  button.title = title ?: @"";
+  button.font = [style interfaceFontOfSize:12.5 weight:NSFontWeightSemibold];
+  button.alignment = NSTextAlignmentLeft;
+  button.identifier = workflowIdentifier ?: @"";
+  button.toolTip = title ?: @"";
+  button.target = self;
+  button.action = @selector(launchWorkflowFromButton:);
+  [button.widthAnchor constraintGreaterThanOrEqualToConstant:168.0].active = YES;
+  return button;
+}
+
+- (void)addWorkflowRowWithItems:(NSArray<NSDictionary *> *)items toStack:(NSStackView *)stack {
+  NSStackView *row = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  row.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  row.alignment = NSLayoutAttributeCenterY;
+  row.spacing = 10;
+  [stack addView:row inGravity:NSStackViewGravityTop];
+
+  for (NSDictionary *item in items) {
+    NSButton *button = [self workflowButtonWithTitle:item[@"title"] workflow:item[@"workflow"]];
+    [row addView:button inGravity:NSStackViewGravityLeading];
+  }
 }
 
 - (void)yazeToggled:(NSButton *)sender {
@@ -500,6 +501,22 @@
   [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:yazePath]];
 }
 
+- (void)launchWorkflowFromButton:(NSButton *)sender {
+  NSString *workflowIdentifier = sender.identifier;
+  if (!workflowIdentifier.length) {
+    return;
+  }
+
+  NSError *error = nil;
+  if (![[BaristaCommandBus sharedBus] launchLocalWorkflow:workflowIdentifier error:&error]) {
+    self.quickStatusLabel.stringValue = error.localizedDescription ?: @"Unable to launch the selected workflow.";
+    self.quickStatusLabel.textColor = [NSColor systemOrangeColor];
+    return;
+  }
+  self.quickStatusLabel.stringValue = [NSString stringWithFormat:@"%@ launch requested.", sender.title ?: @"Workflow"];
+  self.quickStatusLabel.textColor = [NSColor secondaryLabelColor];
+}
+
 - (void)launchEmacs:(id)sender {
   NSArray *emacsLocations = @[
     @"/Applications/Emacs.app",
@@ -517,30 +534,6 @@
   [alert setMessageText:@"Emacs Not Found"];
   [alert setInformativeText:@"Install Emacs first"];
   [alert runModal];
-}
-
-- (void)openHafsRepo:(id)sender {
-  NSString *path = [[self codeDir] stringByAppendingPathComponent:@"afs"];
-  [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
-}
-
-- (void)openHafsTui:(id)sender {
-  NSString *command = [NSString stringWithFormat:@"cd %@/afs && python3 -m tui.app", [self codeDir]];
-  [self openTerminalCommand:command];
-}
-
-- (void)openHalextRepo:(id)sender {
-  NSString *path = [[self codeDir] stringByAppendingPathComponent:@"halext-org"];
-  [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
-}
-
-- (void)openTerminalCommand:(NSString *)command {
-  NSString *escaped = [command stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-  NSString *script = [NSString stringWithFormat:@"tell application \"Terminal\" to do script \"%@\"", escaped];
-  NSTask *task = [[NSTask alloc] init];
-  task.launchPath = @"/usr/bin/osascript";
-  task.arguments = @[@"-e", script];
-  [task launch];
 }
 
 - (void)saveHalextSettings:(id)sender {

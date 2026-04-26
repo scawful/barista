@@ -19,6 +19,8 @@
       "items": [
         { "keys": "⌃⌥O", "description": "Open Oracle of Secrets" },
         { "keys": "⌃⌥Y", "description": "Open YAZE Editor" },
+        { "keys": "⌘⌥T", "description": "Open Ghostty" },
+        { "keys": "⌘⌥Z", "description": "Launch z3ed in Ghostty" },
         { "keys": "⌃⌥G", "description": "Open LazyGit" },
         { "keys": "fp <name>", "description": "Fuzzy Find Project (Zsh)" }
       ]
@@ -43,7 +45,7 @@
       "section": "Syshelp & Panel",
       "items": [
         { "keys": "⌃⌥H", "description": "Toggle Syshelp Panel (overlay)" },
-        { "keys": "⌃⌥P", "description": "Open Barista Control Panel" },
+        { "keys": "⌃⌥P", "description": "Open Barista" },
         { "keys": "whichkey", "description": "Toggle WhichKey HUD" }
       ]
     }
@@ -58,12 +60,14 @@
     { "id": "oracle_maku", "title": "Oracle Maku Session", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench session maku" },
     { "id": "oracle_d6", "title": "Oracle D6 Session", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench session d6" },
     { "id": "reload_bar", "title": "Reload SketchyBar" },
+    { "id": "open_terminal", "title": "Open Ghostty" },
     { "id": "launch_yaze", "title": "Launch YAZE" },
+    { "id": "launch_z3ed", "title": "Launch z3ed in Ghostty" },
     { "id": "focus_emacs", "title": "Focus Emacs" },
     { "id": "syshelp_panel", "title": "Toggle Syshelp Panel" },
     { "id": "syshelp_cli", "title": "Open syshelp" },
     { "id": "whichkey_toggle", "title": "Toggle WhichKey HUD" },
-    { "id": "open_control_panel", "title": "Open Control Panel" }
+    { "id": "open_control_panel", "title": "Open Barista" }
   ],
   "docs": [
     { "id": "oracle_handoff", "title": "Oracle Handoff", "path": "~/src/hobby/oracle-of-secrets/.context/scratchpad/agent_handoff.md" },

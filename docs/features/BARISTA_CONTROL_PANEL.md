@@ -1,4 +1,4 @@
-# Barista Control Panel — Vision & Roadmap
+# Barista Settings — Vision & Roadmap
 
 ## Mission
 Transform the former “SketchyBar control panel” into a Barista-branded control surface for power users. The panel should manage menu bar widgets, launch agents, developer tooling, and (eventually) AI-assisted workflows from one place.
@@ -48,7 +48,7 @@ Transform the former “SketchyBar control panel” into a Barista-branded contr
   - Launches the preferred control panel (native Cocoa by default).
   - Routing is configured via `control_panel.preferred` in state.json or env vars (see below).
 
-Help Center + Control Panel metadata lives in:
+Help Center + Barista metadata lives in:
 - `data/workflow_shortcuts.json` (keymap, docs, quick actions)
 - `data/menu_help.json` (Help menu entries)
 - Regenerate `~/.config/skhd/barista_shortcuts.conf` with `BARISTA_CONFIG_DIR=/path/to/barista lua helpers/generate_shortcuts.lua` after shortcut changes.
@@ -57,9 +57,40 @@ Help Center + Control Panel metadata lives in:
   - `bin/launch_agent <label> <action>`
   - `skhd` bindings for rebuilding, opening panels, toggling debug overlays.
 
-## Control Panel Routing
+## Local Workflow Launcher
+
+The native Home and Integrations tabs call `scripts/open_local_workflow.sh` for machine-local exits. Keep local path resolution in that script rather than duplicating hard-coded repo/app paths in Objective-C views.
+
+Current launch targets include Ghostty, LM Studio/status, AFS Studio/context/repo, scawfulbot, Janice Code, Yaze/z3ed, Loom Studio, premia, halext-org, and the Barista repo.
+
+## Native Settings UX
+
+- The Cocoa panel opens to Home by default when there is no saved tab, so the menu entry lands on a routing surface instead of a single settings form.
+- The default window mode is `standard`; yabai rules keep the settings panel unmanaged without making it a topmost utility window.
+- Settings chrome uses AppKit semantic colors and the system UI font. The active SketchyBar theme is only used as an accent where it helps orientation.
+- Monospace stays reserved for code/config previews.
+- The sidebar avoids Nerd Font-only glyphs; missing icon boxes make the panel feel broken on machines without the same font stack.
+- Local workflow actions report launch status inline. Avoid modal alerts for successful exits to external tools.
+
+## Barista App Routing
 
 Barista supports multiple UIs without deleting legacy implementations.
+
+### Stable native app bundle
+
+The native Cocoa panel is installed to:
+
+```
+~/Applications/Barista.app
+```
+
+`bin/open_control_panel.sh` prefers that stable app bundle when it is present. If a newer build exists at `build/bin/Barista.app`, the launcher attempts to refresh the stable bundle before opening it. Legacy `BaristaControlPanel.app` artifacts remain supported as fallbacks during migration.
+
+To install or refresh the bundle without launching it:
+
+```
+scripts/install_control_panel_app.sh
+```
 
 ### Preferred panel (state.json)
 

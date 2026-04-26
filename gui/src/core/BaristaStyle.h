@@ -24,5 +24,6 @@
 - (void)applyWindowStyle:(NSWindow *)window;
 - (void)applyStyleToViewHierarchy:(NSView *)view;
 - (NSFont *)monoFontOfSize:(CGFloat)size weight:(NSFontWeight)weight;
+- (NSFont *)interfaceFontOfSize:(CGFloat)size weight:(NSFontWeight)weight;
 - (NSColor *)colorFromHexString:(NSString *)hex fallback:(NSColor *)fallback;
 @end

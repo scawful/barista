@@ -584,6 +584,52 @@ space_focus_wrap() {
   return 1
 }
 
+display_focus_wrap() {
+  local direction="$1"
+  local fallback
+
+  case "$direction" in
+    prev) fallback="last" ;;
+    next) fallback="first" ;;
+    *) echo "Usage: $0 display-focus-prev-wrap|display-focus-next-wrap" >&2; return 1 ;;
+  esac
+
+  if "$YABAI_BIN" -m display --focus "$direction" >/dev/null 2>&1 \
+    || "$YABAI_BIN" -m display --focus "$fallback" >/dev/null 2>&1; then
+    refresh_space_state
+    refresh_front_app_state
+    return 0
+  fi
+
+  echo "display focus failed: $direction" >&2
+  return 1
+}
+
+window_focus_direction() {
+  local direction="$1"
+  [ -n "$direction" ] || return 1
+
+  if "$YABAI_BIN" -m window --focus "$direction" >/dev/null 2>&1 \
+    || "$YABAI_BIN" -m display --focus "$direction" >/dev/null 2>&1; then
+    refresh_space_state
+    refresh_front_app_state
+    return 0
+  fi
+
+  echo "window focus failed: $direction" >&2
+  return 1
+}
+
+window_swap_direction() {
+  local direction="$1"
+  local rc=0
+  [ -n "$direction" ] || return 1
+
+  "$YABAI_BIN" -m window --swap "$direction" || rc=$?
+  refresh_front_app_state
+  return "$rc"
+}
+
 window_space_wrap() {
   local direction="$1"
   local target
@@ -1207,6 +1253,8 @@ family_hints = [
 ]
 seen_variant = set()
 for window in windows:
+    if window.get("is-minimized") is True:
+        continue
     app = window.get("app") or ""
     if not app or any(window_matches_rule(window, rule) for rule in unmanaged_below_rules):
         continue
@@ -1591,6 +1639,36 @@ case "$command" in
   space-focus-next-wrap)
     space_focus_wrap next
     ;;
+  display-focus-prev-wrap)
+    display_focus_wrap prev
+    ;;
+  display-focus-next-wrap)
+    display_focus_wrap next
+    ;;
+  window-focus-west)
+    window_focus_direction west
+    ;;
+  window-focus-south)
+    window_focus_direction south
+    ;;
+  window-focus-north)
+    window_focus_direction north
+    ;;
+  window-focus-east)
+    window_focus_direction east
+    ;;
+  window-swap-west)
+    window_swap_direction west
+    ;;
+  window-swap-south)
+    window_swap_direction south
+    ;;
+  window-swap-north)
+    window_swap_direction north
+    ;;
+  window-swap-east)
+    window_swap_direction east
+    ;;
   space-prev)
     space_focus_safe prev
     ;;
@@ -1651,6 +1729,9 @@ Commands:
   window-space <index>
   window-space-float
   space-focus-prev-wrap|space-focus-next-wrap
+  display-focus-prev-wrap|display-focus-next-wrap
+  window-focus-west|window-focus-south|window-focus-north|window-focus-east
+  window-swap-west|window-swap-south|window-swap-north|window-swap-east
   space-prev|space-next|space-recent|space-first|space-last
   window-space-prev-wrap|window-space-next-wrap
   space-focus-app <AppName>

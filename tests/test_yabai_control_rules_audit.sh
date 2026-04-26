@@ -36,7 +36,8 @@ JSON
 [
   {"id":1,"app":"Finder","title":"Finder","sub-layer":"normal","layer":"normal","is-minimized":false},
   {"id":2,"app":"ghostty","title":"","sub-layer":"above","layer":"normal","is-minimized":false},
-  {"id":3,"app":"Scawfulbot","title":"hello","sub-layer":"normal","layer":"normal","is-minimized":false}
+  {"id":3,"app":"Scawfulbot","title":"hello","sub-layer":"normal","layer":"normal","is-minimized":false},
+  {"id":4,"app":"Oracle Helper","title":"","sub-layer":"normal","layer":"normal","is-minimized":true}
 ]
 JSON
     ;;
@@ -76,6 +77,11 @@ for expected in missing-rule rule-without-below live-policy-mismatch manual-topm
     exit 1
   }
 done
+if printf '%s\n' "$TEXT_OUTPUT" | grep -Fq 'Oracle Helper'; then
+  echo "FAIL: minimized app variants should not be reported" >&2
+  printf '%s\n' "$TEXT_OUTPUT" >&2
+  exit 1
+fi
 
 set +e
 JSON_OUTPUT="$(run_control rules-audit --json 2>&1)"

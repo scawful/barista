@@ -149,6 +149,24 @@ mkdir -p "$BIN_DIR"
   printf '%s\n' '  exit 0'
   printf '%s\n' 'fi'
   printf '%s\n' ''
+  printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "window" ] && [ "${3:-}" = "--focus" ]; then'
+  printf '%s\n' '  write_state "focused_window_${4:-unknown}" true'
+  printf '%s\n' '  case "${4:-}" in'
+  printf '%s\n' '    west|east|north) exit 0 ;;'
+  printf '%s\n' '    *) exit 1 ;;'
+  printf '%s\n' '  esac'
+  printf '%s\n' 'fi'
+  printf '%s\n' ''
+  printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "window" ] && [ "${3:-}" = "--swap" ]; then'
+  printf '%s\n' '  write_state "swapped_${4:-unknown}" true'
+  printf '%s\n' '  exit 0'
+  printf '%s\n' 'fi'
+  printf '%s\n' ''
+  printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "display" ] && [ "${3:-}" = "--focus" ]; then'
+  printf '%s\n' '  write_state "focused_display_${4:-unknown}" true'
+  printf '%s\n' '  exit 0'
+  printf '%s\n' 'fi'
+  printf '%s\n' ''
   printf '%s\n' 'exit 1'
 } > "$BIN_DIR/yabai"
 chmod +x "$BIN_DIR/yabai"
@@ -342,5 +360,42 @@ reset_state
 run_control space-toggle-padding-gap
 assert_log_contains "-m space --toggle padding"
 assert_log_contains "-m space --toggle gap"
+
+reset_state
+run_control display-focus-prev-wrap
+assert_log_contains "-m display --focus prev"
+grep -Fxq 'focused_display_prev=true' "$STATE_FILE" || {
+  echo "FAIL: display-focus-prev-wrap should focus previous display" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
+
+reset_state
+run_control window-focus-west
+assert_log_contains "-m window --focus west"
+grep -Fxq 'focused_window_west=true' "$STATE_FILE" || {
+  echo "FAIL: window-focus-west should try window focus" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
+
+reset_state
+run_control window-focus-south
+assert_log_contains "-m window --focus south"
+assert_log_contains "-m display --focus south"
+grep -Fxq 'focused_display_south=true' "$STATE_FILE" || {
+  echo "FAIL: window-focus-south should fall back to display focus" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
+
+reset_state
+run_control window-swap-east
+assert_log_contains "-m window --swap east"
+grep -Fxq 'swapped_east=true' "$STATE_FILE" || {
+  echo "FAIL: window-swap-east should swap east" >&2
+  cat "$STATE_FILE" >&2
+  exit 1
+}
 
 printf 'test_yabai_control_window_rules.sh: ok\n'

@@ -26,24 +26,24 @@ ctrl + shift - left  : ~/.config/sketchybar/scripts/yabai_control.sh window-spac
 ctrl + shift - right : ~/.config/sketchybar/scripts/yabai_control.sh window-space-next-wrap
 
 # --- Display Navigation ---
-ctrl + alt - left  : yabai -m display --focus prev || yabai -m display --focus last
-ctrl + alt - right : yabai -m display --focus next || yabai -m display --focus first
+ctrl + alt - left  : ~/.config/sketchybar/scripts/yabai_control.sh display-focus-prev-wrap
+ctrl + alt - right : ~/.config/sketchybar/scripts/yabai_control.sh display-focus-next-wrap
 
 # --- Move Window to Display ---
 ctrl + alt + shift - left  : ~/.config/sketchybar/scripts/yabai_control.sh window-display-prev
 ctrl + alt + shift - right : ~/.config/sketchybar/scripts/yabai_control.sh window-display-next
 
 # --- Window Focus (vim-style) ---
-alt - h : yabai -m window --focus west  || yabai -m display --focus west
-alt - j : yabai -m window --focus south || yabai -m display --focus south
-alt - k : yabai -m window --focus north || yabai -m display --focus north
-alt - l : yabai -m window --focus east  || yabai -m display --focus east
+alt - h : ~/.config/sketchybar/scripts/yabai_control.sh window-focus-west
+alt - j : ~/.config/sketchybar/scripts/yabai_control.sh window-focus-south
+alt - k : ~/.config/sketchybar/scripts/yabai_control.sh window-focus-north
+alt - l : ~/.config/sketchybar/scripts/yabai_control.sh window-focus-east
 
 # --- Window Swap (vim-style) ---
-alt + shift - h : yabai -m window --swap west
-alt + shift - j : yabai -m window --swap south
-alt + shift - k : yabai -m window --swap north
-alt + shift - l : yabai -m window --swap east
+alt + shift - h : ~/.config/sketchybar/scripts/yabai_control.sh window-swap-west
+alt + shift - j : ~/.config/sketchybar/scripts/yabai_control.sh window-swap-south
+alt + shift - k : ~/.config/sketchybar/scripts/yabai_control.sh window-swap-north
+alt + shift - l : ~/.config/sketchybar/scripts/yabai_control.sh window-swap-east
 
 # --- Layout Switching ---
 ctrl + alt - b : ~/.config/sketchybar/scripts/yabai_control.sh space-layout bsp

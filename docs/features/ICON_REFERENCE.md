@@ -22,8 +22,8 @@ icon = icon_for("apple", "")
 icon = c_bridge.icons.get("apple", icon_for("apple", ""))
 ```
 
-### In Control Panel
-1. Open Control Panel: Shift + Click Apple menu
+### In Barista
+1. Open Barista: `⌘⌥P` or Shift + Click Apple menu
 2. Go to Icons tab
 3. Search or browse categories
 4. Click icon to copy or assign
@@ -365,9 +365,9 @@ sbar.add("item", "my_widget", {
 }
 ```
 
-### Using in Control Panel
+### Using in Barista
 
-1. Open control panel
+1. Open Barista
 2. Navigate to Icons tab
 3. Use search: type "apple" to find all apple-related icons
 4. Click icon to:
@@ -386,7 +386,7 @@ Edit `icon_map.json`:
 }
 ```
 
-Or use Control Panel → Icons → App Icons section.
+Or use Barista → Icons → App Icons section.
 
 ---
 
@@ -531,7 +531,7 @@ Reload: `sketchybar --reload`
 
 ## Related Documentation
 
-- [Control Panel Guide](CONTROL_PANEL_V2.md) - Icon Gallery tab
+- [Barista settings guide](CONTROL_PANEL_V2.md) - Icon Gallery tab
 - [Architecture Analysis](../architecture/CODE_ANALYSIS.md) - Icon system design
 - [Common Pitfalls](../troubleshooting/COMMON_PITFALLS.md) - Common issues and fixes
 

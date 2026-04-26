@@ -91,9 +91,9 @@ local popup_definitions = {
   control_panel = {
     name = "popup.control_panel",
     icon = "󰒓",
-    label = "Control Panel",
+    label = "Barista",
     action = function(ctx, opts)
-      -- Launch the unified config window
+      -- Launch the unified Barista settings window.
       local script = (ctx and ctx.scripts and ctx.scripts.open_control_panel)
         or (ctx and ctx.paths and ctx.paths.apple_launcher)
       if not script or script == "" then

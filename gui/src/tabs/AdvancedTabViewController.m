@@ -155,9 +155,9 @@
 
   [self loadCodePath];
 
-  // Control Panel Routing Section
+  // Barista app routing section.
   NSBox *routingBox = [[NSBox alloc] initWithFrame:NSZeroRect];
-  routingBox.title = @"Control Panel Implementation";
+  routingBox.title = @"Barista App Implementation";
   [rootStack addView:routingBox inGravity:NSStackViewGravityTop];
   [routingBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
 
@@ -408,11 +408,11 @@
   NSError *error = nil;
   if (![[BaristaCommandBus sharedBus] openControlPanelForTab:nil error:&error]) {
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Control Panel Launch Failed";
-    alert.informativeText = error.localizedDescription ?: @"Unable to launch control panel.";
+    alert.messageText = @"Barista Launch Failed";
+    alert.informativeText = error.localizedDescription ?: @"Unable to launch Barista.";
     [alert runModal];
   } else {
-    self.statusLabel.stringValue = @"✓ Control panel launch requested";
+    self.statusLabel.stringValue = @"✓ Barista launch requested";
     self.statusLabel.textColor = [NSColor systemGreenColor];
   }
 }

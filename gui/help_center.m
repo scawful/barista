@@ -992,7 +992,7 @@ static char kWorkflowActionKey;
   NSString *script = [self.configPath stringByAppendingPathComponent:@"bin/open_control_panel.sh"];
   if (![[NSFileManager defaultManager] isExecutableFileAtPath:script]) {
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Control Panel Script Missing";
+    alert.messageText = @"Barista Launcher Missing";
     alert.informativeText = [NSString stringWithFormat:@"Missing script: %@", script];
     [alert runModal];
     return;

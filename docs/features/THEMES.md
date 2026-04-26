@@ -77,9 +77,9 @@ Then reload SketchyBar:
 sketchybar --reload
 \`\`\`
 
-### Method 2: Via Control Panel (Coming Soon)
+### Method 2: Via Barista
 
-The control panel will include a theme selector in a future update.
+Open Barista with `⌘⌥P`, then use the Themes tab to review available themes, inspect their palettes, and apply the selected theme.
 
 ### Method 3: Profile-Based Themes
 
@@ -184,7 +184,7 @@ Want to share your theme? Open a pull request or discussion on GitHub!
 ## Preview Your Theme
 
 After changing themes, preview by:
-1. Open the control panel (if available)
+1. Open Barista and check the Themes tab preview
 2. Check the apple menu (click the Apple icon)
 3. Hover over widgets to see backgrounds
 4. Open app menus to check popup colors
@@ -208,9 +208,9 @@ After changing themes, preview by:
 ## Future Enhancements
 
 Planned features:
-- [ ] Theme switcher in control panel
+- [x] Theme switcher in Barista
 - [ ] Per-widget theme customization
 - [ ] Dynamic theme switching based on time of day
-- [ ] Theme preview before applying
+- [x] Theme preview before applying
 - [ ] Import themes from URL
 - [ ] Theme collections

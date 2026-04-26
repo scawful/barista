@@ -247,6 +247,29 @@ function locator.resolve_afs_browser_app(opts)
     code_dir .. "/lab/afs_suite/build_ai/apps/browser/afs-browser.app",
     code_dir .. "/lab/afs_suite/build/apps/browser/Debug/afs-browser.app",
     code_dir .. "/lab/afs_suite/build/apps/browser/Release/afs-browser.app",
+    code_dir .. "/lab/afs/build/apps/browser/afs-browser.app",
+    code_dir .. "/lab/afs/build_ai/apps/browser/afs-browser.app",
+    code_dir .. "/lab/afs/build/apps/browser/Debug/afs-browser.app",
+    code_dir .. "/lab/afs/build/apps/browser/Release/afs-browser.app",
+    code_dir .. "/lab/afs/apps/browser/build/afs-browser.app",
+    code_dir .. "/lab/afs/apps/browser/build_ai/afs-browser.app",
+    code_dir .. "/lab/afs/apps/browser/build/Debug/afs-browser.app",
+    code_dir .. "/lab/afs/apps/browser/build/Release/afs-browser.app",
+    HOME .. "/Applications/AFS Browser.app",
+    HOME .. "/Applications/afs-browser.app",
+    "/Applications/AFS Browser.app",
+    "/Applications/afs-browser.app",
+  }, true)
+end
+
+function locator.resolve_ghostty_app(opts)
+  return locator.resolve_path({
+    option_value(opts, "ghostty_app"),
+    os.getenv("BARISTA_GHOSTTY_APP") or os.getenv("GHOSTTY_APP"),
+    "/Applications/Ghostty.app",
+    HOME .. "/Applications/Ghostty.app",
+    "/Applications/ghostty.app",
+    HOME .. "/Applications/ghostty.app",
   }, true)
 end
 
@@ -290,6 +313,8 @@ function locator.resolve_yaze_app(opts)
   return locator.resolve_path({
     option_value(opts, "yaze_app"),
     os.getenv("BARISTA_YAZE_APP") or os.getenv("YAZE_APP"),
+    "/Applications/yaze.app",
+    HOME .. "/Applications/yaze.app",
     nightly_prefix .. "/current/yaze.app",
     nightly_prefix .. "/yaze.app",
     HOME .. "/Applications/Yaze Nightly.app",
@@ -338,6 +363,41 @@ function locator.resolve_yaze_launcher()
   end
 
   return nil, false
+end
+
+function locator.resolve_z3ed_launcher(opts)
+  local code_dir = locator.resolve_code_dir(opts)
+  local yaze_dir = os.getenv("BARISTA_YAZE_DIR")
+    or option_value(opts, "yaze")
+    or select(1, locator.resolve_yaze_dir(opts))
+
+  local resolved, found = locator.resolve_executable_path({
+    option_value(opts, "z3ed"),
+    option_value(opts, "z3ed_launcher"),
+    os.getenv("BARISTA_Z3ED_BIN") or os.getenv("Z3ED_BIN"),
+    yaze_dir and (yaze_dir .. "/scripts/z3ed") or nil,
+    yaze_dir and (yaze_dir .. "/dist/yaze-macos-local-test/z3ed") or nil,
+    yaze_dir and (yaze_dir .. "/build/presets/mac-ai-fast/z3ed") or nil,
+    yaze_dir and (yaze_dir .. "/build/presets/mac-ai/z3ed") or nil,
+    code_dir .. "/hobby/yaze/scripts/z3ed",
+    code_dir .. "/hobby/yaze/dist/yaze-macos-local-test/z3ed",
+    code_dir .. "/hobby/yaze/build/presets/mac-ai-fast/z3ed",
+    code_dir .. "/hobby/yaze/build/presets/mac-ai/z3ed",
+    code_dir .. "/yaze/scripts/z3ed",
+    code_dir .. "/yaze/dist/yaze-macos-local-test/z3ed",
+    code_dir .. "/yaze/build/presets/mac-ai-fast/z3ed",
+    code_dir .. "/yaze/build/presets/mac-ai/z3ed",
+  })
+  if found then
+    return resolved, true
+  end
+
+  resolved = locator.command_path("z3ed")
+  if resolved then
+    return resolved, true
+  end
+
+  return resolved, false
 end
 
 function locator.resolve_sys_manual_binary(opts)

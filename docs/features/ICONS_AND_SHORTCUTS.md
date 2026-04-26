@@ -89,34 +89,30 @@ Barista includes a comprehensive keyboard shortcut management system with **non-
 These shortcuts work system-wide and don't conflict with common applications:
 
 #### Barista UI
-- `⌘⌥P` - Open Control Panel
+- `⌘⌥P` - Open Barista
 - `⌘⌥C` - Toggle Cortex
 - `⌘⌥/` - Toggle Control Center
 - `⌘⌥H` - Open Help Center
 - `⌘⌥I` - Open Icon Browser
+- `⌘⌥T` - Open Terminal
 - `⌘⌥O` - Toggle Keyboard Overlay
 - `⌘⌥R` - Reload SketchyBar
 - `⌘⌥⇧R` - Rebuild + Reload SketchyBar
 - `⌘⌥Y` - Toggle Yabai Shortcuts
-
-#### AFS Tools
-- `⌘⌥B` - Launch AFS Browser
-- `⌘⌥S` - Launch AFS Studio
-- `⌘⌥L` - Launch AFS Labeler
 
 #### Audio
 - `⌘⌥F` - Launch StemForge
 - `⌘⌥M` - Launch StemSampler
 
 #### Apps
-- `⌘⌥Z` - Launch Yaze
+- `⌘⌥Z` - Launch z3ed in Ghostty
 - `⌘⌥D` - Open Sys Manual
 
-Note: The Yaze shortcut only appears when the integration is enabled and a launcher/app is found. It prefers `BARISTA_YAZE_LAUNCHER` (or `yaze-nightly` in `PATH`) and will fall back to `BARISTA_YAZE_APP` or the nightly prefix (`YAZE_NIGHTLY_PREFIX`).
+Note: The `z3ed` shortcut only appears when a `z3ed` launcher is found. It launches through Ghostty when Ghostty is installed and falls back to Terminal-backed shell execution otherwise.
 
 #### AFS app paths
-- AFS Browser uses the ImGui app bundle (override with `AFS_BROWSER_APP`).
-- AFS Studio/Labeler prefer `%CODE%/lab/afs/apps/studio` binaries; CLI fallback requires `menus.apple.terminal = true`.
+- The AFS Browser shortcut prefers `AFS_BROWSER_APP`, then falls back to the local `afs-studio` launcher/binary.
+- AFS Labeler prefers `%CODE%/lab/afs/apps/studio` binaries; CLI fallback requires `menus.apple.terminal = true`.
 
 #### Display Management
 - `⌘⌥⇧→` - Send Window to Next Display
@@ -228,10 +224,10 @@ Icons and shortcuts are automatically integrated into menu items. Shortcuts are 
 ```
 Toggle Cortex       ⌘⌥C
 Reload SketchyBar   ⌘⌥R
-Open Control Panel  ⌘⌥P
+Open Barista        ⌘⌥P
 ```
 
-Help Center + Control Panel data is sourced from `data/workflow_shortcuts.json`. Keep it aligned with `modules/shortcuts.lua` and regenerate the skhd file after edits.
+Help Center + Barista shortcut data is sourced from `data/workflow_shortcuts.json`. Keep it aligned with `modules/shortcuts.lua` and regenerate the skhd file after edits.
 
 ## Best Practices
 
@@ -300,10 +296,10 @@ Help Center + Control Panel data is sourced from `data/workflow_shortcuts.json`.
 
 Planned improvements:
 
-- [ ] GUI shortcut editor in Control Panel
+- [ ] GUI shortcut editor in Barista
 - [ ] Per-application shortcut contexts
 - [ ] Shortcut recording/learning mode
-- [ ] Icon browser in Control Panel
+- [x] Icon browser in Barista
 - [ ] Custom icon upload/import
 - [ ] Theme-specific icon sets
 - [ ] Dynamic icon based on state (battery level, wifi strength)

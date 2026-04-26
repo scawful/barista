@@ -57,3 +57,41 @@ run_test("shortcuts.get_command: window display moves route through yabai_contro
   assert_true(next_command:match("yabai_control%.sh window%-display%-next") ~= nil, "next display move should route through yabai_control.sh")
   assert_true(prev_command:match("yabai_control%.sh window%-display%-prev") ~= nil, "prev display move should route through yabai_control.sh")
 end)
+
+run_test("shortcuts.get_command: open_terminal prefers Ghostty-style launch", function()
+  local command = shortcuts.get_command("open_terminal")
+  assert_type(command, "string", "open_terminal command")
+  assert_true(command ~= "", "open_terminal command should not be empty")
+  assert_true(
+    command:match("Ghostty") ~= nil or command:match("open %-a Terminal") ~= nil,
+    "open_terminal should prefer Ghostty and fall back to Terminal"
+  )
+  if command:match("Ghostty") ~= nil then
+    assert_true(command:match("mkdir") ~= nil, "Ghostty terminal launch should be debounced")
+    assert_true(command:match("bash %-lc '") ~= nil, "Ghostty terminal launch should pass a literal bash payload")
+    assert_true(command:match("%$lock_dir") ~= nil, "Ghostty terminal launch should preserve lock_dir for bash")
+  end
+end)
+
+run_test("shortcuts.get: launch_z3ed is exposed when z3ed is available", function()
+  local command = shortcuts.get_command("launch_z3ed")
+  if command == "" then
+    print("    ⊘ launch_z3ed unavailable in this environment")
+    assert_true(true, "skipped — z3ed not resolved")
+    return
+  end
+
+  local shortcut = shortcuts.get("launch_z3ed")
+  assert_true(shortcut ~= nil, "launch_z3ed shortcut should be listed")
+  assert_equal(shortcut.symbol, "⌘⌥Z", "launch_z3ed symbol")
+  assert_true(
+    command:match("Ghostty") ~= nil or command:match("Terminal") ~= nil,
+    "launch_z3ed should launch through Ghostty or Terminal fallback"
+  )
+  assert_true(command:match("z3ed") ~= nil, "launch_z3ed should invoke z3ed")
+  if command:match("Ghostty") ~= nil then
+    assert_true(command:match("mkdir") ~= nil, "launch_z3ed should be debounced")
+    assert_true(command:match("bash %-lc '") ~= nil, "launch_z3ed should pass a literal bash payload")
+    assert_true(command:match("%$lock_dir") ~= nil, "launch_z3ed should preserve lock_dir for bash")
+  end
+end)

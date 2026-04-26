@@ -159,10 +159,12 @@ local AFS_ROOT = select(1, locator.resolve_afs_root(shared_opts))
 local AFS_STUDIO_ROOT = select(1, locator.resolve_afs_studio_root(shared_opts, AFS_ROOT))
 local AFS_STUDIO_LAUNCHER = select(1, locator.resolve_afs_studio_launcher(shared_opts))
 local AFS_BROWSER_APP = select(1, locator.resolve_afs_browser_app(shared_opts))
+local GHOSTTY_APP = select(1, locator.resolve_ghostty_app(shared_opts))
 local STEMFORGE_APP = select(1, locator.resolve_stemforge_app(shared_opts))
 local STEM_SAMPLER_APP = select(1, locator.resolve_stem_sampler_app(shared_opts))
 local YAZE_APP, YAZE_OK = locator.resolve_yaze_app(shared_opts)
 local YAZE_LAUNCHER = select(1, locator.resolve_yaze_launcher())
+local Z3ED_BIN, Z3ED_OK = locator.resolve_z3ed_launcher(shared_opts)
 local SYS_MANUAL_BIN, SYS_MANUAL_OK = locator.resolve_sys_manual_binary(shared_opts)
 local HELP_CENTER_BIN, HELP_CENTER_OK = locator.resolve_help_center_bin(CONFIG_DIR)
 local ICON_BROWSER_BIN, ICON_BROWSER_OK = locator.resolve_icon_browser_bin(CONFIG_DIR)
@@ -178,12 +180,51 @@ end
 local YAZE_FLAG = integration_flag("yaze")
 local YAZE_AVAILABLE = YAZE_OK or (YAZE_LAUNCHER and YAZE_LAUNCHER ~= "")
 local YAZE_ENABLED = (YAZE_FLAG == nil) and YAZE_AVAILABLE or (YAZE_FLAG and YAZE_AVAILABLE)
+local YAZE_DIR = select(1, locator.resolve_yaze_dir(shared_opts)) or (CODE_DIR .. "/hobby/yaze")
 
 local function open_path_command(path)
   if not path or path == "" then
     return ""
   end
   return string.format("open %s", shell_quote(path))
+end
+
+local function bash_literal(value)
+  return "'" .. tostring(value or ""):gsub("'", "'\"'\"'") .. "'"
+end
+
+local function debounced_command(key, command)
+  if not command or command == "" then
+    return ""
+  end
+  local raw_key = tostring(key or "action"):gsub("[^%w]+", "_")
+  local lock_dir = string.format("/tmp/barista_shortcut_%s.lock", raw_key)
+  local wrapped = string.format(
+    "lock_dir=%s; if ! mkdir \"$lock_dir\" 2>/dev/null; then exit 0; fi; trap 'rmdir \"$lock_dir\"' EXIT; %s; sleep 0.75",
+    shell_quote(lock_dir),
+    command
+  )
+  return "bash -lc " .. bash_literal(wrapped)
+end
+
+local function terminal_app_command()
+  if GHOSTTY_APP and GHOSTTY_APP ~= "" then
+    return debounced_command("open_terminal", string.format("open -na %s", shell_quote(GHOSTTY_APP)))
+  end
+  return "open -a Terminal"
+end
+
+local function terminal_session_command(key, command)
+  if not command or command == "" then
+    return terminal_app_command()
+  end
+  if GHOSTTY_APP and GHOSTTY_APP ~= "" then
+    return debounced_command(
+      key or "ghostty_session",
+      string.format("open -na %s --args -e /bin/zsh -lc %s", shell_quote(GHOSTTY_APP), shell_quote(command))
+    )
+  end
+  return open_terminal(command)
 end
 
 local function open_app_command(app_path, app_name)
@@ -261,18 +302,31 @@ local function afs_labeler_action()
   return ""
 end
 
-local AFS_BROWSER_ACTION = open_app_command(AFS_BROWSER_APP, "")
 local AFS_STUDIO_ACTION = afs_studio_action()
+local AFS_BROWSER_ACTION = open_app_command(AFS_BROWSER_APP, "")
+if AFS_BROWSER_ACTION == "" then
+  AFS_BROWSER_ACTION = AFS_STUDIO_ACTION
+end
 local AFS_LABELER_ACTION = afs_labeler_action()
 local STEMFORGE_ACTION = open_app_command(STEMFORGE_APP, "StemForge")
 local STEM_SAMPLER_ACTION = open_app_command(STEM_SAMPLER_APP, "StemSampler")
 local YAZE_ACTION = ""
 if YAZE_ENABLED then
-  if YAZE_LAUNCHER and YAZE_LAUNCHER ~= "" then
-    YAZE_ACTION = shell_quote(YAZE_LAUNCHER)
-  else
+  if YAZE_OK and YAZE_APP and YAZE_APP ~= "" then
     YAZE_ACTION = open_app_command(YAZE_APP, "Yaze")
+  elseif YAZE_LAUNCHER and YAZE_LAUNCHER ~= "" then
+    YAZE_ACTION = shell_quote(YAZE_LAUNCHER)
   end
+end
+local OPEN_TERMINAL_ACTION = terminal_app_command()
+local Z3ED_ACTION = ""
+if Z3ED_OK and Z3ED_BIN and Z3ED_BIN ~= "" then
+  local command = string.format(
+    "cd %s && clear && printf 'z3ed\\n\\n' && %s --help; printf '\\n'; exec /bin/zsh -l",
+    shell_quote(YAZE_DIR),
+    shell_quote(Z3ED_BIN)
+  )
+  Z3ED_ACTION = terminal_session_command("launch_z3ed", command)
 end
 
 -- Modifier key symbols and their skhd representations
@@ -331,6 +385,21 @@ shortcuts.global = {
     action = "open_icon_browser",
     desc = "Open Icon Browser",
     symbol = "⌘⌥I"
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "t",
+    action = "open_terminal",
+    desc = "Open Terminal",
+    symbol = "⌘⌥T"
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "z",
+    action = "launch_z3ed",
+    desc = "Launch z3ed",
+    symbol = "⌘⌥Z",
+    requires = "z3ed"
   },
   {
     mods = {"cmd", "alt"},
@@ -477,13 +546,14 @@ shortcuts.actions = {
   set_layout_stack = SCRIPTS_DIR .. "/space_mode.sh current stack",
 
   -- Apps
-  open_terminal = "open -a Terminal",
+  open_terminal = OPEN_TERMINAL_ACTION,
   launch_afs_browser = AFS_BROWSER_ACTION,
   launch_afs_studio = AFS_STUDIO_ACTION,
   launch_afs_labeler = AFS_LABELER_ACTION,
   launch_stemforge = STEMFORGE_ACTION,
   launch_stem_sampler = STEM_SAMPLER_ACTION,
   launch_yaze = YAZE_ACTION,
+  launch_z3ed = Z3ED_ACTION,
 
   -- Window Focus (vim keys)
   focus_window_west = "yabai -m window --focus west",
@@ -512,6 +582,8 @@ local function all_shortcuts()
     if not requires then
       table.insert(list, shortcut)
     elseif requires == "yaze" and YAZE_ENABLED then
+      table.insert(list, shortcut)
+    elseif requires == "z3ed" and Z3ED_ACTION ~= "" then
       table.insert(list, shortcut)
     elseif requires == "window_manager" and wm_enabled then
       table.insert(list, shortcut)

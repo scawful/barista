@@ -100,6 +100,33 @@ run_test("tool_locator.resolve_afs_browser_app: prefers build over build_ai", fu
   cleanup(root)
 end)
 
+run_test("tool_locator.resolve_afs_browser_app: supports lab/afs fallback layout", function()
+  local root = make_temp_dir("locator_afs_browser_fallback")
+  local code_dir = root .. "/code"
+  mkdir(code_dir .. "/lab/afs/build/apps/browser/afs-browser.app")
+
+  local resolved, ok = locator.resolve_afs_browser_app({ code_dir = code_dir })
+  assert_true(ok, "found browser app in lab/afs layout")
+  assert_equal(resolved, code_dir .. "/lab/afs/build/apps/browser/afs-browser.app", "uses lab/afs fallback")
+  cleanup(root)
+end)
+
+run_test("tool_locator.resolve_afs_browser_app: explicit option overrides fallbacks", function()
+  local root = make_temp_dir("locator_afs_browser_override")
+  local code_dir = root .. "/code"
+  local explicit = root .. "/custom/afs-browser.app"
+  mkdir(explicit)
+  mkdir(code_dir .. "/lab/afs_suite/build/apps/browser/afs-browser.app")
+
+  local resolved, ok = locator.resolve_afs_browser_app({
+    code_dir = code_dir,
+    afs_browser_app = explicit,
+  })
+  assert_true(ok, "found explicit browser app path")
+  assert_equal(resolved, explicit, "explicit option path wins")
+  cleanup(root)
+end)
+
 run_test("tool_locator.resolve_afs_studio_launcher: finds afs-scawful helper", function()
   local root = make_temp_dir("locator_afs_launcher")
   local code_dir = root .. "/code"
@@ -112,6 +139,35 @@ run_test("tool_locator.resolve_afs_studio_launcher: finds afs-scawful helper", f
   local resolved, found = locator.resolve_afs_studio_launcher({ code_dir = code_dir })
   assert_true(found, "found studio launcher")
   assert_equal(resolved, launcher, "launcher path")
+  cleanup(root)
+end)
+
+run_test("tool_locator.resolve_ghostty_app: explicit override wins", function()
+  local root = make_temp_dir("locator_ghostty")
+  local explicit = root .. "/Ghostty.app"
+  mkdir(explicit)
+
+  local resolved, found = locator.resolve_ghostty_app({
+    ghostty_app = explicit,
+  })
+  assert_true(found, "found explicit ghostty app")
+  assert_equal(resolved, explicit, "ghostty app path")
+  cleanup(root)
+end)
+
+run_test("tool_locator.resolve_z3ed_launcher: prefers repo script over command fallback", function()
+  local root = make_temp_dir("locator_z3ed")
+  local code_dir = root .. "/code"
+  local script = code_dir .. "/hobby/yaze/scripts/z3ed"
+  mkdir(code_dir .. "/lab")
+  mkdir(code_dir .. "/hobby/yaze/scripts")
+  write_file(script, "#!/bin/sh\n")
+  local ok = os.execute(string.format("chmod +x %q", script))
+  assert_true(ok == 0 or ok == true, "chmod z3ed script")
+
+  local resolved, found = locator.resolve_z3ed_launcher({ code_dir = code_dir })
+  assert_true(found, "found z3ed launcher")
+  assert_equal(resolved, script, "z3ed script path")
   cleanup(root)
 end)
 

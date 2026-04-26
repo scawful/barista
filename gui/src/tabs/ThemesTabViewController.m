@@ -68,7 +68,7 @@
   // Load current theme from state
   NSString *currentTheme = [config valueForKeyPath:@"appearance.theme" defaultValue:@"default"];
   [self.themeSelector selectItemWithTitle:currentTheme];
-  if (![self.themeSelector selectedItem]) {
+  if (![self.themeSelector selectedItem] && self.themeSelector.numberOfItems > 0) {
     [self.themeSelector selectItemAtIndex:0];
   }
 
@@ -82,11 +82,12 @@
   previewLabel.backgroundColor = [NSColor clearColor];
   [rootStack addView:previewLabel inGravity:NSStackViewGravityTop];
 
-  NSView *previewBox = [[NSView alloc] initWithFrame:NSZeroRect];
+  NSView *previewBox = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 560, 160)];
+  previewBox.translatesAutoresizingMaskIntoConstraints = NO;
   previewBox.wantsLayer = YES;
   previewBox.layer.backgroundColor = [[NSColor blackColor] colorWithAlphaComponent:0.2].CGColor;
   previewBox.layer.cornerRadius = 12;
-  [previewBox.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
+  [previewBox.widthAnchor constraintEqualToConstant:560].active = YES;
   [previewBox.heightAnchor constraintEqualToConstant:160].active = YES;
   [rootStack addView:previewBox inGravity:NSStackViewGravityTop];
 

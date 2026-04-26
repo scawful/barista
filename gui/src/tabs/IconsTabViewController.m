@@ -85,11 +85,12 @@
   [rootStack addView:self.modeControl inGravity:NSStackViewGravityTop];
 
   // Container for content
-  NSView *contentContainer = [[NSView alloc] initWithFrame:NSZeroRect];
+  NSView *contentContainer = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 560, 680)];
+  contentContainer.translatesAutoresizingMaskIntoConstraints = NO;
   contentContainer.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   [rootStack addView:contentContainer inGravity:NSStackViewGravityTop];
-  [contentContainer.widthAnchor constraintEqualToAnchor:rootStack.widthAnchor].active = YES;
-  [contentContainer.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-20].active = YES;
+  [contentContainer.widthAnchor constraintEqualToConstant:560].active = YES;
+  [contentContainer.heightAnchor constraintEqualToConstant:680].active = YES;
 
   self.mappingContainer = [[NSView alloc] initWithFrame:NSZeroRect];
   self.libraryContainer = [[NSView alloc] initWithFrame:NSZeroRect];
@@ -221,11 +222,12 @@
   [appControls addView:self.appOpenBrowserButton inGravity:NSStackViewGravityLeading];
 
   NSScrollView *appTableScroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+  appTableScroll.translatesAutoresizingMaskIntoConstraints = NO;
   appTableScroll.hasVerticalScroller = YES;
   appTableScroll.autohidesScrollers = YES;
   appTableScroll.borderType = NSBezelBorder;
   [appTableScroll.heightAnchor constraintEqualToConstant:300].active = YES;
-  [appTableScroll.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+  [appTableScroll.widthAnchor constraintEqualToConstant:520].active = YES;
 
   self.appTableView = [[NSTableView alloc] initWithFrame:NSZeroRect];
   self.appTableView.dataSource = self;
@@ -281,19 +283,21 @@
   [controls addView:self.openBrowserButton inGravity:NSStackViewGravityLeading];
 
   NSStackView *mainContent = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  mainContent.translatesAutoresizingMaskIntoConstraints = NO;
   mainContent.orientation = NSUserInterfaceLayoutOrientationHorizontal;
   mainContent.spacing = 20;
   mainContent.alignment = NSLayoutAttributeTop;
   [stack addView:mainContent inGravity:NSStackViewGravityTop];
-  [mainContent.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
-  [mainContent.bottomAnchor constraintEqualToAnchor:stack.bottomAnchor].active = YES;
+  [mainContent.widthAnchor constraintEqualToConstant:520].active = YES;
 
   NSScrollView *tableScroll = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+  tableScroll.translatesAutoresizingMaskIntoConstraints = NO;
   tableScroll.hasVerticalScroller = YES;
   tableScroll.autohidesScrollers = YES;
   tableScroll.borderType = NSBezelBorder;
   [mainContent addView:tableScroll inGravity:NSStackViewGravityLeading];
-  [tableScroll.bottomAnchor constraintEqualToAnchor:mainContent.bottomAnchor].active = YES;
+  [tableScroll.widthAnchor constraintEqualToConstant:300].active = YES;
+  [tableScroll.heightAnchor constraintEqualToConstant:420].active = YES;
 
   self.tableView = [[NSTableView alloc] initWithFrame:NSZeroRect];
   self.tableView.dataSource = self;

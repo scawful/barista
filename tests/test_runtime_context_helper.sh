@@ -152,6 +152,7 @@ PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   "$SCRIPT" refresh
 
 grep -Fxq $'app_name\tFinder' "$CONFIG_DIR/cache/runtime_context/front_app.tsv" || { echo "FAIL: runtime context should delegate front-app cache refresh to helper" >&2; exit 1; }
+grep -Fxq $'window_available\ttrue' "$CONFIG_DIR/cache/runtime_context/front_app.tsv" || { echo "FAIL: runtime context should normalize helper-backed window availability" >&2; exit 1; }
 grep -Fxq $'track\tClock Town' "$CONFIG_DIR/cache/runtime_context/media.tsv" || { echo "FAIL: runtime context should still refresh media cache alongside helper-backed front-app state" >&2; exit 1; }
 
 FRONT_OUTPUT="$(
@@ -163,6 +164,7 @@ FRONT_OUTPUT="$(
     "$SCRIPT" front-app
 )"
 printf '%s\n' "$FRONT_OUTPUT" | grep -Fxq $'location_label\tSpace 2 · Display 1' || { echo "FAIL: runtime context should print helper-backed front-app state" >&2; exit 1; }
+printf '%s\n' "$FRONT_OUTPUT" | grep -Fxq $'window_available\ttrue' || { echo "FAIL: runtime context should print normalized window availability" >&2; exit 1; }
 
 FOCUSED_OUTPUT="$(
   PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \

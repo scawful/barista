@@ -118,6 +118,7 @@ WINDOW_MATCH_OUTPUT="$(
 )"
 
 printf '%s\n' "$WINDOW_MATCH_OUTPUT" | grep -Fxq $'app_name\tFinder' || { echo "FAIL: helper should preserve explicit app name" >&2; exit 1; }
+printf '%s\n' "$WINDOW_MATCH_OUTPUT" | grep -Fxq $'window_available\ttrue' || { echo "FAIL: helper should mark matching managed windows as available" >&2; exit 1; }
 printf '%s\n' "$WINDOW_MATCH_OUTPUT" | grep -Fxq $'state_label\tTiled · Sticky' || { echo "FAIL: helper should derive tiled sticky state" >&2; exit 1; }
 printf '%s\n' "$WINDOW_MATCH_OUTPUT" | grep -Fxq $'location_label\tSpace 3 · Display 2' || { echo "FAIL: helper should derive window location" >&2; exit 1; }
 
@@ -133,6 +134,7 @@ NO_WINDOW_OUTPUT="$(
 )"
 
 printf '%s\n' "$NO_WINDOW_OUTPUT" | grep -Fxq $'app_name\tGhostty' || { echo "FAIL: helper should fall back to frontmost app name" >&2; exit 1; }
+printf '%s\n' "$NO_WINDOW_OUTPUT" | grep -Fxq $'window_available\tfalse' || { echo "FAIL: helper should mark unmanaged fallback as unavailable" >&2; exit 1; }
 printf '%s\n' "$NO_WINDOW_OUTPUT" | grep -Fxq $'state_label\tNo managed window' || { echo "FAIL: helper should surface unmanaged-window fallback state" >&2; exit 1; }
 printf '%s\n' "$NO_WINDOW_OUTPUT" | grep -Fxq $'location_label\tSpace 5 · Display 1' || { echo "FAIL: helper should preserve current space/display fallback" >&2; exit 1; }
 printf '%s\n' "$NO_WINDOW_OUTPUT" | grep -Fxq $'space_index\t5' || { echo "FAIL: helper should emit raw current space index in unmanaged fallback" >&2; exit 1; }

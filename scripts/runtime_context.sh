@@ -61,6 +61,37 @@ lowercase_value() {
   printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'
 }
 
+ensure_front_app_window_available() {
+  local output="${1:-}"
+  [ -n "$output" ] || return 0
+
+  printf '%s\n' "$output" | awk -F'\t' -v OFS='\t' '
+    $1 == "window_available" { has_window_available = 1 }
+    $1 == "state_label" { state_label = $2 }
+    {
+      lines[NR] = $0
+      keys[NR] = $1
+    }
+    END {
+      if (state_label == "") {
+        for (i = 1; i <= NR; i++) print lines[i]
+      } else {
+        window_available = (state_label == "No managed window") ? "false" : "true"
+        for (i = 1; i <= NR; i++) {
+          print lines[i]
+          if (!has_window_available && !inserted && keys[i] == "app_name") {
+            print "window_available", window_available
+            inserted = 1
+          }
+        }
+        if (!has_window_available && !inserted) {
+          print "window_available", window_available
+        }
+      }
+    }
+  '
+}
+
 canonical_front_app_name() {
   local app_name="${1:-}"
   local current_space_json current_space_index current_display_index window_json window_app fallback_name
@@ -90,25 +121,26 @@ canonical_front_app_name() {
 
 normalize_front_app_output() {
   local output="${1:-}"
-  local runtime_app_name canonical_name
+  local runtime_app_name canonical_name normalized
 
   [ -n "$output" ] || return 0
   runtime_app_name="$(printf '%s\n' "$output" | awk -F'\t' '$1 == "app_name" { print $2; exit }')"
   [ -n "$runtime_app_name" ] || {
-    printf '%s\n' "$output"
+    ensure_front_app_window_available "$output"
     return 0
   }
 
   canonical_name="$(canonical_front_app_name "$runtime_app_name")"
   if [ -n "$canonical_name" ] && [ "$(lowercase_value "$runtime_app_name")" = "$(lowercase_value "$canonical_name")" ]; then
-    printf '%s\n' "$output" | awk -F'\t' -v OFS='\t' -v canonical="$canonical_name" '
+    normalized="$(printf '%s\n' "$output" | awk -F'\t' -v OFS='\t' -v canonical="$canonical_name" '
       $1 == "app_name" { $2 = canonical }
       { print }
-    '
+    ')"
+    ensure_front_app_window_available "$normalized"
     return 0
   fi
 
-  printf '%s\n' "$output"
+  ensure_front_app_window_available "$output"
 }
 
 normalize_front_app_cache_file() {

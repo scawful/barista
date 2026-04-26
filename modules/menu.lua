@@ -138,8 +138,8 @@ local function rom_hacking_items(ctx)
   local repo_ok = path_exists(yaze_repo, true)
   local yaze_app = resolve_yaze_app(ctx)
   local yaze_launcher = resolve_yaze_launcher()
-  local yaze_action = yaze_launcher and shell_quote(yaze_launcher)
-    or (yaze_app and string.format("open %s", shell_quote(yaze_app)) or nil)
+  local yaze_action = yaze_app and string.format("open %s", shell_quote(yaze_app))
+    or (yaze_launcher and shell_quote(yaze_launcher) or nil)
 
   if not repo_ok and not yaze_action then
     return {{ type = "item", name = "menu.rom.missing", icon = "⚠️", label = "Yaze Repo Missing", action = ctx.open_path(ctx.paths.whichkey_plan) }}
@@ -469,8 +469,8 @@ function menu.render_all_menus(ctx)
       name = "menu.tools.yaze",
       icon = "󰯙",
       label = "Yaze",
-      action = yaze_launcher and shell_quote(yaze_launcher)
-        or string.format("open %s", shell_quote(yaze_app)),
+      action = yaze_app and string.format("open %s", shell_quote(yaze_app))
+        or shell_quote(yaze_launcher),
     })
   end
 

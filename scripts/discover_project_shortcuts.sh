@@ -104,17 +104,23 @@ def command_action(command: str, *args: str) -> str:
         parts.append(shlex.quote(arg))
     return " ".join(parts)
 
+def terminal_action(command: str) -> str:
+    if not command:
+        return ""
+    escaped = command.replace('\\', '\\\\').replace('"', '\\"')
+    return f"osascript -e 'tell app \"Terminal\" to do script \"{escaped}\"'"
+
 def bundle_action(bundle_id: str, fallback: Path | None = None) -> str:
     parts = ["open", "-b", shlex.quote(bundle_id)]
     command = " ".join(parts)
     if fallback and fallback.exists():
-        return f"{command} || open {shlex.quote(str(fallback))}"
+        return f"open {shlex.quote(str(fallback))} || {command}"
     return command
 
-def add_entry(item_id: str, label: str, icon: str, icon_color: str, label_color: str, action: str):
-    if not action:
+def add_entry(item_id: str, label: str, icon: str, icon_color: str, label_color: str, action: str, **extra):
+    if not action and not extra.get("build_action") and not extra.get("missing_action"):
         return
-    items.append({
+    item = {
         "id": item_id,
         "label": label,
         "icon": icon,
@@ -122,32 +128,122 @@ def add_entry(item_id: str, label: str, icon: str, icon_color: str, label_color:
         "label_color": label_color,
         "action": action,
         "order": len(items) * 10 + 10,
-    })
+    }
+    for key, value in extra.items():
+        if value not in (None, ""):
+            item[key] = value
+    items.append(item)
 
-janice_build_open = None
-janice_repo = resolve_path([
-    code_dir / "lab/janice-studio",
-    Path.home() / "src/lab/janice-studio",
+scawfulbot_build_open = None
+scawfulbot_repo = resolve_path([
+    code_dir / "lab/scawfulbot/apps/apple",
+    Path.home() / "src/lab/scawfulbot/apps/apple",
 ])
-if janice_repo:
-    script = janice_repo / "scripts" / "build_and_open_mac.sh"
+scawfulbot_app = resolve_path([
+    scawfulbot_repo / "build-macos/Build/Products/Debug/Scawfulbot.app" if scawfulbot_repo else None,
+    Path.home() / "Applications/Scawfulbot.app",
+    Path("/Applications/Scawfulbot.app"),
+])
+if scawfulbot_repo:
+    script = scawfulbot_repo / "scripts" / "build_and_open_mac.sh"
     if script.exists():
-        janice_build_open = str(script)
+        scawfulbot_build_open = str(script)
 
 premia_command = resolve_command([
+    code_dir / "lab/premia/build-arch-next/bin/premia",
     code_dir / "lab/premia/build/bin/premia",
     code_dir / "lab/premia/build/Release/premia",
     "premia",
 ])
+loom_repo = resolve_path([
+    code_dir / "lab/loom-studio",
+    Path.home() / "src/lab/loom-studio",
+])
+loom_command = resolve_command([
+    code_dir / "lab/loom-studio/build/bin/loom-studio",
+    Path.home() / "src/lab/loom-studio/build/bin/loom-studio",
+    "loom-studio",
+])
 
-janice_action = ""
-if janice_build_open:
-    janice_action = f"/bin/bash {shlex.quote(janice_build_open)}"
-else:
-    janice_action = bundle_action("com.scawful.JaniceCode.mac", None)
-add_entry("janice_studio", "Janice Code", "󰭹", "0xfff5c2e7", "0xfff8d6ee", janice_action)
-add_entry("premia_v2", "Premia v2", "󰃬", "0xff94e2d5", "0xffc7eee8",
-          command_action(premia_command) if premia_command else "")
+scawfulbot_action = bundle_action("com.scawful.Scawfulbot.mac", scawfulbot_app)
+scawfulbot_build_action = ""
+if scawfulbot_repo:
+    scawfulbot_build_action = terminal_action(
+        f"cd {shlex.quote(str(scawfulbot_repo))} && "
+        "xcodegen generate >/dev/null && "
+        "xcodebuild -project Scawfulbot.xcodeproj -scheme ScawfulbotMac -configuration Debug "
+        "-destination platform=macOS "
+        f"-derivedDataPath {shlex.quote(str(scawfulbot_repo / 'build-macos'))} "
+        "CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= build && "
+        f"open {shlex.quote(str(scawfulbot_repo / 'build-macos/Build/Products/Debug/Scawfulbot.app'))}"
+    )
+add_entry(
+    "scawfulbot",
+    "Scawfulbot",
+    "󰭹",
+    "0xffcba6f7",
+    "0xffdfc9f7",
+    scawfulbot_action if scawfulbot_app else "",
+    available=bool(scawfulbot_app),
+    build_action=scawfulbot_build_action or (f"/bin/bash {shlex.quote(scawfulbot_build_open)}" if scawfulbot_build_open else ""),
+    build_label="Build scawfulbot",
+    missing_message="scawfulbot.app is missing. Rebuild the macOS app (unsigned local build)?",
+    missing_title="Barista · scawfulbot",
+    missing_action=(open_action(scawfulbot_repo) if scawfulbot_repo else ""),
+)
+
+loom_build_action = ""
+if loom_repo:
+    loom_build_action = terminal_action(
+        f"cd {shlex.quote(str(loom_repo))} && "
+        "cmake -S . -B build && "
+        "cmake --build build --target loom-studio -j$(sysctl -n hw.ncpu)"
+    )
+add_entry(
+    "loom_studio",
+    "Loom",
+    "󰈙",
+    "0xff89b4fa",
+    "0xffbac2de",
+    command_action(loom_command, str(code_dir / "lab")) if loom_command else "",
+    available=bool(loom_command),
+    build_action=loom_build_action,
+    build_label="Build Loom Studio",
+    missing_message="loom-studio is missing. Rebuild the target?",
+    missing_title="Barista · loom-studio",
+    missing_action=(open_action(loom_repo) if loom_repo else ""),
+)
+
+premia_build_dir = resolve_path([
+    code_dir / "lab/premia/build-arch-next",
+    code_dir / "lab/premia/build",
+    Path.home() / "src/lab/premia/build-arch-next",
+])
+premia_repo = resolve_path([
+    code_dir / "lab/premia",
+    Path.home() / "src/lab/premia",
+])
+premia_build_action = ""
+if premia_repo:
+    build_name = premia_build_dir.name if premia_build_dir else "build-arch-next"
+    premia_build_action = (
+        "osascript -e 'tell app \"Terminal\" to do script \"cd %s && cmake -S . -B %s && cmake --build %s --target premia -j$(sysctl -n hw.ncpu)\"'"
+        % (str(premia_repo).replace('"', '\\"'), build_name, build_name)
+    )
+add_entry(
+    "premia_v2",
+    "premia v2",
+    "󰃬",
+    "0xff94e2d5",
+    "0xffc7eee8",
+    command_action(premia_command) if premia_command else "",
+    available=bool(premia_command),
+    build_action=premia_build_action,
+    build_label="Build premia desktop",
+    missing_message="premia desktop is missing. Rebuild the desktop target?",
+    missing_title="Barista · premia",
+    missing_action=(open_action(premia_repo) if premia_repo else ""),
+)
 
 output_path.parent.mkdir(parents=True, exist_ok=True)
 output_path.write_text(json.dumps(items, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

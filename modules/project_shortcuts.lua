@@ -115,7 +115,7 @@ local function default_icon(entry)
   if path:match("halext") then
     return "󰖟"
   end
-  if path:match("janice") then
+  if path:match("scawfulbot") or path:match("janice") then
     return "󰭹"
   end
   if path:match("echo") then
@@ -144,7 +144,7 @@ local function project_palette(entry)
   if key:match("afs") then
     return "0xff74c7ec", "0xffa9dbf1"
   end
-  if key:match("janice") then
+  if key:match("scawfulbot") or key:match("janice") then
     return "0xfff5c2e7", "0xfff8d6ee"
   end
   if key:match("yaze") then
@@ -233,6 +233,7 @@ function project_shortcuts.normalize_entry(code_dir, default_action, entry, inde
   ) or false
 
   local action = entry.action or entry.command or ""
+  local build_action = entry.build_action or ""
   if action == "" and path_available then
     action = project_shortcuts.action_for_path(
       resolved_path,
@@ -242,6 +243,10 @@ function project_shortcuts.normalize_entry(code_dir, default_action, entry, inde
 
   local label = entry.label or entry.name or pretty_label(raw_path or entry.id or tostring(index))
   local available = action ~= "" and (path_available or not raw_path)
+  local explicit_available = normalize_bool(entry.available)
+  if explicit_available ~= nil then
+    available = explicit_available
+  end
   local enabled = normalize_bool(entry.enabled)
   local default_icon_color, default_label_color = project_palette(entry)
   if enabled == nil then
@@ -255,6 +260,12 @@ function project_shortcuts.normalize_entry(code_dir, default_action, entry, inde
     icon_color = entry.icon_color or entry.color or default_icon_color,
     label_color = entry.label_color or default_label_color,
     action = action,
+    build_action = build_action,
+    build_label = entry.build_label,
+    missing_label = entry.missing_label,
+    missing_message = entry.missing_message,
+    missing_title = entry.missing_title,
+    missing_action = entry.missing_action,
     shortcut = entry.shortcut,
     section = normalize_section(entry.section),
     available = available,

@@ -1,5 +1,5 @@
--- Janice Code integration module for Barista
--- Launcher for the Janice Code macOS app
+-- Scawfulbot integration module for Barista
+-- Launcher for the Scawfulbot macOS app
 --
 -- Install: Copy to ~/.config/sketchybar/modules/integrations/janice.lua
 -- Or symlink: ln -sf ~/src/lab/barista/modules/integrations/janice.lua ~/.config/sketchybar/modules/integrations/
@@ -11,14 +11,30 @@ local CODE_DIR = os.getenv("BARISTA_CODE_DIR") or (HOME .. "/src")
 
 -- Configuration
 janice.config = {
-  app_name = "JaniceCode",
-  bundle_id = "com.scawful.JaniceCode.mac",
-  repo_path = CODE_DIR .. "/lab/janice-studio",
+  app_name = "Scawfulbot",
+  bundle_id = "com.scawful.Scawfulbot.mac",
+  repo_path = CODE_DIR .. "/lab/scawfulbot",
+  app_path = CODE_DIR .. "/lab/scawfulbot/apps/apple/build-macos/Build/Products/Debug/Scawfulbot.app",
+  home_app_path = HOME .. "/Applications/Scawfulbot.app",
+  system_app_path = "/Applications/Scawfulbot.app",
 }
 
--- Check if Janice Code is running
+local function launch_command()
+  return string.format(
+    "if [ -d %q ]; then open %q; elseif [ -d %q ]; then open %q; elseif [ -d %q ]; then open %q; else open -b %q; fi",
+    janice.config.app_path,
+    janice.config.app_path,
+    janice.config.home_app_path,
+    janice.config.home_app_path,
+    janice.config.system_app_path,
+    janice.config.system_app_path,
+    janice.config.bundle_id
+  )
+end
+
+-- Check if Scawfulbot is running
 function janice.is_running()
-  local handle = io.popen("pgrep -x JaniceCode >/dev/null 2>&1 && echo 1 || echo 0")
+  local handle = io.popen("pgrep -x Scawfulbot >/dev/null 2>&1 && echo 1 || echo 0")
   if not handle then return false end
   local result = handle:read("*a")
   handle:close()
@@ -36,7 +52,7 @@ end
 
 -- Open the app
 function janice.open_app()
-  os.execute("open -b " .. janice.config.bundle_id)
+  os.execute(launch_command())
   return true
 end
 
@@ -51,7 +67,7 @@ function janice.create_menu_items(ctx)
   table.insert(items, {
     type = "header",
     name = "janice.header",
-    label = "Janice Code",
+    label = "Scawfulbot",
     icon = status_icon,
     icon_color = status_color,
   })
@@ -61,8 +77,8 @@ function janice.create_menu_items(ctx)
     type = "item",
     name = "janice.open",
     icon = "󰏗",
-    label = running and "Show Janice Code" or "Launch Janice Code",
-    action = "open -b " .. janice.config.bundle_id,
+    label = running and "Show Scawfulbot" or "Launch Scawfulbot",
+    action = launch_command(),
   })
 
   if running then

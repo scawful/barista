@@ -66,18 +66,26 @@ end
 
 local function resolve_external_yaze_app()
   local nightly_prefix = resolve_nightly_prefix()
-  local candidates = {
-    os.getenv("BARISTA_YAZE_APP"),
-    os.getenv("YAZE_APP"),
-    nightly_prefix and (nightly_prefix .. "/current/yaze.app") or nil,
-    nightly_prefix and (nightly_prefix .. "/yaze.app") or nil,
-    HOME .. "/Applications/Yaze Nightly.app",
-    HOME .. "/Applications/yaze nightly.app",
-    HOME .. "/applications/Yaze Nightly.app",
-    HOME .. "/applications/yaze nightly.app",
-    "/Applications/Yaze Nightly.app",
-    "/Applications/yaze nightly.app",
-  }
+  local candidates = {}
+  local function add_candidate(value)
+    if value and value ~= "" then
+      table.insert(candidates, value)
+    end
+  end
+
+  add_candidate(os.getenv("BARISTA_YAZE_APP"))
+  add_candidate(os.getenv("YAZE_APP"))
+  add_candidate(HOME .. "/Applications/yaze.app")
+  add_candidate("/Applications/yaze.app")
+  add_candidate(nightly_prefix and (nightly_prefix .. "/current/yaze.app") or nil)
+  add_candidate(nightly_prefix and (nightly_prefix .. "/yaze.app") or nil)
+  add_candidate(HOME .. "/Applications/Yaze Nightly.app")
+  add_candidate(HOME .. "/Applications/yaze nightly.app")
+  add_candidate(HOME .. "/applications/Yaze Nightly.app")
+  add_candidate(HOME .. "/applications/yaze nightly.app")
+  add_candidate("/Applications/Yaze Nightly.app")
+  add_candidate("/Applications/yaze nightly.app")
+
   for _, candidate in ipairs(candidates) do
     if candidate and candidate ~= "" then
       candidate = expand_path(candidate)
@@ -216,6 +224,13 @@ function yaze.get_build_status()
 end
 
 local function launch_action(rom_path)
+  if yaze.config.binary_path and file_exists(yaze.config.binary_path) then
+    if rom_path then
+      return string.format("open -a %q %q", yaze.config.app_bundle, rom_path)
+    end
+    return string.format("open -a %q", yaze.config.app_bundle)
+  end
+
   if yaze.config.launch_cmd and yaze.config.launch_cmd ~= "" then
     if rom_path then
       return string.format("%s %s", shell_quote(yaze.config.launch_cmd), shell_quote(rom_path))

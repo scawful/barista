@@ -118,3 +118,23 @@ run_test("project_shortcuts.normalize_entry: action entries stay available witho
   assert_equal(entry.label_color, "0xffc7eee8", "premia label color")
   assert_equal(entry.section, "apps", "default app section")
 end)
+
+run_test("project_shortcuts.normalize_entry: preserves build metadata for missing apps", function()
+  local entry = project_shortcuts.normalize_entry("/tmp/code", "terminal", {
+    id = "scawfulbot",
+    label = "Scawfulbot",
+    action = "",
+    available = false,
+    build_action = "/bin/bash /tmp/build_and_open_mac.sh",
+    build_label = "Build Scawfulbot",
+    missing_message = "Scawfulbot.app is missing. Rebuild the macOS app?",
+    missing_title = "Barista · Scawfulbot",
+    missing_action = "open /tmp/scawfulbot",
+  }, 1)
+
+  assert_true(not entry.available, "missing app should stay unavailable until built")
+  assert_equal(entry.build_action, "/bin/bash /tmp/build_and_open_mac.sh", "build action should be preserved")
+  assert_equal(entry.build_label, "Build Scawfulbot", "build label should be preserved")
+  assert_equal(entry.missing_title, "Barista · Scawfulbot", "missing title should be preserved")
+  assert_equal(entry.missing_action, "open /tmp/scawfulbot", "missing fallback action should be preserved")
+end)

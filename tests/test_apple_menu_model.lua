@@ -66,6 +66,17 @@ run_test("apple_menu_model: builds rendered items from metadata", function()
           section = "apps",
           order = 1250,
         },
+        {
+          id = "missing_buildable",
+          label = "Missing Buildable",
+          action = "",
+          available = false,
+          build_action = "echo build",
+          build_label = "Build Missing",
+          missing_message = "Missing Buildable is missing.",
+          section = "apps",
+          order = 1260,
+        },
       },
     },
     show_missing = true,
@@ -82,6 +93,8 @@ run_test("apple_menu_model: builds rendered items from metadata", function()
   assert_equal(by_id.alpha.label, "Alpha Prime", "base item override label")
   assert_true(by_id.missing_item.missing == true, "missing base item should be surfaced when show_missing=true")
   assert_true(by_id.project_alpha ~= nil, "project shortcut should be included")
+  assert_equal(by_id.missing_buildable.label, "Build Missing", "missing buildable project should use build label")
+  assert_true(by_id.missing_buildable.action:find("echo build", 1, true) ~= nil, "missing buildable project should use build action")
   assert_true(by_id.custom_tools.submenu == true, "custom item should support submenu rendering")
   assert_equal(by_id.custom_tools.items[1].label, "Open Notes", "submenu item label")
   assert_equal(by_id.custom_tools.items[2].type, "separator", "submenu separator")

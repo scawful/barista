@@ -100,6 +100,44 @@ local function action_from_entry(entry)
   return action
 end
 
+local function notification_action(title, message, action)
+  local notify = ""
+  if type(message) == "string" and message ~= "" then
+    notify = string.format(
+      "osascript -e 'display notification %q with title %q'",
+      message,
+      title or "Barista"
+    )
+  end
+  if notify ~= "" and action and action ~= "" then
+    return notify .. "; " .. action
+  end
+  if notify ~= "" then
+    return notify
+  end
+  return action or ""
+end
+
+local function resolve_missing_action(item, label)
+  if item.available then
+    return item.action or "", label, false
+  end
+
+  local missing_label = item.missing_label or item.build_label or label
+  local missing_message = item.missing_message or ((label or "Item") .. " needs attention.")
+  local missing_title = item.missing_title or "Barista"
+
+  if item.build_action and item.build_action ~= "" then
+    return notification_action(missing_title, missing_message, item.build_action), missing_label, true
+  end
+
+  if item.missing_action and item.missing_action ~= "" then
+    return notification_action(missing_title, missing_message, item.missing_action), missing_label, true
+  end
+
+  return item.action or "", missing_label, true
+end
+
 local function normalize_custom_popup_items(prefix, items)
   local normalized = {}
   for index, item in ipairs(items or {}) do
@@ -165,6 +203,9 @@ local function collect_base_items(rendered, base_items, menu_config, show_missin
       should_show = false
     elseif item.blocked then
       should_show = true
+    elseif (item.build_action and item.build_action ~= "") or (item.missing_action and item.missing_action ~= "") then
+      should_show = true
+      missing = not item.available
     elseif enabled_override == true then
       should_show = true
       missing = not item.available
@@ -181,21 +222,22 @@ local function collect_base_items(rendered, base_items, menu_config, show_missin
 
     if should_show then
       local order = normalize_order(override.order) or item.order or (1000 + index)
+      local resolved_action, resolved_label, resolved_missing = resolve_missing_action(item, override.label or item.label)
       table.insert(rendered, {
         id = item.id,
         name = "menu.tools." .. item.id,
-        label = override.label or item.label,
+        label = resolved_label,
         icon = override.icon or item.icon,
         icon_color = override.icon_color or override.color or item.icon_color,
         label_color = override.label_color or item.label_color,
-        action = item.action or "",
+        action = resolved_action,
         blocked = item.blocked == true,
         submenu = item.submenu == true,
         items = item.items,
         arrow_icon = item.arrow_icon,
         shortcut = override.shortcut or item.shortcut,
         shortcut_action = override.shortcut_action or item.shortcut_action,
-        missing = missing,
+        missing = resolved_missing or missing,
         order = order,
         default_index = index,
         section = normalize_section_id(override.section or item.section or "controls"),
@@ -247,17 +289,18 @@ local function collect_project_shortcuts(rendered, project_shortcuts, show_missi
   end
 
   for index, project in ipairs(project_shortcuts.items or {}) do
-    if project.available or show_missing then
+    if project.available or show_missing or (project.build_action and project.build_action ~= "") or (project.missing_action and project.missing_action ~= "") then
+      local resolved_action, resolved_label, resolved_missing = resolve_missing_action(project, project.label)
       table.insert(rendered, {
         id = project.id,
         name = "menu.tools.project." .. project.id,
-        label = project.label,
+        label = resolved_label,
         icon = project.icon,
         icon_color = project.icon_color,
         label_color = project.label_color,
-        action = project.action,
+        action = resolved_action,
         shortcut = project.shortcut,
-        missing = not project.available,
+        missing = resolved_missing or not project.available,
         order = project.order or (1300 + index),
         default_index = 1100 + index,
         section = normalize_section_id(project.section or "apps"),

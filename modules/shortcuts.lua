@@ -308,7 +308,7 @@ shortcuts.global = {
     mods = {"cmd", "alt"},
     key = "p",
     action = "open_control_panel",
-    desc = "Open Control Panel",
+    desc = "Open Barista",
     symbol = "⌘⌥P"
   },
   {
@@ -432,7 +432,7 @@ shortcuts.actions = {
   -- SketchyBar
   reload_sketchybar = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh --reload-only",
   rebuild_and_reload = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh",
-  open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh",
+  open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh --tab home",
   toggle_control_center = build_control_center_toggle_command(shortcuts.resolve_control_center_item_name(runtime_state)),
   open_help_center = help_center_action(),
   open_icon_browser = icon_browser_action(),

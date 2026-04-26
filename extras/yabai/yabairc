@@ -60,11 +60,11 @@ yabai -m rule --add app="^Lazygit$" manage=off grid=10:10:1:1:8:8 title="lazygit
 
 # Barista + Halext tools
 # Barista settings should stay unmanaged by default; it is a utility surface, not a tiled workspace app.
-yabai -m rule --add app="^barista_config$" manage=off
-yabai -m rule --add app="^Barista Config$" manage=off
-yabai -m rule --add app="^Barista$" manage=off
-yabai -m rule --add app="^Barista Control Panel$" manage=off
-yabai -m rule --add app="^BaristaControlPanel$" manage=off
+yabai -m rule --add app="^barista_config$" manage=off sub-layer=below
+yabai -m rule --add app="^Barista Config$" manage=off sub-layer=below
+yabai -m rule --add app="^Barista$" manage=off sub-layer=below
+yabai -m rule --add app="^Barista Control Panel$" manage=off sub-layer=below
+yabai -m rule --add app="^BaristaControlPanel$" manage=off sub-layer=below
 yabai -m rule --add app="^afs_studio$" manage=off
 yabai -m rule --add app="^AFS Studio$" manage=off
 yabai -m rule --add app="^afs-browser$" manage=off
@@ -101,8 +101,14 @@ elif [ -r "$UNMANAGED_APPS_CONF" ]; then
 fi
 
 # --- Ensure BSP on all spaces ---
-# Set all 7 spaces to bsp layout on startup (adjust if you have more/fewer spaces)
-for sid in 1 2 3 4 5 6 7; do
+# Keep every current Mission Control space in the default tiled layout on startup.
+space_indices=""
+if command -v jq >/dev/null 2>&1; then
+  space_indices="$(yabai -m query --spaces 2>/dev/null | jq -r '.[].index // empty' 2>/dev/null | /usr/bin/sort -n | /usr/bin/uniq)"
+fi
+[ -n "$space_indices" ] || space_indices="1 2 3 4 5 6 7"
+
+for sid in $space_indices; do
   yabai -m space "$sid" --layout bsp 2>/dev/null || true
 done
 

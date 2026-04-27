@@ -20,6 +20,7 @@ cmake_install.cmake
 Makefile
 
 # Temporary files
+*.tmp
 *.backup
 *.old
 *.bak
@@ -43,6 +44,7 @@ logs
 # Local runtime artifacts
 .barista_stats.json
 imgui.ini
+.spaces_retry
 
 # User configuration (should not be committed)
 state.json
@@ -70,6 +72,8 @@ __pycache__/
 .venv/
 
 .context/
+docs/dev/.context.pruned-*/
+scratch/
 
 # Local app bundle artifacts
 gui/BaristaControlPanel.app/

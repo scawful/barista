@@ -1,15 +1,18 @@
 local apple_menu = require("apple_menu_enhanced")
 
-math.randomseed(os.time())
-
 local function command_ok(result)
   return result == true or result == 0
 end
 
 local function make_temp_dir(name)
-  local path = string.format("/tmp/barista_%s_%d_%d", name, os.time(), math.random(100000, 999999))
-  local ok = os.execute(string.format("mkdir -p %q", path))
-  assert_true(command_ok(ok), "create temp dir")
+  local tmpdir = (os.getenv("TMPDIR") or "/tmp"):gsub("/$", "")
+  local safe_name = tostring(name):gsub("[^%w_-]", "_")
+  local template = string.format("%s/barista_%s.XXXXXX", tmpdir, safe_name)
+  local handle = io.popen("mktemp -d " .. string.format("%q", template))
+  assert_true(handle ~= nil, "run mktemp")
+  local path = handle:read("*l")
+  local ok = handle:close()
+  assert_true(command_ok(ok) and path and path ~= "", "create temp dir")
   return path
 end
 

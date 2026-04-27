@@ -5,9 +5,13 @@ local function command_ok(result)
 end
 
 local function make_fixture_root()
-  local root = string.format("/tmp/barista_oracle_integration_%d", math.floor(os.clock() * 1000000))
-  os.execute(string.format("rm -rf %q", root))
-  assert_true(command_ok(os.execute(string.format("mkdir -p %q", root))), "fixture root should be created")
+  local tmpdir = (os.getenv("TMPDIR") or "/tmp"):gsub("/$", "")
+  local template = string.format("%s/barista_oracle_integration.XXXXXX", tmpdir)
+  local handle = io.popen("mktemp -d " .. string.format("%q", template))
+  assert_true(handle ~= nil, "run mktemp")
+  local root = handle:read("*l")
+  local ok = handle:close()
+  assert_true(command_ok(ok) and root and root ~= "", "fixture root should be created")
   return root
 end
 

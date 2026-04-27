@@ -2,6 +2,18 @@
 
 local paths = require("paths")
 
+local function make_temp_dir(name)
+  local tmpdir = (os.getenv("TMPDIR") or "/tmp"):gsub("/$", "")
+  local safe_name = tostring(name):gsub("[^%w_-]", "_")
+  local template = string.format("%s/barista_%s.XXXXXX", tmpdir, safe_name)
+  local handle = io.popen("mktemp -d " .. string.format("%q", template))
+  assert_true(handle ~= nil, "run mktemp")
+  local path = handle:read("*l")
+  local ok = handle:close()
+  assert_true((ok == true or ok == 0) and path and path ~= "", "create temp dir")
+  return path
+end
+
 run_test("expand_path: tilde expansion", function()
   local home = os.getenv("HOME")
   local result = paths.expand_path("~/foo/bar")
@@ -35,7 +47,7 @@ run_test("resolve_code_dir: default fallback", function()
 end)
 
 run_test("resolve_code_dir: reads state.paths.code_dir", function()
-  local custom_root = string.format("/tmp/barista_paths_%d", os.time())
+  local custom_root = make_temp_dir("paths")
   local ok = os.execute(string.format("mkdir -p %q", custom_root .. "/lab"))
   assert_true(ok == 0 or ok == true, "create custom code dir")
   local state = { paths = { code_dir = custom_root } }

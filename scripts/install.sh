@@ -171,7 +171,7 @@ setup_profile() {
     echo "  1) minimal  - Clean, basic setup (recommended for new users)"
     echo "  2) personal - Full featured with integrations"
     echo "  3) work     - Work-focused setup"
-    echo "  4) girlfriend - Warm, cozy setup (friendlier defaults)"
+    echo "  4) cozy     - Warm, simple setup"
     echo "  5) custom   - Create your own from template"
     echo ""
 
@@ -189,7 +189,7 @@ setup_profile() {
         SELECTED_PROFILE="work"
         ;;
       4)
-        SELECTED_PROFILE="girlfriend"
+        SELECTED_PROFILE="cozy"
         ;;
       5)
         read -p "Enter custom profile name: " custom_name
@@ -223,7 +223,7 @@ setup_profile() {
   INTEGRATION_EMACS=false
   INTEGRATION_HALEXT=false
 
-  if [ "$SELECTED_PROFILE" = "girlfriend" ]; then
+  if [ "$SELECTED_PROFILE" = "cozy" ]; then
     BAR_HEIGHT=32
     CORNER_RADIUS=12
     BAR_COLOR="0xE04A3426"
@@ -249,7 +249,7 @@ setup_profile() {
   local window_manager_mode="${BARISTA_WINDOW_MANAGER_MODE:-}"
   if [ -z "$window_manager_mode" ]; then
     case "$SELECTED_PROFILE" in
-      girlfriend)
+      cozy)
         window_manager_mode="disabled"
         ;;
       minimal)

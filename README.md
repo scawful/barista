@@ -2,12 +2,12 @@
 
 **The Cozy macOS Status Bar.**
 
-Barista is a curated configuration for [SketchyBar](https://github.com/FelixKratz/SketchyBar) that balances aesthetics with power-user features. It is designed to be shared, easy to install, and configurable for different environments (Work vs. Home).
+Barista is a curated configuration for [SketchyBar](https://github.com/FelixKratz/SketchyBar) that balances aesthetics with power-user features. It is designed to be shared, easy to install, and configurable across personal, work, restricted, and low-maintenance Macs.
 
 ## Features
 
 - **Dynamic Island**: Context-aware popups for volume, brightness, and music.
-- **Profiles**: Switch between "Work", "Personal", and "Cozy" modes instantly.
+- **Profile variants**: Switch between Minimal, Cozy, Personal, Work, and Restricted Work modes.
 - **Modular Architecture**: Lua-based configuration system decomposed for high performance and testability.
 - **Integrations**: Optional support for Yabai (tiling), Skhd (hotkeys), Journal (org-mode capture/inbox), NERV (transfer queue + host monitoring), and Halext-org (task dashboard). Integrations are toggled per profile.
 
@@ -44,7 +44,7 @@ The installer will guide you through:
 | Profile | Description | Yabai | Vibe |
 | :--- | :--- | :--- | :--- |
 | **Minimal** | Clean, distraction-free. Good for new users. | Optional | ⚪️ Clean |
-| **Girlfriend** | Warm colors, larger text, simplified metrics. No scary tiling. | **Disabled** | 🧸 Cozy |
+| **Cozy** | Warm colors, larger text, simplified metrics. | **Disabled** | 🧸 Cozy |
 | **Work** | High info density, meeting indicators, calendar integration. | Required | 💼 Pro |
 | **Personal** | The default dev setup. Code, media, and tiling. | Required | ⚡️ Fast |
 
@@ -138,7 +138,7 @@ For quick terminal access, the generated skhd shortcuts now include:
 ### Switching Profiles
 ```bash
 # Switch to Cozy mode
-./scripts/set_mode.sh girlfriend disabled
+./scripts/set_mode.sh cozy disabled
 
 # Switch to Work mode
 ./scripts/set_mode.sh work required
@@ -188,10 +188,10 @@ For managed/work Macs that should avoid compiled helpers entirely:
 ```
 
 `--restricted-work` is the no-compiled/no-yabai lane. It uses the Python
-standard-library configurator at `scripts/restricted_config.py` to pin
+standard-library configurator at `scripts/machine_profile.py` to pin
 `runtime_backend=lua`, disable yabai/skhd shortcut state, prefer the TUI/manual
-settings path, and write basic Work Apps menu rows without requiring `jq` or a
-native app build.
+settings path, write `data/machine.local.json`, and add basic Work Apps menu
+rows without requiring `jq` or a native app build.
 
 For direct CLI menu edits on a restricted machine:
 
@@ -207,6 +207,35 @@ python3 ./scripts/restricted_config.py menu-item \
 ```
 
 See [docs/guides/WORK_MACHINE_GEMINI.md](docs/guides/WORK_MACHINE_GEMINI.md) for the Gemini-first upgrade flow.
+
+### Machine Profile Variants
+
+For another Mac, keep machine-local choices in a gitignored profile file instead
+of hardcoding host-specific behavior into the Lua runtime:
+
+```bash
+# Probe available tools and helpers
+./scripts/detect_capabilities.sh
+
+# Apply a normal machine variant
+python3 ./scripts/machine_profile.py apply \
+  --variant personal \
+  --state ~/.config/sketchybar/state.json \
+  --report
+
+# Apply the script-only restricted variant
+python3 ./scripts/machine_profile.py apply \
+  --variant restricted-work \
+  --domain yourcompany.com \
+  --report
+
+# Inspect the resolved machine profile and feature gates
+python3 ./scripts/machine_profile.py report
+```
+
+The machine profile is written to `data/machine.local.json` next to
+`state.json` by default and is ignored by git. The committed
+`data/machine_profiles.example.json` documents the built-in variants.
 
 If you want the compiled widget daemon to be explicit in persisted state instead of
 automatic detection, set:
@@ -230,9 +259,9 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 ./scripts/update_work_mac.sh \
   --host user@work-mac.local \
   --target origin/main \
+  --restricted-work \
   --work-domain yourcompany.com \
-  --panel-mode tui \
-  --runtime-backend lua
+  --skip-restart
 ```
 
 - **Hover animation:** In `state.json` or in `modules/state.lua` defaults, `hover_animation_duration` (default 8) and `hover_animation_curve` (default `sin`) control popup hover speed. Lower duration (e.g. 6) for even snappier feel.

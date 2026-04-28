@@ -35,7 +35,7 @@ cd ~/.config/sketchybar
 ### Non-Interactive Install (One-Line)
 
 ```bash
-BARISTA_PROFILE=girlfriend \
+BARISTA_PROFILE=cozy \
 BARISTA_WINDOW_MANAGER_MODE=disabled \
 BARISTA_INSTALL_NONINTERACTIVE=1 \
 ./scripts/install.sh
@@ -96,7 +96,7 @@ The installer will:
 1. Check and install dependencies
 2. Backup existing configuration (if any)
 3. Build all components using CMake
-4. Let you choose a profile (minimal, personal, work, girlfriend, custom)
+4. Let you choose a profile (minimal, personal, work, cozy, custom)
 5. Let you choose a window manager mode (auto/optional/required/disabled)
 6. Start SketchyBar
 
@@ -132,7 +132,7 @@ Edit `~/.config/sketchybar/state.json`:
 
 ```json
 {
-  "profile": "work"  // or "minimal", "personal", "girlfriend", or custom
+  "profile": "work"  // or "minimal", "personal", "cozy", or custom
 }
 ```
 
@@ -140,7 +140,7 @@ Available profiles:
 - **minimal**: Clean, basic setup (recommended for new users)
 - **personal**: Full-featured with integrations
 - **work**: Work-focused with Emacs and productivity integrations
-- **girlfriend**: Warm, cozy setup with friendly defaults
+- **cozy**: Warm, simple setup with friendly defaults
 
 Tip: Preselect a profile with `BARISTA_PROFILE` to skip the prompt.
 
@@ -175,7 +175,7 @@ Modes:
 Managed/work-machine example:
 
 ```bash
-./scripts/setup_machine.sh --yes --panel-mode tui --runtime-backend lua
+./scripts/setup_machine.sh --yes --profile-variant restricted-work --domain yourcompany.com
 ```
 
 This writes `modes.runtime_backend = "lua"` to `state.json`, which survives reloads and makes `bin/open_control_panel.sh` prefer the TUI automatically.

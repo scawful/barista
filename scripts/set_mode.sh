@@ -12,15 +12,15 @@ if [ ! -f "$STATE_FILE" ]; then
   exit 1
 fi
 
-PROFILE=$1
-WM_MODE=$2
+PROFILE=${1:-}
+WM_MODE=${2:-}
 
 if [ -z "$PROFILE" ]; then
   echo "Current State:"
   cat "$STATE_FILE"
   echo ""
   echo "Usage: $0 <profile> [wm_mode]"
-  echo "Profiles: minimal, girlfriend, personal, work"
+  echo "Profiles: minimal, cozy, personal, work"
   echo "WM Modes: auto, disabled, required"
   exit 0
 fi

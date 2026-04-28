@@ -110,6 +110,8 @@ python3 ./scripts/restricted_config.py menu-item --label "Runbook" --url "https:
 `menus.work.google_apps`, `menus.work.apps_file`, and optional
 `menus.apple.custom[]` rows directly, so basic web/app menus still work when
 yabai, `jq`, the TUI dependencies, or compiled Barista binaries are unavailable.
+`scripts/machine_profile.py apply --variant restricted-work` wraps the same
+script-only path and also writes the machine-local capability profile.
 
 ## Behavior notes
 

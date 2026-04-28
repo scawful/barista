@@ -1,11 +1,11 @@
--- Girlfriend Profile
--- Warm, cozy layout with friendly defaults
+-- Cozy Profile
+-- Warm layout with low-maintenance defaults
 
 local profile = {}
 
 -- Profile metadata
-profile.name = "girlfriend"
-profile.description = "Warm, cozy bar with friendly widgets"
+profile.name = "cozy"
+profile.description = "Warm, simple bar with friendly widgets"
 profile.author = "scawful"
 
 -- Integration toggles (keep it simple)
@@ -84,7 +84,7 @@ profile.spaces = {
 
 -- Initialization hook
 profile.init = function()
-  print("Loaded girlfriend profile: warm + cozy")
+  print("Loaded cozy profile")
 end
 
 return profile

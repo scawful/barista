@@ -143,16 +143,17 @@ You can also override scripts via `state.json` (`paths.scripts_dir` or `paths.sc
 
 For managed machines where you can't compile binaries:
 
-1. Install Python dependencies: `pip install textual pydantic`
-2. Persist the Lua fallback runtime in state
-3. Use the TUI instead of the native GUI
+1. Persist the Lua fallback runtime in state
+2. Use the TUI/manual settings path instead of the native GUI
+3. Write a machine-local capability profile
 
 ```bash
-./scripts/setup_machine.sh --yes --panel-mode tui --runtime-backend lua
+./scripts/setup_machine.sh --yes --profile-variant restricted-work --domain yourcompany.com
 ./scripts/barista-debug.sh --lua-only --reload
 ```
 
 `modes.runtime_backend = "lua"` survives reloads, unlike one-off env overrides.
+`data/machine.local.json` records which local tools are available.
 
 ## Restricted Work Mac Mode
 
@@ -174,10 +175,11 @@ python3 ./scripts/restricted_config.py menu-item \
   --section work
 ```
 
-This path writes `state.json` and `data/work_apps.local.json` directly. It does
-not require `jq`, a compiled GUI, or yabai. If the TUI is unavailable while
-`runtime_backend` is pinned to `lua`, the panel launcher opens the state/docs
-fallback instead of trying the native GUI.
+This path writes `state.json`, `data/machine.local.json`, and
+`data/work_apps.local.json` directly. It does not require `jq`, a compiled GUI,
+or yabai. If the TUI is unavailable while `runtime_backend` is pinned to `lua`,
+the panel launcher opens the state/docs fallback instead of trying the native
+GUI.
 
 ## Troubleshooting
 

@@ -291,6 +291,8 @@ check_script_permissions() {
   local script
   local scripts=(
     "$CONFIG_DIR/scripts/setup_machine.sh"
+    "$CONFIG_DIR/scripts/machine_profile.py"
+    "$CONFIG_DIR/scripts/detect_capabilities.sh"
     "$CONFIG_DIR/scripts/update_work_mac.sh"
     "$CONFIG_DIR/scripts/work_mac_sync.sh"
     "$CONFIG_DIR/scripts/space_action.sh"

@@ -7,7 +7,8 @@ Ways to tailor the bar without editing core Lua.
 | Goal | Where |
 |------|--------|
 | Toggle widgets, change colors/fonts | [state.json](#statejson) or [barista_config.lua](CONFIG_OVERRIDES.md) |
-| Change profile (Work / Personal / Minimal / Girlfriend) | `./scripts/set_mode.sh <profile> [required\|disabled]` |
+| Change profile (Work / Personal / Minimal / Cozy) | `./scripts/set_mode.sh <profile> [required\|disabled]` |
+| Apply a machine profile variant | `python3 ./scripts/machine_profile.py apply --variant <variant>` |
 | Change theme (colors) | `state.json` → `appearance.theme` or [themes](../features/THEMES.md) |
 | Add or edit bar items / popups | [SKETCHYBAR_LAYOUT](../architecture/SKETCHYBAR_LAYOUT.md) → then edit the listed Lua/plugin file |
 | Persist overrides that survive GUI/TUI | [barista_config.lua](CONFIG_OVERRIDES.md) |
@@ -24,7 +25,8 @@ Location: `~/.config/sketchybar/state.json` (or `$BARISTA_CONFIG_DIR/state.json`
 - **menus** – Configure Apple-menu popup sections, app shortcuts, web app shortcuts, per-item enablement, and custom entries.
 - **spaces** – Control spaces widget behavior such as creator button placement, right-click close behavior, reorder mode, and swap indicator visibility.
 - **integrations** – Enable or disable optional integrations and store integration-specific settings.
-- **profile** – Current profile name; can be set by the GUI/TUI, `set_mode.sh`, env (`BARISTA_PROFILE` / `SKETCHYBAR_PROFILE`), or a machine-local default in `barista_config.lua`.
+- **profile** – Current profile name; can be set by the GUI/TUI, `set_mode.sh`, env (`BARISTA_PROFILE` / `SKETCHYBAR_PROFILE`), `machine_profile.py`, or a machine-local default in `barista_config.lua`.
+- **machine** – Runtime summary of the current machine profile variant and capability-gated features.
 
 The Control Panel (GUI) and TUI write to `state.json`; edits are applied on the next SketchyBar reload.
 For the current schema and nested keys, see [STATE_SCHEMA.md](../STATE_SCHEMA.md).
@@ -36,13 +38,25 @@ For overrides that should **not** be overwritten by the GUI/TUI, use `~/.config/
 
 ## Profiles
 
-Profiles (Work, Personal, Minimal, Girlfriend) live in `profiles/*.lua` and change density, integrations, and defaults. Switch with:
+Profiles (Work, Personal, Minimal, Cozy) live in `profiles/*.lua` and change density, integrations, and defaults. Switch with:
 
 ```bash
 ./scripts/set_mode.sh personal required   # Personal + yabai
 ./scripts/set_mode.sh minimal optional   # Minimal, yabai if running
-./scripts/set_mode.sh girlfriend disabled # Cozy, no yabai
+./scripts/set_mode.sh cozy disabled      # Cozy, no yabai
 ```
+
+Machine profile variants add a gitignored per-Mac layer on top:
+
+```bash
+./scripts/detect_capabilities.sh
+python3 ./scripts/machine_profile.py apply --variant personal --report
+python3 ./scripts/machine_profile.py apply --variant restricted-work --domain yourcompany.com --report
+python3 ./scripts/machine_profile.py report
+```
+
+`data/machine.local.json` stores the full capability snapshot for the current
+Mac. `state.machine` stores the smaller runtime summary.
 
 ## Themes
 

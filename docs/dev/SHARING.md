@@ -2,8 +2,8 @@
 
 ## Goals
 - Keep the core layout and customization tooling you use every day.
-- Let another person (e.g. a partner) install the bar on their Mac without the ROM-hacking/Emacs specific workflows.
-- Provide clear onboarding steps plus a switch to re-enable your heavy integrations when you need them.
+- Support another Mac without ROM-hacking/Emacs specific workflows.
+- Provide clear onboarding steps plus a switch to re-enable heavy integrations when you need them.
 
 ## Installation Flow (New Mac)
 1. **Clone the repo** somewhere convenient (e.g. `~/src/sketchybar`).
@@ -19,15 +19,15 @@
    cd ~/src/sketchybar/gui
    make
    ```
-5. **Apply the shared profile** (disables ROM hacking + Emacs integrations and keeps spaces floating by default):
+5. **Apply the minimal machine variant** (disables ROM hacking + Emacs integrations and keeps window management optional):
    ```sh
    cd ~/src/sketchybar
-   ./bin/apply_profile.sh shared
+   ./scripts/setup_machine.sh --profile-variant minimal --skip-fonts --skip-panel --yes
    ```
 6. Launch Sketchybar (or `sketchybar --reload`). The control panel now exposes the same customization options without the Zelda-specific menu items.
 
 ## Toggling Integrations Later
-- To re-enable everything on your own machine, run `./bin/apply_profile.sh full`.
+- To re-enable everything on your own machine, run `./scripts/setup_machine.sh --profile-variant personal --skip-fonts --skip-panel --yes`.
 - Inside the GUI control panel, the *Integration Status* box now has switches for **Enable Yaze** and **Enable Emacs** so you can flip them on/off without editing config files.
 - The helper script behind the scenes (`plugins/set_integration_enabled.sh`) updates `state.json` and tells Sketchybar to refresh immediately.
 
@@ -37,6 +37,6 @@
 - **Space Behavior**: spaces default to floating windows unless you explicitly pick BSP/Stack from the Yabai widget popup or via `set_space_mode.sh`. That keeps macOS feeling native for users who don’t want tiling.
 
 ## Sharing Tips
-- Keep personal scripts (Yaze build helpers, Emacs workflow notes, etc.) out of the shared profile by default. Use the integration toggles if/when she wants to explore them.
-- Encourage customizing the *Workflow Shortcuts* box and Apple Menu tools so her favorite apps / repos appear first.
-- If she creates her own profile, `bin/apply_profile.sh` can be extended with more cases—e.g. `./bin/apply_profile.sh design` to toggle different integrations/colors.
+- Keep personal scripts (Yaze build helpers, Emacs workflow notes, etc.) out of shared/minimal variants by default. Use integration toggles when that machine needs more.
+- Customize the *Workflow Shortcuts* box and Apple Menu tools so the target Mac's apps and repos appear first.
+- If a new profile is needed, add `profiles/<name>.lua` and apply it with `scripts/set_mode.sh <name>`.

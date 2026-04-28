@@ -45,7 +45,7 @@ run_test("get_selected_profile: local config profile used when state/env unset",
 end)
 
 run_test("get_selected_profile: state still beats env and local config", function()
-  local result = profile.get_selected_profile({ profile = "girlfriend" }, {
+  local result = profile.get_selected_profile({ profile = "cozy" }, {
     env = {
       BARISTA_PROFILE = "work",
     },
@@ -53,7 +53,7 @@ run_test("get_selected_profile: state still beats env and local config", functio
       profile = "personal",
     }
   })
-  assert_equal(result, "girlfriend", "state should win")
+  assert_equal(result, "cozy", "state should win")
 end)
 
 run_test("merge_config: nil profile returns base", function()

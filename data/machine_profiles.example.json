@@ -1,0 +1,40 @@
+{
+  "_version": 1,
+  "variants": {
+    "minimal": {
+      "state_profile": "minimal",
+      "restricted": false,
+      "menu_packs": ["core", "restricted_safe"],
+      "window_manager": "optional",
+      "runtime_backend": "auto"
+    },
+    "cozy": {
+      "state_profile": "cozy",
+      "restricted": false,
+      "menu_packs": ["core", "restricted_safe"],
+      "window_manager": "disabled",
+      "runtime_backend": "auto"
+    },
+    "personal": {
+      "state_profile": "personal",
+      "restricted": false,
+      "menu_packs": ["core", "dev_tools", "personal"],
+      "window_manager": "required",
+      "runtime_backend": "auto"
+    },
+    "work": {
+      "state_profile": "work",
+      "restricted": false,
+      "menu_packs": ["core", "work", "dev_tools"],
+      "window_manager": "required",
+      "runtime_backend": "auto"
+    },
+    "restricted-work": {
+      "state_profile": "work",
+      "restricted": true,
+      "menu_packs": ["core", "work", "restricted_safe"],
+      "window_manager": "disabled",
+      "runtime_backend": "lua"
+    }
+  }
+}

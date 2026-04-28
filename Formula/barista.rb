@@ -121,7 +121,7 @@ class Barista < Formula
          - For Yabai: Also grant Screen Recording permission
       
       3. Choose a profile: edit ~/.config/sketchybar/state.json
-         Set "profile" to: "minimal", "personal", "work", or custom
+         Set "profile" to: "minimal", "cozy", "personal", "work", or custom
       
       4. Start services:
          brew services start sketchybar
@@ -144,4 +144,3 @@ class Barista < Formula
     assert_predicate bin/"icon_manager", :exist?
   end
 end
-

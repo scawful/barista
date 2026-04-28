@@ -131,6 +131,12 @@ local default_state = {
   paths = {
     scripts_dir = "",
   },
+  machine = {
+    profile_variant = "",
+    restricted = false,
+    menu_packs = {},
+    allowed_features = {},
+  },
   menus = {
     apple = {
       show_missing = false,
@@ -195,6 +201,9 @@ local function sanitize_state(data)
   if type(data.icons) ~= "table" then data.icons = {} end
   if type(data.modes) ~= "table" then data.modes = {} end
   if type(data.paths) ~= "table" then data.paths = {} end
+  if type(data.machine) ~= "table" then data.machine = {} end
+  if type(data.machine.menu_packs) ~= "table" then data.machine.menu_packs = {} end
+  if type(data.machine.allowed_features) ~= "table" then data.machine.allowed_features = {} end
   if type(data.integrations) ~= "table" then data.integrations = {} end
   if type(data.debug) ~= "table" then data.debug = {} end
   if type(data.space_modes) ~= "table" then data.space_modes = {} end

@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 STATE_FILE="${BARISTA_STATE_FILE:-$HOME/.config/sketchybar/state.json}"
+PROFILE_VARIANT="${BARISTA_PROFILE_VARIANT:-}"
+MACHINE_FILE="${BARISTA_MACHINE_PROFILE_FILE:-data/machine.local.json}"
 PANEL_MODE="${BARISTA_ALT_PANEL_MODE:-tui}"
 RUNTIME_BACKEND="${BARISTA_RUNTIME_BACKEND:-}"
 WORK_DOMAIN="${BARISTA_WORK_GOOGLE_DOMAIN:-}"
@@ -17,6 +19,7 @@ INSTALL_FONTS=1
 CONFIGURE_PANEL=1
 CONFIGURE_RUNTIME=0
 CONFIGURE_WORK_APPS=0
+CONFIGURE_MACHINE_PROFILE=0
 REPLACE_WORK_APPS=0
 SKIP_WORK_APPS=0
 RESTRICTED_WORK=0
@@ -29,6 +32,7 @@ ACTION_FONTS=0
 ACTION_PANEL=0
 ACTION_RUNTIME=0
 ACTION_WORK_APPS=0
+ACTION_MACHINE_PROFILE=0
 ACTION_RELOAD=0
 WORK_APPS_OUTPUT_FILE_RESOLVED=""
 
@@ -38,6 +42,8 @@ Usage: $0 [options]
 
 Core options:
   --state <path>                          State file (default: ~/.config/sketchybar/state.json)
+  --profile-variant <name>                Apply machine profile variant: minimal, cozy, personal, work, restricted-work
+  --machine-file <path>                   Machine-local profile JSON path (default: data/machine.local.json)
   --yes                                   Non-interactive confirmation
   --no-reload                             Skip sketchybar reload
   --dry-run                               Show planned changes without modifying files/system
@@ -114,6 +120,27 @@ while [[ $# -gt 0 ]]; do
       PANEL_MODE="$2"
       shift 2
       ;;
+    --profile-variant|--variant)
+      require_value "$1" "${2:-}"
+      PROFILE_VARIANT="$2"
+      CONFIGURE_MACHINE_PROFILE=1
+      if [ "$PROFILE_VARIANT" = "restricted-work" ] || [ "$PROFILE_VARIANT" = "restricted" ] || [ "$PROFILE_VARIANT" = "work-restricted" ] || [ "$PROFILE_VARIANT" = "scripts-only" ]; then
+        PROFILE_VARIANT="restricted-work"
+        RESTRICTED_WORK=1
+        INSTALL_FONTS=0
+        CONFIGURE_PANEL=0
+        CONFIGURE_RUNTIME=0
+        CONFIGURE_WORK_APPS=1
+        PANEL_MODE=tui
+        RUNTIME_BACKEND=lua
+      fi
+      shift 2
+      ;;
+    --machine-file|--machine-profile)
+      require_value "$1" "${2:-}"
+      MACHINE_FILE="$2"
+      shift 2
+      ;;
     --runtime-backend)
       require_value "$1" "${2:-}"
       RUNTIME_BACKEND="$2"
@@ -151,8 +178,10 @@ while [[ $# -gt 0 ]]; do
       SKIP_WORK_APPS=1
       shift
       ;;
-    --restricted-work|--work-restricted|--restricted)
+    --restricted-work|--work-restricted|--restricted|--scripts-only)
       RESTRICTED_WORK=1
+      PROFILE_VARIANT="restricted-work"
+      CONFIGURE_MACHINE_PROFILE=1
       INSTALL_FONTS=0
       CONFIGURE_PANEL=0
       CONFIGURE_RUNTIME=0
@@ -222,6 +251,39 @@ run_restricted_work_setup() {
     echo "python3 is required for --restricted-work." >&2
     exit 1
   fi
+  local machine_script="$ROOT_DIR/scripts/machine_profile.py"
+  if [ -f "$machine_script" ]; then
+    local machine_args=(apply --variant restricted-work --state "$STATE_FILE" --machine-file "$MACHINE_FILE")
+    if [ -n "$WORK_DOMAIN" ]; then
+      machine_args+=(--domain "$WORK_DOMAIN")
+    fi
+    if [ -n "$WORK_APPS_FILE" ]; then
+      machine_args+=(--from-file "$WORK_APPS_FILE")
+    fi
+    if [ -n "$WORK_APPS_OUT_FILE" ]; then
+      machine_args+=(--work-apps-out-file "$WORK_APPS_OUT_FILE")
+    fi
+    if [ "$SKIP_WORK_APPS" -eq 1 ]; then
+      machine_args+=(--skip-work-apps)
+    fi
+    if [ "$REPLACE_WORK_APPS" -eq 1 ]; then
+      machine_args+=(--replace)
+    fi
+    if [ "$DRY_RUN" -eq 1 ]; then
+      machine_args+=(--dry-run)
+    fi
+    if [ "$REPORT" -eq 1 ]; then
+      machine_args+=(--report)
+    fi
+    if [ "$DO_RELOAD" -eq 1 ]; then
+      machine_args+=(--reload)
+    else
+      machine_args+=(--no-reload)
+    fi
+    python3 "$machine_script" "${machine_args[@]}"
+    return 0
+  fi
+
   local restricted_script="$ROOT_DIR/scripts/restricted_config.py"
   if [ ! -f "$restricted_script" ]; then
     echo "restricted_config.py missing: $restricted_script" >&2
@@ -390,6 +452,36 @@ set_runtime_backend() {
     .modes = (.modes // {}) |
     .modes.runtime_backend = $backend
   ' --arg backend "$backend"
+}
+
+apply_machine_profile_variant() {
+  ACTION_MACHINE_PROFILE=1
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 is required for --profile-variant." >&2
+    exit 1
+  fi
+  local machine_script="$ROOT_DIR/scripts/machine_profile.py"
+  if [ ! -f "$machine_script" ]; then
+    echo "machine_profile.py missing: $machine_script" >&2
+    exit 1
+  fi
+
+  local args=(apply --variant "$PROFILE_VARIANT" --state "$STATE_FILE" --machine-file "$MACHINE_FILE")
+  if [ -n "$RUNTIME_BACKEND" ]; then
+    args+=(--runtime-backend "$RUNTIME_BACKEND")
+  fi
+  if [ "$CONFIGURE_PANEL" -eq 1 ] && [ -n "$PANEL_MODE" ]; then
+    args+=(--panel-mode "$PANEL_MODE")
+  fi
+  if [ "$DRY_RUN" -eq 1 ]; then
+    args+=(--dry-run)
+  fi
+  if [ "$REPORT" -eq 1 ]; then
+    args+=(--report)
+  fi
+  args+=(--no-reload)
+
+  python3 "$machine_script" "${args[@]}"
 }
 
 apply_menu_readability_defaults() {
@@ -599,6 +691,8 @@ print_report() {
   printf 'setup.report.dry_run=%s\n' "$DRY_RUN"
   printf 'setup.report.state_file=%s\n' "$STATE_FILE"
   printf 'setup.report.panel_mode=%s\n' "$PANEL_MODE"
+  printf 'setup.report.profile_variant=%s\n' "$PROFILE_VARIANT"
+  printf 'setup.report.machine_file=%s\n' "$MACHINE_FILE"
   printf 'setup.report.runtime_backend=%s\n' "${RUNTIME_BACKEND:-}"
   printf 'setup.report.work_domain=%s\n' "$WORK_DOMAIN"
   printf 'setup.report.work_apps_output_file=%s\n' "$WORK_APPS_OUTPUT_FILE_RESOLVED"
@@ -606,13 +700,20 @@ print_report() {
   printf 'setup.report.actions.panel=%s\n' "$ACTION_PANEL"
   printf 'setup.report.actions.runtime=%s\n' "$ACTION_RUNTIME"
   printf 'setup.report.actions.work_apps=%s\n' "$ACTION_WORK_APPS"
+  printf 'setup.report.actions.machine_profile=%s\n' "$ACTION_MACHINE_PROFILE"
   printf 'setup.report.actions.reload=%s\n' "$ACTION_RELOAD"
 }
 
-if [ "$INSTALL_FONTS" -eq 0 ] && [ "$CONFIGURE_PANEL" -eq 0 ] && [ "$CONFIGURE_RUNTIME" -eq 0 ] && [ "$CONFIGURE_WORK_APPS" -eq 0 ]; then
+if [ "$INSTALL_FONTS" -eq 0 ] && [ "$CONFIGURE_PANEL" -eq 0 ] && [ "$CONFIGURE_RUNTIME" -eq 0 ] && [ "$CONFIGURE_WORK_APPS" -eq 0 ] && [ "$CONFIGURE_MACHINE_PROFILE" -eq 0 ]; then
   note "No setup actions selected."
   print_report
   exit 0
+fi
+
+if [ "$CONFIGURE_MACHINE_PROFILE" -eq 1 ]; then
+  if confirm "Apply Barista machine profile variant (${PROFILE_VARIANT})?"; then
+    apply_machine_profile_variant
+  fi
 fi
 
 if [ "$INSTALL_FONTS" -eq 1 ]; then

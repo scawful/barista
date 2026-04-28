@@ -10,6 +10,7 @@ app that needs approval.
 - Bar runtime uses the Lua fallback path
 - Window-manager/yabai state is disabled
 - Basic Work Apps menu rows are configurable through Python/shell scripts
+- Machine-local capability gates are written to `data/machine.local.json`
 - `state.json` is repaired to match installed fonts on the machine
 - `barista-doctor` reports the resolved runtime backend and fonts
 
@@ -66,6 +67,9 @@ python3 ./scripts/restricted_config.py menu-item \
 
 # Inspect the current restricted-mode state.
 python3 ./scripts/restricted_config.py summary
+
+# Inspect machine profile and capability gates.
+python3 ./scripts/machine_profile.py report
 ```
 
 The restricted defaults write:
@@ -76,6 +80,8 @@ The restricted defaults write:
 - `control_panel.preferred = "tui"`
 - `toggles.yabai_shortcuts = false`
 - `menus.work.apps_file = "data/work_apps.local.json"`
+- `machine.profile_variant = "restricted-work"`
+- `data/machine.local.json` with the full capability snapshot
 
 If the TUI dependencies are not installed, `bin/open_control_panel.sh` now stops
 at the manual `state.json` / TUI docs fallback while `runtime_backend` is pinned
@@ -96,8 +102,7 @@ This preserves valid configured fonts and only repairs missing families.
 ./scripts/update_work_mac.sh \
   --host user@work-mac.local \
   --target origin/main \
-  --panel-mode tui \
-  --runtime-backend lua \
+  --restricted-work \
   --work-domain yourcompany.com
 ```
 
@@ -115,6 +120,9 @@ This preserves valid configured fonts and only repairs missing families.
 - `bin/open_control_panel.sh` automatically prefers the TUI when that runtime backend is pinned to Lua.
 - `scripts/restricted_config.py` is intentionally Python-stdlib only. Use it for
   menu and state edits when the managed laptop does not have `jq` or TUI deps.
+- `scripts/machine_profile.py` is also Python-stdlib only. Use it to keep
+  profile variant, capability detection, and restricted feature gates aligned
+  across Macs.
 - If you later want compiled helpers again, run:
 
 ```bash

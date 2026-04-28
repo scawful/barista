@@ -4,11 +4,12 @@ This document summarizes the portability improvements made to enable easy sharin
 
 ## 🎯 Goals Achieved
 
-### 1. ✅ Multi-User Support
-- **Chris (girlfriend)**: Can use minimal profile, no personal integrations
-- **Personal (scawful)**: Full ROM hacking + Emacs setup
+### 1. ✅ Profile Variant Support
+- **Minimal**: Clean baseline with no personal integrations
+- **Cozy**: Warm, low-maintenance setup with yabai disabled
+- **Personal**: Full ROM hacking + Emacs setup
 - **Work**: Emacs + halext-org, no ROM hacking
-- **Anyone**: Can create custom profiles from templates
+- **Restricted Work**: Script-only work-laptop setup without yabai or compiled helpers
 
 ### 2. ✅ Multi-Machine Support
 - Same user, different machines (personal laptop, work computer)
@@ -35,6 +36,7 @@ This document summarizes the portability improvements made to enable easy sharin
 ```
 profiles/
 ├── minimal.lua      # Template - Clean, no integrations
+├── cozy.lua         # Warm, simple setup
 ├── personal.lua     # scawful personal - ROM hacking + Emacs
 └── work.lua         # Work - Emacs + halext-org
 ```
@@ -105,7 +107,7 @@ return profile
 
 ## 🚀 Installation Workflow
 
-### For Chris (or any new user):
+### For a Low-Maintenance Mac:
 
 ```bash
 # Clone repository
@@ -114,7 +116,7 @@ cd ~/.config/sketchybar
 
 # Run installer
 ./install.sh
-# Select option 1 (minimal profile)
+# Select minimal or cozy profile
 
 # Done! SketchyBar starts with clean config
 ```
@@ -138,13 +140,13 @@ cd ~/.config/sketchybar
 
 ```bash
 # Copy template
-cp profiles/minimal.lua profiles/chris.lua
+cp profiles/minimal.lua profiles/design.lua
 
 # Edit profile
-vim profiles/chris.lua
+vim profiles/design.lua
 
 # Activate
-echo '{"profile": "chris"}' > state.json
+echo '{"profile": "design"}' > state.json
 
 # Reload
 sketchybar --reload
@@ -197,6 +199,11 @@ end
 - ✅ Emacs for org-mode
 - ✅ halext-org integration
 - ✅ Work-appropriate space setup
+
+### Cozy (profiles/cozy.lua)
+- ❌ No required window manager
+- ✅ Warm, larger-feeling defaults
+- ✅ Simple widgets
 
 ### Minimal (profiles/minimal.lua)
 - ❌ No integrations

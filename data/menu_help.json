@@ -8,6 +8,6 @@
   {"id": "readme", "icon": "󰈙", "label": "README", "path_key": "readme"},
   {"id": "sharing", "icon": "󰓛", "label": "Sharing Guide", "path_key": "sharing"},
   {"id": "handoff", "icon": "󰣖", "label": "Open HANDOFF Notes", "path_key": "handoff"},
-  {"id": "profile_shared", "icon": "󰒓", "label": "Apply Shared Profile", "command": "%CONFIG%/bin/apply_profile.sh shared"},
-  {"id": "profile_full", "icon": "󰑈", "label": "Restore Full Profile", "command": "%CONFIG%/bin/apply_profile.sh full"}
+  {"id": "profile_minimal", "icon": "󰒓", "label": "Apply Minimal Variant", "command": "%CONFIG%/scripts/setup_machine.sh --profile-variant minimal --skip-fonts --skip-panel --yes"},
+  {"id": "profile_personal", "icon": "󰑈", "label": "Apply Personal Variant", "command": "%CONFIG%/scripts/setup_machine.sh --profile-variant personal --skip-fonts --skip-panel --yes"}
 ]

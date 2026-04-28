@@ -36,7 +36,7 @@ Review of the Barista repo with concrete ways to improve theming, fonts, and wid
 **Improvements:**
 
 - **Extend theme contract** with optional keys, e.g. `popup_border`, `popup_bg`, `hover_highlight`, `hover_border` (or reuse existing names). In `bar_config.compute()`, prefer `theme.popup_border` (if present) over a generic `theme.WHITE` when no state override is set.
-- **Profile + theme:** Girlfriend profile already overrides many appearance keys. Document that profiles can override theme (and that `state.json` overrides both). Optionally, in the theme doc, list which appearance keys are “theme-like” vs “layout-like”.
+- **Profile + theme:** Cozy profile already overrides many appearance keys. Document that profiles can override theme (and that `state.json` overrides both). Optionally, in the theme doc, list which appearance keys are “theme-like” vs “layout-like”.
 
 ### 1.3 Theme preview in Control Panel
 
@@ -58,7 +58,7 @@ Review of the Barista repo with concrete ways to improve theming, fonts, and wid
 **Improvements:**
 
 - **Use bar_config only:** Have widget factory receive `settings.font.sizes` and `font_string` from the shared bar config context (already passed in `items_right.lua` / `items_left.lua`) and never recompute font sizes inside `widgets.lua`. Remove duplicate scaling from `widgets.create_factory` so all numeric sizes come from `bar_config.compute()`.
-- **Optional:** Add a `font_size_preset` in state (e.g. `compact` / `default` / `large`) that maps to a multiplier or fixed sizes in `bar_config`, so profiles (e.g. girlfriend) can say “large” without touching pixel values.
+- **Optional:** Add a `font_size_preset` in state (e.g. `compact` / `default` / `large`) that maps to a multiplier or fixed sizes in `bar_config`, so profiles can say “large” without touching pixel values.
 
 ### 2.2 Font family and style flexibility
 

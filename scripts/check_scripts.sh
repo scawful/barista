@@ -60,6 +60,7 @@ done
 lint_candidates=(
   scripts/setup_machine.sh
   scripts/configure_restricted_work_barista.sh
+  scripts/detect_capabilities.sh
   scripts/barista-fonts.sh
   scripts/barista-debug.sh
   scripts/barista-doctor.sh
@@ -108,7 +109,10 @@ tmp_state="$(mktemp)"
 printf '{}' > "$tmp_state"
 ./scripts/setup_machine.sh --state "$tmp_state" --skip-fonts --skip-panel --work-apps --replace --dry-run --yes --no-reload >/dev/null
 ./scripts/setup_machine.sh --state "$tmp_state" --restricted-work --domain example.com --dry-run --yes --no-reload >/dev/null
+./scripts/setup_machine.sh --state "$tmp_state" --profile-variant cozy --skip-fonts --skip-panel --dry-run --yes --no-reload >/dev/null
 python3 -m py_compile scripts/restricted_config.py
+python3 -m py_compile scripts/machine_profile.py
+python3 scripts/machine_profile.py capabilities --format env >/dev/null
 rm -f "$tmp_state" >/dev/null 2>&1 || true
 ./scripts/barista-doctor.sh --help >/dev/null
 ./scripts/install-tui.sh --check >/dev/null || true

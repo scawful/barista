@@ -8,4 +8,8 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
+if [ -f "$SCRIPT_DIR/machine_profile.py" ]; then
+  exec python3 "$SCRIPT_DIR/machine_profile.py" apply --variant restricted-work "$@"
+fi
+
 exec python3 "$SCRIPT_DIR/restricted_config.py" apply "$@"

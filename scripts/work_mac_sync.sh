@@ -7,6 +7,8 @@ HOST=""
 REMOTE_DIR="${BARISTA_REMOTE_DIR:-~/.config/sketchybar}"
 REMOTE_URL="${BARISTA_REMOTE_URL:-https://github.com/scawful/barista.git}"
 TARGET_REF="${BARISTA_TARGET_REF:-origin/main}"
+PROFILE_VARIANT="${BARISTA_PROFILE_VARIANT:-}"
+MACHINE_FILE="${BARISTA_MACHINE_PROFILE_FILE:-data/machine.local.json}"
 PANEL_MODE="${BARISTA_ALT_PANEL_MODE:-tui}"
 RUNTIME_BACKEND="${BARISTA_RUNTIME_BACKEND:-lua}"
 WORK_DOMAIN="${BARISTA_WORK_GOOGLE_DOMAIN:-}"
@@ -25,6 +27,9 @@ Options:
   --remote-dir <path>                    Remote repo/runtime path (default: ~/.config/sketchybar)
   --repo-url <url>                       Git URL to clone/update
   --target <ref>                         Target git ref for barista-update
+  --profile-variant <name>               Machine profile variant: minimal, cozy, personal, work, restricted-work
+  --restricted-work                      Shortcut for --profile-variant restricted-work
+  --machine-file <path>                  Remote machine-local profile file
   --panel-mode <native|tui|imgui|custom> Panel preference for setup_machine
   --runtime-backend <auto|lua|compiled>  Runtime backend persisted in state.json
   --work-domain <domain>                 Workspace domain for work app links
@@ -60,6 +65,27 @@ while [ $# -gt 0 ]; do
       ;;
     --target)
       TARGET_REF="${2:-}"
+      shift 2
+      ;;
+    --profile-variant|--variant)
+      PROFILE_VARIANT="${2:-}"
+      case "$PROFILE_VARIANT" in
+        restricted|work-restricted|scripts-only)
+          PROFILE_VARIANT="restricted-work"
+          PANEL_MODE="tui"
+          RUNTIME_BACKEND="lua"
+          ;;
+      esac
+      shift 2
+      ;;
+    --restricted-work|--work-restricted|--restricted|--scripts-only)
+      PROFILE_VARIANT="restricted-work"
+      PANEL_MODE="tui"
+      RUNTIME_BACKEND="lua"
+      shift
+      ;;
+    --machine-file|--machine-profile)
+      MACHINE_FILE="${2:-}"
       shift 2
       ;;
     --panel-mode)
@@ -132,6 +158,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
   echo "[dry-run] remote_dir=$REMOTE_DIR"
   echo "[dry-run] repo_url=$REMOTE_URL"
   echo "[dry-run] target_ref=$TARGET_REF"
+  echo "[dry-run] profile_variant=$PROFILE_VARIANT"
+  echo "[dry-run] machine_file=$MACHINE_FILE"
   echo "[dry-run] panel_mode=$PANEL_MODE"
   echo "[dry-run] runtime_backend=$RUNTIME_BACKEND"
   echo "[dry-run] work_domain=$WORK_DOMAIN"
@@ -143,6 +171,8 @@ ssh "$HOST" \
   BARISTA_REMOTE_DIR="$REMOTE_DIR" \
   BARISTA_REMOTE_URL="$REMOTE_URL" \
   BARISTA_TARGET_REF="$TARGET_REF" \
+  BARISTA_PROFILE_VARIANT="$PROFILE_VARIANT" \
+  BARISTA_MACHINE_FILE="$MACHINE_FILE" \
   BARISTA_PANEL_MODE="$PANEL_MODE" \
   BARISTA_RUNTIME_BACKEND="$RUNTIME_BACKEND" \
   BARISTA_WORK_DOMAIN="$WORK_DOMAIN" \
@@ -189,7 +219,19 @@ else
 fi
 
 if [ "${BARISTA_RUN_SETUP:-1}" = "1" ] && [ -x "./scripts/setup_machine.sh" ]; then
-  setup_args=(--state "$repo_dir/state.json" --panel-mode "$BARISTA_PANEL_MODE" --runtime-backend "$BARISTA_RUNTIME_BACKEND" --yes --report)
+  setup_args=(--state "$repo_dir/state.json" --yes --report)
+  if [ -n "${BARISTA_PROFILE_VARIANT:-}" ]; then
+    if [ "${BARISTA_PROFILE_VARIANT:-}" = "restricted-work" ]; then
+      setup_args+=(--restricted-work)
+    else
+      setup_args+=(--profile-variant "$BARISTA_PROFILE_VARIANT" --panel-mode "$BARISTA_PANEL_MODE" --runtime-backend "$BARISTA_RUNTIME_BACKEND")
+    fi
+  else
+    setup_args+=(--panel-mode "$BARISTA_PANEL_MODE" --runtime-backend "$BARISTA_RUNTIME_BACKEND")
+  fi
+  if [ -n "${BARISTA_MACHINE_FILE:-}" ]; then
+    setup_args+=(--machine-file "$BARISTA_MACHINE_FILE")
+  fi
   if [ "${BARISTA_SKIP_RELOAD:-0}" = "1" ]; then
     setup_args+=(--no-reload)
   fi
@@ -220,16 +262,16 @@ if [ "${BARISTA_SKIP_RELOAD:-0}" != "1" ]; then
   if [ "${BARISTA_DRY_RUN:-0}" = "1" ]; then
     echo "[dry-run][remote] would restart/reload services"
   else
-    if [ -x "./launch_agents/barista-launch.sh" ]; then
+    if [ "${BARISTA_PROFILE_VARIANT:-}" != "restricted-work" ] && [ -x "./launch_agents/barista-launch.sh" ]; then
       ./launch_agents/barista-launch.sh restart >/dev/null 2>&1 || true
     fi
     if command -v sketchybar >/dev/null 2>&1; then
       sketchybar --reload >/dev/null 2>&1 || true
     fi
-    if command -v skhd >/dev/null 2>&1; then
+    if [ "${BARISTA_PROFILE_VARIANT:-}" != "restricted-work" ] && command -v skhd >/dev/null 2>&1; then
       skhd --reload >/dev/null 2>&1 || true
     fi
-    if command -v yabai >/dev/null 2>&1; then
+    if [ "${BARISTA_PROFILE_VARIANT:-}" != "restricted-work" ] && command -v yabai >/dev/null 2>&1; then
       yabai -m signal --add event=display_changed label=barista_post_sync_refresh action="sketchybar --trigger space_change; sketchybar --trigger space_mode_refresh" >/dev/null 2>&1 || true
     fi
   fi

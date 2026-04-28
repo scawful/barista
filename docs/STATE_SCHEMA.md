@@ -67,7 +67,7 @@
 | Key | Type | Purpose |
 |-----|------|---------|
 | `_version` | number | State schema version used by migrations. |
-| `profile` | string | Active profile name (`minimal`, `girlfriend`, `work`, `personal`). |
+| `profile` | string | Active profile name (`minimal`, `cozy`, `work`, `personal`). |
 | `widgets` | object | Per-widget enable/disable flags. |
 | `appearance` | object | Bar, popup, font, hover, and grouping appearance settings. |
 | `icons` | object | Named icon overrides such as `apple`, `wifi`, `volume`. |
@@ -81,6 +81,7 @@
 | `paths` | object | Runtime path overrides. |
 | `menus` | object | Apple-menu popup sections, app shortcuts, and web-app shortcut configuration. |
 | `integrations` | object | Per-integration enablement and metadata. |
+| `machine` | object | Machine-local profile variant summary written by `scripts/machine_profile.py`. |
 
 ## Important Nested Keys
 
@@ -139,6 +140,19 @@ Supported keys:
 Restricted work-laptop setup writes `window_manager = "disabled"`,
 `runtime_backend = "lua"`, and `widget_daemon = "disabled"` so Barista avoids
 yabai/skhd and compiled helper paths.
+
+### `machine`
+
+Supported keys written by `scripts/machine_profile.py`:
+
+- `profile_variant`: one of `minimal`, `cozy`, `personal`, `work`, or `restricted-work`
+- `restricted`: whether this machine should avoid native apps, compiled helpers, yabai, and skhd
+- `menu_packs`: logical menu groups enabled for this machine
+- `allowed_features`: capability-gated booleans such as `native_panel`, `compiled_helpers`, `window_manager`, and `work_apps`
+
+The detailed capability snapshot is stored in `data/machine.local.json`, which
+is intentionally gitignored. `state.machine` keeps only the runtime summary that
+the bar and tools can read cheaply.
 
 ### `paths`
 

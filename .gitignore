@@ -50,6 +50,7 @@ imgui.ini
 state.json
 barista_config.lua
 component_settings.json
+data/machine.local.json
 data/work_apps.local.json
 *.icon_backup
 state.json.*backup

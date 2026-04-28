@@ -183,8 +183,27 @@ Install missing fonts, repair `state.json` to match available families, and set 
 For managed/work Macs that should avoid compiled helpers entirely:
 
 ```bash
-./scripts/setup_machine.sh --yes --panel-mode tui --runtime-backend lua
+./scripts/setup_machine.sh --yes --restricted-work --domain yourcompany.com
 ./scripts/barista-debug.sh --lua-only --reload
+```
+
+`--restricted-work` is the no-compiled/no-yabai lane. It uses the Python
+standard-library configurator at `scripts/restricted_config.py` to pin
+`runtime_backend=lua`, disable yabai/skhd shortcut state, prefer the TUI/manual
+settings path, and write basic Work Apps menu rows without requiring `jq` or a
+native app build.
+
+For direct CLI menu edits on a restricted machine:
+
+```bash
+# Add or refresh the default Google Workspace menu rows
+./scripts/configure_work_google_apps.sh --domain yourcompany.com --replace
+
+# Add a single custom Apple-menu row
+python3 ./scripts/restricted_config.py menu-item \
+  --label "Runbook" \
+  --url "https://example.com/runbook" \
+  --section work
 ```
 
 See [docs/guides/WORK_MACHINE_GEMINI.md](docs/guides/WORK_MACHINE_GEMINI.md) for the Gemini-first upgrade flow.

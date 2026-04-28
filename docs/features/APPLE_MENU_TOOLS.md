@@ -95,6 +95,22 @@ menus.apps = {
 - The Menu tab in the control panel can refresh this file from your local workspace with `Refresh Apps`.
 - `menus.projects` is still accepted as a legacy alias, but `menus.apps` is the preferred key now.
 
+## Restricted Work Apps
+
+On managed machines, use the script-only configurator instead of the native
+control panel:
+
+```bash
+./scripts/configure_restricted_work_barista.sh --domain yourcompany.com --replace
+./scripts/configure_work_google_apps.sh --domain yourcompany.com --replace
+python3 ./scripts/restricted_config.py menu-item --label "Runbook" --url "https://example.com/runbook" --section work
+```
+
+`scripts/restricted_config.py` uses only the Python standard library. It writes
+`menus.work.google_apps`, `menus.work.apps_file`, and optional
+`menus.apple.custom[]` rows directly, so basic web/app menus still work when
+yabai, `jq`, the TUI dependencies, or compiled Barista binaries are unavailable.
+
 ## Behavior notes
 
 - Missing tools are hidden unless `show_missing` is enabled.

@@ -18,6 +18,8 @@ CONFIGURE_PANEL=1
 CONFIGURE_RUNTIME=0
 CONFIGURE_WORK_APPS=0
 REPLACE_WORK_APPS=0
+SKIP_WORK_APPS=0
+RESTRICTED_WORK=0
 AUTO_YES=0
 DO_RELOAD=1
 DRY_RUN=0
@@ -57,6 +59,7 @@ Work apps options:
   --replace                               Replace existing work app menu items
   --skip-work-apps                        Skip work app configuration
   --apps-only                             Only configure work app menu items
+  --restricted-work                       Python-only work-laptop setup: no yabai, no compiled helpers
 EOF
 }
 
@@ -145,6 +148,17 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-work-apps)
       CONFIGURE_WORK_APPS=0
+      SKIP_WORK_APPS=1
+      shift
+      ;;
+    --restricted-work|--work-restricted|--restricted)
+      RESTRICTED_WORK=1
+      INSTALL_FONTS=0
+      CONFIGURE_PANEL=0
+      CONFIGURE_RUNTIME=0
+      CONFIGURE_WORK_APPS=1
+      PANEL_MODE=tui
+      RUNTIME_BACKEND=lua
       shift
       ;;
     --fonts-only)
@@ -202,6 +216,53 @@ while [[ $# -gt 0 ]]; do
 done
 
 STATE_FILE="$(expand_home "$STATE_FILE")"
+
+run_restricted_work_setup() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 is required for --restricted-work." >&2
+    exit 1
+  fi
+  local restricted_script="$ROOT_DIR/scripts/restricted_config.py"
+  if [ ! -f "$restricted_script" ]; then
+    echo "restricted_config.py missing: $restricted_script" >&2
+    exit 1
+  fi
+
+  local args=(apply --state "$STATE_FILE")
+  if [ -n "$WORK_DOMAIN" ]; then
+    args+=(--domain "$WORK_DOMAIN")
+  fi
+  if [ -n "$WORK_APPS_FILE" ]; then
+    args+=(--from-file "$WORK_APPS_FILE")
+  fi
+  if [ -n "$WORK_APPS_OUT_FILE" ]; then
+    args+=(--work-apps-out-file "$WORK_APPS_OUT_FILE")
+  fi
+  if [ "$SKIP_WORK_APPS" -eq 1 ]; then
+    args+=(--skip-work-apps)
+  fi
+  if [ "$REPLACE_WORK_APPS" -eq 1 ]; then
+    args+=(--replace)
+  fi
+  if [ "$DRY_RUN" -eq 1 ]; then
+    args+=(--dry-run)
+  fi
+  if [ "$REPORT" -eq 1 ]; then
+    args+=(--report)
+  fi
+  if [ "$DO_RELOAD" -eq 1 ]; then
+    args+=(--reload)
+  else
+    args+=(--no-reload)
+  fi
+
+  python3 "$restricted_script" "${args[@]}"
+}
+
+if [ "$RESTRICTED_WORK" -eq 1 ]; then
+  run_restricted_work_setup
+  exit 0
+fi
 
 confirm() {
   local prompt="$1"

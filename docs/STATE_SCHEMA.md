@@ -136,6 +136,10 @@ Supported keys:
 - `runtime_backend`: `lua`, `compiled`, or `auto`
 - `widget_daemon`: `auto`, `enabled`, or `disabled`
 
+Restricted work-laptop setup writes `window_manager = "disabled"`,
+`runtime_backend = "lua"`, and `widget_daemon = "disabled"` so Barista avoids
+yabai/skhd and compiled helper paths.
+
 ### `paths`
 
 Common supported keys:
@@ -249,6 +253,10 @@ Supported keys:
 - `workspace_domain`
 
 These render as web-app shortcuts inside a popup section. The historical state key is still `google_apps`, but the UI now labels them `Web App Shortcuts`.
+
+`scripts/restricted_config.py` and `scripts/configure_work_google_apps.sh` can
+write this section without `jq` or the native control panel. By default they
+write the JSON array to `data/work_apps.local.json` relative to `state.json`.
 
 ### `integrations`
 

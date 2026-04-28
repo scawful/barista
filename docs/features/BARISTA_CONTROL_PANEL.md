@@ -104,6 +104,11 @@ control_panel.command = "open -a MySwiftUIApp"
 - `tui`: Python TUI (`bin/barista`) when native GUI isn’t available.
 - `custom`: run the command specified in `control_panel.command`.
 
+When `modes.runtime_backend = "lua"` or `BARISTA_RESTRICTED_MODE=1`, a missing
+TUI stops at the manual `state.json` / docs fallback instead of trying to build
+or launch the native Cocoa panel. This keeps managed work laptops out of the
+compiled-app approval path.
+
 ### Env overrides
 
 - `BARISTA_CONTROL_PANEL` or `BARISTA_CONTROL_PANEL_MODE`

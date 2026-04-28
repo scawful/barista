@@ -387,7 +387,12 @@ if [[ "$CONTROL_PREF" == "tui" ]]; then
   if launch_tui_panel; then
     exit 0
   fi
-  echo "[barista] TUI control panel unavailable; falling back to native" >&2
+  echo "[barista] TUI control panel unavailable" >&2
+  if [[ "$RUNTIME_BACKEND" == "lua" || "${BARISTA_RESTRICTED_MODE:-0}" == "1" ]]; then
+    launch_manual_fallback
+    exit 1
+  fi
+  echo "[barista] Falling back to native control panel" >&2
   CONTROL_PREF="native"
 fi
 

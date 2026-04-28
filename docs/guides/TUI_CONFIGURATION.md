@@ -154,6 +154,31 @@ For managed machines where you can't compile binaries:
 
 `modes.runtime_backend = "lua"` survives reloads, unlike one-off env overrides.
 
+## Restricted Work Mac Mode
+
+If the machine cannot run yabai or unapproved compiled Barista apps, use the
+script-only restricted path instead of the native panel:
+
+```bash
+./scripts/setup_machine.sh --yes --restricted-work --domain yourcompany.com
+./scripts/barista-debug.sh --lua-only --reload
+```
+
+For menu-only edits, use the Python standard-library configurator:
+
+```bash
+./scripts/configure_work_google_apps.sh --domain yourcompany.com --replace
+python3 ./scripts/restricted_config.py menu-item \
+  --label "Runbook" \
+  --url "https://example.com/runbook" \
+  --section work
+```
+
+This path writes `state.json` and `data/work_apps.local.json` directly. It does
+not require `jq`, a compiled GUI, or yabai. If the TUI is unavailable while
+`runtime_backend` is pinned to `lua`, the panel launcher opens the state/docs
+fallback instead of trying the native GUI.
+
 ## Troubleshooting
 
 ### TUI won't start

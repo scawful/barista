@@ -3,6 +3,7 @@ local apple_menu_model = require("apple_menu_model")
 local binary_resolver = require("binary_resolver")
 local menu_style = require("menu_style")
 local locator = require("tool_locator")
+local interface_extensions = require("interface_extensions")
 local project_shortcuts_module = require("project_shortcuts")
 local shortcuts_ok, shortcuts = pcall(require, "shortcuts")
 if not shortcuts_ok then
@@ -276,6 +277,7 @@ local function build_prepared(ctx)
 
   local code_dir = resolve_code_dir(ctx)
   local project_shortcuts = project_shortcuts_module.load(config_dir, code_dir, state)
+  local apple_extensions = interface_extensions.for_surface(config_dir, code_dir, state, "apple_menu")
   local show_missing = os.getenv("BARISTA_SHOW_MISSING_TOOLS") == "1"
   if type(menu_config.show_missing) == "boolean" then
     show_missing = menu_config.show_missing
@@ -656,7 +658,8 @@ local function build_prepared(ctx)
     support = { id = "support", label = "Support", icon = "󰘥", color = tc("LAVENDER"), order = 4 },
     afs = { id = "afs", label = "AFS Tools", icon = "󰈙", color = tc("SAPPHIRE"), order = 5 },
     audio = { id = "audio", label = "Audio", icon = "󰎈", color = tc("PEACH"), order = 6 },
-    custom = { id = "custom", label = "Custom", icon = "󰘥", color = tc("LAVENDER"), order = 7 },
+    extensions = { id = "extensions", label = "Extensions", icon = "󰐕", color = tc("TEAL"), order = 7 },
+    custom = { id = "custom", label = "Custom", icon = "󰘥", color = tc("LAVENDER"), order = 8 },
   }
 
   local menu_model = apple_menu_model.build({
@@ -664,6 +667,7 @@ local function build_prepared(ctx)
     sections = sections,
     menu_config = menu_config,
     project_shortcuts = project_shortcuts,
+    interface_extensions = { enabled = true, items = apple_extensions },
     show_missing = show_missing,
     theme = theme,
   })

@@ -1,0 +1,21 @@
+[
+  {
+    "id": "runbook",
+    "label": "Runbook",
+    "icon": "󰘥",
+    "url": "https://example.com/runbook",
+    "surfaces": ["apple_menu", "control_center"],
+    "section": "work",
+    "order": 100
+  },
+  {
+    "id": "local_script",
+    "label": "Local Script",
+    "icon": "󰆍",
+    "script": "~/bin/example-barista-action",
+    "args": ["status"],
+    "surfaces": ["front_app", "control_center"],
+    "section": "extensions",
+    "order": 110
+  }
+]

@@ -1249,7 +1249,6 @@ family_hints = [
     ("Cortex", re.compile(r"cortex", re.I)),
     ("Oracle", re.compile(r"oracle", re.I)),
     ("AFS", re.compile(r"\bafs\b|afs[_ -]", re.I)),
-    ("Scawfulbot", re.compile(r"scawfulbot", re.I)),
 ]
 seen_variant = set()
 for window in windows:

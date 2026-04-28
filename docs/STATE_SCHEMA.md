@@ -54,6 +54,12 @@
     },
     "work": {
       "workspace_domain": "example.com"
+    },
+    "extensions": {
+      "enabled": true,
+      "file": "data/interface_extensions.local.json",
+      "files": [],
+      "packs": []
     }
   },
   "integrations": {
@@ -96,7 +102,7 @@ Common keys:
 - `battery`
 - `network`
 
-`lmstudio` controls the dedicated LM Studio quick-switch widget on the right side of the bar.
+`lmstudio` controls the dedicated LM Studio quick-switch widget on the right side of the bar. Personal machines enable it by profile; minimal, cozy, work, and restricted variants disable it by default.
 
 ### `appearance`
 
@@ -199,6 +205,21 @@ Nested `items[]` rows support:
 - `type = "separator"`
 - standard rows with `label`, `command`/`action`, `url`, `icon`, `shortcut`, and optional nested `items[]`
 
+### `menus.extensions`
+
+Supported keys:
+
+- `enabled`
+- `file`
+- `files[]`
+- `packs[]`
+- `items[]`
+
+Interface extensions are script-backed rows for `apple_menu`, `front_app`,
+`control_center`, and `lmstudio` surfaces. The default file is
+`data/interface_extensions.local.json`, which is gitignored. See
+[guides/INTERFACE_EXTENSIONS.md](guides/INTERFACE_EXTENSIONS.md).
+
 ### `menus.oracle`
 
 Supported keys:
@@ -240,7 +261,7 @@ Supported keys:
 - `default_action`
 - `items[]`
 
-`file` usually points at `data/project_shortcuts.json`, which stores app shortcut rows for the `Apps` popup section.
+`file` usually points at `data/project_shortcuts.json`, which stores generic app shortcut rows for the `Apps` popup section. The committed default is intentionally empty; machine-local launchers should use `menus.extensions`.
 
 Each app shortcut item can define:
 

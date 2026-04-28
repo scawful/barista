@@ -42,6 +42,7 @@ FULL_REBUILD_BUILD_END_MS=""
 SPACE_ACTION_PREFIX=""
 CREATOR_ACTION_PREFIX=""
 CREATOR_ACTION_FALLBACK=""
+NATIVE_SPACES_FALLBACK=0
 
 declare -a CACHED_SPACE_ICONS
 
@@ -219,6 +220,10 @@ creator_click_action() {
   fi
   if [ -n "$CREATOR_ACTION_FALLBACK" ]; then
     printf '%s' "$CREATOR_ACTION_FALLBACK"
+    return 0
+  fi
+  if [ "$NATIVE_SPACES_FALLBACK" -eq 1 ] || [ -z "$YABAI_BIN" ] || ! [ -x "$YABAI_BIN" ]; then
+    printf '%s' 'open -a "Mission Control"'
     return 0
   fi
   printf '%s' 'yabai -m space --create'
@@ -456,6 +461,113 @@ parse_spaces_payload() {
   [ "${#SPACE_LINES[@]}" -gt 0 ]
 }
 
+state_space_count() {
+  if [ -n "${BARISTA_NATIVE_SPACE_COUNT:-}" ] && [ "$BARISTA_NATIVE_SPACE_COUNT" -gt 0 ] 2>/dev/null; then
+    printf '%s' "$BARISTA_NATIVE_SPACE_COUNT"
+    return 0
+  fi
+
+  if [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ]; then
+    local count
+    count="$("$JQ_BIN" -r '.spaces.count // .spaces.fallback_count // empty' "$STATE_FILE" 2>/dev/null || true)"
+    if [ -n "$count" ] && [ "$count" -gt 0 ] 2>/dev/null; then
+      printf '%s' "$count"
+      return 0
+    fi
+  fi
+
+  if command -v python3 >/dev/null 2>&1 && [ -f "$STATE_FILE" ]; then
+    local count
+    count="$(python3 - "$STATE_FILE" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as handle:
+        data = json.load(handle)
+except Exception:
+    data = {}
+
+spaces = data.get("spaces") if isinstance(data.get("spaces"), dict) else {}
+value = spaces.get("count", spaces.get("fallback_count", ""))
+try:
+    value = int(value)
+except Exception:
+    value = 0
+print(value if value > 0 else "")
+PY
+)"
+    if [ -n "$count" ]; then
+      printf '%s' "$count"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+defaults_space_count() {
+  command -v defaults >/dev/null 2>&1 || return 1
+  command -v python3 >/dev/null 2>&1 || return 1
+  defaults export com.apple.spaces - 2>/dev/null | python3 -c '
+import plistlib
+import sys
+
+try:
+    data = plistlib.loads(sys.stdin.buffer.read())
+except Exception:
+    data = {}
+
+counts = []
+
+def walk(value):
+    if isinstance(value, dict):
+        spaces = value.get("Spaces")
+        if isinstance(spaces, list):
+            candidates = [
+                item for item in spaces
+                if isinstance(item, dict) and item.get("type", item.get("TileLayoutManager", "")) != "fullscreen"
+            ]
+            if candidates:
+                counts.append(len(candidates))
+        for child in value.values():
+            walk(child)
+    elif isinstance(value, list):
+        for child in value:
+            walk(child)
+
+walk(data)
+count = max(counts) if counts else 0
+print(count if count > 0 else "")
+'
+}
+
+populate_fallback_spaces() {
+  NATIVE_SPACES_FALLBACK=1
+  local count
+  count="$(state_space_count 2>/dev/null || true)"
+  if [ -z "$count" ]; then
+    count="$(defaults_space_count 2>/dev/null || true)"
+  fi
+  if [ -z "$count" ] || ! [ "$count" -gt 0 ] 2>/dev/null; then
+    count=5
+  fi
+  if [ "$count" -gt 16 ]; then
+    count=16
+  fi
+
+  SPACE_LINES=()
+  DISPLAY_IDS=("1")
+  VISIBLE_SPACE_LINES=("1 1")
+  ACTIVE_DISPLAY_CACHE="1"
+  DISPLAY_COUNT_CACHE="${DISPLAY_COUNT_CACHE:-1}"
+
+  local i
+  for ((i=1; i<=count; i++)); do
+    SPACE_LINES+=("1 $i")
+  done
+}
+
 get_active_display() {
   load_display_state
   [ -n "$ACTIVE_DISPLAY_CACHE" ] || return 1
@@ -503,13 +615,18 @@ elif [ -n "$YABAI_BIN" ]; then
     sleep "$SPACE_QUERY_DELAY"
   done
 else
-  echo "ERROR: yabai not found." >&2
-  exit 1
+  populate_fallback_spaces
+  SPACE_PARSE_OK=1
 fi
 
 if [ "$SPACE_PARSE_OK" -ne 1 ]; then
-  schedule_spaces_retry
-  exit 0
+  if [ -n "$YABAI_BIN" ]; then
+    populate_fallback_spaces
+    SPACE_PARSE_OK=1
+  else
+    schedule_spaces_retry
+    exit 0
+  fi
 fi
 rm -f "$RETRY_FILE" 2>/dev/null || true
 

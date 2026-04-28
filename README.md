@@ -20,7 +20,7 @@ Barista is the ambient menu bar layer.
 - Oracle inside Cortex owns persistent AI sessions, agent modes, provider/model routing, and Zelda-first AI work.
 - Scawfulbot owns cross-device persona/avatar and model-fleet workflows.
 
-Barista may launch Oracle, scawfulbot, or Cortex, but it should not duplicate Oracle's AI settings, scawfulbot's model-fleet behavior, or Cortex host logic.
+Barista may launch local workflow tools through opt-in interface extensions, but it should not duplicate those projects' deeper settings or host logic.
 
 ## Quick Install
 
@@ -207,6 +207,22 @@ python3 ./scripts/restricted_config.py menu-item \
 ```
 
 See [docs/guides/WORK_MACHINE_GEMINI.md](docs/guides/WORK_MACHINE_GEMINI.md) for the Gemini-first upgrade flow.
+
+### Interface Extensions
+
+Use script-backed extension rows for local launchers and machine-specific
+actions instead of committing personal app paths into the default Apple menu.
+Extensions can appear in the Apple menu, disabled-yabai `front_app` / Control
+Center replacement rows, and the LM Studio popup.
+
+```bash
+# Personal Mac only; this file is ignored by git.
+cp data/interface_extensions.personal.example.json data/interface_extensions.local.json
+python3 ./scripts/machine_profile.py apply --variant personal --report
+```
+
+Work and restricted profiles leave personal extensions and the LM Studio widget
+off by default. See [docs/guides/INTERFACE_EXTENSIONS.md](docs/guides/INTERFACE_EXTENSIONS.md).
 
 ### Machine Profile Variants
 

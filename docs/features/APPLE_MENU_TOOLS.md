@@ -27,6 +27,7 @@ Use `popup section` by default when talking about Apple-menu grouping.
 - Audio
 - Core Tools
 - Controls
+- Extensions
 - Web Apps
 - Support
 - Custom
@@ -74,6 +75,11 @@ menus.apps = {
   "file": "data/project_shortcuts.json",
   "default_action": "terminal"
 }
+menus.extensions = {
+  "enabled": true,
+  "file": "data/interface_extensions.local.json",
+  "packs": []
+}
 ```
 
 ## Core item IDs
@@ -87,13 +93,22 @@ menus.apps = {
 ## App shortcuts
 
 - App shortcuts are loaded from `menus.apps.file`, which defaults to `data/project_shortcuts.json`.
+- The committed default shortcut file is empty. Use interface extensions for machine-local or personal launchers.
 - Relative `path` values are resolved from your workspace root (`~/src` unless `paths.code_dir` overrides it).
 - `default_action` controls how a path-based row opens when the JSON entry only provides a `path`:
   - `terminal`
   - `finder`
   - `code`
-- The Menu tab in the control panel can refresh this file from your local workspace with `Refresh Apps`.
+- `scripts/discover_project_shortcuts.sh` now writes personal launchers to the interface extension file instead of the committed project shortcut default.
 - `menus.projects` is still accepted as a legacy alias, but `menus.apps` is the preferred key now.
+
+## Interface Extensions
+
+Script-backed extension rows are loaded from `menus.extensions.file`, which
+defaults to the gitignored `data/interface_extensions.local.json`.
+They can target the Apple menu, disabled front-app/yabai replacement rows,
+disabled Control Center replacement rows, or LM Studio model presets. See
+[../guides/INTERFACE_EXTENSIONS.md](../guides/INTERFACE_EXTENSIONS.md).
 
 ## Restricted Work Apps
 

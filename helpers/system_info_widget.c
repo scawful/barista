@@ -171,10 +171,19 @@ void get_network_info(SystemInfo *info) {
 
 int main(void) {
     const char *sender = getenv("SENDER");
+    const char *sketchybar_bin = getenv("BARISTA_SKETCHYBAR_BIN");
+    if (!sketchybar_bin || sketchybar_bin[0] == '\0') {
+        sketchybar_bin = getenv("SKETCHYBAR_BIN");
+    }
+    if (!sketchybar_bin || sketchybar_bin[0] == '\0') {
+        sketchybar_bin = "sketchybar";
+    }
 
     // Handle mouse.exited.global
     if (sender && strcmp(sender, "mouse.exited.global") == 0) {
-        system("sketchybar --set system_info popup.drawing=off");
+        char close_cmd[CMD_SIZE];
+        snprintf(close_cmd, sizeof(close_cmd), "%s --set system_info popup.drawing=off", sketchybar_bin);
+        system(close_cmd);
         return 0;
     }
 
@@ -221,9 +230,9 @@ int main(void) {
      * Popup rows are refreshed on demand by plugins/system_info.sh popup_refresh. */
     char cmd[CMD_SIZE];
     snprintf(cmd, sizeof(cmd),
-             "sketchybar"
+             "%s"
              " --set system_info label=\"%s\" icon.color=\"%s\" label.font.style=\"Semibold\"",
-             main_label, cpu_color);
+             sketchybar_bin, main_label, cpu_color);
     system(cmd);
 
     return 0;

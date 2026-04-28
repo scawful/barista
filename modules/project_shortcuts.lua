@@ -109,14 +109,8 @@ local function default_icon(entry)
   if path:match("oracle") then
     return "󰊕"
   end
-  if path:match("premia") then
-    return "󰃬"
-  end
   if path:match("halext") then
     return "󰖟"
-  end
-  if path:match("scawfulbot") or path:match("janice") then
-    return "󰭹"
   end
   if path:match("echo") then
     return "󰊠"
@@ -144,17 +138,11 @@ local function project_palette(entry)
   if key:match("afs") then
     return "0xff74c7ec", "0xffa9dbf1"
   end
-  if key:match("scawfulbot") or key:match("janice") then
-    return "0xfff5c2e7", "0xfff8d6ee"
-  end
   if key:match("yaze") then
     return "0xff89b4fa", "0xffb6d0fb"
   end
   if key:match("oracle") then
     return "0xffa6e3a1", "0xffc5edc1"
-  end
-  if key:match("premia") then
-    return "0xff94e2d5", "0xffc7eee8"
   end
   if key:match("barista") then
     return "0xfffab387", "0xfff8ceb4"

@@ -25,9 +25,15 @@ These are still supported for older integrations, but they are no longer the mai
 
 ## App Shortcut
 
-A menu row in the Apple-menu `Apps` section, typically loaded from `data/project_shortcuts.json`.
+A menu row in the Apple-menu `Apps` section, loaded from `data/project_shortcuts.json`.
 
-Most app shortcuts launch a local app or tool directly. Legacy path-based entries can still open a Terminal tab, Finder, or VS Code when the JSON entry only provides a repo/workspace path.
+The committed default is generic and may be empty. Machine-local launchers should usually be Interface Extensions instead.
+
+## Interface Extension
+
+A script-backed row loaded from `data/interface_extensions.local.json` or inline `menus.extensions.items`.
+
+Extensions can appear in the Apple menu, disabled-yabai Desk rows, Control Center, or LM Studio. Pack gates such as `personal` keep local apps off work and restricted machines by default.
 
 ## Space Chip
 

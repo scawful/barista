@@ -122,6 +122,13 @@ function profile.merge_config(base_config, user_profile)
   end
 
   -- Merge space icons
+  if user_profile.spaces and user_profile.spaces.count then
+    base_config.spaces = base_config.spaces or {}
+    if base_config.spaces.count == nil then
+      base_config.spaces.count = user_profile.spaces.count
+    end
+  end
+
   if user_profile.spaces and user_profile.spaces.icons then
     base_config.space_icons = base_config.space_icons or {}
     for k, v in pairs(user_profile.spaces.icons) do

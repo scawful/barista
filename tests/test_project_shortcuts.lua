@@ -110,34 +110,34 @@ end)
 
 run_test("project_shortcuts.normalize_entry: action entries stay available without a project path", function()
   local entry = project_shortcuts.normalize_entry("/tmp/code", "terminal", {
-    id = "premia_v2",
-    label = "Premia v2",
-    action = "/Users/scawful/src/lab/premia/build/bin/premia",
+    id = "barista_control",
+    label = "Barista Control",
+    action = "open -a Barista",
   }, 1)
 
   assert_true(entry.available, "action-only entry should be available")
-  assert_equal(entry.icon, "󰃬", "premia icon")
-  assert_equal(entry.icon_color, "0xff94e2d5", "premia icon color")
-  assert_equal(entry.label_color, "0xffc7eee8", "premia label color")
+  assert_equal(entry.icon, "󰓹", "barista icon")
+  assert_equal(entry.icon_color, "0xfffab387", "barista icon color")
+  assert_equal(entry.label_color, "0xfff8ceb4", "barista label color")
   assert_equal(entry.section, "apps", "default app section")
 end)
 
 run_test("project_shortcuts.normalize_entry: preserves build metadata for missing apps", function()
   local entry = project_shortcuts.normalize_entry("/tmp/code", "terminal", {
-    id = "scawfulbot",
-    label = "Scawfulbot",
+    id = "local_tool",
+    label = "Local Tool",
     action = "",
     available = false,
-    build_action = "/bin/bash /tmp/build_and_open_mac.sh",
-    build_label = "Build Scawfulbot",
-    missing_message = "Scawfulbot.app is missing. Rebuild the macOS app?",
-    missing_title = "Barista · Scawfulbot",
-    missing_action = "open /tmp/scawfulbot",
+    build_action = "/bin/bash /tmp/build_local_tool.sh",
+    build_label = "Build Local Tool",
+    missing_message = "Local Tool.app is missing. Rebuild the app?",
+    missing_title = "Barista · Local Tool",
+    missing_action = "open /tmp/local-tool",
   }, 1)
 
   assert_true(not entry.available, "missing app should stay unavailable until built")
-  assert_equal(entry.build_action, "/bin/bash /tmp/build_and_open_mac.sh", "build action should be preserved")
-  assert_equal(entry.build_label, "Build Scawfulbot", "build label should be preserved")
-  assert_equal(entry.missing_title, "Barista · Scawfulbot", "missing title should be preserved")
-  assert_equal(entry.missing_action, "open /tmp/scawfulbot", "missing fallback action should be preserved")
+  assert_equal(entry.build_action, "/bin/bash /tmp/build_local_tool.sh", "build action should be preserved")
+  assert_equal(entry.build_label, "Build Local Tool", "build label should be preserved")
+  assert_equal(entry.missing_title, "Barista · Local Tool", "missing title should be preserved")
+  assert_equal(entry.missing_action, "open /tmp/local-tool", "missing fallback action should be preserved")
 end)

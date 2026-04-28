@@ -309,6 +309,32 @@ local function collect_project_shortcuts(rendered, project_shortcuts, show_missi
   end
 end
 
+local function collect_interface_extensions(rendered, extensions, show_missing)
+  if not (extensions and extensions.enabled ~= false) then
+    return
+  end
+
+  for index, extension in ipairs(extensions.items or {}) do
+    if extension.available or show_missing or (extension.build_action and extension.build_action ~= "") or (extension.missing_action and extension.missing_action ~= "") then
+      local resolved_action, resolved_label, resolved_missing = resolve_missing_action(extension, extension.label)
+      table.insert(rendered, {
+        id = extension.id,
+        name = "menu.tools.extension." .. extension.id,
+        label = resolved_label,
+        icon = extension.icon,
+        icon_color = extension.icon_color,
+        label_color = extension.label_color,
+        action = resolved_action,
+        shortcut = extension.shortcut,
+        missing = resolved_missing or not extension.available,
+        order = extension.order or (1600 + index),
+        default_index = 1300 + index,
+        section = normalize_section_id(extension.section or "extensions"),
+      })
+    end
+  end
+end
+
 local function collect_work_items(rendered, menu_config, theme)
   for index, app in ipairs(menu_config.work_google_apps or {}) do
     if type(app) == "table" then
@@ -362,6 +388,7 @@ function apple_menu_model.build(opts)
   collect_base_items(rendered, opts.base_items or {}, opts.menu_config or {}, opts.show_missing == true)
   collect_custom_items(rendered, opts.menu_config or {})
   collect_project_shortcuts(rendered, opts.project_shortcuts or {}, opts.show_missing == true)
+  collect_interface_extensions(rendered, opts.interface_extensions or {}, opts.show_missing == true)
   collect_work_items(rendered, opts.menu_config or {}, opts.theme or {})
   sort_rendered_items(rendered, sections)
 

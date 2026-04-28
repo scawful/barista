@@ -10,6 +10,8 @@ app that needs approval.
 - Bar runtime uses the Lua fallback path
 - Window-manager/yabai state is disabled
 - Basic Work Apps menu rows are configurable through Python/shell scripts
+- Personal interface extensions and LM Studio model presets are disabled by default
+- Non-yabai profiles still show a static/native space strip from `spaces.count`
 - Machine-local capability gates are written to `data/machine.local.json`
 - `state.json` is repaired to match installed fonts on the machine
 - `barista-doctor` reports the resolved runtime backend and fonts
@@ -80,6 +82,7 @@ The restricted defaults write:
 - `control_panel.preferred = "tui"`
 - `toggles.yabai_shortcuts = false`
 - `menus.work.apps_file = "data/work_apps.local.json"`
+- `widgets.lmstudio = false`
 - `machine.profile_variant = "restricted-work"`
 - `data/machine.local.json` with the full capability snapshot
 
@@ -123,6 +126,9 @@ This preserves valid configured fonts and only repairs missing families.
 - `scripts/machine_profile.py` is also Python-stdlib only. Use it to keep
   profile variant, capability detection, and restricted feature gates aligned
   across Macs.
+- Interface extensions are optional and script-backed. Keep personal packs off
+  work machines unless a local `data/interface_extensions.local.json` is
+  intentionally installed.
 - If you later want compiled helpers again, run:
 
 ```bash

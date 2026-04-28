@@ -1,5 +1,6 @@
 -- Left-side bar items: front_app (and popup), control_center (optional), spaces refresh.
 
+local interface_extensions = require("interface_extensions")
 local popup_items = require("popup_items")
 
 local function get_layout(ctx)
@@ -52,6 +53,76 @@ local function get_layout(ctx)
   local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
   local font_bold = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small)
   local separator_color = theme.OVERLAY1 or theme.SUBTEXT0 or group_border_color
+  local code_dir = ctx.CODE_DIR or (ctx.paths and ctx.paths.code_dir) or (os.getenv("BARISTA_CODE_DIR") or ((os.getenv("HOME") or "") .. "/src"))
+
+  local function path_exists(path)
+    if not path or path == "" then
+      return false
+    end
+    local file = io.open(path, "r")
+    if not file then
+      return false
+    end
+    file:close()
+    return true
+  end
+
+  local function desk_replacement_items(surface)
+    local rows = {
+      {
+        id = "mission_control",
+        label = "Mission Control",
+        icon = "󰍹",
+        icon_color = tc("SKY"),
+        action = "open -a " .. string.format("%q", "Mission Control"),
+        order = 10,
+      },
+      {
+        id = "barista_settings",
+        label = "Barista Settings",
+        icon = "󰒓",
+        icon_color = tc("SAPPHIRE"),
+        action = ctx.call_script and ctx.call_script(CONFIG_DIR .. "/bin/open_control_panel.sh", "--tab", "home") or "",
+        order = 20,
+      },
+      {
+        id = "extension_guide",
+        label = "Extension Guide",
+        icon = "󰘥",
+        icon_color = tc("TEAL"),
+        action = "open " .. string.format("%q", CONFIG_DIR .. "/docs/guides/INTERFACE_EXTENSIONS.md"),
+        order = 30,
+      },
+    }
+    if surface == "front_app" and path_exists(CONFIG_DIR .. "/scripts/open_keyboard_overlay.sh") then
+      table.insert(rows, {
+        id = "keyboard_overlay",
+        label = "Keyboard Overlay",
+        icon = "󰌌",
+        icon_color = tc("MAUVE", "LAVENDER"),
+        action = ctx.call_script and ctx.call_script(CONFIG_DIR .. "/scripts/open_keyboard_overlay.sh") or "",
+        order = 25,
+      })
+    end
+    return rows
+  end
+
+  local function extension_rows(surface)
+    local rows = desk_replacement_items(surface)
+    for _, item in ipairs(interface_extensions.for_surface(CONFIG_DIR, code_dir, state, surface)) do
+      table.insert(rows, item)
+    end
+    table.sort(rows, function(a, b)
+      if (a.order or 0) == (b.order or 0) then
+        return tostring(a.label or a.id) < tostring(b.label or b.id)
+      end
+      return (a.order or 0) < (b.order or 0)
+    end)
+    return rows
+  end
+
+  local front_app_extension_items = extension_rows("front_app")
+  local control_center_extension_items = extension_rows("control_center")
 
   -- Front App indicator
   local front_app_start_ms = current_time_ms()
@@ -183,6 +254,36 @@ local function get_layout(ctx)
   end
 
   local add_fa = popup_items.make_add("front_app", { hover_script = hover_script_cmd })
+  local function add_front_app_extension_rows(rows)
+    if type(rows) ~= "table" or #rows == 0 then
+      return
+    end
+    table.insert(layout, add_fa("front_app.extensions.sep", {
+      icon = "",
+      label = "───────────────",
+      ["label.font"] = font_small,
+      ["label.color"] = "0x40cdd6f4",
+      background = { drawing = false },
+    }))
+    table.insert(layout, add_fa("front_app.extensions.header", {
+      icon = "",
+      label = "Desk",
+      ["label.font"] = font_bold,
+      ["label.color"] = tc("TEAL"),
+      background = { drawing = false },
+    }))
+    for _, row in ipairs(rows) do
+      if row.action and row.action ~= "" then
+        table.insert(layout, add_fa("front_app.extension." .. row.id, {
+          icon = { string = row.icon or "󰐕", color = row.icon_color or tc("TEAL") },
+          label = row.label or row.id,
+          click_script = close_front_app_after(row.action),
+          ["label.font"] = font_small,
+          ["label.color"] = row.label_color,
+        }))
+      end
+    end
+  end
 
   table.insert(layout, add_fa("front_app.header", {
     icon = "",
@@ -346,6 +447,7 @@ local function get_layout(ctx)
       ["label.font"] = font_small,
       ["label.color"] = tc("SUBTEXT1", "WHITE"),
     }))
+    add_front_app_extension_rows(front_app_extension_items)
   end
   metrics.front_app_ms = current_time_ms() - front_app_start_ms
 
@@ -410,6 +512,7 @@ local function get_layout(ctx)
       state = state,
       window_manager_mode = WINDOW_MANAGER_MODE,
       window_manager_flags = control_center_status and control_center_status.window_manager or nil,
+      extension_items = control_center_extension_items,
     })
     for _, popup_item in ipairs(cc_popup_items) do
       local item_name = popup_item.name

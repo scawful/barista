@@ -8,7 +8,7 @@ Scope: active runtime for `/Users/scawful/src/lab/barista`
 Barista is the ambient macOS bar layer.
 
 - Barista owns glanceable status, popup sections, quick launch, and one-click entry into deeper tools.
-- Barista does not own Oracle session state, Cortex host logic, or Janice model-fleet behavior.
+- Barista does not own Oracle session state, Cortex host logic, or external app settings.
 - If a workflow wants a deep control surface, Barista should launch it, not recreate it.
 
 ## Runtime Assumptions

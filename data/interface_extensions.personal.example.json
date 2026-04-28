@@ -1,0 +1,96 @@
+[
+  {
+    "id": "scawfulbot",
+    "pack": "personal",
+    "label": "Scawfulbot",
+    "icon": "󰭹",
+    "icon_color": "0xffcba6f7",
+    "label_color": "0xffdfc9f7",
+    "script": "scripts/open_local_workflow.sh",
+    "args": ["scawfulbot"],
+    "surfaces": ["apple_menu", "front_app", "control_center"],
+    "section": "extensions",
+    "order": 110
+  },
+  {
+    "id": "scawfulbot_repo",
+    "pack": "personal",
+    "label": "Scawfulbot Repo",
+    "icon": "󰈙",
+    "icon_color": "0xff89dceb",
+    "script": "scripts/open_local_workflow.sh",
+    "args": ["scawfulbot-repo"],
+    "surfaces": ["front_app", "control_center"],
+    "section": "extensions",
+    "order": 111
+  },
+  {
+    "id": "premia",
+    "pack": "personal",
+    "label": "Premia",
+    "icon": "󰃬",
+    "icon_color": "0xff94e2d5",
+    "label_color": "0xffc7eee8",
+    "script": "scripts/open_local_workflow.sh",
+    "args": ["premia"],
+    "surfaces": ["apple_menu", "front_app", "control_center"],
+    "section": "extensions",
+    "order": 120
+  },
+  {
+    "id": "loom",
+    "pack": "personal",
+    "label": "Loom",
+    "icon": "󰈙",
+    "icon_color": "0xff89b4fa",
+    "script": "scripts/open_local_workflow.sh",
+    "args": ["loom"],
+    "surfaces": ["apple_menu", "front_app", "control_center"],
+    "section": "extensions",
+    "order": 130
+  },
+  {
+    "id": "lmstudio_scawfulbot_mlx",
+    "pack": "personal",
+    "label": "Scawfulbot MLX",
+    "icon": "󰘦",
+    "icon_color": "0xffa6e3a1",
+    "script": "plugins/lmstudio_model.sh",
+    "args": ["mlx"],
+    "surface": "lmstudio",
+    "order": 210
+  },
+  {
+    "id": "lmstudio_scawfulbot_long",
+    "pack": "personal",
+    "label": "Scawfulbot Long",
+    "icon": "󰑮",
+    "icon_color": "0xfff9e2af",
+    "script": "plugins/lmstudio_model.sh",
+    "args": ["long"],
+    "surface": "lmstudio",
+    "order": 220
+  },
+  {
+    "id": "lmstudio_scawfulbot_gguf",
+    "pack": "personal",
+    "label": "Scawfulbot GGUF",
+    "icon": "󰍛",
+    "icon_color": "0xfffab387",
+    "script": "plugins/lmstudio_model.sh",
+    "args": ["gguf"],
+    "surface": "lmstudio",
+    "order": 230
+  },
+  {
+    "id": "lmstudio_echo",
+    "pack": "personal",
+    "label": "Echo MLX",
+    "icon": "󰔂",
+    "icon_color": "0xff89b4fa",
+    "script": "plugins/lmstudio_model.sh",
+    "args": ["echo"],
+    "surface": "lmstudio",
+    "order": 240
+  }
+]

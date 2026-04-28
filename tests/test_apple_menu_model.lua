@@ -79,6 +79,19 @@ run_test("apple_menu_model: builds rendered items from metadata", function()
         },
       },
     },
+    interface_extensions = {
+      enabled = true,
+      items = {
+        {
+          id = "desk_tool",
+          label = "Desk Tool",
+          action = "echo desk",
+          available = true,
+          section = "extensions",
+          order = 1400,
+        },
+      },
+    },
     show_missing = true,
     theme = { BLUE = "0xff89b4fa" },
   })
@@ -93,6 +106,8 @@ run_test("apple_menu_model: builds rendered items from metadata", function()
   assert_equal(by_id.alpha.label, "Alpha Prime", "base item override label")
   assert_true(by_id.missing_item.missing == true, "missing base item should be surfaced when show_missing=true")
   assert_true(by_id.project_alpha ~= nil, "project shortcut should be included")
+  assert_true(by_id.desk_tool ~= nil, "interface extension should be included")
+  assert_equal(by_id.desk_tool.section, "extensions", "interface extension section")
   assert_equal(by_id.missing_buildable.label, "Build Missing", "missing buildable project should use build label")
   assert_true(by_id.missing_buildable.action:find("echo build", 1, true) ~= nil, "missing buildable project should use build action")
   assert_true(by_id.custom_tools.submenu == true, "custom item should support submenu rendering")

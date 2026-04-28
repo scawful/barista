@@ -95,6 +95,13 @@ run_test("merge_config: modes merge (explicit not overridden)", function()
   assert_equal(result.modes.window_manager, "required", "explicit preserved")
 end)
 
+run_test("merge_config: spaces count provides non-yabai fallback", function()
+  local base = { spaces = {} }
+  local prof = { spaces = { count = 6 } }
+  local result = profile.merge_config(base, prof)
+  assert_equal(result.spaces.count, 6, "space count merged for native fallback")
+end)
+
 run_test("get_integration_flags: nil profile", function()
   local result = profile.get_integration_flags(nil)
   assert_type(result, "table", "returns table")

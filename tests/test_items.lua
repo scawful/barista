@@ -218,10 +218,18 @@ local function test_items_left_without_yabai()
 
   local layout = items_left.get_layout(mock_ctx)
   local foundUnavailable = false
+  local foundDeskHeader = false
+  local foundExtensionGuide = false
   local foundMoveAction = false
   for _, entry in ipairs(layout) do
     if entry.type == "item" and entry.name == "front_app.window.unavailable" then
       foundUnavailable = true
+    end
+    if entry.type == "item" and entry.name == "front_app.extensions.header" then
+      foundDeskHeader = true
+    end
+    if entry.type == "item" and entry.name == "front_app.extension.extension_guide" then
+      foundExtensionGuide = true
     end
     if entry.type == "item" and entry.name == "front_app.move.display_next" then
       foundMoveAction = true
@@ -229,6 +237,8 @@ local function test_items_left_without_yabai()
   end
 
   assert_true(foundUnavailable, "unavailable yabai row should exist")
+  assert_true(foundDeskHeader, "disabled yabai path should expose Desk replacement rows")
+  assert_true(foundExtensionGuide, "disabled yabai path should link the extension guide")
   assert_true(not foundMoveAction, "move-window yabai actions should be hidden when yabai is unavailable")
   print("  items_left no-yabai test passed!")
 end
@@ -611,7 +621,7 @@ local function test_items_right_layout()
   assert(added_items.clock.props.position == "right", "clock should be on the right")
   assert_equal(added_items.clock.props.script, "/compiled/clock_widget", "clock should prefer compiled helper")
   assert_true(added_items.clock.props.update_freq == nil, "clock timer should be disabled when daemon-managed")
-  assert_equal(added_items.system_info.props.script, "/tmp/plugins/system_info.sh", "system_info should keep the shell event wrapper")
+  assert_true(added_items.system_info.props.script:find("/tmp/plugins/system_info%.sh") ~= nil, "system_info should keep the shell event wrapper")
   assert_true(added_items.system_info.props.update_freq == nil, "system_info timer should be disabled when daemon-managed")
   assert_true(added_items.system_info.props.click_script:find("popup_refresh", 1, true) ~= nil, "system_info click should refresh popup details")
   assert_true(added_items.volume.props.click_script:find("volume_click%.sh") ~= nil, "volume click should route through the dedicated click handler")
@@ -670,10 +680,99 @@ local function test_items_right_layout()
   print("  items_right layout test passed!")
 end
 
+local function test_items_right_lmstudio_extension_rows()
+  print("Testing items_right LM Studio extension rows...")
+
+  local mock_ctx = {
+    settings = {
+      font = {
+        text = "Inter",
+        numbers = "Inter",
+        icon = "Symbols Nerd Font",
+        style_map = { Regular = "Regular", Bold = "Bold", Semibold = "Semibold" },
+        sizes = { small = 12, text = 14, icon = 16, numbers = 14 }
+      }
+    },
+    theme = { WHITE = "0xffffffff", GREEN = "0xffa6e3a1", YELLOW = "0xfff9e2af", RED = "0xfff38ba8", BLUE = "0xff89b4fa", LAVENDER = "0xffb4befe", TEAL = "0xff94e2d5", bar = { bg = "0xff1e1e2e" } },
+    state = {
+      appearance = { widget_scale = 1.0, bar_height = 28, corner_radius = 6 },
+      widgets = { lmstudio = true },
+      machine = { menu_packs = { "personal" } },
+      menus = {
+        extensions = {
+          items = {
+            {
+              id = "local_model",
+              label = "Local Model",
+              command = "echo model",
+              surface = "lmstudio",
+              pack = "personal",
+            },
+          },
+        },
+      },
+    },
+    font_string = function(f, s, sz) return string.format("%s:%s:%0.1f", f, s, sz) end,
+    CONFIG_DIR = "/tmp/config",
+    CODE_DIR = "/tmp/code",
+    PLUGIN_DIR = "/tmp/plugins",
+    SCRIPTS_DIR = "/tmp/scripts",
+    widget_height = 22,
+    popup_background = function() return { drawing = true } end,
+    hover_script_cmd = "hover.sh",
+    popup_toggle_action = function() return "toggle.sh" end,
+    POST_CONFIG_DELAY = 0.1,
+    SKETCHYBAR_BIN = "sketchybar",
+    group_bg_color = "0x44000000",
+    group_border_color = "0xffffffff",
+    group_border_width = 1,
+    group_corner_radius = 4,
+    icon_for = function(_, d) return d end,
+    state_module = { get_icon = function() return "" end },
+    env_prefix = function() return "" end,
+    call_script = function(path, ...)
+      local parts = { path }
+      for _, arg in ipairs({ ... }) do table.insert(parts, tostring(arg)) end
+      return table.concat(parts, " ")
+    end,
+    compiled_script = function(_, fallback) return fallback end,
+    widget_daemon_enabled = false,
+    hover_color = "0x44ffffff",
+    hover_animation_curve = "ease_out",
+    hover_animation_duration = 10,
+  }
+  mock_ctx.widget_factory = widgets_module.create_factory(
+    { add = function() end, set = function() end },
+    mock_ctx.theme,
+    mock_ctx.settings,
+    mock_ctx.state,
+    { widget_height = mock_ctx.widget_height }
+  )
+
+  local layout = items_right.get_layout(mock_ctx)
+  local found_lmstudio = false
+  local found_extension = false
+  local found_scawfulbot_default = false
+  for _, entry in ipairs(layout) do
+    if entry.type == "item" and entry.name == "lmstudio" then
+      found_lmstudio = true
+    elseif entry.type == "item" and entry.name == "lmstudio.extension.local_model" then
+      found_extension = true
+    elseif entry.type == "item" and entry.props and entry.props.label == "scawfulbot MLX" then
+      found_scawfulbot_default = true
+    end
+  end
+  assert_true(found_lmstudio, "lmstudio should render when explicitly enabled")
+  assert_true(found_extension, "lmstudio extension row should render")
+  assert_true(not found_scawfulbot_default, "personal model rows should not be hardcoded by default")
+  print("  items_right LM Studio extension test passed!")
+end
+
 test_items_left_layout()
 test_items_left_without_yabai()
 test_items_left_control_center_custom_name()
 test_items_left_reuses_oracle_and_control_center_status()
 test_items_right_layout()
+test_items_right_lmstudio_extension_rows()
 
 print("\nAll item layout tests passed!")

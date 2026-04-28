@@ -38,16 +38,14 @@ import sys
 from pathlib import Path
 
 state_path = Path(sys.argv[1])
-default = "data/project_shortcuts.json"
+default = "data/interface_extensions.local.json"
 try:
     data = json.loads(state_path.read_text(encoding="utf-8"))
 except Exception:
     data = {}
 
 menus = data.get("menus") if isinstance(data, dict) else {}
-apps = menus.get("apps") if isinstance(menus, dict) else None
-projects = menus.get("projects") if isinstance(menus, dict) else None
-source = apps if isinstance(apps, dict) else projects if isinstance(projects, dict) else None
+source = menus.get("extensions") if isinstance(menus, dict) else None
 value = source.get("file") if isinstance(source, dict) else None
 print(value or default)
 PY
@@ -98,35 +96,26 @@ def resolve_command(candidates):
 def open_action(path: Path) -> str:
     return f"open {shlex.quote(str(path))}"
 
-def command_action(command: str, *args: str) -> str:
-    parts = [shlex.quote(command)]
-    for arg in args:
-        parts.append(shlex.quote(arg))
-    return " ".join(parts)
-
 def terminal_action(command: str) -> str:
     if not command:
         return ""
     escaped = command.replace('\\', '\\\\').replace('"', '\\"')
     return f"osascript -e 'tell app \"Terminal\" to do script \"{escaped}\"'"
 
-def bundle_action(bundle_id: str, fallback: Path | None = None) -> str:
-    parts = ["open", "-b", shlex.quote(bundle_id)]
-    command = " ".join(parts)
-    if fallback and fallback.exists():
-        return f"open {shlex.quote(str(fallback))} || {command}"
-    return command
-
-def add_entry(item_id: str, label: str, icon: str, icon_color: str, label_color: str, action: str, **extra):
-    if not action and not extra.get("build_action") and not extra.get("missing_action"):
+def add_entry(item_id: str, label: str, icon: str, icon_color: str, label_color: str, workflow: str, **extra):
+    if not workflow:
         return
     item = {
         "id": item_id,
+        "pack": "personal",
         "label": label,
         "icon": icon,
         "icon_color": icon_color,
         "label_color": label_color,
-        "action": action,
+        "script": "scripts/open_local_workflow.sh",
+        "args": [workflow],
+        "surfaces": ["apple_menu", "front_app", "control_center"],
+        "section": "extensions",
         "order": len(items) * 10 + 10,
     }
     for key, value in extra.items():
@@ -165,7 +154,6 @@ loom_command = resolve_command([
     "loom-studio",
 ])
 
-scawfulbot_action = bundle_action("com.scawful.Scawfulbot.mac", scawfulbot_app)
 scawfulbot_build_action = ""
 if scawfulbot_repo:
     scawfulbot_build_action = terminal_action(
@@ -183,7 +171,7 @@ add_entry(
     "󰭹",
     "0xffcba6f7",
     "0xffdfc9f7",
-    scawfulbot_action if scawfulbot_app else "",
+    "scawfulbot",
     available=bool(scawfulbot_app),
     build_action=scawfulbot_build_action or (f"/bin/bash {shlex.quote(scawfulbot_build_open)}" if scawfulbot_build_open else ""),
     build_label="Build scawfulbot",
@@ -205,7 +193,7 @@ add_entry(
     "󰈙",
     "0xff89b4fa",
     "0xffbac2de",
-    command_action(loom_command, str(code_dir / "lab")) if loom_command else "",
+    "loom",
     available=bool(loom_command),
     build_action=loom_build_action,
     build_label="Build Loom Studio",
@@ -236,7 +224,7 @@ add_entry(
     "󰃬",
     "0xff94e2d5",
     "0xffc7eee8",
-    command_action(premia_command) if premia_command else "",
+    "premia",
     available=bool(premia_command),
     build_action=premia_build_action,
     build_label="Build premia desktop",

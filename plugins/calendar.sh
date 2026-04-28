@@ -4,6 +4,12 @@
 
 set -euo pipefail
 
+export LC_ALL="${LC_ALL:-en_US.UTF-8}"
+export LANG="${LANG:-en_US.UTF-8}"
+
+SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-${SKETCHYBAR_BIN:-$(command -v sketchybar 2>/dev/null || true)}}"
+[ -n "$SKETCHYBAR_BIN" ] || SKETCHYBAR_BIN="/opt/homebrew/bin/sketchybar"
+
 declare -a CALENDAR_ITEMS=(
   "clock.calendar.header"
   "clock.calendar.weekdays"
@@ -125,8 +131,8 @@ for idx in "${!CALENDAR_ITEMS[@]}"; do
   item_name="${CALENDAR_ITEMS[$idx]}"
   line="${CAL_LINES[$idx]:-}"
   if [ -n "$line" ]; then
-    sketchybar --set "$item_name" label="$line" drawing=on
+    "$SKETCHYBAR_BIN" --set "$item_name" label="$line" drawing=on
   else
-    sketchybar --set "$item_name" label="" drawing=off
+    "$SKETCHYBAR_BIN" --set "$item_name" label="" drawing=off
   fi
 done

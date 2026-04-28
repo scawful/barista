@@ -22,7 +22,6 @@ local save_immediate
 local default_state = {
   _version = STATE_VERSION,  -- Track state schema version
   widgets = {
-    lmstudio = true,
     system_info = true,
     network = true,
     clock = true,
@@ -166,6 +165,13 @@ local default_state = {
       apps_file = "data/work_apps.local.json",
       workspace_domain = "",
     },
+    extensions = {
+      enabled = true,
+      file = "data/interface_extensions.local.json",
+      files = {},
+      packs = {},
+      items = {},
+    },
   },
   integrations = {
     control_center = {
@@ -212,6 +218,7 @@ local function sanitize_state(data)
   if type(data.menus.apple) ~= "table" then data.menus.apple = {} end
   if type(data.menus.oracle) ~= "table" then data.menus.oracle = {} end
   if type(data.menus.work) ~= "table" then data.menus.work = {} end
+  if type(data.menus.extensions) ~= "table" then data.menus.extensions = {} end
   local apps_menu = type(data.menus.apps) == "table" and data.menus.apps or {}
   local legacy_projects_menu = type(data.menus.projects) == "table" and data.menus.projects or {}
   apps_menu = merge_defaults(apps_menu, legacy_projects_menu)
@@ -225,6 +232,9 @@ local function sanitize_state(data)
   if type(data.menus.oracle.triforce) ~= "table" then data.menus.oracle.triforce = {} end
   if type(data.menus.apps.items) ~= "table" then data.menus.apps.items = {} end
   if type(data.menus.work.google_apps) ~= "table" then data.menus.work.google_apps = {} end
+  if type(data.menus.extensions.files) ~= "table" then data.menus.extensions.files = {} end
+  if type(data.menus.extensions.packs) ~= "table" then data.menus.extensions.packs = {} end
+  if type(data.menus.extensions.items) ~= "table" then data.menus.extensions.items = {} end
 
   -- Handle space_icons
   if type(data.space_icons) ~= "table" then

@@ -297,6 +297,44 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     end
     return command .. "; " .. popup_close
   end
+  local function add_extension_rows(prefix, rows)
+    if type(rows) ~= "table" or #rows == 0 then
+      return
+    end
+    table.insert(items, {
+      name = prefix .. ".sep",
+      position = popup_position,
+      icon = { drawing = false },
+      label = { string = "───────────────", font = font_small, color = "0x40cdd6f4" },
+      ["label.padding_left"] = 8,
+      background = { drawing = false },
+    })
+    table.insert(items, {
+      name = prefix .. ".header",
+      position = popup_position,
+      icon = { string = "", drawing = false },
+      label = { string = "Desk", font = font_bold, color = tc("TEAL") },
+      ["label.padding_left"] = 8,
+      ["label.padding_right"] = 8,
+      background = { drawing = false },
+    })
+    for _, row in ipairs(rows) do
+      if row.action and row.action ~= "" then
+        table.insert(items, {
+          name = prefix .. "." .. row.id,
+          position = popup_position,
+          icon = { string = row.icon or "󰐕", color = row.icon_color or tc("TEAL") },
+          label = { string = row.label or row.id, font = font_small, color = row.label_color },
+          ["icon.padding_left"] = 8,
+          ["icon.padding_right"] = 6,
+          ["label.padding_left"] = 4,
+          ["label.padding_right"] = 8,
+          click_script = close_after(row.action),
+          background = { drawing = false },
+        })
+      end
+    end
+  end
 
   -- Header
   table.insert(items, {
@@ -335,6 +373,7 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
         background = { drawing = false },
       })
     end
+    add_extension_rows("cc.extension", opts.extension_items)
   end
 
   if wm.enabled then

@@ -62,6 +62,7 @@ profile.appearance = {
 
 -- Widget configuration
 profile.widgets = {
+  lmstudio = false,
   clock = true,
   battery = true,
   network = true,

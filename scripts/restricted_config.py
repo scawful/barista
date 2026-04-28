@@ -224,7 +224,7 @@ def apply_restricted_defaults(state: dict[str, Any], args: argparse.Namespace) -
     widgets = ensure_dict(state, "widgets")
     for key in ("clock", "battery", "volume", "network", "system_info"):
         widgets.setdefault(key, True)
-    widgets.setdefault("lmstudio", False)
+    widgets["lmstudio"] = False
 
     system_info = ensure_dict(state, "system_info_items")
     for key in ("cpu", "mem", "disk", "net"):

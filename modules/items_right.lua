@@ -1,5 +1,6 @@
 -- Right-side bar items: lmstudio, clock, calendar, system_info, volume, battery, brackets.
 
+local interface_extensions = require("interface_extensions")
 local popup_items = require("popup_items")
 
 local function get_layout(ctx)
@@ -28,8 +29,11 @@ local function get_layout(ctx)
   local hover_animation_curve = ctx.hover_animation_curve
   local hover_animation_duration = ctx.hover_animation_duration
   local SCRIPTS_DIR = ctx.SCRIPTS_DIR or ""
+  local CONFIG_DIR = ctx.CONFIG_DIR or ((os.getenv("HOME") or "") .. "/.config/sketchybar")
+  local code_dir = ctx.CODE_DIR or (ctx.paths and ctx.paths.code_dir) or (os.getenv("BARISTA_CODE_DIR") or ((os.getenv("HOME") or "") .. "/src"))
 
   local layout = {}
+  local right_group_children = {}
 
   local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
   local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
@@ -61,79 +65,104 @@ local function get_layout(ctx)
   end
 
   -- LM Studio quick selector
-  local lmstudio_script = PLUGIN_DIR .. "/lmstudio_model.sh"
-  table.insert(layout, factory.create_item("lmstudio", {
-    position = "right",
-    drawing = state.widgets.lmstudio ~= false,
-    icon = {
-      string = "󰭻",
-      color = tc("SUBTEXT1", "WHITE"),
-      padding_left = 6,
-      padding_right = 4,
-    },
-    label = {
-      string = "off",
-      color = tc("SUBTEXT1", "WHITE"),
-      padding_left = 2,
-      padding_right = 8,
-      font = font_small,
-    },
-    update_freq = 20,
-    script = lmstudio_script,
-    click_script = refresh_then_toggle(lmstudio_script, popup_toggle_action()),
-    background = {
-      color = theme.BG_SEC_COLR or "0x18313a46",
-      corner_radius = math.max(group_corner_radius, 4),
-      height = widget_height,
-    },
-    popup = {
-      align = "right",
-      background = popup_background(),
-    },
-  }))
-  table.insert(layout, { action = "subscribe_popup_autoclose", name = "lmstudio" })
-  table.insert(layout, { action = "attach_hover", name = "lmstudio" })
-  table.insert(layout, { action = "exec", cmd = string.format("sleep %.1f; %s --subscribe lmstudio system_woke", POST_CONFIG_DELAY, SKETCHYBAR_BIN) })
+  local lmstudio_enabled = type(state.widgets) == "table" and state.widgets.lmstudio == true
+  if lmstudio_enabled then
+    local lmstudio_script = PLUGIN_DIR .. "/lmstudio_model.sh"
+    table.insert(layout, factory.create_item("lmstudio", {
+      position = "right",
+      drawing = true,
+      icon = {
+        string = "󰭻",
+        color = tc("SUBTEXT1", "WHITE"),
+        padding_left = 6,
+        padding_right = 4,
+      },
+      label = {
+        string = "off",
+        color = tc("SUBTEXT1", "WHITE"),
+        padding_left = 2,
+        padding_right = 8,
+        font = font_small,
+      },
+      update_freq = 20,
+      script = lmstudio_script,
+      click_script = refresh_then_toggle(lmstudio_script, popup_toggle_action()),
+      background = {
+        color = theme.BG_SEC_COLR or "0x18313a46",
+        corner_radius = math.max(group_corner_radius, 4),
+        height = widget_height,
+      },
+      popup = {
+        align = "right",
+        background = popup_background(),
+      },
+    }))
+    table.insert(right_group_children, "lmstudio")
+    table.insert(layout, { action = "subscribe_popup_autoclose", name = "lmstudio" })
+    table.insert(layout, { action = "attach_hover", name = "lmstudio" })
+    table.insert(layout, { action = "exec", cmd = string.format("sleep %.1f; %s --subscribe lmstudio system_woke", POST_CONFIG_DELAY, SKETCHYBAR_BIN) })
 
-  local add_lm = popup_items.make_add("lmstudio", { hover_script = hover_script_cmd })
-  table.insert(layout, add_lm("lmstudio.header", {
-    icon = "",
-    label = "LM Studio",
-    ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
-    background = { drawing = false },
-  }))
-  table.insert(layout, add_lm("lmstudio.state", {
-    icon = "󰭻",
-    label = "No models loaded",
-    click_script = close_popup_after("lmstudio", build_script_action(lmstudio_script, "open_current")),
-    ["label.font"] = font_small,
-    background = { drawing = false },
-  }))
-  table.insert(layout, add_lm("lmstudio.open", {
-    icon = "󰆍",
-    label = "Open LM Studio",
-    click_script = close_popup_after("lmstudio", build_script_action(lmstudio_script, "open")),
-    ["label.font"] = font_small,
-  }))
-  table.insert(layout, add_lm("lmstudio.sep0", {
-    icon = "",
-    label = "───────────────",
-    ["label.font"] = font_small,
-    ["label.color"] = "0x40cdd6f4",
-    background = { drawing = false },
-  }))
-  local lmstudio_actions = {
-    { name = "lmstudio.model.mlx", icon = "󰘦", label = "scawfulbot MLX", action = build_script_action(lmstudio_script, "mlx") },
-    { name = "lmstudio.model.long", icon = "󰑮", label = "scawfulbot MLX Long", action = build_script_action(lmstudio_script, "long") },
-    { name = "lmstudio.model.gguf", icon = "󰍛", label = "scawfulbot GGUF", action = build_script_action(lmstudio_script, "gguf") },
-    { name = "lmstudio.model.echo", icon = "󰔂", label = "echo MLX", action = build_script_action(lmstudio_script, "echo") },
-    { name = "lmstudio.model.off", icon = "󰤂", label = "Unload All", action = build_script_action(lmstudio_script, "off") },
-  }
-  for _, entry in ipairs(lmstudio_actions) do
-    table.insert(layout, add_lm(entry.name, {
-      icon = entry.icon,
-      label = entry.label,
-      click_script = close_popup_after("lmstudio", entry.action),
+    local add_lm = popup_items.make_add("lmstudio", { hover_script = hover_script_cmd })
+    table.insert(layout, add_lm("lmstudio.header", {
+      icon = "",
+      label = "LM Studio",
+      ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+      background = { drawing = false },
+    }))
+    table.insert(layout, add_lm("lmstudio.state", {
+      icon = "󰭻",
+      label = "No models loaded",
+      click_script = close_popup_after("lmstudio", build_script_action(lmstudio_script, "open_current")),
+      ["label.font"] = font_small,
+      background = { drawing = false },
+    }))
+    table.insert(layout, add_lm("lmstudio.open", {
+      icon = "󰆍",
+      label = "Open LM Studio",
+      click_script = close_popup_after("lmstudio", build_script_action(lmstudio_script, "open")),
+      ["label.font"] = font_small,
+    }))
+    table.insert(layout, add_lm("lmstudio.sep0", {
+      icon = "",
+      label = "───────────────",
+      ["label.font"] = font_small,
+      ["label.color"] = "0x40cdd6f4",
+      background = { drawing = false },
+    }))
+
+    local lmstudio_extension_actions = interface_extensions.for_surface(CONFIG_DIR, code_dir, state, "lmstudio")
+    if #lmstudio_extension_actions > 0 then
+      table.insert(layout, add_lm("lmstudio.presets.header", {
+        icon = "",
+        label = "Presets",
+        ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+        ["label.color"] = tc("TEAL"),
+        background = { drawing = false },
+      }))
+      for _, entry in ipairs(lmstudio_extension_actions) do
+        if entry.action and entry.action ~= "" then
+          table.insert(layout, add_lm("lmstudio.extension." .. entry.id, {
+            icon = entry.icon or "󰐕",
+            label = entry.label,
+            click_script = close_popup_after("lmstudio", entry.action),
+            ["label.font"] = font_small,
+            ["label.color"] = entry.label_color,
+          }))
+        end
+      end
+      table.insert(layout, add_lm("lmstudio.sep1", {
+        icon = "",
+        label = "───────────────",
+        ["label.font"] = font_small,
+        ["label.color"] = "0x40cdd6f4",
+        background = { drawing = false },
+      }))
+    end
+
+    table.insert(layout, add_lm("lmstudio.model.off", {
+      icon = "󰤂",
+      label = "Unload All",
+      click_script = close_popup_after("lmstudio", build_script_action(lmstudio_script, "off")),
       ["label.font"] = font_small,
     }))
   end
@@ -150,6 +179,7 @@ local function get_layout(ctx)
       background = popup_background()
     }
   }))
+  table.insert(right_group_children, "clock")
   table.insert(layout, { action = "subscribe_popup_autoclose", name = "clock" })
   table.insert(layout, { action = "attach_hover", name = "clock" })
 
@@ -194,6 +224,7 @@ local function get_layout(ctx)
   -- System Info
   local system_info_fast_bin = compiled_script("system_info_widget", "")
   local system_info_env = env_prefix({
+    BARISTA_SKETCHYBAR_BIN = SKETCHYBAR_BIN,
     BARISTA_ICON_CPU = state_module.get_icon(state, "cpu", ""),
     BARISTA_ICON_MEM = state_module.get_icon(state, "memory", ""),
     BARISTA_ICON_DISK = state_module.get_icon(state, "disk", ""),
@@ -213,6 +244,7 @@ local function get_layout(ctx)
     daemon_managed = widget_daemon_enabled,
     click_script = refresh_then_toggle(system_info_script .. " popup_refresh", popup_toggle_action()),
   }))
+  table.insert(right_group_children, "system_info")
   table.insert(layout, { action = "subscribe_popup_autoclose", name = "system_info" })
   table.insert(layout, { action = "attach_hover", name = "system_info" })
 
@@ -250,18 +282,21 @@ local function get_layout(ctx)
     table.insert(layout, { type = "item", name = item.name, props = opts, attach_hover = should_hover })
   end
 
-  table.insert(layout, factory.create_bracket("right_group_1", { "lmstudio", "clock", "system_info" }, {
-    background = {
-      color = group_bg_color,
-      corner_radius = math.max(group_corner_radius, 4),
-      height = math.max(widget_height + 2, 18),
-      border_width = group_border_width,
-      border_color = group_border_color,
-    }
-  }))
+  if #right_group_children > 0 then
+    table.insert(layout, factory.create_bracket("right_group_1", right_group_children, {
+      background = {
+        color = group_bg_color,
+        corner_radius = math.max(group_corner_radius, 4),
+        height = math.max(widget_height + 2, 18),
+        border_width = group_border_width,
+        border_color = group_border_color,
+      }
+    }))
+  end
 
   -- Volume
   local volume_env = env_prefix({
+    BARISTA_SKETCHYBAR_BIN = SKETCHYBAR_BIN,
     BARISTA_ICON_VOLUME = state_module.get_icon(state, "volume", ""),
     BARISTA_VOLUME_OK = tc("GREEN"),
     BARISTA_VOLUME_WARN = tc("YELLOW"),

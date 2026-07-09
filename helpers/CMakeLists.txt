@@ -36,6 +36,7 @@ set(HELPER_CXX_SOURCES
 # Objective-C helpers
 set(HELPER_OBJC_SOURCES
   runtime_context_helper.m
+  space_visual_helper.m
 )
 
 # Build C helpers
@@ -117,5 +118,6 @@ install(TARGETS
   menu_renderer
   menu_action
   runtime_context_helper
+  space_visual_helper
   RUNTIME DESTINATION bin
 )

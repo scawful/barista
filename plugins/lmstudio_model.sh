@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$HOME/.lmstudio/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+PATH="${PATH:-}:$HOME/.lmstudio/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 _d="${0%/*}"
 [ -z "$_d" ] && _d="."
@@ -11,7 +11,7 @@ _d="${0%/*}"
 NAME="${NAME:-lmstudio}"
 ACTION="${1:-refresh}"
 CONTROL_SCRIPT="${SCRIPTS_DIR}/lmstudio_control.sh"
-SKETCHYBAR_BIN="${SKETCHYBAR_BIN:-$(command -v sketchybar || true)}"
+SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-${SKETCHYBAR_BIN:-}}"
 [ -n "$SKETCHYBAR_BIN" ] || SKETCHYBAR_BIN="/opt/homebrew/bin/sketchybar"
 
 set_popup_item() {

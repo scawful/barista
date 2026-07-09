@@ -28,12 +28,20 @@ BACK_BUTTON = _int_env("BARISTA_BACK_BUTTON", 3)
 FORWARD_BUTTON = _int_env("BARISTA_FORWARD_BUTTON", 4)
 
 ACTION_BY_BUTTON = {
-    MIDDLE_BUTTON: ["/usr/bin/open", "-a", "/System/Applications/Mission Control.app"],
     BACK_BUTTON: ["/opt/homebrew/bin/yabai", "-m", "space", "--focus", "prev"],
     FORWARD_BUTTON: ["/opt/homebrew/bin/yabai", "-m", "space", "--focus", "next"],
 }
 
 _event_tap = None
+_last_action_at: dict[int, float] = {}
+MIDDLE_DEBOUNCE_SECONDS = float(os.environ.get("BARISTA_MIDDLE_DEBOUNCE_SECONDS", "0.75"))
+SIDE_DEBOUNCE_SECONDS = float(os.environ.get("BARISTA_SIDE_DEBOUNCE_SECONDS", "0.18"))
+
+
+def _debounce_seconds(button: int) -> float:
+    if button == MIDDLE_BUTTON:
+        return MIDDLE_DEBOUNCE_SECONDS
+    return SIDE_DEBOUNCE_SECONDS
 
 
 def _run_action(button: int, command: list[str]) -> None:
@@ -70,6 +78,11 @@ def _event_callback(proxy, event_type, event, refcon):
     if event_type == Quartz.kCGEventOtherMouseDown:
         command = ACTION_BY_BUTTON.get(button)
         if command:
+            now = time.monotonic()
+            last = _last_action_at.get(button, 0.0)
+            if now - last < _debounce_seconds(button):
+                return None
+            _last_action_at[button] = now
             _run_action(button, command)
         else:
             _log(f"unmapped button {button} pressed")
@@ -104,7 +117,7 @@ def main() -> int:
     )
     Quartz.CGEventTapEnable(_event_tap, True)
     _log(
-        f"started (middle={MIDDLE_BUTTON} back={BACK_BUTTON} forward={FORWARD_BUTTON})"
+        f"started (middle={MIDDLE_BUTTON} pass-through back={BACK_BUTTON} forward={FORWARD_BUTTON})"
     )
     Quartz.CFRunLoopRun()
     return 0

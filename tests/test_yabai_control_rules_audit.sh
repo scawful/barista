@@ -7,9 +7,9 @@ SCRIPT="$ROOT_DIR/scripts/yabai_control.sh"
 TMP_DIR="$(mktemp -d)"
 BIN_DIR="$TMP_DIR/bin"
 EXPECTED_JSON='[
-  {"label":"Finder","app":"^Finder$","sub_layer":"below"},
-  {"label":"Barista","app":"^Barista$","sub_layer":"below"},
-  {"label":"Cortex","app":"^Cortex$","sub_layer":"below"}
+  {"label":"Finder","app":"^Finder$","sub_layer":"normal"},
+  {"label":"Barista","app":"^Barista$","sub_layer":"normal"},
+  {"label":"Cortex","app":"^Cortex$","sub_layer":"normal"}
 ]'
 
 cleanup() {
@@ -27,16 +27,16 @@ case "$*" in
     cat <<'JSON'
 [
   {"app":"^Finder$","title":"","manage":false,"sub-layer":"below"},
-  {"app":"^Barista$","title":"","manage":false,"sub-layer":"auto"}
+  {"app":"^Barista$","title":"","manage":false,"sub-layer":"normal"}
 ]
 JSON
     ;;
   '-m query --windows')
     cat <<'JSON'
 [
-  {"id":1,"app":"Finder","title":"Finder","sub-layer":"normal","layer":"normal","is-minimized":false},
+  {"id":1,"app":"Barista","title":"Settings","sub-layer":"below","layer":"normal","is-minimized":false},
   {"id":2,"app":"ghostty","title":"","sub-layer":"above","layer":"normal","is-minimized":false},
-  {"id":3,"app":"Scawfulbot","title":"hello","sub-layer":"normal","layer":"normal","is-minimized":false},
+  {"id":3,"app":"Cortex Helper","title":"hello","sub-layer":"normal","layer":"normal","is-minimized":false},
   {"id":4,"app":"Oracle Helper","title":"","sub-layer":"normal","layer":"normal","is-minimized":true}
 ]
 JSON
@@ -70,7 +70,7 @@ printf '%s\n' "$TEXT_OUTPUT" | grep -Fq 'expected unmanaged rules: 2/3 present' 
   printf '%s\n' "$TEXT_OUTPUT" >&2
   exit 1
 }
-for expected in missing-rule rule-without-below live-policy-mismatch manual-topmost app-variant-review; do
+for expected in missing-rule rule-without-normal live-policy-mismatch manual-topmost app-variant-review; do
   printf '%s\n' "$TEXT_OUTPUT" | grep -Fq "$expected" || {
     echo "FAIL: expected finding '$expected'" >&2
     printf '%s\n' "$TEXT_OUTPUT" >&2
@@ -103,7 +103,7 @@ types = {item["type"] for item in payload["findings"]}
 assert summary["errors"] == 2, summary
 assert summary["warnings"] == 2, summary
 assert summary["info"] == 1, summary
-assert {"missing-rule", "rule-without-below", "live-policy-mismatch", "manual-topmost", "app-variant-review"} <= types
+assert {"missing-rule", "rule-without-normal", "live-policy-mismatch", "manual-topmost", "app-variant-review"} <= types
 PY
 
 printf 'test_yabai_control_rules_audit.sh: ok\n'

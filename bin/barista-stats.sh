@@ -183,6 +183,26 @@ summarize_event_field_for_strategy() {
     ' "$LOG_FILE"
 }
 
+summarize_event_field() {
+    local event_name="$1"
+    local field_name="$2"
+    [ -f "$LOG_FILE" ] || return 1
+    jq -sr \
+      --arg event "$event_name" \
+      --arg field "$field_name" '
+      [ .[] | select(.event == $event and .[$field]? != null) | .[$field] ] as $values
+      | if ($values | length) > 0 then
+          [
+            ($values | length),
+            (((($values | add) / ($values | length)) * 100 | round) / 100),
+            ($values[-1])
+          ] | @tsv
+        else
+          empty
+        end
+    ' "$LOG_FILE"
+}
+
 # Update reload stats
 track_reload() {
     init_stats
@@ -465,6 +485,24 @@ show_stats() {
         local visual_count visual_avg visual_last
         read -r visual_count visual_avg visual_last <<< "$visual_stats"
         echo "  Space visual refreshes: ${visual_count} (avg ${visual_avg}ms, last ${visual_last}ms)"
+        local visual_field_stats
+        local field label
+        for field in spaces_ms lookup_ms state_ms loop_ms app_ms glyph_ms style_ms apply_ms; do
+            visual_field_stats="$(summarize_event_field "space_visual_refresh" "$field" 2>/dev/null || true)"
+            [ -n "$visual_field_stats" ] || continue
+            local phase_count phase_avg phase_last
+            read -r phase_count phase_avg phase_last <<< "$visual_field_stats"
+            label="${field%_ms}"
+            echo "    ${label}: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
+        done
+        for field in style_writes style_skips; do
+            visual_field_stats="$(summarize_event_field "space_visual_refresh" "$field" 2>/dev/null || true)"
+            [ -n "$visual_field_stats" ] || continue
+            local phase_count phase_avg phase_last
+            read -r phase_count phase_avg phase_last <<< "$visual_field_stats"
+            label="${field#style_}"
+            echo "    style ${label}: ${phase_count} (avg ${phase_avg}, last ${phase_last})"
+        done
     fi
     echo ""
     

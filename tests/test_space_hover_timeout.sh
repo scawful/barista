@@ -14,8 +14,16 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$BIN_DIR"
-mkdir -p "$TMP_DIR/cache/space_visuals"
-printf '2\n' > "$TMP_DIR/cache/space_visuals/last_selected_space"
+mkdir -p "$TMP_DIR/cache/space_visuals/style_state"
+cat > "$TMP_DIR/cache/space_visuals/style_state/space.1.state" <<'EOF'
+state=idle
+label.drawing=off
+background.drawing=on
+background.color=0x18313a46
+background.border_width=0
+background.border_color=0x00000000
+icon.color=0xffbac2de
+EOF
 
 cat > "$BIN_DIR/sketchybar" <<EOF
 #!/bin/bash
@@ -51,12 +59,22 @@ if ! grep -Fq -- 'background.drawing=on' "$LOG_FILE"; then
   exit 1
 fi
 
+if ! grep -Fq -- 'background.color=0x50d8c4ff' "$LOG_FILE"; then
+  echo "FAIL: space hover should use the hover accent for idle chips" >&2
+  exit 1
+fi
+
 if ! grep -Fq -- 'background.color=0x18313a46' "$LOG_FILE"; then
   echo "FAIL: space hover should restore idle chip background after timeout" >&2
   exit 1
 fi
 
-if ! grep -Fq -- 'icon.color=0xFFbac2de' "$LOG_FILE"; then
+if ! grep -Fq -- 'background.border_width=0' "$LOG_FILE"; then
+  echo "FAIL: space hover should restore idle border width after timeout" >&2
+  exit 1
+fi
+
+if ! grep -Fq -- 'icon.color=0xffbac2de' "$LOG_FILE"; then
   echo "FAIL: space hover should restore idle icon color after timeout" >&2
   exit 1
 fi

@@ -3,56 +3,61 @@
 # Lightweight per-space script.
 # Active/idle visuals are now updated in batch by space_visuals.sh.
 
-PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
+PATH="${PATH:-}:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin"
 export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 export LANG="${LANG:-en_US.UTF-8}"
 
 _d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
 
-SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-$(command -v sketchybar 2>/dev/null || true)}"
+# common.sh resolves the real binary before defining the sketchybar() wrapper.
+# Do not run `command -v sketchybar` here: after common.sh is sourced it can
+# resolve to the wrapper function name and recurse under SketchyBar.
+SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-${SKETCHYBAR_BIN:-}}"
 CONFIG_DIR="${CONFIG_DIR:-${HOME}/.config/sketchybar}"
 SPACE_VISUALS_STATE_DIR="${BARISTA_SPACE_VISUALS_STATE_DIR:-$CONFIG_DIR/cache/space_visuals}"
-LAST_SELECTED_SPACE_FILE="$SPACE_VISUALS_STATE_DIR/last_selected_space"
 
-HOVER_BG="0x50D8C4FF"
-IDLE_BG="0x18313a46"
-IDLE_ICON_COLOR="0xFFbac2de"
-SELECTED_BG="0xFFD8C4FF"
-SELECTED_ICON_COLOR="0xFF11111b"
-
-space_index() {
-  case "${NAME:-}" in
-    space.[0-9]*)
-      printf '%s' "${NAME#space.}"
-      ;;
-  esac
-}
+[ -r "${_d}/lib/space_style.sh" ] && . "${_d}/lib/space_style.sh"
 
 restore_visual_state() {
   [ -n "$SKETCHYBAR_BIN" ] || return 1
   [ -n "${NAME:-}" ] || return 1
 
-  local current_index last_selected_space
-  current_index="$(space_index)"
-  [ -n "$current_index" ] || return 1
-
-  last_selected_space=""
-  if [ -f "$LAST_SELECTED_SPACE_FILE" ]; then
-    IFS= read -r last_selected_space < "$LAST_SELECTED_SPACE_FILE" || true
+  set -- "$NAME"
+  if space_style_saved_props "$NAME" >/dev/null 2>&1; then
+    while IFS= read -r prop; do
+      [ -n "$prop" ] && set -- "$@" "$prop"
+    done <<EOF
+$(space_style_saved_props "$NAME")
+EOF
+  else
+    while IFS= read -r prop; do
+      [ -n "$prop" ] && set -- "$@" "$prop"
+    done <<EOF
+$(space_style_props idle)
+EOF
   fi
 
-  if [ -n "$last_selected_space" ] && [ "$last_selected_space" = "$current_index" ]; then
-    "$SKETCHYBAR_BIN" --set "$NAME" \
-      background.drawing=on \
-      background.color="$SELECTED_BG" \
-      icon.color="$SELECTED_ICON_COLOR"
-    return 0
+  "$SKETCHYBAR_BIN" --set "$@"
+}
+
+apply_hover_state() {
+  [ -n "$SKETCHYBAR_BIN" ] || return 1
+  [ -n "${NAME:-}" ] || return 1
+
+  style_state="$(space_style_saved_state "$NAME" 2>/dev/null || true)"
+  if [ "$style_state" = "focused" ]; then
+    hover_state="focused"
+  else
+    hover_state="hover"
   fi
 
-  "$SKETCHYBAR_BIN" --set "$NAME" \
-    background.drawing=on \
-    background.color="$IDLE_BG" \
-    icon.color="$IDLE_ICON_COLOR"
+  set -- "$NAME"
+  while IFS= read -r prop; do
+    [ -n "$prop" ] && set -- "$@" "$prop"
+  done <<EOF
+$(space_style_props "$hover_state")
+EOF
+  "$SKETCHYBAR_BIN" --set "$@"
 }
 
 case "${SENDER:-}" in
@@ -60,10 +65,7 @@ case "${SENDER:-}" in
     state_path="$(hover_state_file "$NAME")"
     token="$(hover_token)"
     printf '%s' "$token" > "$state_path"
-    "$SKETCHYBAR_BIN" --set "$NAME" \
-      background.drawing=on \
-      background.color="$HOVER_BG" \
-      icon.color="$IDLE_ICON_COLOR"
+    apply_hover_state
     case "$HOVER_TIMEOUT" in
       ""|0|0.0|false|off)
         ;;
@@ -75,10 +77,7 @@ case "${SENDER:-}" in
             IFS= read -r current < "$state_path" || true
           fi
           if [ "$current" = "$token" ]; then
-            NAME="$NAME" SKETCHYBAR_BIN="$SKETCHYBAR_BIN" LAST_SELECTED_SPACE_FILE="$LAST_SELECTED_SPACE_FILE" \
-              IDLE_BG="$IDLE_BG" IDLE_ICON_COLOR="$IDLE_ICON_COLOR" \
-              SELECTED_BG="$SELECTED_BG" SELECTED_ICON_COLOR="$SELECTED_ICON_COLOR" \
-              restore_visual_state
+            restore_visual_state
           fi
         ) >/dev/null 2>&1 &
         ;;

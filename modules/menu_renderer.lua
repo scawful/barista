@@ -341,7 +341,7 @@ function menu_renderer.create(ctx)
     sbar.add("item", parent, item_config)
     remember(metadata.submenu_parents, parent)
     if hover_enabled then
-      shell_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited mouse.exited.global", post_config_delay, sketchybar_bin, parent))
+      shell_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", post_config_delay, sketchybar_bin, parent))
     end
     renderer(parent, entry.items or {})
   end

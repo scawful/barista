@@ -40,7 +40,12 @@ dismiss_all() {
 }
 
 case "${SENDER:-}" in
-  "space_active_refresh"|"space_change"|"display_changed"|"display_added"|"display_removed"|"system_woke"|"front_app_switched")
+  "space_change"|"display_changed"|"display_added"|"display_removed"|"system_woke")
     dismiss_all
+    ;;
+  "front_app_switched")
+    if [ "${DISMISS_ON_APP_SWITCH:-0}" != "0" ]; then
+      dismiss_all
+    fi
     ;;
 esac

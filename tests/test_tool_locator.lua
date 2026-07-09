@@ -158,6 +158,73 @@ run_test("tool_locator.resolve_ghostty_app: explicit override wins", function()
   cleanup(root)
 end)
 
+run_test("tool_locator.resolve_lm_studio_app: explicit override wins", function()
+  local root = make_temp_dir("locator_lm_studio")
+  local explicit = root .. "/LM Studio.app"
+  mkdir(explicit)
+
+  local resolved, found = locator.resolve_lm_studio_app({
+    lm_studio_app = explicit,
+  })
+  assert_true(found, "found explicit LM Studio app")
+  assert_equal(resolved, explicit, "LM Studio app path")
+  cleanup(root)
+end)
+
+run_test("tool_locator.resolve_chatgpt_app: explicit override wins", function()
+  local root = make_temp_dir("locator_chatgpt")
+  local explicit = root .. "/ChatGPT.app"
+  mkdir(explicit)
+
+  local resolved, found = locator.resolve_chatgpt_app({
+    chatgpt_app = explicit,
+  })
+  assert_true(found, "found explicit ChatGPT app")
+  assert_equal(resolved, explicit, "ChatGPT app path")
+  cleanup(root)
+end)
+
+run_test("tool_locator.resolve_claude_app: explicit override wins", function()
+  local root = make_temp_dir("locator_claude")
+  local explicit = root .. "/Claude.app"
+  mkdir(explicit)
+
+  local resolved, found = locator.resolve_claude_app({
+    claude_app = explicit,
+  })
+  assert_true(found, "found explicit Claude app")
+  assert_equal(resolved, explicit, "Claude app path")
+  cleanup(root)
+end)
+
+run_test("tool_locator.resolve_cursor_app: explicit override wins", function()
+  local root = make_temp_dir("locator_cursor")
+  local explicit = root .. "/Cursor.app"
+  mkdir(explicit)
+
+  local resolved, found = locator.resolve_cursor_app({
+    cursor_app = explicit,
+  })
+  assert_true(found, "found explicit Cursor app")
+  assert_equal(resolved, explicit, "Cursor app path")
+  cleanup(root)
+end)
+
+run_test("tool_locator.resolve_cortex_launcher: explicit binary override wins", function()
+  local root = make_temp_dir("locator_cortex")
+  local bin = root .. "/cortex"
+  write_file(bin, "#!/bin/sh\n")
+  local ok = os.execute(string.format("chmod +x %q", bin))
+  assert_true(ok == 0 or ok == true, "chmod cortex")
+
+  local resolved, found = locator.resolve_cortex_launcher({
+    cortex_bin = bin,
+  })
+  assert_true(found, "found explicit cortex launcher")
+  assert_equal(resolved, bin, "cortex launcher path")
+  cleanup(root)
+end)
+
 run_test("tool_locator.resolve_z3ed_launcher: prefers repo script over command fallback", function()
   local root = make_temp_dir("locator_z3ed")
   local code_dir = root .. "/code"

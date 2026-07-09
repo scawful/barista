@@ -10,8 +10,17 @@ LOG_FILE="$TMP_DIR/sketchybar.log"
 STATE_DIR="$TMP_DIR/state"
 mkdir -p "$STATE_DIR"
 CONFIG_DIR="$TMP_DIR/config"
-mkdir -p "$CONFIG_DIR/cache/hover" "$CONFIG_DIR/cache/space_visuals"
-printf '12\n' > "$CONFIG_DIR/cache/space_visuals/last_selected_space"
+STYLE_DIR="$CONFIG_DIR/cache/space_visuals/style_state"
+mkdir -p "$CONFIG_DIR/cache/hover" "$STYLE_DIR"
+cat > "$STYLE_DIR/space.12.state" <<'EOF'
+state=focused
+label.drawing=off
+background.drawing=on
+background.color=0xffd8c4ff
+background.border_width=2
+background.border_color=0xffffffff
+icon.color=0xff11111b
+EOF
 
 cat > "$TMP_DIR/sketchybar" <<'EOF'
 #!/bin/bash
@@ -49,16 +58,16 @@ env "${COMMON_ENV[@]}" SENDER="mouse.entered" "$SCRIPT"
 
 CACHE_FILE="$STATE_DIR/space.12.state"
 [ -f "$CACHE_FILE" ] || { echo "FAIL: expected hover state cache file after mouse.entered" >&2; exit 1; }
-grep -Fq $'set\tspace.12 background.drawing=on background.color=0x50D8C4FF icon.color=0xFFbac2de' "$LOG_FILE" || {
-  echo "FAIL: expected hover set command on mouse.entered" >&2
+grep -Fq $'set\tspace.12 label.drawing=off background.drawing=on background.color=0xffd8c4ff background.border_width=2 background.border_color=0xffffffff icon.color=0xff11111b' "$LOG_FILE" || {
+  echo "FAIL: expected focused chip to stay focused on mouse.entered" >&2
   exit 1
 }
 
 env "${COMMON_ENV[@]}" SENDER="mouse.exited" "$SCRIPT"
 
 [ ! -f "$CACHE_FILE" ] || { echo "FAIL: expected hover state cache file to be removed after mouse.exited" >&2; exit 1; }
-grep -Fq $'set\tspace.12 background.drawing=on background.color=0xFFD8C4FF icon.color=0xFF11111b' "$LOG_FILE" || {
-  echo "FAIL: expected cached visual state to be restored on mouse.exited" >&2
+grep -Fq $'set\tspace.12 label.drawing=off background.drawing=on background.color=0xffd8c4ff background.border_width=2 background.border_color=0xffffffff icon.color=0xff11111b' "$LOG_FILE" || {
+  echo "FAIL: expected saved focused visual state to be restored on mouse.exited" >&2
   exit 1
 }
 if grep -Fq $'trigger\tspace_visual_refresh' "$LOG_FILE"; then
@@ -68,8 +77,8 @@ fi
 
 rm -f "$LOG_FILE"
 env "${COMMON_ENV[@]}" SENDER="mouse.exited" "$SCRIPT"
-grep -Fq $'set\tspace.12 background.drawing=on background.color=0xFFD8C4FF icon.color=0xFF11111b' "$LOG_FILE" || {
-  echo "FAIL: mouse.exited should restore the selected chip state even without a hover token" >&2
+grep -Fq $'set\tspace.12 label.drawing=off background.drawing=on background.color=0xffd8c4ff background.border_width=2 background.border_color=0xffffffff icon.color=0xff11111b' "$LOG_FILE" || {
+  echo "FAIL: mouse.exited should restore the saved style state even without a hover token" >&2
   exit 1
 }
 

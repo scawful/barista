@@ -8,6 +8,8 @@ export LANG="${LANG:-en_US.UTF-8}"
 
 _d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
 
+NAME="${NAME:-front_app}"
+
 if [ -n "${BARISTA_SKETCHYBAR_BIN:-}" ]; then
   sketchybar() {
     "$BARISTA_SKETCHYBAR_BIN" "$@"
@@ -21,25 +23,37 @@ OSASCRIPT_BIN="${BARISTA_OSASCRIPT_BIN:-$(command -v osascript 2>/dev/null || tr
 
 # Barista's own binaries to filter out
 BARISTA_APPS="config_menu|config_menu_v2|Barista|BaristaControlPanel|Barista Control Panel|help_center|icon_browser|sketchybar"
-FRONT_APP_IDLE_BG="0x18313a46"
-FRONT_APP_HOVER_BG="0x28505a6a"
+FRONT_APP_IDLE_BG="${BARISTA_ANCHOR_IDLE_BG:-0x18313a46}"
 FRONT_APP_ICON_COLOR="0xFFcad3f5"
+FRONT_APP_IDLE_BORDER_WIDTH="${BARISTA_ANCHOR_IDLE_BORDER_WIDTH:-0}"
+FRONT_APP_IDLE_BORDER_COLOR="${BARISTA_ANCHOR_IDLE_BORDER_COLOR:-0x00000000}"
+FRONT_APP_IDLE_PROPS="$(anchor_idle_props) icon.color=$FRONT_APP_ICON_COLOR"
+FRONT_APP_HOVER_PROPS="$(anchor_hover_props) icon.color=$FRONT_APP_ICON_COLOR"
 
 case "${SENDER:-}" in
+  mouse.clicked)
+    sketchybar --set "$NAME" popup.drawing=toggle
+    exit 0
+    ;;
   mouse.exited.global)
     sketchybar --set "$NAME" popup.drawing=off
-    clear_highlight "$NAME" "background.drawing=on background.color=$FRONT_APP_IDLE_BG icon.color=$FRONT_APP_ICON_COLOR"
+    clear_highlight "$NAME" "$FRONT_APP_IDLE_PROPS"
     exit 0
     ;;
   mouse.entered)
-    highlight_with_timeout "$NAME" "background.drawing=on background.color=$FRONT_APP_HOVER_BG icon.color=$FRONT_APP_ICON_COLOR" "background.drawing=on background.color=$FRONT_APP_IDLE_BG icon.color=$FRONT_APP_ICON_COLOR"
+    highlight_with_timeout "$NAME" "$FRONT_APP_HOVER_PROPS" "$FRONT_APP_IDLE_PROPS"
     exit 0
     ;;
   mouse.exited)
-    clear_highlight "$NAME" "background.drawing=on background.color=$FRONT_APP_IDLE_BG icon.color=$FRONT_APP_ICON_COLOR"
+    clear_highlight "$NAME" "$FRONT_APP_IDLE_PROPS"
     exit 0
     ;;
 esac
+
+if [ "${BARISTA_FRONT_APP_ACTION:-}" = "click" ]; then
+  sketchybar --set "$NAME" popup.drawing=toggle
+  exit 0
+fi
 
 STATE_ICON="󰋽"
 STATE_LABEL="No managed window"
@@ -88,7 +102,7 @@ if [ -z "$APP_ICON" ]; then
   APP_ICON="󰣆"
 fi
 
-animate_set "$NAME" icon="$APP_ICON" icon.drawing=on icon.color="$FRONT_APP_ICON_COLOR" icon.padding_left=8 icon.padding_right=8 label="" label.drawing=off background.drawing=on background.color="$FRONT_APP_IDLE_BG"
+animate_set "$NAME" icon="$APP_ICON" icon.drawing=on icon.color="$FRONT_APP_ICON_COLOR" icon.padding_left=8 icon.padding_right=8 label="" label.drawing=off background.drawing=on background.color="$FRONT_APP_IDLE_BG" background.border_width="$FRONT_APP_IDLE_BORDER_WIDTH" background.border_color="$FRONT_APP_IDLE_BORDER_COLOR"
 sketchybar --set front_app.header label="App · $APP_NAME" >/dev/null 2>&1 || true
 
 sketchybar --set front_app.state \

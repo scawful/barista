@@ -5,8 +5,10 @@ YABAI_BIN="${YABAI_BIN:-$(command -v yabai || true)}"
 JQ_BIN="${JQ_BIN:-$(command -v jq || true)}"
 SKHD_BIN="${SKHD_BIN:-$(command -v skhd || true)}"
 CONFIG_DIR="${BARISTA_CONFIG_DIR:-$HOME/.config/sketchybar}"
+STATE_FILE="${BARISTA_STATE_FILE:-$CONFIG_DIR/state.json}"
 SKETCHYBAR_BIN="${SKETCHYBAR_BIN:-$(command -v sketchybar || true)}"
 FRONT_APP_SCRIPT="${BARISTA_FRONT_APP_SCRIPT:-$CONFIG_DIR/plugins/front_app.sh}"
+FRONT_APP_CONTEXT_SCRIPT="${BARISTA_FRONT_APP_CONTEXT_SCRIPT:-$CONFIG_DIR/scripts/front_app_context.sh}"
 RUNTIME_CONTEXT_SCRIPT="${BARISTA_RUNTIME_CONTEXT_SCRIPT:-$CONFIG_DIR/scripts/runtime_context.sh}"
 YABAI_LABEL="${BARISTA_YABAI_LABEL:-}"
 YABAI_LABEL_NEW="com.asmvik.yabai"
@@ -18,9 +20,15 @@ SPACE_FOCUS_LOCK_DIR="/tmp/yabai_control_space_focus_${UID}.lock"
 SPACE_FOCUS_OSASCRIPT_FALLBACK="${SPACE_FOCUS_OSASCRIPT_FALLBACK:-0}"
 REQUESTED_COMMAND="${1:-}"
 
-if [[ -z "$YABAI_BIN" && "$REQUESTED_COMMAND" != "shortcuts" ]]; then
-  echo "yabai not found in PATH." >&2
-  exit 1
+if [[ -z "$YABAI_BIN" ]]; then
+  case "$REQUESTED_COMMAND" in
+    shortcuts|wm-mode|mode|set-mode|app-default)
+      ;;
+    *)
+      echo "yabai not found in PATH." >&2
+      exit 1
+      ;;
+  esac
 fi
 
 python3_bin() {
@@ -736,6 +744,367 @@ window_preset_tile_here() {
   window_adopt_space_mode
 }
 
+
+normalize_wm_mode_arg() {
+  local mode="${1:-}"
+  mode="$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')"
+  case "$mode" in
+    off|false|none|disable|disabled|manual|bar)
+      echo "disabled"
+      ;;
+    optional|opt|auto-if-running|auto_if_running)
+      echo "optional"
+      ;;
+    required|require|enabled|enable|on|yabai)
+      echo "required"
+      ;;
+    auto|"")
+      echo "auto"
+      ;;
+    *)
+      echo "$mode"
+      ;;
+  esac
+}
+
+read_state_wm_mode() {
+  local py
+  py="$(python3_bin)"
+  if [[ -n "$py" && -f "$STATE_FILE" ]]; then
+    "$py" - "$STATE_FILE" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    with open(sys.argv[1], 'r', encoding='utf-8') as fh:
+        data = json.load(fh)
+    print(((data.get('modes') or {}).get('window_manager')) or 'auto')
+except Exception:
+    print('auto')
+PY
+    return 0
+  fi
+  echo "auto"
+}
+
+write_state_wm_mode() {
+  local mode="$1" py
+  py="$(python3_bin)"
+  [[ -n "$py" ]] || { echo "python3 required to update state" >&2; return 1; }
+  mkdir -p "$(dirname "$STATE_FILE")"
+  "$py" - "$STATE_FILE" "$mode" <<'PY'
+import json, os, sys
+path, mode = sys.argv[1:3]
+try:
+    with open(path, 'r', encoding='utf-8') as fh:
+        data = json.load(fh)
+except Exception:
+    data = {}
+if not isinstance(data, dict):
+    data = {}
+modes = data.get('modes')
+if not isinstance(modes, dict):
+    modes = {}
+data['modes'] = modes
+modes['window_manager'] = mode
+tmp = path + '.tmp'
+with open(tmp, 'w', encoding='utf-8') as fh:
+    json.dump(data, fh, ensure_ascii=False)
+os.replace(tmp, path)
+PY
+}
+
+reload_barista_after_config_change() {
+  local reload_script="$CONFIG_DIR/plugins/reload_sketchybar.sh"
+  if [[ -x "$reload_script" ]]; then
+    "$reload_script" >/dev/null 2>&1 || true
+  elif [[ -n "${SKETCHYBAR_BIN:-}" ]]; then
+    "$SKETCHYBAR_BIN" --reload >/dev/null 2>&1 || true
+  fi
+}
+
+wm_mode_command() {
+  local target="${1:-}"
+  if [[ -z "$target" || "$target" == "current" || "$target" == "show" ]]; then
+    read_state_wm_mode
+    return 0
+  fi
+
+  target="$(normalize_wm_mode_arg "$target")"
+  case "$target" in
+    disabled|optional|required|auto) ;;
+    *) echo "Usage: $0 wm-mode <required|optional|disabled|auto>" >&2; return 1 ;;
+  esac
+
+  write_state_wm_mode "$target"
+  # Do not auto-start yabai/skhd from a popup mode switch. Starting yabai can
+  # trigger macOS Developer Tools Access prompts if the scripting addition or
+  # service authorization is stale. Keep mode changes cheap/reversible; use
+  # `yabai_control.sh start` or `doctor --fix` explicitly when service repair is desired.
+  reload_barista_after_config_change
+  echo "window_manager: $target"
+}
+
+slugify_app_name() {
+  local py app="$1"
+  py="$(python3_bin)"
+  if [[ -n "$py" ]]; then
+    "$py" - "$app" <<'PY'
+import re, sys
+slug = re.sub(r'[^a-z0-9]+', '-', sys.argv[1].lower()).strip('-')
+print(slug or 'app')
+PY
+  else
+    printf '%s' "$app" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/--*/-/g; s/^-//; s/-$//'
+  fi
+}
+
+regex_escape_app_name() {
+  local py app="$1"
+  py="$(python3_bin)"
+  if [[ -n "$py" ]]; then
+    "$py" - "$app" <<'PY'
+import re, sys
+print('^' + re.escape(sys.argv[1]) + '$')
+PY
+  else
+    printf '^%s$' "$app"
+  fi
+}
+
+current_app_name() {
+  require_jq
+  local focused_json app
+  focused_json="$(focused_window_json)"
+  app="$(printf '%s\n' "$focused_json" | "$JQ_BIN" -r '.app // empty' 2>/dev/null | head -n 1)"
+  if [[ -n "$app" && "$app" != "null" ]]; then
+    echo "$app"
+    return 0
+  fi
+  if [[ -x "$FRONT_APP_CONTEXT_SCRIPT" ]]; then
+    app="$("$FRONT_APP_CONTEXT_SCRIPT" --mode focused-space 2>/dev/null \
+      | awk -F'\t' '$1 == "app_name" { print $2; exit }' || true)"
+    if [[ -n "$app" && "$app" != "null" ]]; then
+      echo "$app"
+      return 0
+    fi
+  fi
+  echo "No focused yabai window/app." >&2
+  return 1
+}
+
+rule_label_for_app() {
+  echo "barista-default-$(slugify_app_name "$1")"
+}
+
+normalize_app_default_mode() {
+  local mode="${1:-}"
+  mode="$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')"
+  case "$mode" in
+    float|floating|utility|manual)
+      echo "float"
+      ;;
+    tile|tiled|bsp|stack|focus|managed)
+      echo "tile"
+      ;;
+    unset|remove|clear|off|none)
+      echo "unset"
+      ;;
+    *)
+      echo "$mode"
+      ;;
+  esac
+}
+
+state_write_app_default() {
+  local app="$1" mode="$2" app_regex="$3" label="$4" py
+  py="$(python3_bin)"
+  [[ -n "$py" ]] || { echo "python3 required to update app defaults" >&2; return 1; }
+  mkdir -p "$(dirname "$STATE_FILE")"
+  "$py" - "$STATE_FILE" "$app" "$mode" "$app_regex" "$label" <<'PY'
+import json, os, sys
+path, app, mode, app_regex, label = sys.argv[1:6]
+try:
+    with open(path, 'r', encoding='utf-8') as fh:
+        data = json.load(fh)
+except Exception:
+    data = {}
+if not isinstance(data, dict):
+    data = {}
+wd = data.get('window_defaults')
+if not isinstance(wd, dict):
+    wd = {}
+apps = wd.get('apps')
+if not isinstance(apps, dict):
+    apps = {}
+wd['apps'] = apps
+data['window_defaults'] = wd
+apps[app] = {
+    'mode': mode,
+    'app_regex': app_regex,
+    'rule_label': label,
+    'manage': 'off' if mode == 'float' else 'on',
+    'sub_layer': 'normal',
+}
+tmp = path + '.tmp'
+with open(tmp, 'w', encoding='utf-8') as fh:
+    json.dump(data, fh, ensure_ascii=False)
+os.replace(tmp, path)
+PY
+}
+
+state_unset_app_default() {
+  local app="$1" py
+  py="$(python3_bin)"
+  [[ -n "$py" ]] || { echo "python3 required to update app defaults" >&2; return 1; }
+  [[ -f "$STATE_FILE" ]] || return 0
+  "$py" - "$STATE_FILE" "$app" <<'PY'
+import json, os, sys
+path, app = sys.argv[1:3]
+try:
+    with open(path, 'r', encoding='utf-8') as fh:
+        data = json.load(fh)
+except Exception:
+    data = {}
+apps = (((data if isinstance(data, dict) else {}).get('window_defaults') or {}).get('apps') or {})
+if isinstance(apps, dict):
+    apps.pop(app, None)
+tmp = path + '.tmp'
+with open(tmp, 'w', encoding='utf-8') as fh:
+    json.dump(data if isinstance(data, dict) else {}, fh, ensure_ascii=False)
+os.replace(tmp, path)
+PY
+}
+
+remove_yabai_rule_label() {
+  local label="$1" idx
+  [[ -n "${YABAI_BIN:-}" && -n "$label" ]] || return 0
+  "$YABAI_BIN" -m rule --remove "$label" >/dev/null 2>&1 || true
+  if [[ -n "${JQ_BIN:-}" ]]; then
+    "$YABAI_BIN" -m rule --list 2>/dev/null \
+      | "$JQ_BIN" -r --arg label "$label" '.[] | select((.label // "") == $label) | .index // empty' 2>/dev/null \
+      | sort -rn \
+      | while IFS= read -r idx; do
+          [[ -n "$idx" ]] && "$YABAI_BIN" -m rule --remove "$idx" >/dev/null 2>&1 || true
+        done
+  fi
+}
+
+install_yabai_app_rule() {
+  local app="$1" mode="$2" app_regex label
+  app_regex="$(regex_escape_app_name "$app")"
+  label="$(rule_label_for_app "$app")"
+  remove_yabai_rule_label "$label"
+  if [[ -n "${YABAI_BIN:-}" ]]; then
+    case "$mode" in
+      float)
+        "$YABAI_BIN" -m rule --add label="$label" app="$app_regex" manage=off sub-layer=normal >/dev/null 2>&1 || true
+        ;;
+      tile)
+        "$YABAI_BIN" -m rule --add label="$label" app="$app_regex" manage=on sub-layer=normal >/dev/null 2>&1 || true
+        ;;
+    esac
+  fi
+  state_write_app_default "$app" "$mode" "$app_regex" "$label"
+}
+
+apply_current_window_default() {
+  local mode="$1"
+  case "$mode" in
+    float)
+      window_preset_utility >/dev/null 2>&1 || true
+      ;;
+    tile)
+      window_preset_tile_here >/dev/null 2>&1 || true
+      ;;
+  esac
+}
+
+app_default_set() {
+  local app="$1" mode="$2"
+  [[ -n "$app" && -n "$mode" ]] || { echo "Usage: $0 app-default set <App Name> <float|tile>" >&2; return 1; }
+  mode="$(normalize_app_default_mode "$mode")"
+  case "$mode" in
+    float|tile) ;;
+    *) echo "Usage: $0 app-default set <App Name> <float|tile>" >&2; return 1 ;;
+  esac
+  install_yabai_app_rule "$app" "$mode"
+  echo "app default: $app -> $mode"
+}
+
+app_default_unset() {
+  local app="$1" label
+  [[ -n "$app" ]] || { echo "Usage: $0 app-default unset <App Name>" >&2; return 1; }
+  label="$(rule_label_for_app "$app")"
+  remove_yabai_rule_label "$label"
+  state_unset_app_default "$app"
+  echo "app default removed: $app"
+}
+
+app_default_current() {
+  local mode="$(normalize_app_default_mode "${1:-}")" app
+  case "$mode" in
+    float|tile|unset) ;;
+    *) echo "Usage: $0 app-default-current <float|tile|unset>" >&2; return 1 ;;
+  esac
+  app="$(current_app_name)"
+  if [[ "$mode" == "unset" ]]; then
+    app_default_unset "$app"
+  else
+    app_default_set "$app" "$mode"
+    apply_current_window_default "$mode"
+  fi
+  refresh_front_app_state
+}
+
+app_default_list() {
+  local py
+  py="$(python3_bin)"
+  if [[ -z "$py" || ! -f "$STATE_FILE" ]]; then
+    echo "no app defaults"
+    return 0
+  fi
+  "$py" - "$STATE_FILE" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1], 'r', encoding='utf-8') as fh:
+        data = json.load(fh)
+except Exception:
+    data = {}
+apps = (((data if isinstance(data, dict) else {}).get('window_defaults') or {}).get('apps') or {})
+if not apps:
+    print('no app defaults')
+else:
+    for app in sorted(apps):
+        rec = apps[app] if isinstance(apps[app], dict) else {}
+        print(f"{app}: {rec.get('mode', 'unknown')}")
+PY
+}
+
+app_default_command() {
+  local sub="${1:-list}"
+  shift || true
+  case "$sub" in
+    set)
+      if (( $# < 2 )); then
+        echo "Usage: $0 app-default set <App Name> <float|tile>" >&2
+        return 1
+      fi
+      local mode="${!#}"
+      local app="${*:1:$#-1}"
+      app_default_set "$app" "$mode"
+      ;;
+    unset|remove|clear)
+      app_default_unset "$*"
+      ;;
+    list|ls|"")
+      app_default_list
+      ;;
+    *)
+      echo "Usage: $0 app-default <list|set <App Name> <float|tile>|unset <App Name>>" >&2
+      return 1
+      ;;
+  esac
+}
+
 restart_yabai() {
   if "$YABAI_BIN" --restart-service >/dev/null 2>&1; then
     echo "yabai restarted"
@@ -1105,32 +1474,32 @@ print(json.dumps({"shortcuts": rows}, indent=2, sort_keys=True))
 rules_expected_json() {
   cat <<'JSON'
 [
-  {"label":"System utilities","app":"^(System Settings|System Information|Activity Monitor|Calculator|Dictionary|Software Update|Archive Utility)$","sub_layer":"below"},
-  {"label":"Media utilities","app":"^(Photo Booth|QuickTime Player|VLC)$","sub_layer":"below"},
-  {"label":"Finder","app":"^Finder$","sub_layer":"below"},
-  {"label":"About This Mac","app":"System Information","title":"About This Mac","sub_layer":"below"},
-  {"label":"Emacs","app":"^Emacs$","sub_layer":"below"},
-  {"label":"Mesen","app":"^(Mesen|Mesen2.*)$","sub_layer":"below"},
-  {"label":"Yaze","app":"^Yaze$","sub_layer":"below"},
-  {"label":"Oracle manager","app":"^oracle_manager_gui$","sub_layer":"below"},
-  {"label":"Alfred","app":"^Alfred$","sub_layer":"below"},
-  {"label":"Raycast","app":"^Raycast$","sub_layer":"below"},
-  {"label":"Taskwarrior","app":"^Taskwarrior$","sub_layer":"below"},
-  {"label":"Lazygit","app":"^Lazygit$","title":"lazygit","sub_layer":"below"},
-  {"label":"Barista binary","app":"^barista_config$","sub_layer":"below"},
-  {"label":"Barista Config","app":"^Barista Config$","sub_layer":"below"},
-  {"label":"Barista app","app":"^Barista$","sub_layer":"below"},
-  {"label":"Barista Control Panel","app":"^Barista Control Panel$","sub_layer":"below"},
-  {"label":"BaristaControlPanel","app":"^BaristaControlPanel$","sub_layer":"below"},
-  {"label":"AFS Studio binary","app":"^afs_studio$","sub_layer":"below"},
-  {"label":"AFS Studio","app":"^AFS Studio$","sub_layer":"below"},
-  {"label":"AFS Browser binary","app":"^afs-browser$","sub_layer":"below"},
-  {"label":"AFS Browser","app":"^AFS Browser$","sub_layer":"below"},
-  {"label":"Cortex binary","app":"^cortex$","sub_layer":"below"},
-  {"label":"Cortex","app":"^Cortex$","sub_layer":"below"},
-  {"label":"System Manual binary","app":"^sys_manual$","sub_layer":"below"},
-  {"label":"System Manual","app":"^System Manual$","sub_layer":"below"},
-  {"label":"Picture View","app":"^(Picture View|PictureView)$","sub_layer":"below"}
+  {"label":"System utilities","app":"^(System Settings|System Information|Activity Monitor|Calculator|Dictionary|Software Update|Archive Utility)$","sub_layer":"normal"},
+  {"label":"Media utilities","app":"^(Photo Booth|QuickTime Player|VLC)$","sub_layer":"normal"},
+  {"label":"Finder","app":"^Finder$","sub_layer":"normal"},
+  {"label":"About This Mac","app":"System Information","title":"About This Mac","sub_layer":"normal"},
+  {"label":"Emacs","app":"^Emacs$","sub_layer":"normal"},
+  {"label":"Mesen","app":"^(Mesen|Mesen2.*)$","sub_layer":"normal"},
+  {"label":"Yaze","app":"^Yaze$","sub_layer":"normal"},
+  {"label":"Oracle manager","app":"^oracle_manager_gui$","sub_layer":"normal"},
+  {"label":"Alfred","app":"^Alfred$","sub_layer":"normal"},
+  {"label":"Raycast","app":"^Raycast$","sub_layer":"normal"},
+  {"label":"Taskwarrior","app":"^Taskwarrior$","sub_layer":"normal"},
+  {"label":"Lazygit","app":"^Lazygit$","title":"lazygit","sub_layer":"normal"},
+  {"label":"Barista binary","app":"^barista_config$","sub_layer":"normal"},
+  {"label":"Barista Config","app":"^Barista Config$","sub_layer":"normal"},
+  {"label":"Barista app","app":"^Barista$","sub_layer":"normal"},
+  {"label":"Barista Control Panel","app":"^Barista Control Panel$","sub_layer":"normal"},
+  {"label":"BaristaControlPanel","app":"^BaristaControlPanel$","sub_layer":"normal"},
+  {"label":"AFS Studio binary","app":"^afs_studio$","sub_layer":"normal"},
+  {"label":"AFS Studio","app":"^AFS Studio$","sub_layer":"normal"},
+  {"label":"AFS Browser binary","app":"^afs-browser$","sub_layer":"normal"},
+  {"label":"AFS Browser","app":"^AFS Browser$","sub_layer":"normal"},
+  {"label":"Cortex binary","app":"^cortex$","sub_layer":"normal"},
+  {"label":"Cortex","app":"^Cortex$","sub_layer":"normal"},
+  {"label":"System Manual binary","app":"^sys_manual$","sub_layer":"normal"},
+  {"label":"System Manual","app":"^System Manual$","sub_layer":"normal"},
+  {"label":"Picture View","app":"^(Picture View|PictureView)$","sub_layer":"normal"}
 ]
 JSON
 }
@@ -1179,8 +1548,8 @@ def rule_matches_expected(rule, item):
         return False
     return True
 
-def is_unmanaged_below(rule):
-    return rule.get("manage") is False and rule.get("sub-layer") == "below"
+def is_unmanaged_normal(rule):
+    return rule.get("manage") is False and rule.get("sub-layer") == "normal"
 
 def window_matches_rule(window, rule):
     app_pattern = rule.get("app") or ""
@@ -1205,19 +1574,19 @@ for item in expected:
             "label": item.get("label"),
             "app": item.get("app"),
             "title": item.get("title", ""),
-            "message": f"missing expected unmanaged-below rule: {item.get('label')}",
+            "message": f"missing expected unmanaged-normal rule: {item.get('label')}",
         })
         continue
-    if not any(is_unmanaged_below(rule) for rule in matching):
+    if not any(is_unmanaged_normal(rule) for rule in matching):
         findings.append({
             "severity": "error",
-            "type": "rule-without-below",
+            "type": "rule-without-normal",
             "label": item.get("label"),
             "app": item.get("app"),
-            "message": f"expected rule is not manage=off sub-layer=below: {item.get('label')}",
+            "message": f"expected rule is not manage=off sub-layer=normal: {item.get('label')}",
         })
 
-unmanaged_below_rules = [rule for rule in rules if is_unmanaged_below(rule)]
+unmanaged_normal_rules = [rule for rule in rules if is_unmanaged_normal(rule)]
 for window in windows:
     if window.get("is-minimized") is True:
         continue
@@ -1232,8 +1601,8 @@ for window in windows:
             "title": window.get("title", ""),
             "message": "window is manually topmost/above",
         })
-    if any(window_matches_rule(window, rule) for rule in unmanaged_below_rules):
-        if sub_layer not in ("below", "above"):
+    if any(window_matches_rule(window, rule) for rule in unmanaged_normal_rules):
+        if sub_layer not in ("normal", "auto", "above"):
             findings.append({
                 "severity": "warn",
                 "type": "live-policy-mismatch",
@@ -1241,7 +1610,7 @@ for window in windows:
                 "app": window.get("app", ""),
                 "title": window.get("title", ""),
                 "sub_layer": sub_layer,
-                "message": "live unmanaged utility window is not below",
+                "message": "live unmanaged utility window is not normal",
             })
 
 family_hints = [
@@ -1255,7 +1624,7 @@ for window in windows:
     if window.get("is-minimized") is True:
         continue
     app = window.get("app") or ""
-    if not app or any(window_matches_rule(window, rule) for rule in unmanaged_below_rules):
+    if not app or any(window_matches_rule(window, rule) for rule in unmanaged_normal_rules):
         continue
     for family, pattern in family_hints:
         if pattern.search(app):
@@ -1543,6 +1912,15 @@ case "$command" in
   restart)
     restart_yabai
     ;;
+  wm-mode|mode|set-mode)
+    wm_mode_command "${1:-}"
+    ;;
+  app-default-current)
+    app_default_current "${1:-}"
+    ;;
+  app-default)
+    app_default_command "$@"
+    ;;
   balance)
     run_space_command --balance
     ;;
@@ -1709,6 +2087,9 @@ Commands:
   status
   start
   restart
+  wm-mode <required|optional|disabled|auto>
+  app-default-current <float|tile|unset>
+  app-default <list|set <App Name> <float|tile>|unset <App Name>>
   balance
   space-rotate|rotate
   mirror

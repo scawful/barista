@@ -4,31 +4,40 @@
 
 set -euo pipefail
 
-PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
+PATH="${PATH:-}:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin"
 _d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
 NAME="${NAME:-control_center}"
 CONFIG_DIR="${BARISTA_CONFIG_DIR:-$HOME/.config/sketchybar}"
 STATE_FILE="${CONFIG_DIR}/state.json"
-SKETCHYBAR_BIN="${SKETCHYBAR_BIN:-$(command -v sketchybar || true)}"
+SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-${SKETCHYBAR_BIN:-}}"
 if [[ -z "$SKETCHYBAR_BIN" ]]; then
   SKETCHYBAR_BIN="/opt/homebrew/opt/sketchybar/bin/sketchybar"
 fi
 
 case "${SENDER:-}" in
+  "mouse.clicked")
+    "$SKETCHYBAR_BIN" --set "$NAME" popup.drawing=toggle >/dev/null 2>&1 || true
+    exit 0
+    ;;
   "mouse.entered")
-    highlight_with_timeout "$NAME" "background.drawing=on background.color=$HIGHLIGHT" "background.drawing=off"
+    highlight_with_timeout "$NAME" "$(anchor_hover_props)" "$(anchor_idle_props)"
     exit 0
     ;;
   "mouse.exited")
-    clear_highlight "$NAME" "background.drawing=off"
+    clear_highlight "$NAME" "$(anchor_idle_props)"
     exit 0
     ;;
   "mouse.exited.global")
     "$SKETCHYBAR_BIN" --set "$NAME" popup.drawing=off >/dev/null 2>&1 || true
-    clear_highlight "$NAME" "background.drawing=off"
+    clear_highlight "$NAME" "$(anchor_idle_props)"
     exit 0
     ;;
 esac
+
+if [[ "${BARISTA_CONTROL_CENTER_ACTION:-}" == "click" ]]; then
+  "$SKETCHYBAR_BIN" --set "$NAME" popup.drawing=toggle >/dev/null 2>&1 || true
+  exit 0
+fi
 
 # Check if yabai is running and get layout
 get_layout() {
@@ -149,7 +158,7 @@ set_popup_item() {
 }
 
 if [[ "$WM_SKHD_RUNNING" -eq 1 ]]; then
-  set_popup_item "cc.yabai.shortcuts" "label=Yabai Shortcuts: On" "icon.color=0xffa6e3a1"
+  set_popup_item "cc.yabai.shortcuts" "label=Shortcuts: On" "icon.color=0xffa6e3a1"
 else
-  set_popup_item "cc.yabai.shortcuts" "label=Yabai Shortcuts: Off" "icon.color=0xfff38ba8"
+  set_popup_item "cc.yabai.shortcuts" "label=Shortcuts: Off" "icon.color=0xfff38ba8"
 fi

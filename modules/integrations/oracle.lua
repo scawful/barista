@@ -5,7 +5,7 @@
 local oracle = {}
 
 local locator = require("tool_locator")
-local menu_style = require("menu_style")
+local ui = require("ui_builder")
 
 local json_ok, json = pcall(require, "json")
 
@@ -158,14 +158,6 @@ local function repo_action(command)
   )
 end
 
-local function close_after(command, popup_name)
-  local popup = popup_name or "triforce"
-  if not command or command == "" then
-    return string.format("sketchybar -m --set %s popup.drawing=off", popup)
-  end
-  return string.format("%s; sketchybar -m --set %s popup.drawing=off", command, popup)
-end
-
 local function theme_color(ctx, key, fallback)
   local theme = ctx and ctx.theme or {}
   return theme[key] or theme[fallback or "WHITE"] or "0xffcdd6f4"
@@ -180,50 +172,7 @@ local function popup_font(ctx, style, size)
 end
 
 local function popup_style(ctx)
-  local style_ctx = ctx or {}
-  if type(style_ctx.appearance) ~= "table" then
-    style_ctx = setmetatable({
-      appearance = type(style_ctx.state) == "table" and style_ctx.state.appearance or {},
-    }, { __index = style_ctx })
-  end
-
-  local style = menu_style.compute(style_ctx)
-  return {
-    raw = style,
-    font_small = style.font_small,
-    font_header = style.font_header,
-    item_height = style.item_height,
-    header_height = style.header_height,
-    item_corner_radius = style.item_corner_radius,
-    padding = style.padding or {},
-    label_color = style.label_color or theme_color(ctx, "WHITE"),
-    header_bg_color = theme_color(ctx, "BG_SEC_COLR", "WHITE"),
-    separator_color = theme_color(ctx, "DARK_WHITE", "SUBTEXT1"),
-  }
-end
-
-local function popup_item(name, props, parent_popup, style)
-  local padding = style and style.padding or {}
-  local background = {
-    drawing = false,
-    corner_radius = style and style.item_corner_radius or 6,
-  }
-  if style and style.item_height then
-    background.height = style.item_height
-  end
-  local item = {
-    name = name,
-    position = "popup." .. (parent_popup or "triforce"),
-    background = background,
-    ["icon.padding_left"] = padding.icon_left or 6,
-    ["icon.padding_right"] = padding.icon_right or 6,
-    ["label.padding_left"] = padding.label_left or 8,
-    ["label.padding_right"] = padding.label_right or 8,
-  }
-  for key, value in pairs(props or {}) do
-    item[key] = value
-  end
-  return item
+  return ui.popup_style(ctx)
 end
 
 local function get_field(value, path)
@@ -627,49 +576,26 @@ local function append_popup_entries(items, ctx, parent_popup, name_prefix, secti
   for _, entry in ipairs(section.entries or {}) do
     local base_name = name_prefix .. "." .. entry.id
     if entry.type == "header" then
-      table.insert(items, popup_item(base_name, {
-        icon = { string = "", drawing = false },
-        label = entry.label,
-        ["label.font"] = title_font,
-        ["label.color"] = section.color,
-        background = {
-          drawing = true,
-          color = style.header_bg_color,
-          corner_radius = style.item_corner_radius,
-          height = style.header_height,
-        },
-      }, parent_popup, style))
+      ui.header(items, parent_popup, base_name, entry.label, {
+        style = style,
+        font = title_font,
+        color = section.color,
+      })
     elseif entry.type == "separator" then
-      table.insert(items, popup_item(base_name, {
-        icon = { string = "", drawing = false },
-        label = "───────────────",
-        ["label.font"] = row_font,
-        ["label.color"] = style.separator_color,
-        background = { drawing = false },
-      }, parent_popup, style))
+      ui.separator(items, parent_popup, base_name, {
+        style = style,
+        font = row_font,
+      })
     else
-      local background = {
-        drawing = false,
-        corner_radius = style.item_corner_radius,
-        height = style.item_height,
-      }
-      if entry.prominent then
-        background = {
-          drawing = true,
-          color = "0x20343a58",
-          corner_radius = style.item_corner_radius,
-          height = style.item_height,
-        }
-      end
-      table.insert(items, popup_item(base_name, {
+      ui.row(items, parent_popup, base_name, {
+        style = style,
         icon = { string = entry.icon, color = entry.icon_color or section.color },
         label = truncate_label(entry.label, 40),
-        ["label.font"] = row_font,
-        ["label.color"] = entry.label_color or style.label_color,
-        click_script = close_after(entry.action, "triforce"),
-        background = background,
-        hover = true,
-      }, parent_popup, style))
+        font = row_font,
+        label_color = entry.label_color or style.label_color,
+        action = entry.action,
+        prominent = entry.prominent,
+      })
     end
   end
 end
@@ -680,26 +606,36 @@ local function popup_items_from_model(model, ctx)
   local title_font = style.font_header or popup_font(ctx, "Bold", ctx and ctx.settings and ctx.settings.font and ctx.settings.font.sizes and ctx.settings.font.sizes.small or 11)
   local accent = finishline_color(model.state.alerts_level)
 
-  table.insert(items, popup_item("oracle.triforce.header", {
+  ui.header(items, "triforce", "oracle.triforce.header", model.title or "Oracle Workflow", {
+    style = style,
     icon = { string = model.state.widget_icon, color = accent },
-    label = model.title or "Oracle Workflow",
-    ["label.font"] = title_font,
-    ["label.color"] = theme_color(ctx, "WHITE"),
-    background = {
-      drawing = true,
-      color = style.header_bg_color,
-      corner_radius = style.item_corner_radius,
-      height = style.header_height,
-    },
-  }, "triforce", style))
+    font = title_font,
+    color = theme_color(ctx, "WHITE"),
+  })
 
-  table.insert(items, popup_item("oracle.triforce.rom", {
+  ui.row(items, "triforce", "oracle.triforce.rom", {
+    style = style,
     icon = { string = "󰍛", color = theme_color(ctx, "BLUE") },
     label = "ROM: " .. tostring(model.state.rom_label or "patched ROM"),
-    ["label.font"] = style.font_small or title_font,
-    ["label.color"] = theme_color(ctx, "SUBTEXT1", "WHITE"),
-    background = { drawing = false },
-  }, "triforce", style))
+    font = style.font_small or title_font,
+    label_color = theme_color(ctx, "SUBTEXT1", "WHITE"),
+    hover = false,
+  })
+
+  local focus_label = model.state.focus_title ~= "" and model.state.focus_title
+    or model.state.focus_label
+    or ""
+  if focus_label ~= "" then
+    focus_label = tostring(focus_label):gsub("^Play%s+", "")
+    ui.row(items, "triforce", "oracle.triforce.focus", {
+      style = style,
+      icon = { string = "󰐃", color = theme_color(ctx, "GREEN") },
+      label = "Focus: " .. truncate_label(focus_label, 34),
+      font = style.font_small or title_font,
+      label_color = theme_color(ctx, "SUBTEXT1", "WHITE"),
+      hover = false,
+    })
+  end
 
   local visible_sections = {}
   for _, section in ipairs(model.sections or {}) do
@@ -709,37 +645,24 @@ local function popup_items_from_model(model, ctx)
   end
 
   if #visible_sections > 0 then
-    table.insert(items, popup_item("oracle.triforce.meta.sep", {
-      icon = { string = "", drawing = false },
-      label = "───────────────",
-      ["label.font"] = style.font_small,
-      ["label.color"] = style.separator_color,
-      background = { drawing = false },
-    }, "triforce", style))
+    ui.separator(items, "triforce", "oracle.triforce.meta.sep", {
+      style = style,
+      font = style.font_small,
+    })
   end
 
   for index, section in ipairs(visible_sections) do
     if index > 1 then
-      table.insert(items, popup_item("oracle.triforce.sep." .. section.id, {
-        icon = { string = "", drawing = false },
-        label = "───────────────",
-        ["label.font"] = style.font_small,
-        ["label.color"] = style.separator_color,
-        background = { drawing = false },
-      }, "triforce", style))
+      ui.separator(items, "triforce", "oracle.triforce.sep." .. section.id, {
+        style = style,
+        font = style.font_small,
+      })
     end
-    table.insert(items, popup_item("oracle.triforce." .. section.id .. ".header", {
-      icon = { string = "", drawing = false },
-      label = section.label,
-      ["label.font"] = title_font,
-      ["label.color"] = section.color,
-      background = {
-        drawing = true,
-        color = style.header_bg_color,
-        corner_radius = style.item_corner_radius,
-        height = style.header_height,
-      },
-    }, "triforce", style))
+    ui.header(items, "triforce", "oracle.triforce." .. section.id .. ".header", section.label, {
+      style = style,
+      font = title_font,
+      color = section.color,
+    })
     append_popup_entries(items, ctx, "triforce", "oracle.triforce." .. section.id, section, style)
   end
 
@@ -810,7 +733,6 @@ function oracle.create_triforce_widget(opts)
     else
       item.script = controller_script
     end
-    item.click_script = string.format("BARISTA_TRIFORCE_ACTION=click %s", item.script)
   elseif path_is_executable(state.triforce_widget) then
     item.script = state.triforce_widget
   end

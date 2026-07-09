@@ -18,10 +18,24 @@ MEDIA_CONTROL_SCRIPT="${BARISTA_MEDIA_CONTROL_SCRIPT:-$SCRIPTS_DIR/media_control
 APP_ICON_SCRIPT="${BARISTA_APP_ICON_SCRIPT:-$SCRIPTS_DIR/app_icon.sh}"
 OSASCRIPT_BIN="${BARISTA_OSASCRIPT_BIN:-$(command -v osascript 2>/dev/null || true)}"
 SWITCH_AUDIO_SOURCE_BIN="${BARISTA_SWITCH_AUDIO_SOURCE_BIN:-$(command -v SwitchAudioSource 2>/dev/null || true)}"
+MEDIA_LABEL_MAX="${BARISTA_MEDIA_LABEL_MAX:-72}"
 
 osascript_safe() {
   [ -n "$OSASCRIPT_BIN" ] || return 0
   "$OSASCRIPT_BIN" "$@" 2>/dev/null || true
+}
+
+truncate_label() {
+  local value="${1:-}"
+  local limit="${2:-72}"
+  case "$limit" in
+    ''|*[!0-9]*) limit=72 ;;
+  esac
+  if [ "$limit" -gt 1 ] && [ "${#value}" -gt "$limit" ]; then
+    printf '%s…\n' "${value:0:limit-1}"
+  else
+    printf '%s\n' "$value"
+  fi
 }
 
 case "$SENDER" in
@@ -51,6 +65,11 @@ esac
 if [ -z "$VOLUME" ]; then
   VOLUME="$(osascript_safe -e 'output volume of (get volume settings)')"
 fi
+case "$VOLUME" in
+  ''|*[!0-9]*)
+    VOLUME=0
+    ;;
+esac
 
 MUTED="$(osascript_safe -e 'output muted of (get volume settings)')"
 [ -n "$MUTED" ] || MUTED=false
@@ -126,15 +145,11 @@ else
   COLOR="$LOW_COLOR"
 fi
 
-if [ -n "$OUTPUT_DEVICE" ]; then
-  sketchybar --set volume.header label="Audio · ${OUTPUT_DEVICE}"
-else
-  sketchybar --set volume.header label="Audio"
-fi
+sketchybar --set volume.header label="Audio"
 
-STATE_LABEL="$LABEL"
+STATE_LABEL="Volume: $LABEL"
 if [ "$MUTED" != "true" ]; then
-  STATE_LABEL="${VOLUME}% volume"
+  STATE_LABEL="Volume: ${VOLUME}%"
 fi
 
 sketchybar --set volume.state \
@@ -143,7 +158,7 @@ sketchybar --set volume.state \
   icon.color="$COLOR" >/dev/null 2>&1 || true
 
 sketchybar --set volume.output \
-  label="${OUTPUT_DEVICE:-System Default}" \
+  label="Output: ${OUTPUT_DEVICE:-System Default}" \
   icon="󰓃" \
   icon.color="$OK_COLOR" >/dev/null 2>&1 || true
 
@@ -173,14 +188,15 @@ if [ -n "$MEDIA_PLAYER" ] && [ -x "$APP_ICON_SCRIPT" ]; then
   MEDIA_ICON="$("$APP_ICON_SCRIPT" "$MEDIA_PLAYER" 2>/dev/null || echo "󰎈")"
 fi
 
-MEDIA_LABEL="Nothing playing"
+MEDIA_LABEL="Now Playing: Nothing"
 if [ -n "$MEDIA_TRACK" ] && [ -n "$MEDIA_ARTIST" ]; then
-  MEDIA_LABEL="${MEDIA_TRACK} — ${MEDIA_ARTIST}"
+  MEDIA_LABEL="Now Playing: ${MEDIA_TRACK} — ${MEDIA_ARTIST}"
 elif [ -n "$MEDIA_TRACK" ]; then
-  MEDIA_LABEL="$MEDIA_TRACK"
+  MEDIA_LABEL="Now Playing: $MEDIA_TRACK"
 elif [ -n "$MEDIA_PLAYER" ]; then
-  MEDIA_LABEL="${MEDIA_PLAYER} · ${MEDIA_STATE}"
+  MEDIA_LABEL="Now Playing: ${MEDIA_PLAYER} · ${MEDIA_STATE}"
 fi
+MEDIA_LABEL="$(truncate_label "$MEDIA_LABEL" "$MEDIA_LABEL_MAX")"
 
 sketchybar --set volume.media \
   icon="$MEDIA_ICON" \

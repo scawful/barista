@@ -10,6 +10,7 @@ local control_center = {}
 local shell_utils = require("shell_utils")
 local paths_module = require("paths")
 local binary_resolver = require("binary_resolver")
+local ui = require("ui_builder")
 
 local HOME = os.getenv("HOME")
 local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
@@ -274,11 +275,16 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
   local config_dir = resolve_config_dir(opts)
   local scripts_dir = resolve_scripts_dir(opts)
   local item_name = resolve_item_name(opts)
-  local popup_position = resolve_popup_position(opts)
   local YABAI_CONTROL = scripts_dir .. "/yabai_control.sh"
-  local TOGGLE_SHORTCUTS = scripts_dir .. "/toggle_yabai_shortcuts.sh"
-  local TOGGLE_SHORTCUTS_FALLBACK = scripts_dir .. "/toggle_shortcuts.sh"
   local wm = resolve_window_manager_flags(opts)
+  local style = {
+    font_small = font_small,
+    font_header = font_bold,
+    item_corner_radius = 6,
+    padding = { icon_left = 8, icon_right = 6, label_left = 4, label_right = 8 },
+    label_color = theme.WHITE,
+    separator_color = "0x40cdd6f4",
+  }
   local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
   local function shell_command(path, args)
     if not path or path == "" then
@@ -292,62 +298,121 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
   local popup_close = sketchybar_cmd(string.format("--set %s popup.drawing=off", shell_quote(item_name)))
   local trigger_space_mode_refresh = sketchybar_cmd("--trigger space_mode_refresh")
   local function close_after(command)
-    if not command or command == "" then
-      return popup_close
-    end
-    return command .. "; " .. popup_close
+    return ui.close_after(item_name, command, { sketchybar_bin = SKETCHYBAR_BIN })
   end
+
+  local function normalize_label(item, label, font, color)
+    item.label = { string = label or "", font = font or font_small, color = color }
+    return item
+  end
+
+  local function normalize_icon(item, icon, color, drawing)
+    if type(icon) == "table" then
+      item.icon = icon
+    else
+      item.icon = { string = icon or "", color = color, drawing = drawing }
+    end
+    return item
+  end
+
+  local function add_header(name, label, color, icon, icon_color)
+    local built = {}
+    ui.header(built, item_name, name, label, {
+      style = style,
+      font = font_bold,
+      color = color,
+      icon = icon and { string = icon, color = icon_color or color, drawing = true } or { string = "", drawing = false },
+      background_drawing = false,
+    })
+    local item = built[1]
+    normalize_label(item, label, font_bold, color)
+    normalize_icon(item, icon or "", icon_color or color, icon ~= nil)
+    item["label.padding_left"] = icon and 4 or 8
+    item["label.padding_right"] = 8
+    item["icon.padding_left"] = icon and 6 or 8
+    item["icon.padding_right"] = 6
+    item.background = { drawing = false }
+    table.insert(items, item)
+  end
+
+  local function add_separator(name)
+    local built = {}
+    ui.separator(built, item_name, name, {
+      style = style,
+      font = font_small,
+      color = "0x40cdd6f4",
+    })
+    local item = built[1]
+    normalize_label(item, "───────────────", font_small, "0x40cdd6f4")
+    item.icon = { drawing = false }
+    item["label.padding_left"] = 8
+    item.background = { drawing = false }
+    table.insert(items, item)
+  end
+
+  local function add_row(name, row)
+    row = row or {}
+    local built = {}
+    ui.row(built, item_name, name, {
+      style = style,
+      icon = { string = row.icon or "", color = row.color },
+      label = row.label or row.name or "",
+      click_script = row.click_script,
+      action = row.action,
+      sketchybar_bin = SKETCHYBAR_BIN,
+      hover = row.hover,
+      label_color = row.label_color,
+    })
+    local item = built[1]
+    normalize_icon(item, row.icon or "", row.color, row.icon_drawing)
+    normalize_label(item, row.label or row.name or "", row.font or font_small, row.label_color)
+    item["icon.padding_left"] = 8
+    item["icon.padding_right"] = 6
+    item["label.padding_left"] = 4
+    item["label.padding_right"] = 8
+    item.background = row.background or { drawing = false }
+    table.insert(items, item)
+  end
+
   local function add_extension_rows(prefix, rows)
     if type(rows) ~= "table" or #rows == 0 then
       return
     end
-    table.insert(items, {
-      name = prefix .. ".sep",
-      position = popup_position,
-      icon = { drawing = false },
-      label = { string = "───────────────", font = font_small, color = "0x40cdd6f4" },
-      ["label.padding_left"] = 8,
-      background = { drawing = false },
-    })
-    table.insert(items, {
-      name = prefix .. ".header",
-      position = popup_position,
-      icon = { string = "", drawing = false },
-      label = { string = "Desk", font = font_bold, color = tc("TEAL") },
-      ["label.padding_left"] = 8,
-      ["label.padding_right"] = 8,
-      background = { drawing = false },
-    })
+    add_separator(prefix .. ".sep")
+    add_header(prefix .. ".header", "Desk", tc("TEAL"))
     for _, row in ipairs(rows) do
       if row.action and row.action ~= "" then
-        table.insert(items, {
-          name = prefix .. "." .. row.id,
-          position = popup_position,
-          icon = { string = row.icon or "󰐕", color = row.icon_color or tc("TEAL") },
-          label = { string = row.label or row.id, font = font_small, color = row.label_color },
-          ["icon.padding_left"] = 8,
-          ["icon.padding_right"] = 6,
-          ["label.padding_left"] = 4,
-          ["label.padding_right"] = 8,
+        add_row(prefix .. "." .. row.id, {
+          icon = row.icon or "󰐕",
+          color = row.icon_color or tc("TEAL"),
+          label = row.label or row.id,
+          label_color = row.label_color,
           click_script = close_after(row.action),
-          background = { drawing = false },
         })
       end
     end
   end
 
-  -- Header
-  table.insert(items, {
-    name = "cc.header",
-    position = popup_position,
-    icon = { string = "󰕮", color = tc("LAVENDER"), drawing = true },
-    label = { string = "Control Center", font = font_bold, color = theme.WHITE },
-    ["icon.padding_left"] = 6,
-    ["icon.padding_right"] = 6,
-    ["label.padding_left"] = 4,
-    ["label.padding_right"] = 8,
-    background = { drawing = false },
-  })
+  add_header("cc.header", "Control Center", theme.WHITE, "󰕮", tc("LAVENDER"))
+  add_header("cc.mode_header", "Mode", tc("MAUVE", "LAVENDER"))
+
+  local function mode_label(id, label)
+    if wm.mode == id then return "● " .. label end
+    return "○ " .. label
+  end
+  local mode_rows = {
+    { id = "required", label = "Yabai On", icon = "󰆾", color = tc("GREEN"), cmd = shell_command(YABAI_CONTROL, "wm-mode required") },
+    { id = "optional", label = "Auto If Running", icon = "󰐊", color = tc("SAPPHIRE"), cmd = shell_command(YABAI_CONTROL, "wm-mode optional") },
+    { id = "disabled", label = "Manual Bar", icon = "󰒄", color = tc("YELLOW"), cmd = shell_command(YABAI_CONTROL, "wm-mode disabled") },
+  }
+  for _, row in ipairs(mode_rows) do
+    add_row("cc.mode." .. row.id, {
+      icon = row.icon,
+      color = row.color,
+      label = mode_label(row.id, row.label),
+      click_script = close_after(row.cmd),
+    })
+  end
 
   if not wm.enabled then
     local notice_label = nil
@@ -360,75 +425,35 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     end
 
     if notice_label then
-      table.insert(items, {
-        name = "cc.window_manager.notice",
-        position = popup_position,
-        icon = { string = "󰔟", color = tc("YELLOW") },
-        label = { string = notice_label, font = font_small },
-        ["icon.padding_left"] = 8,
-        ["icon.padding_right"] = 6,
-        ["label.padding_left"] = 4,
-        ["label.padding_right"] = 8,
+      add_row("cc.window_manager.notice", {
+        icon = "󰔟",
+        color = tc("YELLOW"),
+        label = notice_label,
         click_script = string.format("open %q", config_dir .. "/docs/guides/INSTALLATION_GUIDE.md"),
-        background = { drawing = false },
       })
     end
     add_extension_rows("cc.extension", opts.extension_items)
   end
 
   if wm.enabled then
-    -- Space Layout Section
-    table.insert(items, {
-      name = "cc.layout_header",
-      position = popup_position,
-      icon = { string = "", drawing = false },
-      label = { string = "Space Layout", font = font_bold, color = tc("BLUE") },
-      ["label.padding_left"] = 8,
-      ["label.padding_right"] = 8,
-      background = { drawing = false },
-    })
+    add_header("cc.layout_header", "Space Layout", tc("BLUE"))
 
     local layouts = {
-      { id = "float", name = "Float (default)", icon = "󰒄", cmd = shell_command(config_dir .. "/plugins/set_space_mode.sh", "current float") },
+      { id = "float", name = "Float / Manual", icon = "󰒄", cmd = shell_command(config_dir .. "/plugins/set_space_mode.sh", "current float") },
       { id = "bsp", name = "BSP Tiling", icon = "󰆾", cmd = shell_command(config_dir .. "/plugins/set_space_mode.sh", "current bsp") },
       { id = "stack", name = "Stack Tiling", icon = "󰓩", cmd = shell_command(config_dir .. "/plugins/set_space_mode.sh", "current stack") },
     }
-
     for _, layout in ipairs(layouts) do
-      table.insert(items, {
-        name = "cc.layout." .. layout.id,
-        position = popup_position,
-        icon = { string = layout.icon, color = tc("SAPPHIRE") },
-        label = { string = layout.name, font = font_small },
-        ["icon.padding_left"] = 8,
-        ["icon.padding_right"] = 6,
-        ["label.padding_left"] = 4,
-        ["label.padding_right"] = 8,
+      add_row("cc.layout." .. layout.id, {
+        icon = layout.icon,
+        color = tc("SAPPHIRE"),
+        label = layout.name,
         click_script = string.format("%s; %s; %s", layout.cmd, trigger_space_mode_refresh, popup_close),
-        background = { drawing = false },
       })
     end
 
-    -- Separator
-    table.insert(items, {
-      name = "cc.sep1",
-      position = popup_position,
-      icon = { drawing = false },
-      label = { string = "───────────────", font = font_small, color = "0x40cdd6f4" },
-      ["label.padding_left"] = 8,
-      background = { drawing = false },
-    })
-
-    -- Layout Operations Section
-    table.insert(items, {
-      name = "cc.layout_ops_header",
-      position = popup_position,
-      icon = { string = "", drawing = false },
-      label = { string = "Layout Ops", font = font_bold, color = tc("GREEN") },
-      ["label.padding_left"] = 8,
-      ["label.padding_right"] = 8,
-      background = { drawing = false },
-    })
+    add_separator("cc.sep1")
+    add_header("cc.layout_ops_header", "Layout Ops", tc("GREEN"))
 
     local layout_ops = {
       { id = "balance", name = "Balance Windows", icon = "󰓅", cmd = shell_command(YABAI_CONTROL, "balance") },
@@ -437,36 +462,37 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
       { id = "flipx", name = "Flip Horizontal", icon = "󰯌", cmd = shell_command(YABAI_CONTROL, "space-mirror-x") },
       { id = "flipy", name = "Flip Vertical", icon = "󰯎", cmd = shell_command(YABAI_CONTROL, "space-mirror-y") },
     }
-
     for _, op in ipairs(layout_ops) do
-      table.insert(items, {
-        name = "cc.layout_ops." .. op.id,
-        position = popup_position,
-        icon = { string = op.icon, color = theme.TEAL },
-        label = { string = op.name, font = font_small },
-        ["icon.padding_left"] = 8,
-        ["icon.padding_right"] = 6,
-        ["label.padding_left"] = 4,
-        ["label.padding_right"] = 8,
+      add_row("cc.layout_ops." .. op.id, {
+        icon = op.icon,
+        color = theme.TEAL,
+        label = op.name,
         click_script = close_after(op.cmd),
-        background = { drawing = false },
       })
     end
 
-    -- Separator
-    table.insert(items, {
-      name = "cc.sep2",
-      position = popup_position,
-      icon = { drawing = false },
-      label = { string = "───────────────", font = font_small, color = "0x40cdd6f4" },
-      ["label.padding_left"] = 8,
-      background = { drawing = false },
-    })
+    add_separator("cc.sep2")
+    add_header("cc.defaults_header", "Current App Defaults", tc("PEACH"))
 
-    -- Yabai Shortcuts Toggle
+    local default_ops = {
+      { id = "float", name = "Default App: Float", icon = "󰒄", cmd = shell_command(YABAI_CONTROL, "app-default-current float") },
+      { id = "tile", name = "Default App: Tile", icon = "󰆾", cmd = shell_command(YABAI_CONTROL, "app-default-current tile") },
+      { id = "unset", name = "Unset App Default", icon = "󰅖", cmd = shell_command(YABAI_CONTROL, "app-default-current unset") },
+    }
+    for _, op in ipairs(default_ops) do
+      add_row("cc.defaults." .. op.id, {
+        icon = op.icon,
+        color = op.id == "unset" and tc("RED") or tc("PEACH"),
+        label = op.name,
+        click_script = close_after(op.cmd),
+      })
+    end
+
+    add_separator("cc.sep3")
+
     local shortcuts_running = wm.skhd_running
-    local shortcuts_on_label = "Yabai Shortcuts: On"
-    local shortcuts_off_label = "Yabai Shortcuts: Off"
+    local shortcuts_on_label = "Shortcuts: On"
+    local shortcuts_off_label = "Shortcuts: Off"
     local shortcuts_label = shortcuts_running and shortcuts_on_label or shortcuts_off_label
     local shortcuts_color = shortcuts_running and tc("GREEN") or tc("RED")
     local toggle_script = scripts_dir .. "/toggle_yabai_shortcuts.sh"
@@ -484,17 +510,11 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
       shortcuts_off_label,
       tc("RED")
     )
-    table.insert(items, {
-      name = "cc.yabai.shortcuts",
-      position = popup_position,
-      icon = { string = "󰌌", color = shortcuts_color },
-      label = { string = shortcuts_label, font = font_small },
-      ["icon.padding_left"] = 8,
-      ["icon.padding_right"] = 6,
-      ["label.padding_left"] = 4,
-      ["label.padding_right"] = 8,
+    add_row("cc.yabai.shortcuts", {
+      icon = "󰌌",
+      color = shortcuts_color,
+      label = shortcuts_label,
       click_script = string.format("%s; %s; %s", toggle_action, update_action, popup_close),
-      background = { drawing = false },
     })
   end
 

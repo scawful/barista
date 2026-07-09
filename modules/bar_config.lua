@@ -178,6 +178,7 @@ function compute(state, theme, state_module, associated_displays, detected_displ
     configured_bar_height = configured_bar_height,
     bar = {
       position = "top",
+      topmost = "off",
       height = bar_height,
       blur_radius = bar_blur_radius,
       color = bar_color,

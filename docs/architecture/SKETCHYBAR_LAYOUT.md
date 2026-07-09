@@ -85,12 +85,18 @@ and the global popup manager listens to real `space_change` rather than the
 visual-only `space_active_refresh`; both events can arrive during the same focus
 transition as a click. Use a second click, popup action rows, or real
 space/display/wake events to dismiss.
+Left-side popup anchors share a filled idle chip and hover-restore style through
+`modules/ui_builder.lua` plus `plugins/lib/common.sh`; hover should restore that
+configured idle chip instead of clearing the anchor to transparent.
 
 ## Events and triggers
 
 - **space_change**, **space_mode_refresh**: Added as sketchybar events in main.lua. Real `space_changed` yabai signals now route through `refresh_spaces.sh`, which emits `space_change` only when the active space truly changed and emits `space_mode_refresh` after active/topology updates.
 - **space_visual_refresh**: Added as a dedicated post-topology and on-demand visual refresh event; handled by `space_runtime`.
 - **Yabai signals** (space_changed, space_created, space_destroyed, display_*) are wired in main.lua `watch_spaces()` and all point at `refresh_spaces.sh` so cache/lock handling stays in one place.
+  If a signal arrives while `refresh_spaces.sh` already owns the topology lock,
+  the script writes the pending reason and schedules one delayed follow-up after
+  the lock clears, coalescing event bursts into a single final refresh.
 
 ---
 

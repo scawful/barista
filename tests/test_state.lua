@@ -101,6 +101,8 @@ if ok and state_module then
     assert_equal(normalized.widgets.volume, true, "missing widget default applied")
     assert_equal(normalized.modes.widget_daemon, "auto", "widget daemon mode default applied")
     assert_equal(normalized.integrations.control_center.item_name, "control_center", "control_center item name default applied")
+    assert_type(normalized.menus.calendar.task_sources, "table", "calendar task source defaults present")
+    assert_equal(normalized.menus.calendar.task_sources[2], "~/src/hobby/oracle-of-secrets/Docs/oracle.org", "calendar should default to the live Oracle task file")
   end)
 else
   run_test("state module: load check (skipped - module not available in test env)", function()

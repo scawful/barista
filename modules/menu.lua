@@ -2,6 +2,7 @@ local menu = {}
 local json = require("json")
 local menu_renderer = require("menu_renderer")
 local locator = require("tool_locator")
+local ui = require("ui_builder")
 
 local unpack = table.unpack or _G.unpack
 
@@ -287,6 +288,13 @@ function menu.render_all_menus(ctx)
       icon_for = ctx.icon_for,
       call_script = ctx.call_script,
       open_path = ctx.open_path,
+      env_prefix = ctx.env_prefix,
+      hover_color = ctx.hover_color,
+      hover_border_color = ctx.hover_border_color,
+      hover_border_width = ctx.hover_border_width,
+      hover_animation_curve = ctx.hover_animation_curve,
+      hover_animation_duration = ctx.hover_animation_duration,
+      widget_corner_radius = ctx.widget_corner_radius,
       paths = ctx.paths,
       helpers = ctx.helpers,
       integrations = ctx.integrations,
@@ -321,7 +329,16 @@ function menu.render_all_menus(ctx)
   if type(ctx.popup_toggle_action) == "function" then
     apple_menu_click = ctx.popup_toggle_action()
   end
-  local apple_menu_script = ctx.popup_anchor_script
+  local apple_menu_script = ui.anchor_script(ctx.popup_anchor_script, ctx, {
+    height = widget_height,
+    padding_left = 4,
+    padding_right = 4,
+  })
+  local apple_menu_background = ui.anchor_chip_style(ctx, {
+    height = widget_height,
+    padding_left = 4,
+    padding_right = 4,
+  })
 
   sbar.add("item", "apple_menu", {
     position = "left",
@@ -329,15 +346,10 @@ function menu.render_all_menus(ctx)
     label = { drawing = false },
     associated_display = associated_displays,
     associated_space = "all",
-    background = {
-        color = "0x00000000",
-        corner_radius = 4,
-        height = widget_height,
-        padding_left = 4,
-        padding_right = 4
-    },
+    background = apple_menu_background,
     click_script = apple_menu_click,
     script = apple_menu_script,
+    updates = "on",
     popup = {
       background = {
         border_width = popup_border_width,

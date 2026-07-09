@@ -162,6 +162,11 @@ sketchybar --reload
 - The global popup manager no longer dismisses on `front_app_switched` by default. App-focus churn can fire while clicking SketchyBar itself, which made some popups open and immediately close. Space/display/wake events still dismiss globally.
 - Popup anchors no longer subscribe to `mouse.exited.global` in normal runtime. This trades automatic pointer-exit dismissal for reliable click-open behavior; second-click, action rows, and space/display/wake events still close menus.
 - The global popup manager dismisses on real `space_change`, not visual-only `space_active_refresh`; focused-space visual repairs should not close a popup that was just opened.
+- Left-side popup anchors use a shared dark idle chip style from
+  `modules/ui_builder.lua`. Anchor hover scripts restore configured idle
+  background/border props through `plugins/lib/common.sh` instead of clearing
+  the background, so Apple, Triforce, Music, Control Center, and Front App keep
+  the same geometry after hover.
 
 Regression checklist before declaring popup clicks fixed:
 ```bash
@@ -213,6 +218,9 @@ Expected: click scripts are direct
 - Conservative presets live in the same popup: `Utility`, `Focus`, `Presentation`, and `Tile Here`. They do not move windows across spaces or displays and they clear topmost state where a preset returns a window to normal tiling.
 - The `front_app` popup now exposes the same policy directly through `Adopt Current Space Mode` and `Send to Float Space`, so recovery does not require remembering a lower-level yabai command.
 - The `front_app` and Control Center popups now include app-default rows: `Default This App: Float`, `Default This App: Tile`, and `Unset This App Default`. These call `scripts/yabai_control.sh app-default-current ...`, persist the choice in `state.json` under `window_defaults.apps`, and install/remove a labeled live yabai rule (`barista-default-*`) when yabai is running.
+- `app-default-current` uses the same front-app context fallback when yabai has
+  no focused managed window, so unmanaged/frontmost utility apps can still be
+  saved as app defaults.
 
 ### 11. Runtime Context Helper
 **Current path**: `main.lua` + `modules/runtime_daemon.lua` + `scripts/runtime_context.sh` + `bin/runtime_context_helper`

@@ -82,6 +82,7 @@ Following the initial audit, the active runtime path was tightened again in Apri
     - `space_visuals.sh` now applies and persists a complete focused/visible/idle style set for each space, so hover restore uses `cache/space_visuals/style_state/` instead of re-deriving active state from a stale selected-space cache
     - the active spaces scripts (`refresh_spaces.sh`, `simple_spaces.sh`, `space_visuals.sh`) now all accept injected `BARISTA_*_BIN` overrides so shell smoke tests exercise the same runtime boundary deterministically
     - startup now schedules one delayed direct `space_visuals.sh` pass after the runtime subscriptions are back up, so the spaces strip settles to the real focused space after reload instead of relying only on the first topology-driven pass or the event/subscription race
+    - contended `refresh_spaces.sh` runs now record the last pending reason and schedule one coalesced follow-up after the active lock clears, so display/space bursts do not spin duplicate topology work or silently drop the final topology state
 *   **Result:**
     - per-space handlers are now hover-only
     - full rebuilds create fewer items and avoid unused popup rows
@@ -105,6 +106,11 @@ Following the initial audit, the active runtime path was tightened again in Apri
 *   **File:** `helpers/popup_hover.c`
 *   **Update:** Replaced `system()` with `execlp()`.
 *   **Result:** Eliminates shell parsing and one fork per hover event. Subsecond latency on popups.
+
+### 3a. Anchor Chip Styling (Verified)
+*   **Files:** `modules/ui_builder.lua`, `modules/items_left.lua`, `modules/apple_menu_enhanced.lua`, `plugins/lib/common.sh`, `plugins/popup_anchor.sh`
+*   **Update:** Left-side popup anchors share one filled idle chip and hover-restore contract. Hover scripts now restore configured idle background/border props instead of always clearing the background to transparent.
+*   **Result:** Apple, Triforce, Music, Control Center, and Front App can keep a consistent visual language without adding query-before-toggle click controllers.
 
 ### 3b. SketchyBar Binary Resolution + Plugin Runaway Guard (Resolved)
 *   **Files:** `plugins/lib/common.sh`, `plugins/space.sh`, `plugins/space_visuals.sh`, `plugins/refresh_spaces.sh`, `scripts/process_manager.sh`

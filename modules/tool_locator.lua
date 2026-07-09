@@ -264,14 +264,84 @@ function locator.resolve_afs_browser_app(opts)
 end
 
 function locator.resolve_ghostty_app(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
   return locator.resolve_path({
     option_value(opts, "ghostty_app"),
     os.getenv("BARISTA_GHOSTTY_APP") or os.getenv("GHOSTTY_APP"),
-    "/Applications/Ghostty.app",
-    HOME .. "/Applications/Ghostty.app",
-    "/Applications/ghostty.app",
-    HOME .. "/Applications/ghostty.app",
+    use_global_apps and "/Applications/Ghostty.app" or nil,
+    use_global_apps and (HOME .. "/Applications/Ghostty.app") or nil,
+    use_global_apps and "/Applications/ghostty.app" or nil,
+    use_global_apps and (HOME .. "/Applications/ghostty.app") or nil,
   }, true)
+end
+
+function locator.resolve_lm_studio_app(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
+  return locator.resolve_path({
+    option_value(opts, "lm_studio_app"),
+    os.getenv("BARISTA_LM_STUDIO_APP") or os.getenv("LM_STUDIO_APP") or os.getenv("LMSTUDIO_APP"),
+    use_global_apps and "/Applications/LM Studio.app" or nil,
+    use_global_apps and (HOME .. "/Applications/LM Studio.app") or nil,
+    use_global_apps and "/Applications/LMStudio.app" or nil,
+    use_global_apps and (HOME .. "/Applications/LMStudio.app") or nil,
+  }, true)
+end
+
+function locator.resolve_chatgpt_app(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
+  return locator.resolve_path({
+    option_value(opts, "chatgpt_app"),
+    os.getenv("BARISTA_CHATGPT_APP") or os.getenv("CHATGPT_APP"),
+    use_global_apps and "/Applications/ChatGPT.app" or nil,
+    use_global_apps and (HOME .. "/Applications/ChatGPT.app") or nil,
+  }, true)
+end
+
+function locator.resolve_claude_app(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
+  return locator.resolve_path({
+    option_value(opts, "claude_app"),
+    os.getenv("BARISTA_CLAUDE_APP") or os.getenv("CLAUDE_APP"),
+    use_global_apps and "/Applications/Claude.app" or nil,
+    use_global_apps and (HOME .. "/Applications/Claude.app") or nil,
+  }, true)
+end
+
+function locator.resolve_cursor_app(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
+  return locator.resolve_path({
+    option_value(opts, "cursor_app"),
+    os.getenv("BARISTA_CURSOR_APP") or os.getenv("CURSOR_APP"),
+    use_global_apps and "/Applications/Cursor.app" or nil,
+    use_global_apps and (HOME .. "/Applications/Cursor.app") or nil,
+  }, true)
+end
+
+function locator.resolve_cortex_launcher(opts)
+  local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
+  local resolved, found = locator.resolve_executable_path({
+    option_value(opts, "cortex_bin"),
+    option_value(opts, "cortex"),
+    os.getenv("BARISTA_CORTEX_BIN") or os.getenv("CORTEX_BIN"),
+    use_global_apps and (HOME .. "/.local/bin/cortex") or nil,
+    code_dir .. "/lab/cortex/cortex",
+    code_dir .. "/lab/cortex/.build/arm64-apple-macosx/release/cortex",
+    code_dir .. "/lab/cortex/.build/arm64-apple-macosx/debug/cortex",
+    code_dir .. "/cortex/cortex",
+  })
+  if found then
+    return resolved, true
+  end
+
+  if use_global_apps then
+    resolved = locator.command_path("cortex")
+    if resolved then
+      return resolved, true
+    end
+  end
+
+  return resolved, false
 end
 
 function locator.resolve_stemforge_app(opts)

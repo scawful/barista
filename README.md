@@ -48,6 +48,10 @@ The installer will guide you through:
 | **Work** | High info density, meeting indicators, calendar integration. | Required | 💼 Pro |
 | **Personal** | The default dev setup. Code, media, and tiling. | Required | ⚡️ Fast |
 
+Triforce/Oracle and Music Studio are Personal-profile integrations. Minimal,
+Cozy, Work, and restricted-work leave both off unless that Mac explicitly opts
+in through its ignored local state or `barista_config.lua`.
+
 ## Window Management (Yabai)
 
 Barista includes optimized configurations for **Yabai** (window manager) and **Skhd** (hotkeys).
@@ -131,10 +135,12 @@ In practice, the Triforce popup should stay close to:
 - a session section with `Continue: <current focus>` and `Patch + Launch`
 - an app launcher section with `Oracle Hub`, `Yaze`, `z3ed`, and `Mesen2 OoS`
 
-For quick terminal access, the generated skhd shortcuts now include:
+For quick workflow access, the generated skhd shortcuts include:
 
 - `⌘⌥T` to open a terminal window (Ghostty when installed, Terminal as fallback)
 - `⌘⌥Z` to launch `z3ed` in Ghostty
+- `⌘⌥D` to refresh and open the clock popup's `Today` / `Next` / `Blocked`
+  task focus, backed by `~/src/folio/tasks/active.md` by default
 
 ## Customization
 

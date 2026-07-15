@@ -46,6 +46,10 @@ Profiles (Work, Personal, Minimal, Cozy) live in `profiles/*.lua` and change den
 ./scripts/set_mode.sh cozy disabled      # Cozy, no yabai
 ```
 
+The Triforce/Oracle and Music Studio menus are Personal-profile integrations.
+Minimal, Cozy, Work, and restricted-work keep both disabled unless the current
+Mac explicitly enables them in machine-local state or `barista_config.lua`.
+
 Machine profile variants add a gitignored per-Mac layer on top:
 
 ```bash

@@ -1,8 +1,15 @@
 # Barista Configuration Tool - halext:: ImGui Vision
 
 **Date**: 2026-01-01
-**Status**: Planning
-**Replaces**: BaristaControlPanel.app (Objective-C, 351KB)
+**Status**: Archived proposal; not the active implementation plan
+**Originally proposed to replace**: BaristaControlPanel.app (Objective-C)
+
+> Historical note (verified 2026-07-11): Barista's supported settings surface is
+> the native AppKit implementation under `gui/src/`, launched through
+> `bin/open_control_panel.sh`. The separate `~/src/lab/barista_config/` tree
+> described below is not part of the current runtime. Keep this document for
+> design lineage only; use `docs/features/BARISTA_CONTROL_PANEL.md` and the live
+> source tree for operational decisions.
 
 ## Overview
 

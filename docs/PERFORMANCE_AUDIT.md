@@ -26,6 +26,7 @@ Following the initial audit, the active runtime path was tightened again in Apri
     - `front_app_context.sh` prefers the cached front-app state before falling back to direct yabai/System Events discovery
     - `media_control.sh` prefers cached player/output state before falling back to direct AppleScript / `SwitchAudioSource`
     - the volume popup now exposes cached output routes and switches outputs by cached index instead of rediscovering devices on every popup refresh
+    - the compiled helper drains a per-refresh autorelease pool on every daemon iteration and explicitly closes task pipe handles, bounding descriptor use and reducing Foundation task/data retention across long-running sessions
     - shell smoke tests now cover the helper delegation path, front-app fallback behavior, daemon cache warming, and cached output switching
 *   **Result:** the hottest front-app / spaces path no longer depends on the shell implementation of `runtime_context.sh`, while audio continues to share the same cache surface.
 

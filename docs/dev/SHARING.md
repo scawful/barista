@@ -19,12 +19,14 @@
    cd ~/src/sketchybar/gui
    make
    ```
-5. **Apply the minimal machine variant** (disables ROM hacking + Emacs integrations and keeps window management optional):
+5. **Apply the minimal machine variant** (disables Triforce/Oracle, Music,
+   ROM-hacking, and Emacs integrations while keeping window management optional):
    ```sh
    cd ~/src/sketchybar
    ./scripts/setup_machine.sh --profile-variant minimal --skip-fonts --skip-panel --yes
    ```
-6. Launch Sketchybar (or `sketchybar --reload`). The control panel now exposes the same customization options without the Zelda-specific menu items.
+6. Launch Sketchybar (or `sketchybar --reload`). The control panel exposes the
+   same customization options without personal Zelda or Music menu items.
 
 ## Toggling Integrations Later
 - To re-enable everything on your own machine, run `./scripts/setup_machine.sh --profile-variant personal --skip-fonts --skip-panel --yes`.
@@ -32,7 +34,16 @@
 - The helper script behind the scenes (`plugins/set_integration_enabled.sh`) updates `state.json` and tells Sketchybar to refresh immediately.
 
 ## Customization Notes for New Users
-- **Docs + Actions**: edit `data/workflow_shortcuts.json` to point to your own org files, quick actions, and repo list. Those entries feed the control panel and the Help Center.
+- **Docs + Actions**: copy `data/workflow_shortcuts.local.example.json` to the
+  gitignored `data/workflow_shortcuts.local.json`, add this Mac's editor keymaps,
+  docs, quick actions, and repo links, then run:
+  ```sh
+  BARISTA_WORKFLOW_EXTRAS=data/workflow_shortcuts.local.json \
+    lua helpers/generate_shortcuts.lua
+  ```
+  Barista writes an ignored `data/workflow_shortcuts.local.generated.json` and
+  prefers it in the control panel and Help Center. Plain generation refreshes
+  the portable tracked `data/workflow_shortcuts.json` instead.
 - **Help Center**: run `gui/bin/help_center` for a native macOS window that lists shortcuts, quick actions, and repo statuses. Nothing opens Parallels/VSCode automatically anymore.
 - **Space Behavior**: spaces default to floating windows unless you explicitly pick BSP/Stack from the Yabai widget popup or via `set_space_mode.sh`. That keeps macOS feeling native for users who don’t want tiling.
 

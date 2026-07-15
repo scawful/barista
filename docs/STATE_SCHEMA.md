@@ -227,12 +227,16 @@ Nested `items[]` rows support:
 
 Supported keys used by the calendar popup:
 
-- `task_sources`: string or array of local org/task files for compact `Today`, `Next`, and `Blocked` summaries
+- `task_sources`: string or array of local Markdown/Org task files for compact `Today`, `Next`, and `Blocked` summaries
 
-Defaults prefer local org task files under `~/src/docs/workflow/tasks.org` and
-`~/src/hobby/oracle-of-secrets/Docs/oracle.org`, then optional personal inbox
-rows under `~/src/folio/tasks/inbox.org`. Calendar task rows are status-only;
-they should not become doc, repo, tracker, or terminal launcher rows.
+Defaults read the canonical personal task board at
+`~/src/folio/tasks/active.md`, then the Oracle project board at
+`~/src/hobby/oracle-of-secrets/Docs/oracle.org`. The personal board may use
+Markdown checkboxes grouped under `Active`, `Waiting`, or `Blocked`; explicit
+markers such as `[NEXT]` and `[BLOCKED]` are also recognized. Org task headings
+remain supported for project-specific sources. Calendar task rows are
+status-only; they should not become doc, repo, tracker, or terminal launcher
+rows.
 
 ### `menus.extensions`
 
@@ -277,7 +281,9 @@ Section visibility and ordering shape the shallow Triforce popup. In the current
 Notes:
 
 - `menus.oracle` still configures the bar-facing Zelda surface, not the full native panel layout.
-- The native Zelda tab reads the same Oracle status snapshot (`scripts/oos_status.py`) but does not currently add its own persisted state keys.
+- Oracle Hub owns the deeper status view backed by
+  `Scripts/Debug/oos_status.py`; Barista does not add separate persisted task
+  state for that workflow.
 - Oracle status items like `today`, `next`, and `blocked` still exist in the status snapshot for the native panel, but they no longer create nested Triforce popup sections.
 - `open_control_panel.sh --oracle` forwards to Oracle Hub.
 

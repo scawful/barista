@@ -217,7 +217,7 @@ Expected: click scripts are direct
 - The `front_app` popup now updates its float/fullscreen/topmost row labels from the current window state, so the row explains the next action instead of always saying `Toggle`.
 - Conservative presets live in the same popup: `Utility`, `Focus`, `Presentation`, and `Tile Here`. They do not move windows across spaces or displays and they clear topmost state where a preset returns a window to normal tiling.
 - The `front_app` popup now exposes the same policy directly through `Adopt Current Space Mode` and `Send to Float Space`, so recovery does not require remembering a lower-level yabai command.
-- The `front_app` and Control Center popups now include app-default rows: `Default This App: Float`, `Default This App: Tile`, and `Unset This App Default`. These call `scripts/yabai_control.sh app-default-current ...`, persist the choice in `state.json` under `window_defaults.apps`, and install/remove a labeled live yabai rule (`barista-default-*`) when yabai is running.
+- The Control Center popup keeps persistent app-default controls out of the smaller `front_app` popup. Its rows are `Default App: Float`, `Default App: Tile`, and `Unset App Default`; they call `scripts/yabai_control.sh app-default-current ...`, persist the choice in `state.json` under `window_defaults.apps`, and install/remove a labeled live yabai rule (`barista-default-*`) when yabai is running.
 - `app-default-current` uses the same front-app context fallback when yabai has
   no focused managed window, so unmanaged/frontmost utility apps can still be
   saved as app defaults.

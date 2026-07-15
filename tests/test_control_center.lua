@@ -179,6 +179,13 @@ run_test("create_popup_items: simplified popup omits legacy service and workspac
   local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
     window_manager_flags = enabled_window_manager_flags(),
   })
+  local float = find_item(items, "cc.layout.float")
+  assert_type(float, "table", "float layout item")
+  assert_equal(float.label.string, "Float / Manual", "float layout label should match the front-app/manual-space language")
+  assert_type(find_item(items, "cc.mode.required"), "table", "mode switch row exists")
+  assert_type(find_item(items, "cc.defaults.float"), "table", "app default float row exists")
+  assert_type(find_item(items, "cc.defaults.tile"), "table", "app default tile row exists")
+  assert_type(find_item(items, "cc.defaults.unset"), "table", "app default unset row exists")
   assert_nil(find_item(items, "cc.svc.yabai"), "yabai service row removed")
   assert_nil(find_item(items, "cc.svc.skhd"), "skhd service row removed")
   assert_nil(find_item(items, "cc.svc.sketchybar"), "sketchybar service row removed")
@@ -191,6 +198,7 @@ run_test("create_popup_items: shortcut toggle updates label and closes popup", f
   })
   local toggle = find_item(items, "cc.yabai.shortcuts")
   assert_type(toggle, "table", "shortcut toggle item")
+  assert_equal(toggle.label.string, "Shortcuts: On", "shortcut row should use compact label")
   assert_true(toggle.click_script:match("toggle_yabai_shortcuts%.sh") ~= nil or toggle.click_script:match("toggle_shortcuts%.sh") ~= nil, "toggle script present")
   assert_true(toggle.click_script:match("popup%.drawing=off") ~= nil, "popup close action present")
 end)

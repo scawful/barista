@@ -18,7 +18,7 @@ Provide a single LaunchAgent that orchestrates SketchyBar, Yabai, and skhd for B
 1. **Startup**:
    - `launchctl load ~/Library/LaunchAgents/dev.barista.control.plist`
    - LaunchAgent executes `barista-launch.sh start`.
-   - Orchestrator restarts `homebrew.mxcl.sketchybar`, `org.nbirrell.yabai`, and `org.nbirrell.skhd` (labels overridable via env).
+   - Orchestrator starts `homebrew.mxcl.sketchybar`, `com.asmvik.yabai` when that plist exists (otherwise `com.koekeishiya.yabai`), and `com.koekeishiya.skhd` (labels overridable via env).
 2. **Shutdown**:
    - `launchctl unload ...` triggers `barista-launch.sh stop`.
    - Script gracefully stops agents to avoid zombie processes.
@@ -28,8 +28,8 @@ Provide a single LaunchAgent that orchestrates SketchyBar, Yabai, and skhd for B
 ## Configuration
 Environment variables understood by `barista-launch.sh`:
 - `BARISTA_SKETCHYBAR_LABEL` (default `homebrew.mxcl.sketchybar`)
-- `BARISTA_YABAI_LABEL` (default `org.nbirrell.yabai`)
-- `BARISTA_SKHD_LABEL` (default `org.nbirrell.skhd`)
+- `BARISTA_YABAI_LABEL` (optional override; otherwise `com.asmvik.yabai` when that plist exists, falling back to `com.koekeishiya.yabai`)
+- `BARISTA_SKHD_LABEL` (default `com.koekeishiya.skhd`)
 - `BARISTA_AGENT_HELPER` (default `~/.config/sketchybar/helpers/launch_agent_manager.sh`)
 
 ## Usage (Draft)

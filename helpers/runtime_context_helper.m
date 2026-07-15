@@ -71,14 +71,24 @@ static NSString *run_task(NSString *launchPath, NSArray<NSString *> *arguments) 
     return nil;
   }
 
+  NSFileHandle *outputReadHandle = nil;
+  NSFileHandle *outputWriteHandle = nil;
+  NSFileHandle *errorHandle = nil;
   @try {
     NSTask *task = [[NSTask alloc] init];
     NSPipe *pipe = [NSPipe pipe];
+    outputReadHandle = pipe.fileHandleForReading;
+    outputWriteHandle = pipe.fileHandleForWriting;
+    errorHandle = [NSFileHandle fileHandleWithNullDevice];
     task.launchPath = launchPath;
     task.arguments = arguments ?: @[];
-    task.standardOutput = pipe;
-    task.standardError = [NSPipe pipe];
+    task.standardOutput = outputWriteHandle;
+    task.standardError = errorHandle;
     [task launch];
+    [outputWriteHandle closeFile];
+    outputWriteHandle = nil;
+    [errorHandle closeFile];
+    errorHandle = nil;
 
     NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:task_timeout_seconds()];
     while (task.isRunning && deadline.timeIntervalSinceNow > 0.0) {
@@ -91,10 +101,14 @@ static NSString *run_task(NSString *launchPath, NSArray<NSString *> *arguments) 
         kill((pid_t)task.processIdentifier, SIGKILL);
       }
       [task waitUntilExit];
+      [outputReadHandle closeFile];
+      outputReadHandle = nil;
       return nil;
     }
 
-    NSData *data = [[pipe fileHandleForReading] readDataToEndOfFile];
+    NSData *data = [outputReadHandle readDataToEndOfFile];
+    [outputReadHandle closeFile];
+    outputReadHandle = nil;
     if (data.length == 0 || task.terminationStatus != 0) {
       return nil;
     }
@@ -102,6 +116,9 @@ static NSString *run_task(NSString *launchPath, NSArray<NSString *> *arguments) 
     NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
     return [output stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
   } @catch (__unused NSException *exception) {
+    [outputReadHandle closeFile];
+    [outputWriteHandle closeFile];
+    [errorHandle closeFile];
     return nil;
   }
 }
@@ -413,7 +430,9 @@ static int daemon_loop(void) {
   }
 
   while (keep_running) {
-    refresh_front_app_cache();
+    @autoreleasepool {
+      refresh_front_app_cache();
+    }
     useconds_t sleepMicros = (useconds_t)(intervalSeconds * 1000000.0);
     usleep(sleepMicros > 0 ? sleepMicros : 1000000);
   }

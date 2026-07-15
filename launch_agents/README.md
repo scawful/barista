@@ -30,13 +30,19 @@ launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/dev.barista.mouse-butt
 launchctl kickstart -k "gui/$(id -u)/dev.barista.mouse-buttons"
 ```
 
-## Active Strategy (2026-02-24 CLI pass)
+## Active Strategy (verified 2026-07-11)
 
 Use `dev.barista.control` as the orchestrator for login/startup behavior.
 
 - Runtime path: `~/.config/sketchybar -> ~/src/lab/barista` (symlink)
 - Managed labels:
   - `homebrew.mxcl.sketchybar`
-  - `com.koekeishiya.yabai`
+  - `com.asmvik.yabai` (the supervisor falls back to
+    `com.koekeishiya.yabai` when the current plist is absent)
   - `com.koekeishiya.skhd`
 - Do not run `brew services start sketchybar` concurrently with this orchestrator strategy.
+
+`dev.barista.control` is intentionally a one-shot supervisor: it starts or
+kickstarts those three long-running agents and then exits. Seeing the supervisor
+as `not running` with last exit status `0` is healthy when all three managed
+labels are running.

@@ -62,8 +62,8 @@ function ssh_cloud.load_ssh_config(config_file)
   end
   
   local current_host = nil
-  for line in file:lines() do
-    line = line:match("^%s*(.-)%s*$")  -- trim
+  for raw_line in file:lines() do
+    local line = raw_line:match("^%s*(.-)%s*$")  -- trim
     if line:match("^Host ") then
       current_host = line:match("^Host%s+(.+)$")
       if current_host and current_host ~= "*" then

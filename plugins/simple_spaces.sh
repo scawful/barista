@@ -188,7 +188,7 @@ resolve_diff_updates_enabled() {
 
 initialize_action_prefixes() {
   if [ -x "$SPACE_ACTION_SCRIPT" ]; then
-    SPACE_ACTION_PREFIX="$SPACE_ACTION_SCRIPT click --space "
+    SPACE_ACTION_PREFIX="$SPACE_ACTION_SCRIPT focus --space "
     CREATOR_ACTION_PREFIX="$SPACE_ACTION_SCRIPT create --display "
     CREATOR_ACTION_FALLBACK=""
     return 0

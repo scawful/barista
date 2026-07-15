@@ -12,10 +12,15 @@ DELAY="${POPUP_CLOSE_DELAY:-0.18}"
 OPEN_ON_ENTER="${POPUP_OPEN_ON_ENTER:-0}"
 
 case "${SENDER:-}" in
+  "mouse.clicked")
+    if [ -n "${NAME:-}" ]; then
+      sketchybar --set "$NAME" popup.drawing=toggle
+    fi
+    ;;
   "mouse.entered")
     hover_token >"$STATE_FILE"
     if [ -n "${NAME:-}" ]; then
-      highlight_with_timeout "$NAME" "background.drawing=on background.color=$HIGHLIGHT" "background.drawing=off background.border_width=0"
+      highlight_with_timeout "$NAME" "$(anchor_hover_props)" "$(anchor_idle_props)"
     fi
     if [ "$OPEN_ON_ENTER" = "1" ] && [ -n "${NAME:-}" ]; then
       sketchybar --set "$NAME" popup.drawing=on
@@ -23,7 +28,7 @@ case "${SENDER:-}" in
     ;;
   "mouse.exited")
     if [ -n "${NAME:-}" ]; then
-      clear_highlight "$NAME" "background.drawing=off background.border_width=0"
+      clear_highlight "$NAME" "$(anchor_idle_props)"
     fi
     ;;
   "mouse.exited.global")
@@ -32,7 +37,7 @@ case "${SENDER:-}" in
       IFS= read -r token < "$STATE_FILE" || true
     fi
     if [ -n "${NAME:-}" ]; then
-      clear_highlight "$NAME" "background.drawing=off background.border_width=0"
+      clear_highlight "$NAME" "$(anchor_idle_props)"
     fi
     (
       sleep "$DELAY"
@@ -41,7 +46,8 @@ case "${SENDER:-}" in
         IFS= read -r current < "$STATE_FILE" || true
       fi
       if [ "$current" = "$token" ] && [ -n "${NAME:-}" ]; then
-        sketchybar --set "$NAME" popup.drawing=off background.drawing=off background.border_width=0
+        # shellcheck disable=SC2046,SC2086
+        sketchybar --set "$NAME" popup.drawing=off $(anchor_idle_props)
       fi
     ) &
     ;;

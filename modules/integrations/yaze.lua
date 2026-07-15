@@ -223,12 +223,25 @@ function yaze.get_build_status()
   return "ready"
 end
 
+-- macOS 26 (and the app's custom SDL/Cocoa loop) delivers a one-shot SIGSTOP to
+-- yaze right after a LaunchServices ("open") launch, leaving it suspended with no
+-- window. Resuming the process with SIGCONT once clears it permanently. Append a
+-- short backgrounded resume loop so the window actually appears on click.
+local function resume_suffix()
+  return " ; ( for _i in $(seq 1 12); do _yp=$(pgrep -f 'yaze.app/Contents/MacOS/yaze'); "
+    .. "[ -n \"$_yp\" ] && kill -CONT $_yp 2>/dev/null; sleep 0.25; done ) >/dev/null 2>&1 &"
+end
+
+local function open_bundle_cmd(rom_path)
+  if rom_path then
+    return string.format("open -a %q %q", yaze.config.app_bundle, rom_path) .. resume_suffix()
+  end
+  return string.format("open -a %q", yaze.config.app_bundle) .. resume_suffix()
+end
+
 local function launch_action(rom_path)
   if yaze.config.binary_path and file_exists(yaze.config.binary_path) then
-    if rom_path then
-      return string.format("open -a %q %q", yaze.config.app_bundle, rom_path)
-    end
-    return string.format("open -a %q", yaze.config.app_bundle)
+    return open_bundle_cmd(rom_path)
   end
 
   if yaze.config.launch_cmd and yaze.config.launch_cmd ~= "" then
@@ -238,10 +251,7 @@ local function launch_action(rom_path)
     return shell_quote(yaze.config.launch_cmd)
   end
 
-  if rom_path then
-    return string.format("open -a %q %q", yaze.config.app_bundle, rom_path)
-  end
-  return string.format("open -a %q", yaze.config.app_bundle)
+  return open_bundle_cmd(rom_path)
 end
 
 -- Launch Yaze

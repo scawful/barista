@@ -550,7 +550,7 @@ is_right_click() {
   local button
   button=$(printf '%s' "$raw_button" | tr '[:upper:]' '[:lower:]')
   case "$button" in
-    right|2|secondary)
+    right|secondary)
       return 0
       ;;
   esac

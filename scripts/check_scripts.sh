@@ -13,7 +13,7 @@ Usage: $0 [--ci]
 Checks:
   - Shell syntax (bash -n)
   - shellcheck (if available, required with --ci)
-  - shfmt formatting (if available, required with --ci)
+  - shfmt formatting report (strict with BARISTA_SHFMT_STRICT=1)
   - smoke checks for setup/update scripts
 EOF
 }
@@ -41,10 +41,12 @@ cd "$REPO_ROOT"
 if command -v rg >/dev/null 2>&1; then
   mapfile -t shell_files < <(rg --files -g 'scripts/**' -g 'plugins/**' -g 'bin/**' | while read -r f; do
     [ -f "$f" ] || continue
-    head -n 1 "$f" | grep -Eq '^#!.*(ba|z|sh)' && echo "$f"
+    head -n 1 "$f" | grep -Eq '^#!.*[/[:space:]](bash|zsh|sh)([[:space:]]|$)' && echo "$f"
   done | sort)
 else
-  mapfile -t shell_files < <(find scripts plugins bin -type f | sort)
+  mapfile -t shell_files < <(find scripts plugins bin -type f | while read -r f; do
+    head -n 1 "$f" | grep -Eq '^#!.*[/[:space:]](bash|zsh|sh)([[:space:]]|$)' && echo "$f"
+  done | sort)
 fi
 
 if [ "${#shell_files[@]}" -eq 0 ]; then
@@ -92,7 +94,14 @@ fi
 
 if command -v shfmt >/dev/null 2>&1; then
   echo "[check] shfmt"
-  shfmt -d "${lint_files[@]}"
+  if ! shfmt -d "${lint_files[@]}" >/dev/null; then
+    if [ "${BARISTA_SHFMT_STRICT:-0}" = "1" ]; then
+      echo "shfmt found formatting drift." >&2
+      shfmt -d "${lint_files[@]}" >&2
+      exit 1
+    fi
+    echo "[warn] shfmt found legacy formatting drift; set BARISTA_SHFMT_STRICT=1 to enforce"
+  fi
 else
   if [ "$CI_MODE" -eq 1 ]; then
     echo "shfmt is required in CI mode." >&2

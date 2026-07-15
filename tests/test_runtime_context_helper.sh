@@ -187,7 +187,14 @@ PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   CONFIG_DIR="$CONFIG_DIR" \
   "$SCRIPT" daemon >/dev/null 2>&1 &
 DAEMON_PID=$!
-sleep 0.2
+
+for _ in {1..50}; do
+  if [ -s "$CONFIG_DIR/cache/runtime_context/front_app.tsv" ] &&
+     [ -s "$CONFIG_DIR/cache/runtime_context/media.tsv" ]; then
+    break
+  fi
+  sleep 0.05
+done
 
 [ -s "$CONFIG_DIR/cache/runtime_context/front_app.tsv" ] || { echo "FAIL: runtime context daemon should keep helper-backed front-app cache warm" >&2; exit 1; }
 [ -s "$CONFIG_DIR/cache/runtime_context/media.tsv" ] || { echo "FAIL: runtime context daemon should keep media cache warm while helper daemon runs" >&2; exit 1; }

@@ -1,0 +1,67 @@
+#!/bin/bash
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT="$ROOT_DIR/scripts/task_focus.sh"
+TMP_DIR="$(mktemp -d)"
+TEST_HOME="$TMP_DIR/home"
+CONFIG_DIR="$TMP_DIR/config"
+BIN_DIR="$TMP_DIR/bin"
+LOG_FILE="$TMP_DIR/task_focus.log"
+EXPECTED_FILE="$TMP_DIR/expected.log"
+
+cleanup() {
+  rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
+
+mkdir -p "$TEST_HOME" "$CONFIG_DIR/plugins" "$BIN_DIR"
+
+cat > "$CONFIG_DIR/plugins/calendar.sh" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+printf 'calendar\targc=%s\tsources=%s\n' \
+  "$#" "${BARISTA_CALENDAR_TASK_SOURCES-<unset>}" >> "${BARISTA_TASK_FOCUS_TEST_LOG:?}"
+EOF
+chmod +x "$CONFIG_DIR/plugins/calendar.sh"
+
+cat > "$BIN_DIR/sketchybar" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+{
+  printf 'sketchybar'
+  printf '\t%s' "$@"
+  printf '\n'
+} >> "${BARISTA_TASK_FOCUS_TEST_LOG:?}"
+EOF
+chmod +x "$BIN_DIR/sketchybar"
+
+TASK_SOURCES="$TMP_DIR/tasks/active board.md:$TMP_DIR/tasks/next;board [draft].org:\$(touch $TMP_DIR/should-not-exist)"
+
+HOME="$TEST_HOME" \
+  PATH="$BIN_DIR:/usr/bin:/bin" \
+  BARISTA_CONFIG_DIR="$CONFIG_DIR" \
+  BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
+  BARISTA_CALENDAR_TASK_SOURCES="$TASK_SOURCES" \
+  BARISTA_TASK_FOCUS_TEST_LOG="$LOG_FILE" \
+  "$SCRIPT"
+
+{
+  printf 'calendar\targc=0\tsources=%s\n' "$TASK_SOURCES"
+  printf 'sketchybar\t--trigger\tmouse.exited.global\n'
+  printf 'sketchybar\t--set\tclock\tpopup.drawing=on\n'
+} > "$EXPECTED_FILE"
+
+cmp -s "$EXPECTED_FILE" "$LOG_FILE" || {
+  echo "FAIL: task focus command sequence or arguments changed" >&2
+  diff -u "$EXPECTED_FILE" "$LOG_FILE" >&2 || true
+  exit 1
+}
+
+if [ -e "$TMP_DIR/should-not-exist" ]; then
+  echo "FAIL: task source text was evaluated as shell input" >&2
+  exit 1
+fi
+
+printf 'test_task_focus.sh: ok\n'

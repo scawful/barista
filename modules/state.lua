@@ -99,6 +99,9 @@ local default_state = {
   widget_colors = {},
   space_icons = {},
   space_modes = {},
+  window_defaults = {
+    apps = {},
+  },
   spaces = {
     creator_mode = "per_display",
     right_click_close = "confirm",
@@ -152,6 +155,22 @@ local default_state = {
         title = "",
         show_label = false,
         update_freq = 45,
+      },
+    },
+    music = {
+      item_name = "music_studio",
+      title = "Music Studio",
+      label = "",
+      icon = "",
+      show_label = false,
+      update_freq = 300,
+      app_paths = {},
+      items = {},
+    },
+    calendar = {
+      task_sources = {
+        "~/src/folio/tasks/active.md",
+        "~/src/hobby/oracle-of-secrets/Docs/oracle.org",
       },
     },
     apps = {
@@ -213,10 +232,14 @@ local function sanitize_state(data)
   if type(data.integrations) ~= "table" then data.integrations = {} end
   if type(data.debug) ~= "table" then data.debug = {} end
   if type(data.space_modes) ~= "table" then data.space_modes = {} end
+  if type(data.window_defaults) ~= "table" then data.window_defaults = {} end
+  if type(data.window_defaults.apps) ~= "table" then data.window_defaults.apps = {} end
   if type(data.spaces) ~= "table" then data.spaces = {} end
   if type(data.menus) ~= "table" then data.menus = {} end
   if type(data.menus.apple) ~= "table" then data.menus.apple = {} end
   if type(data.menus.oracle) ~= "table" then data.menus.oracle = {} end
+  if type(data.menus.music) ~= "table" then data.menus.music = {} end
+  if type(data.menus.calendar) ~= "table" then data.menus.calendar = {} end
   if type(data.menus.work) ~= "table" then data.menus.work = {} end
   if type(data.menus.extensions) ~= "table" then data.menus.extensions = {} end
   local apps_menu = type(data.menus.apps) == "table" and data.menus.apps or {}
@@ -230,6 +253,11 @@ local function sanitize_state(data)
   if type(data.menus.apple.hover) ~= "table" then data.menus.apple.hover = {} end
   if type(data.menus.oracle.sections) ~= "table" then data.menus.oracle.sections = {} end
   if type(data.menus.oracle.triforce) ~= "table" then data.menus.oracle.triforce = {} end
+  if type(data.menus.music.app_paths) ~= "table" then data.menus.music.app_paths = {} end
+  if type(data.menus.music.items) ~= "table" then data.menus.music.items = {} end
+  if type(data.menus.calendar.task_sources) ~= "table" and type(data.menus.calendar.task_sources) ~= "string" then
+    data.menus.calendar.task_sources = {}
+  end
   if type(data.menus.apps.items) ~= "table" then data.menus.apps.items = {} end
   if type(data.menus.work.google_apps) ~= "table" then data.menus.work.google_apps = {} end
   if type(data.menus.extensions.files) ~= "table" then data.menus.extensions.files = {} end
@@ -497,7 +525,7 @@ function state.set_space_mode(data, space_num, mode)
     data.space_modes = {}
   end
   local key = tostring(space_num)
-  local new_value = (mode == "float" or mode == nil) and nil or mode
+  local new_value = (mode == nil or mode == "") and nil or mode
   -- Only save if value actually changed
   if data.space_modes[key] ~= new_value then
     data.space_modes[key] = new_value

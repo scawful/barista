@@ -11,9 +11,30 @@
 # Optional env (caller or main.lua): BARISTA_CONFIG_DIR, CONFIG_DIR, BARISTA_SCRIPTS_DIR.
 # state.json paths.scripts_dir / paths.scripts are read when jq is available.
 
-# Config and paths
+# Config and paths. Preserve caller PATH first so tests and live wrappers can
+# inject stubs/overrides before Homebrew/system fallbacks.
+PATH="${PATH:-}:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+if [ -z "${USER:-}" ]; then
+  USER="$(id -un 2>/dev/null || logname 2>/dev/null || printf 'scawful')"
+  export USER
+fi
 CONFIG_DIR="${BARISTA_CONFIG_DIR:-${CONFIG_DIR:-$HOME/.config/sketchybar}}"
 STATE_FILE="${STATE_FILE:-$CONFIG_DIR/state.json}"
+SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-${SKETCHYBAR_BIN:-$(command -v sketchybar 2>/dev/null || true)}}"
+if [ -z "$SKETCHYBAR_BIN" ] && [ -x "/opt/homebrew/opt/sketchybar/bin/sketchybar" ]; then
+  SKETCHYBAR_BIN="/opt/homebrew/opt/sketchybar/bin/sketchybar"
+fi
+if [ -z "$SKETCHYBAR_BIN" ] && [ -x "/opt/homebrew/bin/sketchybar" ]; then
+  SKETCHYBAR_BIN="/opt/homebrew/bin/sketchybar"
+fi
+
+sketchybar() {
+  if [ -n "$SKETCHYBAR_BIN" ]; then
+    "$SKETCHYBAR_BIN" "$@"
+  else
+    command sketchybar "$@"
+  fi
+}
 
 expand_path() {
   case "$1" in
@@ -51,6 +72,27 @@ ANIMATION_CURVE="${BARISTA_HOVER_ANIMATION_CURVE:-${POPUP_HOVER_ANIMATION_CURVE:
 ANIMATION_DURATION="${BARISTA_HOVER_ANIMATION_DURATION:-${POPUP_HOVER_ANIMATION_DURATION:-${SUBMENU_ANIMATION_DURATION:-12}}}"
 HOVER_TIMEOUT="${BARISTA_HOVER_TIMEOUT:-${POPUP_HOVER_TIMEOUT:-${SUBMENU_HOVER_TIMEOUT:-0.55}}}"
 HOVER_STATE_DIR="${BARISTA_HOVER_STATE_DIR:-${TMPDIR:-/tmp}/sketchybar_hover_state}"
+
+anchor_hover_props() {
+  _anchor_hover_bg="${BARISTA_ANCHOR_HOVER_BG:-$HIGHLIGHT}"
+  _anchor_hover_border_width="${BARISTA_ANCHOR_HOVER_BORDER_WIDTH:-${POPUP_HOVER_BORDER_WIDTH:-}}"
+  _anchor_hover_border_color="${BARISTA_ANCHOR_HOVER_BORDER_COLOR:-${POPUP_HOVER_BORDER_COLOR:-0x60cdd6f4}}"
+  if [ -n "$_anchor_hover_border_width" ]; then
+    printf 'background.drawing=on background.color=%s background.border_width=%s background.border_color=%s' \
+      "$_anchor_hover_bg" "$_anchor_hover_border_width" "$_anchor_hover_border_color"
+  else
+    printf 'background.drawing=on background.color=%s' "$_anchor_hover_bg"
+  fi
+}
+
+anchor_idle_props() {
+  _anchor_idle_drawing="${BARISTA_ANCHOR_IDLE_DRAWING:-off}"
+  _anchor_idle_border_width="${BARISTA_ANCHOR_IDLE_BORDER_WIDTH:-0}"
+  _anchor_idle_border_color="${BARISTA_ANCHOR_IDLE_BORDER_COLOR:-0x00000000}"
+  _anchor_idle_bg="${BARISTA_ANCHOR_IDLE_BG:-0x00000000}"
+  printf 'background.drawing=%s background.border_width=%s background.border_color=%s background.color=%s' \
+    "$_anchor_idle_drawing" "$_anchor_idle_border_width" "$_anchor_idle_border_color" "$_anchor_idle_bg"
+}
 
 animate_set() {
   if sketchybar --animate "$ANIMATION_CURVE" "$ANIMATION_DURATION" --set "$@" >/dev/null 2>&1; then

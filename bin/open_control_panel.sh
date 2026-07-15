@@ -276,8 +276,12 @@ launch_tui_panel() {
 launch_manual_fallback() {
   echo "[barista] Falling back to manual config edit" >&2
   if command -v open >/dev/null 2>&1; then
-    [[ -f "$STATE_FILE" ]] && open "$STATE_FILE" >/dev/null 2>&1 || true
-    [[ -f "$DOC_FALLBACK" ]] && open "$DOC_FALLBACK" >/dev/null 2>&1 || true
+    if [[ -f "$STATE_FILE" ]]; then
+      open "$STATE_FILE" >/dev/null 2>&1 || true
+    fi
+    if [[ -f "$DOC_FALLBACK" ]]; then
+      open "$DOC_FALLBACK" >/dev/null 2>&1 || true
+    fi
   else
     echo "Edit state.json: $STATE_FILE" >&2
     echo "Docs: $DOC_FALLBACK" >&2

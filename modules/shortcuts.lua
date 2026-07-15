@@ -82,70 +82,6 @@ local function window_manager_enabled()
   return has_yabai
 end
 
-local function afs_cli(afs_root, args)
-  local pythonpath = afs_root .. "/src"
-  return string.format(
-    "cd %s && AFS_ROOT=%s PYTHONPATH=%s python3 -m afs %s",
-    shell_quote(afs_root),
-    shell_quote(afs_root),
-    shell_quote(pythonpath),
-    args or ""
-  )
-end
-
-local function build_suite_command(studio_root, target_name, binary_name)
-  local build_dir = locator.afs_build_dir(studio_root)
-  return string.format(
-    "cd %s && cmake --build %s --target %s && ./%s/apps/studio/%s",
-    shell_quote(studio_root),
-    build_dir,
-    target_name,
-    build_dir,
-    binary_name
-  )
-end
-
-local function build_legacy_command(studio_root, target_name, binary_name)
-  return string.format(
-    "cd %s && cmake --build build --target %s && ./build/%s",
-    shell_quote(studio_root),
-    target_name,
-    binary_name
-  )
-end
-
-local function afs_studio_command(afs_root, studio_root)
-  if afs_root then
-    return afs_cli(afs_root, "studio run --build")
-  end
-  if not studio_root or studio_root == "" then
-    return ""
-  end
-  if locator.afs_studio_layout(studio_root) == "suite" then
-    return build_suite_command(studio_root, "afs-studio", "afs-studio")
-  end
-  return build_legacy_command(studio_root, "afs_studio", "afs_studio")
-end
-
-local function afs_labeler_command(studio_root)
-  if not studio_root or studio_root == "" then
-    return ""
-  end
-
-  local command
-  if locator.afs_studio_layout(studio_root) == "suite" then
-    command = build_suite_command(studio_root, "afs-labeler", "afs-labeler")
-  else
-    command = build_legacy_command(studio_root, "afs_labeler", "afs_labeler")
-  end
-
-  local labeler_csv = os.getenv("AFS_LABELER_CSV")
-  if labeler_csv and labeler_csv ~= "" then
-    command = command .. " --csv " .. shell_quote(labeler_csv)
-  end
-  return command
-end
-
 local SCRIPTS_DIR = paths_module.resolve_scripts_dir(CONFIG_DIR, runtime_state)
 local shared_opts = {
   config_dir = CONFIG_DIR,
@@ -157,7 +93,8 @@ shared_opts.code_dir = CODE_DIR
 
 local AFS_ROOT = select(1, locator.resolve_afs_root(shared_opts))
 local AFS_STUDIO_ROOT = select(1, locator.resolve_afs_studio_root(shared_opts, AFS_ROOT))
-local AFS_STUDIO_LAUNCHER = select(1, locator.resolve_afs_studio_launcher(shared_opts))
+local AFS_APPS_LAUNCHER, AFS_APPS_LAUNCHER_OK = locator.resolve_afs_apps_launcher(shared_opts)
+local AFS_STUDIO_LAUNCHER, AFS_STUDIO_LAUNCHER_OK = locator.resolve_afs_studio_launcher(shared_opts)
 local AFS_BROWSER_APP = select(1, locator.resolve_afs_browser_app(shared_opts))
 local GHOSTTY_APP = select(1, locator.resolve_ghostty_app(shared_opts))
 local STEMFORGE_APP = select(1, locator.resolve_stemforge_app(shared_opts))
@@ -187,6 +124,28 @@ local function open_path_command(path)
     return ""
   end
   return string.format("open %s", shell_quote(path))
+end
+
+local function task_focus_action()
+  local action = shell_quote(CONFIG_DIR .. "/scripts/task_focus.sh")
+  local menus = type(runtime_state.menus) == "table" and runtime_state.menus or nil
+  local calendar = menus and type(menus.calendar) == "table" and menus.calendar or nil
+  local sources = calendar and calendar.task_sources or nil
+  if type(sources) == "string" and sources ~= "" then
+    return "BARISTA_CALENDAR_TASK_SOURCES=" .. shell_quote(sources) .. " " .. action
+  end
+  if type(sources) == "table" then
+    local values = {}
+    for _, source in ipairs(sources) do
+      if type(source) == "string" and source ~= "" then
+        table.insert(values, source)
+      end
+    end
+    if #values > 0 then
+      return "BARISTA_CALENDAR_TASK_SOURCES=" .. shell_quote(table.concat(values, ":")) .. " " .. action
+    end
+  end
+  return action
 end
 
 local function bash_literal(value)
@@ -266,38 +225,51 @@ local function sys_manual_action()
   return ""
 end
 
-local function afs_studio_action()
-  if AFS_STUDIO_LAUNCHER and AFS_STUDIO_LAUNCHER ~= "" then
-    return shell_quote(AFS_STUDIO_LAUNCHER)
+local function build_afs_studio_action(resolved)
+  resolved = resolved or {}
+  if resolved.apps_launcher_ok and resolved.apps_launcher then
+    return string.format("%s launch afs_studio", shell_quote(resolved.apps_launcher))
   end
 
-  local studio_bin, studio_bin_ok = locator.resolve_afs_studio_binary(AFS_STUDIO_ROOT)
-  if studio_bin_ok and studio_bin then
-    if studio_bin:match("%.app/?$") then
-      return open_path_command(studio_bin)
+  if resolved.studio_bin_ok and resolved.studio_bin then
+    if resolved.studio_bin:match("%.app/?$") then
+      return open_path_command(resolved.studio_bin)
     end
-    return shell_quote(studio_bin)
+    return shell_quote(resolved.studio_bin)
   end
 
-  local command = afs_studio_command(AFS_ROOT, AFS_STUDIO_ROOT)
-  if command ~= "" then
-    return open_terminal(command)
+  if resolved.studio_launcher_ok and resolved.studio_launcher then
+    return shell_quote(resolved.studio_launcher)
   end
   return ""
 end
 
+shortcuts._build_afs_studio_action = build_afs_studio_action
+
+local function afs_studio_action()
+  local studio_bin, studio_bin_ok = locator.resolve_afs_studio_binary(AFS_STUDIO_ROOT)
+  return build_afs_studio_action({
+    apps_launcher = AFS_APPS_LAUNCHER,
+    apps_launcher_ok = AFS_APPS_LAUNCHER_OK,
+    studio_bin = studio_bin,
+    studio_bin_ok = studio_bin_ok,
+    studio_launcher = AFS_STUDIO_LAUNCHER,
+    studio_launcher_ok = AFS_STUDIO_LAUNCHER_OK,
+  })
+end
+
 local function afs_labeler_action()
-  local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(AFS_STUDIO_ROOT)
+  local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(AFS_STUDIO_ROOT, shared_opts)
   if labeler_bin_ok and labeler_bin then
     if labeler_bin:match("%.app/?$") then
       return open_path_command(labeler_bin)
     end
-    return shell_quote(labeler_bin)
-  end
-
-  local command = afs_labeler_command(AFS_STUDIO_ROOT)
-  if command ~= "" then
-    return open_terminal(command)
+    local command = shell_quote(labeler_bin)
+    local labeler_csv = os.getenv("AFS_LABELER_CSV")
+    if labeler_csv and labeler_csv ~= "" then
+      command = command .. " --csv " .. shell_quote(labeler_csv)
+    end
+    return command
   end
   return ""
 end
@@ -319,6 +291,7 @@ if YAZE_ENABLED then
   end
 end
 local OPEN_TERMINAL_ACTION = terminal_app_command()
+local TASK_FOCUS_ACTION = task_focus_action()
 local Z3ED_ACTION = ""
 if Z3ED_OK and Z3ED_BIN and Z3ED_BIN ~= "" then
   local command = string.format(
@@ -364,6 +337,13 @@ shortcuts.global = {
     action = "open_control_panel",
     desc = "Open Barista",
     symbol = "⌘⌥P"
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "d",
+    action = "open_task_focus",
+    desc = "Open Task Focus",
+    symbol = "⌘⌥D"
   },
   {
     mods = {"cmd", "alt"},
@@ -502,6 +482,7 @@ shortcuts.actions = {
   reload_sketchybar = CONFIG_DIR .. "/plugins/reload_sketchybar.sh",
   rebuild_and_reload = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh",
   open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh --tab home",
+  open_task_focus = TASK_FOCUS_ACTION,
   toggle_control_center = build_control_center_toggle_command(shortcuts.resolve_control_center_item_name(runtime_state)),
   open_help_center = help_center_action(),
   open_icon_browser = icon_browser_action(),
@@ -684,6 +665,22 @@ function shortcuts.list_all()
       symbol = shortcut.symbol,
       action = shortcut.action,
       command = shortcuts.get_command(shortcut.action)
+    })
+  end
+  return list
+end
+
+-- List the declarative shortcut catalog without machine-availability filtering.
+-- Generated documentation uses this so it stays stable across Macs; skhd output
+-- continues to use list_all()/all_shortcuts() and omits unavailable actions.
+function shortcuts.list_declared()
+  local list = {}
+  for _, shortcut in ipairs(shortcuts.global) do
+    table.insert(list, {
+      desc = shortcut.desc,
+      symbol = shortcut.symbol,
+      action = shortcut.action,
+      requires = shortcut.requires,
     })
   end
   return list

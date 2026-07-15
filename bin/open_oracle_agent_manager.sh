@@ -34,6 +34,25 @@ if [[ "$STATE_CODE_DIR" == "null" ]]; then
 fi
 CODE_DIR="${STATE_CODE_DIR:-$CODE_DIR_DEFAULT}"
 
+resolve_cortex_cli() {
+  local candidates=(
+    "${CORTEX_CLI:-}"
+    "$CODE_DIR/lab/cortex/bin/cortex-cli"
+    "$HOME/src/lab/cortex/bin/cortex-cli"
+    "$HOME/.local/bin/cortex-cli"
+  )
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  command -v cortex-cli 2>/dev/null || return 1
+}
+
 resolve_oam_binary() {
   local mode="$1"
   local candidates=()
@@ -66,6 +85,14 @@ launch_binary() {
   nohup "$bin" >"$LOG_FILE" 2>&1 &
   disown
 }
+
+if cortex_cli="$(resolve_cortex_cli)"; then
+  echo "[oracle-agent-manager] Opening Oracle in Cortex via $cortex_cli"
+  if "$cortex_cli" oracle; then
+    exit 0
+  fi
+  echo "[oracle-agent-manager] Cortex Oracle launch failed; trying legacy Oracle Agent Manager" >&2
+fi
 
 if bin="$(resolve_oam_binary "$MODE" 2>/dev/null)"; then
   launch_binary "$bin"

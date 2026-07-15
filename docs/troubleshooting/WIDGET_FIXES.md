@@ -87,16 +87,17 @@ style_map = {
 - Window-manager status label is rendered by `control_center` (`BSP`, `Stack`, `Float`, or fallback).
 - Space/window actions are exposed in the `control_center` popup and `front_app` popup rows.
 - The `control_center` popup is intentionally slim now: layout mode changes, layout operations, and shortcut state remain; service-health, dirty-repo, and utility rows were removed from the live path.
-- `control_center` now dismisses on `mouse.exited.global`, matching the rest of the active click-open popup anchors.
+- `control_center` follows the click-open popup-anchor contract; pointer hover only highlights, and dismissal is via second-click, popup actions, or global space/display/wake dismissal.
 - The active item name is resolved once and reused by `main.lua`, `items_left.lua`,
   `popup_manager`, `shortcuts.lua`, and `popup_action.lua`.
+- The popup starts with lightweight mode rows (`Yabai On`, `Auto If Running`, `Manual Bar`) that update `modes.window_manager` through `yabai_control.sh wm-mode ...` and reload through Barista's serialized reload path.
 - Default item name: `control_center`.
 - Optional override: `integrations.control_center.item_name` in `state.json`.
 
 Legacy note: the old `plugins/yabai_status.sh` widget path is retired from the live layout.
 
 ### 6. Space Icon Runtime
-**Current path**: `plugins/refresh_spaces.sh` + `plugins/simple_spaces.sh` + `plugins/space_visuals.sh` + `scripts/app_icon.sh`
+**Current path**: `plugins/refresh_spaces.sh` + `plugins/simple_spaces.sh` + `plugins/space_visuals.sh` + `bin/space_visual_helper` + `scripts/app_icon.sh`
 - Space topology presence checks now read one bar snapshot instead of calling `sketchybar --query` once per space item.
 - Topology add/remove changes now update `space.*` incrementally instead of dropping and recreating the full spaces stack.
 - `refresh_spaces.sh` now records explicit topology strategy counters (`full_rebuild`, `creator_only`, `incremental_reorder`, `incremental_add_remove`) into `barista-stats.sh`.
@@ -114,10 +115,14 @@ Legacy note: the old `plugins/yabai_status.sh` widget path is retired from the l
 - `refresh_spaces.sh` no longer emits a redundant `space_mode_refresh` on pure active-space changes.
 - `refresh_spaces.sh` now uses the live SketchyBar bar height when repairing yabai `external_bar`, avoiding stale 28px reservations when display-profile scaling raises the rendered bar to a taller height.
 - The delayed startup visual sync now runs as `startup_sync` and uses its own wider cooldown window, so reload should not show an extra follow-up visual pass unless the topology path really missed.
-- `space_visuals.sh` now resolves visible-space apps with scoped `yabai query --windows --space <index>` calls instead of a single global window snapshot, which materially reduces the visual-refresh hot path while keeping visible-space icons current.
+- `space_visuals.sh` now resolves visible-space apps with scoped window data instead of a single global window snapshot. When `bin/space_visual_helper` is available, one helper invocation batches those visible-space app lookups and avoids per-space shell/jq parsing; missing app glyphs then resolve through one `app_icon.sh --batch` call before the SketchyBar apply.
 - `space_runtime` now keeps `updates=false`, `space_visuals.sh` ignores `forced` sender runs, and `space.sh` no longer falls back to a forced batch refresh on hover-exit cache misses. That removes redundant `sender=forced` visual passes during reload.
+- Space and visual scripts preserve the resolved SketchyBar binary from `plugins/lib/common.sh`; do not re-run `command -v sketchybar` after sourcing common, because the shared wrapper function can otherwise recurse and leave hot `space.sh` processes behind.
 - The Triforce anchor no longer subscribes to space/display churn events that it never handled, so active-space changes do not wake it up unnecessarily.
 - `plugins/space.sh` now caches and restores each item’s real pre-hover colors instead of trusting SketchyBar’s `SELECTED` flag on `mouse.exited`; that prevents multi-display visible spaces from repainting themselves as selected and fighting the centralized `space_visuals.sh` pass.
+- `plugins/lib/space_style.sh` now defines focused, visible-inactive, idle, and hover styles. `space_visuals.sh` writes the full per-space style state under `cache/space_visuals/style_state/`, and `space.sh` restores from that state after hover instead of guessing from `last_selected_space`.
+- `space_visuals.sh` caches focused/visible/idle style argument arrays once per run, batches helper-backed visible app/glyph lookup when available, skips rewriting unchanged style-state files, and can emit detailed phase fields when run with `BARISTA_SPACE_VISUAL_PHASE_METRICS=1`; those fields appear under `Space visual refreshes` in `barista-stats.sh show`.
+- The focused style is a filled lavender pill with a white border; inactive visible spaces keep a stronger dark pill with a subtle border; hidden idle spaces keep the dark chip.
 - `Ghostty` now resolves to a terminal glyph instead of the retired `F02A0` codepoint.
 - Lowercase app names that show up in yabai output now resolve correctly too (`ghostty`, `spotify`, `firefox`, `messages`, `antigravity`, `cursor`).
 - `LM Studio` now resolves to an explicit AI/model glyph instead of the generic fallback.
@@ -128,22 +133,57 @@ If a space falls back to empty/default icons unexpectedly:
 ```bash
 bash -n ~/.config/sketchybar/plugins/space_visuals.sh
 ~/.config/sketchybar/bin/barista-stats.sh show
+~/.config/sketchybar/scripts/process_manager.sh runaways
 sketchybar --reload
 ```
 
 ### 7. Triforce Anchor Interaction
 **Current path**: `modules/integrations/oracle.lua` + `plugins/oracle_triforce.sh`
-- The left-bar Triforce anchor uses one controller for hover highlight, click toggle, and global dismissal.
+- The left-bar Triforce anchor uses a direct SketchyBar popup toggle for click-open.
+- `plugins/oracle_triforce.sh` owns hover highlight and status updates, not click-open popup queries.
 - Hover only highlights the anchor; it does not open the popup.
 - Click toggles the popup open or closed.
-- `mouse.exited.global` closes the popup when the pointer leaves the popup area.
+- Normal runtime no longer subscribes the anchor to `mouse.exited.global`; second-click, popup action rows, and global space/display/wake dismissal close it.
 - Popup action rows still close the popup after firing.
+
+### 7b. Popup Click Reliability
+**Current path**: `main.lua` `popup_toggle_action()`
+- Menu anchor click scripts use direct SketchyBar popup toggles from `main.lua`
+  / `modules/ui_builder.lua`:
+  `sketchybar -m --set <item> popup.drawing=toggle`.
+- Reason: the focus helper queries yabai on every click; when yabai authorization is stale, that can block menu clicks or spawn macOS Developer Tools Access prompts.
+- Keep display-focus repair explicit in yabai tooling, not in the hot click path for Apple/Control Center/front-app/right-side menus.
+- Do not route `front_app`, `control_center`, Triforce, Music, or right-side
+  refresh-popup click opening through their update plugins. Those scripts own
+  status/hover/detail work; the anchor click itself should stay a direct toggle
+  generated by `popup_toggle_action(<item>)` or `ui.toggle_then_refresh_async(...)`.
+- Do not add wrapper helpers for generic anchors unless physical clicks have been validated. Script-only tests can pass even when the mouse event never reaches the item.
+- The live bar geometry should stay explicit and stable: `topmost=off`, `bar_y_offset=0`. Do not force `topmost=on` to debug clicks; it can cover native macOS menus.
+- The global popup manager no longer dismisses on `front_app_switched` by default. App-focus churn can fire while clicking SketchyBar itself, which made some popups open and immediately close. Space/display/wake events still dismiss globally.
+- Popup anchors no longer subscribe to `mouse.exited.global` in normal runtime. This trades automatic pointer-exit dismissal for reliable click-open behavior; second-click, action rows, and space/display/wake events still close menus.
+- The global popup manager dismisses on real `space_change`, not visual-only `space_active_refresh`; focused-space visual repairs should not close a popup that was just opened.
+- Left-side popup anchors use a shared dark idle chip style from
+  `modules/ui_builder.lua`. Anchor hover scripts restore configured idle
+  background/border props through `plugins/lib/common.sh` instead of clearing
+  the background, so Apple, Triforce, Music, Control Center, and Front App keep
+  the same geometry after hover.
+
+Regression checklist before declaring popup clicks fixed:
+```bash
+sketchybar --query bar | jq '{topmost,height,y_offset,drawing}'
+for item in apple_menu front_app control_center clock system_info volume battery; do
+  sketchybar --query "$item" | jq -r '.name + " click=" + .scripting.click_script'
+done
+```
+Expected: click scripts are direct
+`sketchybar -m --set "<item>" popup.drawing=toggle` commands, not
+`BARISTA_*_ACTION=click ...`.
 
 ### 8. Apple Menu Reload Stability
 **Current path**: `modules/menu.lua` + `modules/apple_menu_enhanced.lua` + `helpers/popup_anchor.c` + `plugins/popup_anchor.sh`
 - The Apple menu hover now highlights the anchor, but click still opens the popup.
 - The hover highlight now clears itself after the short bar timer, so anchors do not stay lit while you linger.
-- `apple_menu` still uses the popup-anchor helper for pointer-exit dismissal, but it no longer sets `POPUP_OPEN_ON_ENTER=1`.
+- `apple_menu` still uses the popup-anchor helper for hover/click handling, but it no longer sets `POPUP_OPEN_ON_ENTER=1` and normal runtime does not subscribe it to `mouse.exited.global`.
 - SketchyBar still rejects `env` as an item subdomain; when that regresses, reloads can leave the bar temporarily empty while the config pass is poisoned.
 - Barista now also stops its widget/runtime daemons before `begin_config`, so reloads do not keep spamming updates into items that were just removed.
 - The active fix is:
@@ -152,13 +192,15 @@ sketchybar --reload
   - no `env = { ... }` table on the `apple_menu` item
 
 ### 9. Volume Popup Click Path
-**Current path**: `plugins/volume_click.sh` + `plugins/volume.sh`
-- Volume no longer uses a blind popup toggle on click.
-- First click refreshes the popup rows, then opens the popup.
-- Second click closes the popup without re-running the refresh path.
+**Current path**: generated `ui.toggle_then_refresh_async("volume", ...)` click script + `plugins/volume.sh`
+- Volume no longer queries popup state before opening.
+- Click toggles the popup immediately, then refreshes popup rows in the background.
+- `plugins/volume_click.sh` is only a compatibility wrapper for the same toggle-then-refresh behavior; the live item uses the generated direct click script.
 - The popup now surfaces output route, now-playing state, and transport controls through `scripts/media_control.sh`, plus mute and Sound settings.
 - `scripts/media_control.sh` prefers the shared `scripts/runtime_context.sh` cache for player state and output routes, so the popup and output switch rows reuse the same runtime snapshot.
-- This keeps the volume anchor aligned with the other right-side widgets that refresh detail state before showing popup content.
+- Long now-playing labels are truncated in the shell script before they hit SketchyBar, keeping the popup width predictable without adding another subprocess to the routine update path.
+- This keeps the volume anchor aligned with the other right-side widgets that
+  toggle immediately and refresh detail state asynchronously.
 
 ### 10. Front App Context Fallback
 **Current path**: `plugins/front_app.sh` + `scripts/front_app_context.sh`
@@ -175,6 +217,10 @@ sketchybar --reload
 - The `front_app` popup now updates its float/fullscreen/topmost row labels from the current window state, so the row explains the next action instead of always saying `Toggle`.
 - Conservative presets live in the same popup: `Utility`, `Focus`, `Presentation`, and `Tile Here`. They do not move windows across spaces or displays and they clear topmost state where a preset returns a window to normal tiling.
 - The `front_app` popup now exposes the same policy directly through `Adopt Current Space Mode` and `Send to Float Space`, so recovery does not require remembering a lower-level yabai command.
+- The Control Center popup keeps persistent app-default controls out of the smaller `front_app` popup. Its rows are `Default App: Float`, `Default App: Tile`, and `Unset App Default`; they call `scripts/yabai_control.sh app-default-current ...`, persist the choice in `state.json` under `window_defaults.apps`, and install/remove a labeled live yabai rule (`barista-default-*`) when yabai is running.
+- `app-default-current` uses the same front-app context fallback when yabai has
+  no focused managed window, so unmanaged/frontmost utility apps can still be
+  saved as app defaults.
 
 ### 11. Runtime Context Helper
 **Current path**: `main.lua` + `modules/runtime_daemon.lua` + `scripts/runtime_context.sh` + `bin/runtime_context_helper`
@@ -189,6 +235,7 @@ sketchybar --reload
 **Current path**: `plugins/reload_sketchybar.sh`
 - `reload_sketchybar.sh` now uses a short-lived lock directory under `TMPDIR` to serialize overlapping reload requests.
 - Callers that arrive while another reload is already in flight now wait for that reload to finish and exit early if `front_app` is already live, instead of issuing a second LaunchAgent stop/bootstrap cycle.
+- Reload completion now also waits for `space.1`; if spaces are missing after the core item is live, it runs `plugins/refresh_spaces.sh` before returning.
 - This prevents rapid repeat invocations from leaving SketchyBar running without its runtime daemons after competing launchctl restarts.
 - skhd reload shortcuts now route through `plugins/reload_sketchybar.sh` instead of raw `sketchybar --reload`.
 
@@ -197,13 +244,20 @@ sketchybar --reload
 - The doctor reports the active skhd config path, the generated Barista shortcuts path, loaded skhd files, generated-shortcut include health, duplicate bindings, recent skhd log warnings, and a minimal yabai space-focus check.
 - The doctor also prints a compact shortcut summary: active/disabled binding count, duplicate count, raw yabai command count, and missing command target count.
 - Use `scripts/yabai_control.sh shortcuts` for the full loaded skhd inventory, grouped by source file. Use `--json` when another tool needs the same data.
-- Use `scripts/yabai_control.sh rules-audit` to compare active yabai rules and live windows against Barista's unmanaged utility policy: `manage=off sub-layer=below`, with topmost treated as an explicit/manual state. Use `--json` for a machine-readable finding list.
+- Use `scripts/yabai_control.sh rules-audit` to compare active yabai rules and live windows against Barista's unmanaged utility policy: `manage=off sub-layer=normal`, with topmost treated as an explicit/manual state. Use `--json` for a machine-readable finding list.
 - `doctor --fix` keeps the existing repair behavior for missing generated shortcut includes and skhd restart/reload paths.
 
 ### 14. Control Panel Launch
 **Current path**: `bin/open_control_panel.sh`
 - SketchyBar's Barista Settings menu row launches the native `Barista.app` through LaunchServices (`open -na ... --args`) instead of directly executing the bundle binary.
 - Direct bundle execution can create the window and then exit immediately; LaunchServices keeps the app registered and the settings panel visible.
+
+### 15. Process Diagnostics
+**Current path**: `scripts/process_manager.sh`
+- `process_manager.sh load` prints a compact current load snapshot: system load, top process, Barista aggregate CPU/memory, and runaway count/details.
+- `process_manager.sh barista` prints the live SketchyBar/yabai/skhd/widget/runtime-context/space-script process family.
+- `process_manager.sh runaways` flags high-CPU or duplicated Barista space plugin scripts.
+- `process_manager.sh cleanup-runaways` is a dry run unless `--yes` is passed, so diagnostics stay non-destructive by default.
 
 ## C Performance Widgets
 

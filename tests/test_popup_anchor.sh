@@ -73,6 +73,23 @@ run_target_checks() {
   PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
     TMPDIR="$TMP_DIR" \
     NAME="apple_menu" \
+    SENDER="mouse.exited" \
+    BARISTA_ANCHOR_IDLE_DRAWING="on" \
+    BARISTA_ANCHOR_IDLE_BG="0x18313a46" \
+    BARISTA_ANCHOR_IDLE_BORDER_WIDTH="1" \
+    BARISTA_ANCHOR_IDLE_BORDER_COLOR="0x20585b70" \
+    "$target"
+
+  if ! grep -Fq -- 'background.drawing=on background.border_width=1 background.border_color=0x20585b70 background.color=0x18313a46' "$LOG_FILE"; then
+    echo "FAIL: popup anchor should restore configured idle chip style on exit ($target)" >&2
+    exit 1
+  fi
+
+  : > "$LOG_FILE"
+
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    TMPDIR="$TMP_DIR" \
+    NAME="apple_menu" \
     SENDER="mouse.entered" \
     "$target"
 

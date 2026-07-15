@@ -5,7 +5,15 @@
 
 ## Overview
 
-This document is historical. The current setup no longer routes Barista through Cortex; Barista owns SketchyBar configuration, and Oracle Agent Manager owns deeper Oracle workflow tooling.
+This document is historical. Barista owns SketchyBar's glanceable status,
+popups, and quick launch; Cortex owns the native host/runtime, and Oracle inside
+Cortex owns persistent AI workflow. `bin/open_oracle_agent_manager.sh` prefers
+that Cortex surface and keeps the legacy Oracle Agent Manager as a fallback.
+The completion badges, prototype paths, and
+replacement claims below describe the 2026-01 experiment, not the current source
+tree. Do not use them as an install or implementation checklist; start with
+`README.md`, `docs/architecture/SKETCHYBAR_LAYOUT.md`, and
+`docs/features/BARISTA_CONTROL_PANEL.md`.
 
 ## What Was Done
 

@@ -216,9 +216,10 @@ end
 
 function locator.resolve_afs_root(opts)
   local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
   return locator.resolve_path({
     option_value(opts, "afs"),
-    os.getenv("AFS_ROOT"),
+    use_global_apps and os.getenv("AFS_ROOT") or nil,
     code_dir .. "/lab/afs",
     code_dir .. "/afs",
   }, true)
@@ -226,9 +227,11 @@ end
 
 function locator.resolve_afs_studio_root(opts, afs_root)
   local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
   return locator.resolve_path({
     option_value(opts, "afs_studio"),
-    os.getenv("AFS_STUDIO_ROOT"),
+    use_global_apps and os.getenv("AFS_STUDIO_ROOT") or nil,
+    afs_root,
     afs_root and (afs_root .. "/apps/studio") or nil,
     code_dir .. "/lab/afs_suite",
     code_dir .. "/lab/afs/apps/studio",
@@ -236,6 +239,17 @@ function locator.resolve_afs_studio_root(opts, afs_root)
     code_dir .. "/afs/apps/studio",
     code_dir .. "/afs_studio",
   }, true)
+end
+
+function locator.resolve_afs_apps_launcher(opts)
+  local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
+  return locator.resolve_executable_path({
+    option_value(opts, "afs_apps_launcher"),
+    os.getenv("AFS_APPS_LAUNCHER"),
+    code_dir .. "/tools/afs/launch.sh",
+    use_global_apps and (HOME .. "/src/tools/afs/launch.sh") or nil,
+  })
 end
 
 function locator.resolve_afs_browser_app(opts)
@@ -264,14 +278,84 @@ function locator.resolve_afs_browser_app(opts)
 end
 
 function locator.resolve_ghostty_app(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
   return locator.resolve_path({
     option_value(opts, "ghostty_app"),
     os.getenv("BARISTA_GHOSTTY_APP") or os.getenv("GHOSTTY_APP"),
-    "/Applications/Ghostty.app",
-    HOME .. "/Applications/Ghostty.app",
-    "/Applications/ghostty.app",
-    HOME .. "/Applications/ghostty.app",
+    use_global_apps and "/Applications/Ghostty.app" or nil,
+    use_global_apps and (HOME .. "/Applications/Ghostty.app") or nil,
+    use_global_apps and "/Applications/ghostty.app" or nil,
+    use_global_apps and (HOME .. "/Applications/ghostty.app") or nil,
   }, true)
+end
+
+function locator.resolve_lm_studio_app(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
+  return locator.resolve_path({
+    option_value(opts, "lm_studio_app"),
+    os.getenv("BARISTA_LM_STUDIO_APP") or os.getenv("LM_STUDIO_APP") or os.getenv("LMSTUDIO_APP"),
+    use_global_apps and "/Applications/LM Studio.app" or nil,
+    use_global_apps and (HOME .. "/Applications/LM Studio.app") or nil,
+    use_global_apps and "/Applications/LMStudio.app" or nil,
+    use_global_apps and (HOME .. "/Applications/LMStudio.app") or nil,
+  }, true)
+end
+
+function locator.resolve_chatgpt_app(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
+  return locator.resolve_path({
+    option_value(opts, "chatgpt_app"),
+    os.getenv("BARISTA_CHATGPT_APP") or os.getenv("CHATGPT_APP"),
+    use_global_apps and "/Applications/ChatGPT.app" or nil,
+    use_global_apps and (HOME .. "/Applications/ChatGPT.app") or nil,
+  }, true)
+end
+
+function locator.resolve_claude_app(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
+  return locator.resolve_path({
+    option_value(opts, "claude_app"),
+    os.getenv("BARISTA_CLAUDE_APP") or os.getenv("CLAUDE_APP"),
+    use_global_apps and "/Applications/Claude.app" or nil,
+    use_global_apps and (HOME .. "/Applications/Claude.app") or nil,
+  }, true)
+end
+
+function locator.resolve_cursor_app(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
+  return locator.resolve_path({
+    option_value(opts, "cursor_app"),
+    os.getenv("BARISTA_CURSOR_APP") or os.getenv("CURSOR_APP"),
+    use_global_apps and "/Applications/Cursor.app" or nil,
+    use_global_apps and (HOME .. "/Applications/Cursor.app") or nil,
+  }, true)
+end
+
+function locator.resolve_cortex_launcher(opts)
+  local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
+  local resolved, found = locator.resolve_executable_path({
+    option_value(opts, "cortex_bin"),
+    option_value(opts, "cortex"),
+    os.getenv("BARISTA_CORTEX_BIN") or os.getenv("CORTEX_BIN"),
+    use_global_apps and (HOME .. "/.local/bin/cortex") or nil,
+    code_dir .. "/lab/cortex/cortex",
+    code_dir .. "/lab/cortex/.build/arm64-apple-macosx/release/cortex",
+    code_dir .. "/lab/cortex/.build/arm64-apple-macosx/debug/cortex",
+    code_dir .. "/cortex/cortex",
+  })
+  if found then
+    return resolved, true
+  end
+
+  if use_global_apps then
+    resolved = locator.command_path("cortex")
+    if resolved then
+      return resolved, true
+    end
+  end
+
+  return resolved, false
 end
 
 function locator.resolve_stemforge_app(opts)
@@ -484,15 +568,31 @@ function locator.resolve_afs_studio_launcher(opts)
   })
 end
 
-function locator.resolve_afs_labeler_binary(studio_root)
-  return locator.resolve_path({
-    studio_root and (studio_root .. "/build_ai/apps/studio/afs-labeler.app") or nil,
+function locator.resolve_afs_labeler_binary(studio_root, opts)
+  local command_path = locator.command_path("afs-labeler") or locator.command_path("afs_labeler")
+  local resolved, found = locator.resolve_executable_path({
+    option_value(opts, "afs_labeler_bin"),
+    os.getenv("AFS_LABELER_BIN"),
+    command_path,
     studio_root and (studio_root .. "/build_ai/apps/studio/afs-labeler") or nil,
-    studio_root and (studio_root .. "/build/apps/studio/afs-labeler.app") or nil,
     studio_root and (studio_root .. "/build/apps/studio/afs-labeler") or nil,
     studio_root and (studio_root .. "/build/afs_labeler") or nil,
     studio_root and (studio_root .. "/build/bin/afs_labeler") or nil,
-  }, false)
+  })
+  if found then
+    return resolved, true
+  end
+
+  local app, app_found = locator.resolve_path({
+    option_value(opts, "afs_labeler_app"),
+    os.getenv("AFS_LABELER_APP"),
+    studio_root and (studio_root .. "/build_ai/apps/studio/afs-labeler.app") or nil,
+    studio_root and (studio_root .. "/build/apps/studio/afs-labeler.app") or nil,
+  }, true)
+  if app_found then
+    return app, true
+  end
+  return nil, false
 end
 
 function locator.afs_studio_layout(studio_root)

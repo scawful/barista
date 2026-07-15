@@ -20,6 +20,9 @@ declare -a CALENDAR_ITEMS=(
   "clock.calendar.week5"
   "clock.calendar.week6"
   "clock.calendar.summary"
+  "clock.calendar.tasks.today"
+  "clock.calendar.tasks.next"
+  "clock.calendar.tasks.blocked"
   "clock.calendar.weekend"
   "clock.calendar.progress"
   "clock.calendar.footer"
@@ -32,7 +35,8 @@ while IFS= read -r line; do
 done < <(python3 <<'PY'
 import calendar
 import datetime
-import math
+import os
+import re
 
 today = datetime.date.today()
 cal = calendar.Calendar(firstweekday=calendar.SUNDAY)
@@ -97,6 +101,123 @@ now = datetime.datetime.now().astimezone()
 time_str = now.strftime("%I:%M %p").lstrip("0")
 tz = now.tzname() or ""
 lines.append(f"{moon_icon}  {day_name}, {today.strftime('%b')} {today.day} · {time_str} {tz}".rstrip())
+
+# Compact local-task summary. Keep this popup status-only: no repo/doc links.
+DEFAULT_TASK_SOURCES = [
+    "~/src/folio/tasks/active.md",
+    "~/src/hobby/oracle-of-secrets/Docs/oracle.org",
+]
+
+def clean_title(title):
+    title = re.sub(r"\s+:[\w:@#%]+:\s*$", "", title or "").strip()
+    title = re.sub(r"^\[#.\]\s+", "", title).strip()
+    return title
+
+def truncate(value, limit=28):
+    value = value or ""
+    if len(value) <= limit:
+        return value
+    return value[: max(0, limit - 1)] + "…"
+
+def task_sources():
+    raw = os.environ.get("BARISTA_CALENDAR_TASK_SOURCES") or os.environ.get("BARISTA_TASK_SOURCES")
+    entries = raw.split(":") if raw else DEFAULT_TASK_SOURCES
+    seen = set()
+    for entry in entries:
+        entry = entry.strip()
+        if not entry:
+            continue
+        path = os.path.expanduser(entry)
+        if path not in seen:
+            seen.add(path)
+            yield path
+
+def read_local_tasks():
+    buckets = dict(today=[], next=[], next_fallback=[], blocked=[])
+    heading_re = re.compile(r"^\*+\s+(TODO|NEXT|DOING|STARTED|WAITING|BLOCKED)\s+(.*)$", re.I)
+    markdown_section_re = re.compile(r"^#{2,6}\s+(.+?)\s*$")
+    markdown_task_re = re.compile(r"^\s*[-*]\s+\[([ xX-])\]\s+(.*)$")
+    explicit_state_re = re.compile(r"^\[(TODO|NEXT|ACTIVE|DOING|STARTED|WAITING|BLOCKED|DONE|CANCELLED)\]\s+(.*)$", re.I)
+    date_re = re.compile(r"<(\d{4}-\d{2}-\d{2})")
+
+    def add(bucket, title):
+        title = clean_title(title)
+        if title and title not in buckets[bucket]:
+            buckets[bucket].append(title)
+
+    for path in task_sources():
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as handle:
+                current = None
+                markdown_section = ""
+                for raw_line in handle:
+                    line = raw_line.rstrip("\n")
+                    section_match = markdown_section_re.match(line)
+                    if section_match:
+                        markdown_section = section_match.group(1).strip().lower()
+                        current = None
+                        continue
+                    markdown_match = markdown_task_re.match(line)
+                    if markdown_match:
+                        marker = markdown_match.group(1)
+                        title = markdown_match.group(2).strip()
+                        if marker in ("x", "X", "-"):
+                            current = None
+                            continue
+                        explicit = explicit_state_re.match(title)
+                        status = ""
+                        if explicit:
+                            status = explicit.group(1).upper()
+                            title = explicit.group(2).strip()
+                        if status in ("DONE", "CANCELLED"):
+                            current = None
+                            continue
+                        if status in ("BLOCKED", "WAITING") or markdown_section in ("blocked", "waiting"):
+                            add("blocked", title)
+                        elif status == "NEXT" or markdown_section in ("inbox", "next"):
+                            add("next", title)
+                        elif not buckets["today"]:
+                            add("today", title)
+                        else:
+                            add("next_fallback", title)
+                        current = None
+                        continue
+                    match = heading_re.match(line)
+                    if match:
+                        status = match.group(1).upper()
+                        title = match.group(2)
+                        current = (status, title)
+                        if status in ("BLOCKED", "WAITING"):
+                            add("blocked", title)
+                        elif status == "NEXT":
+                            add("next", title)
+                        else:
+                            add("today", title)
+                        continue
+                    if current and ("SCHEDULED:" in line or "DEADLINE:" in line):
+                        date_match = date_re.search(line)
+                        if date_match:
+                            try:
+                                item_date = datetime.date.fromisoformat(date_match.group(1))
+                            except ValueError:
+                                item_date = None
+                            if item_date and item_date <= today:
+                                add("today", current[1])
+        except OSError:
+            continue
+    if not buckets["next"]:
+        buckets["next"] = buckets["next_fallback"]
+    return buckets
+
+tasks = read_local_tasks()
+today_task = truncate(tasks["today"][0]) if tasks["today"] else "No local tasks"
+next_task = truncate(tasks["next"][0]) if tasks["next"] else "—"
+blocked_task = truncate(tasks["blocked"][0]) if tasks["blocked"] else "Clear"
+lines.append(f"󰄱 Today: {today_task}".rstrip())
+lines.append(f"󰒭 Next: {next_task}".rstrip())
+lines.append(f"󰅖 Blocked: {blocked_task}".rstrip())
 
 # Weekend countdown
 weekday = today.weekday()  # Monday = 0

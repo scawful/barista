@@ -1,0 +1,120 @@
+#!/bin/bash
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT="$ROOT_DIR/plugins/volume.sh"
+TMP_DIR="$(mktemp -d)"
+BIN_DIR="$TMP_DIR/bin"
+LOG_FILE="$TMP_DIR/sketchybar.log"
+MEDIA_STUB="$TMP_DIR/media_control.sh"
+
+cleanup() {
+  rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
+
+mkdir -p "$BIN_DIR"
+
+cat > "$BIN_DIR/sketchybar" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${BARISTA_TEST_SKETCHYBAR_LOG:?}"
+EOF
+chmod +x "$BIN_DIR/sketchybar"
+
+cat > "$BIN_DIR/osascript" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+case "$*" in
+  *'output volume of (get volume settings)'*) printf '50\n' ;;
+  *'output muted of (get volume settings)'*) printf 'false\n' ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$BIN_DIR/osascript"
+
+cat > "$BIN_DIR/SwitchAudioSource" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+case "${1:-}" in
+  -c) printf 'Studio Display\n' ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$BIN_DIR/SwitchAudioSource"
+
+cat > "$MEDIA_STUB" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+case "${1:-}" in
+  status)
+    printf 'player\tMusic\n'
+    printf 'state\tplaying\n'
+    printf 'track\tGirl, so confusing featuring lorde\n'
+    printf 'artist\tCharli xcx\n'
+    printf 'toggle_label\tPause\n'
+    printf 'toggle_icon\t󰏤\n'
+    printf 'current_output\tStudio Display\n'
+    ;;
+  outputs)
+    printf 'output\t1\ttrue\tStudio Display\n'
+    printf 'output\t2\tfalse\tMacBook Pro Speakers\n'
+    ;;
+esac
+EOF
+chmod +x "$MEDIA_STUB"
+
+PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+  NAME=volume \
+  SENDER=routine \
+  BARISTA_CONFIG_DIR="$ROOT_DIR" \
+  BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
+  BARISTA_SWITCH_AUDIO_SOURCE_BIN="$BIN_DIR/SwitchAudioSource" \
+  BARISTA_MEDIA_CONTROL_SCRIPT="$MEDIA_STUB" \
+  BARISTA_TEST_SKETCHYBAR_LOG="$LOG_FILE" \
+  "$SCRIPT"
+
+grep -Fq -- '--set volume.state icon=󰖀 label=Volume: 50%' "$LOG_FILE" || {
+  echo "FAIL: volume state row should use the approved Volume prefix" >&2
+  exit 1
+}
+grep -Fq -- '--set volume.output label=Output: Studio Display' "$LOG_FILE" || {
+  echo "FAIL: output row should use the approved Output prefix" >&2
+  exit 1
+}
+grep -Fq -- '--set volume.media icon=' "$LOG_FILE" || {
+  echo "FAIL: now-playing row should be updated" >&2
+  exit 1
+}
+grep -Fq -- 'label=Now Playing: Girl, so confusing featuring lorde — Charli xcx' "$LOG_FILE" || {
+  echo "FAIL: media row should use the approved Now Playing prefix" >&2
+  exit 1
+}
+grep -Fq -- '--set volume.output.1 drawing=on icon=󰓃 label=Studio Display · Current' "$LOG_FILE" || {
+  echo "FAIL: selected output row should be visible and marked current" >&2
+  exit 1
+}
+grep -Fq -- '--set volume.output.2 drawing=on icon=󰓃 label=MacBook Pro Speakers' "$LOG_FILE" || {
+  echo "FAIL: alternate output row should be visible" >&2
+  exit 1
+}
+
+: > "$LOG_FILE"
+PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+  NAME=volume \
+  SENDER=routine \
+  BARISTA_CONFIG_DIR="$ROOT_DIR" \
+  BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
+  BARISTA_SWITCH_AUDIO_SOURCE_BIN="$BIN_DIR/SwitchAudioSource" \
+  BARISTA_MEDIA_CONTROL_SCRIPT="$MEDIA_STUB" \
+  BARISTA_MEDIA_LABEL_MAX=32 \
+  BARISTA_TEST_SKETCHYBAR_LOG="$LOG_FILE" \
+  "$SCRIPT"
+
+grep -Fq -- 'label=Now Playing: Girl, so confusing…' "$LOG_FILE" || {
+  echo "FAIL: media row should truncate overly long labels without extra process work" >&2
+  exit 1
+}
+
+printf 'test_volume_plugin.sh: ok\n'

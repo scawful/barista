@@ -5,6 +5,7 @@ local menu_style = require("menu_style")
 local locator = require("tool_locator")
 local interface_extensions = require("interface_extensions")
 local project_shortcuts_module = require("project_shortcuts")
+local ui = require("ui_builder")
 local shortcuts_ok, shortcuts = pcall(require, "shortcuts")
 if not shortcuts_ok then
   shortcuts = nil
@@ -158,6 +159,10 @@ local function resolve_afs_studio_launcher(ctx)
   return locator.resolve_afs_studio_launcher(ctx)
 end
 
+local function resolve_afs_apps_launcher(ctx)
+  return locator.resolve_afs_apps_launcher(ctx)
+end
+
 local function resolve_afs_browser_app(ctx)
   return locator.resolve_afs_browser_app(ctx)
 end
@@ -283,74 +288,18 @@ local function build_prepared(ctx)
     show_missing = menu_config.show_missing
   end
 
-  local function normalize_bool(value)
-    if type(value) == "boolean" then
-      return value
-    end
-    if type(value) == "number" then
-      return value ~= 0
-    end
-    if type(value) == "string" then
-      local lowered = value:lower()
-      if lowered == "true" or lowered == "yes" or lowered == "1" then
-        return true
-      end
-      if lowered == "false" or lowered == "no" or lowered == "0" then
-        return false
-      end
-    end
-    return nil
-  end
-
-  local terminal_defaults = {}
-
-  local function terminal_allowed(item_id)
-    local override = menu_config.items[item_id] or {}
-    if type(override.launch) == "string" then
-      return override.launch:lower() == "terminal"
-    end
-    local override_terminal = normalize_bool(override.terminal or override.open_terminal)
-    if override_terminal ~= nil then
-      return override_terminal
-    end
-    local enabled_override = normalize_bool(override.enabled)
-    if enabled_override == true then
-      return true
-    end
-    if type(menu_config.launch) == "string" then
-      return menu_config.launch:lower() == "terminal"
-    end
-    local menu_terminal = normalize_bool(menu_config.terminal or menu_config.open_terminal)
-    if menu_terminal ~= nil then
-      return menu_terminal
-    end
-    local env = os.getenv("BARISTA_MENU_TERMINAL")
-    if env and env ~= "" then
-      env = env:lower()
-      return env == "1" or env == "true" or env == "yes"
-    end
-    return terminal_defaults[item_id] == true
-  end
-
-  local function terminal_action(item_id, command)
-    if not command or command == "" then
-      return nil
-    end
-    if not terminal_allowed(item_id) then
-      return nil
-    end
-    return open_terminal(command)
-  end
-
-  local afs_root, afs_ok = resolve_afs_root(ctx)
-  local afs_suite_root, afs_suite_ok = resolve_path(ctx, {
-    code_dir .. "/lab/afs_suite",
-    code_dir .. "/afs_suite",
-  }, true)
-  local studio_root, studio_ok = resolve_afs_studio_root(ctx, afs_root)
+  local afs_root = select(1, resolve_afs_root(ctx))
+  local studio_root = select(1, resolve_afs_studio_root(ctx, afs_root))
+  local afs_apps_launcher, afs_apps_launcher_ok = resolve_afs_apps_launcher(ctx)
   local afs_studio_launcher, afs_studio_launcher_ok = resolve_afs_studio_launcher(ctx)
   local afs_studio_bin, afs_studio_bin_ok = locator.resolve_afs_studio_binary(studio_root)
   local afs_browser_app, afs_browser_ok = resolve_afs_browser_app(ctx)
+  local ghostty_app, ghostty_ok = locator.resolve_ghostty_app(ctx)
+  local lm_studio_app, lm_studio_ok = locator.resolve_lm_studio_app(ctx)
+  local chatgpt_app, chatgpt_ok = locator.resolve_chatgpt_app(ctx)
+  local claude_app, claude_ok = locator.resolve_claude_app(ctx)
+  local cursor_app, cursor_ok = locator.resolve_cursor_app(ctx)
+  local cortex_launcher, cortex_ok = locator.resolve_cortex_launcher(ctx)
   local stemforge_app, stemforge_ok = resolve_stemforge_app(ctx)
   local stem_sampler_app, stem_sampler_ok = resolve_stem_sampler_app(ctx)
   local help_center_bin, help_center_ok = resolve_executable_path({
@@ -412,18 +361,18 @@ local function build_prepared(ctx)
     sys_manual_available = true
   end
   local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
+  local sketchybar_bin = binary_resolver.resolve_sketchybar_bin()
   local reload_action = ctx.call_script and ctx.call_script(config_dir .. "/plugins/reload_sketchybar.sh")
   if not reload_action or reload_action == "" then
     reload_action = string.format("%q --reload", sketchybar_bin)
   end
   local afs_action = ""
   local afs_available = false
-  local afs_build_action = ""
-  local afs_missing_action = ""
-  local afs_missing_message = "No local AFS desktop surface was found. Set AFS_BROWSER_APP or build afs-studio."
-  local afs_missing_label = "Build AFS Browser"
   if afs_browser_app and afs_browser_ok then
     afs_action = string.format("open %s", shell_quote(afs_browser_app))
+    afs_available = true
+  elseif afs_apps_launcher and afs_apps_launcher_ok then
+    afs_action = string.format("%s launch afs_studio", shell_quote(afs_apps_launcher))
     afs_available = true
   elseif afs_studio_launcher and afs_studio_launcher_ok then
     afs_action = shell_quote(afs_studio_launcher)
@@ -435,67 +384,46 @@ local function build_prepared(ctx)
       afs_action = shell_quote(afs_studio_bin)
     end
     afs_available = true
-  elseif afs_suite_ok and afs_suite_root then
-    local build_dir = path_exists(afs_suite_root .. "/build_ai", true) and "build_ai" or "build"
-    afs_build_action = open_terminal(string.format(
-      "cd %s && cmake --build %s --target afs-browser -j$(sysctl -n hw.ncpu)",
-      shell_quote(afs_suite_root),
-      build_dir
-    ))
-  elseif studio_root then
-    afs_missing_label = "Build AFS"
-    if locator.afs_studio_layout(studio_root) == "suite" then
-      local build_dir = locator.afs_build_dir(studio_root)
-      afs_build_action = open_terminal(string.format(
-        "cd %s && cmake --build %s --target afs-studio -j$(sysctl -n hw.ncpu) && ./%s/apps/studio/afs-studio",
-        shell_quote(studio_root),
-        build_dir,
-        build_dir
-      ))
-    else
-      afs_build_action = open_terminal(string.format(
-        "cd %s && cmake --build build --target afs_studio -j$(sysctl -n hw.ncpu) && ./build/afs_studio",
-        shell_quote(studio_root)
-      ))
-    end
-  else
-    afs_missing_action = ":"
-    afs_missing_label = "Build AFS"
-    afs_missing_message = "No local AFS desktop surface was found. Barista looks for AFS Browser.app first, then afs-studio."
   end
-  local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(studio_root)
+  local ghostty_action = ""
+  if ghostty_app and ghostty_ok then
+    ghostty_action = string.format("open -na %s", shell_quote(ghostty_app))
+  end
+  local lm_studio_action = ""
+  if lm_studio_app and lm_studio_ok then
+    lm_studio_action = string.format("open %s", shell_quote(lm_studio_app))
+  end
+  local chatgpt_action = ""
+  if chatgpt_app and chatgpt_ok then
+    chatgpt_action = string.format("open %s", shell_quote(chatgpt_app))
+  end
+  local claude_action = ""
+  if claude_app and claude_ok then
+    claude_action = string.format("open %s", shell_quote(claude_app))
+  end
+  local cursor_action = ""
+  if cursor_app and cursor_ok then
+    cursor_action = string.format("open %s", shell_quote(cursor_app))
+  end
+  local cortex_action = ""
+  if cortex_launcher and cortex_ok then
+    cortex_action = shell_quote(cortex_launcher)
+  end
+  local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(studio_root, ctx)
   local labeler_csv = os.getenv("AFS_LABELER_CSV")
   local labeler_cmd
   local labeler_action
   if labeler_bin_ok and labeler_bin then
-    labeler_cmd = shell_quote(labeler_bin)
-    if labeler_csv and labeler_csv ~= "" then
-      labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
-    end
-    labeler_action = labeler_cmd
-  elseif studio_root then
-    local build_dir = locator.afs_build_dir(studio_root)
-    if locator.afs_studio_layout(studio_root) == "suite" then
-      labeler_cmd = string.format(
-        "cd %s && cmake --build %s --target afs-labeler && ./%s/apps/studio/afs-labeler",
-        shell_quote(studio_root),
-        build_dir,
-        build_dir
-      )
+    if labeler_bin:match("%.app/?$") then
+      labeler_action = string.format("open %s", shell_quote(labeler_bin))
     else
-      labeler_cmd = string.format(
-        "cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler",
-        shell_quote(studio_root)
-      )
+      labeler_cmd = shell_quote(labeler_bin)
+      if labeler_csv and labeler_csv ~= "" then
+        labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
+      end
+      labeler_action = labeler_cmd
     end
-    if labeler_csv and labeler_csv ~= "" then
-      labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
-    end
-    labeler_action = terminal_action("afs_labeler", labeler_cmd)
   end
-
-  local sketchybar_bin = binary_resolver.resolve_sketchybar_bin()
-
   -- AFS context helpers
   local afs_context_root = os.getenv("AFS_CONTEXT_ROOT")
     or ((os.getenv("HOME") or "") .. "/.context")
@@ -520,12 +448,66 @@ local function build_prepared(ctx)
       action = afs_action,
       shortcut_action = "launch_afs_browser",
       available = afs_available,
-      build_action = afs_build_action,
-      build_label = afs_missing_label,
-      missing_label = afs_missing_label,
-      missing_message = afs_missing_message,
-      missing_title = "Barista · AFS Browser",
-      missing_action = afs_missing_action,
+      default_enabled = true,
+    },
+    {
+      id = "cortex",
+      label = "Cortex",
+      icon = "󰘦",
+      icon_color = tc("MAUVE", "LAVENDER"),
+      section = "apps",
+      action = cortex_action,
+      available = cortex_ok,
+      default_enabled = true,
+    },
+    {
+      id = "lm_studio",
+      label = "LM Studio",
+      icon = "󰭻",
+      icon_color = tc("GREEN"),
+      section = "apps",
+      action = lm_studio_action,
+      available = lm_studio_ok,
+      default_enabled = true,
+    },
+    {
+      id = "ghostty",
+      label = "Ghostty",
+      icon = "",
+      icon_color = tc("SKY"),
+      section = "apps",
+      action = ghostty_action,
+      available = ghostty_ok,
+      default_enabled = true,
+    },
+    {
+      id = "chatgpt",
+      label = "ChatGPT",
+      icon = "󰚩",
+      icon_color = tc("GREEN"),
+      section = "apps",
+      action = chatgpt_action,
+      available = chatgpt_ok,
+      default_enabled = true,
+    },
+    {
+      id = "claude",
+      label = "Claude",
+      icon = "󰭹",
+      icon_color = tc("PEACH"),
+      section = "apps",
+      action = claude_action,
+      available = claude_ok,
+      default_enabled = true,
+    },
+    {
+      id = "cursor",
+      label = "Cursor",
+      icon = "󰨞",
+      icon_color = tc("TEAL"),
+      section = "apps",
+      action = cursor_action,
+      available = cursor_ok,
       default_enabled = true,
     },
     {
@@ -546,7 +528,7 @@ local function build_prepared(ctx)
       section = "afs",
       action = afs_scratchpad_action,
       available = afs_context_available,
-      default_enabled = afs_context_available,
+      default_enabled = false,
     },
     {
       id = "afs_labeler",
@@ -556,8 +538,8 @@ local function build_prepared(ctx)
       section = "apps",
       action = labeler_action or "",
       shortcut_action = "launch_afs_labeler",
-      available = studio_ok and labeler_cmd ~= nil,
-      blocked = studio_ok and labeler_cmd ~= nil and labeler_action == nil,
+      available = labeler_bin_ok and labeler_action ~= nil,
+      blocked = false,
       default_enabled = false,
     },
     {
@@ -719,7 +701,16 @@ function apple_menu.setup(ctx)
     end
     return "sketchybar -m --set $NAME popup.drawing=toggle"
   end
-  local apple_menu_script = ctx.popup_anchor_script
+  local apple_menu_script = ui.anchor_script(ctx.popup_anchor_script, ctx, {
+    height = widget_height,
+    padding_left = 4,
+    padding_right = 4,
+  })
+  local apple_menu_background = ui.anchor_chip_style(ctx, {
+    height = widget_height,
+    padding_left = 4,
+    padding_right = 4,
+  })
 
   sbar.add("item", "apple_menu", {
     position = "left",
@@ -727,13 +718,7 @@ function apple_menu.setup(ctx)
     label = { drawing = false },
     associated_display = associated_displays,
     associated_space = "all",
-    background = {
-      color = "0x00000000",
-      corner_radius = 4,
-      height = widget_height,
-      padding_left = 4,
-      padding_right = 4,
-    },
+    background = apple_menu_background,
     click_script = popup_toggle(),
     popup = {
       background = {

@@ -71,8 +71,10 @@ run_test("apple_menu_enhanced: apple menu stays hover-highlight + click-open", f
 
   assert_true(apple_menu_item ~= nil, "apple_menu should be added")
   assert_equal(apple_menu_item.props.click_script, "toggle:apple_menu", "apple_menu should still toggle on click")
-  assert_equal(apple_menu_item.props.script, "/tmp/popup_anchor", "apple_menu should use the popup anchor without hover-open env")
+  assert_true(apple_menu_item.props.script:find("/tmp/popup_anchor", 1, true) ~= nil, "apple_menu should use the popup anchor without hover-open env")
   assert_true(not apple_menu_item.props.script:find("POPUP_OPEN_ON_ENTER", 1, true), "apple_menu script should not enable hover-open")
+  assert_equal(apple_menu_item.props.background.color, "0x18313a46", "apple_menu should use the shared idle chip background")
+  assert_equal(apple_menu_item.props.background.drawing, true, "apple_menu should draw the shared anchor chip")
   assert_equal(subscribed[1], "apple_menu", "apple_menu should still subscribe to popup autoclose")
   assert_type(meta, "table", "setup should return metadata")
 end)

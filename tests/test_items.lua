@@ -31,7 +31,7 @@ local function test_items_left_layout()
     widget_height = 22,
     popup_background = function() return { drawing = true } end,
     hover_script_cmd = "hover.sh",
-    popup_toggle_action = function() return "toggle.sh" end,
+    popup_toggle_action = function(item_name) return "toggle:" .. tostring(item_name) end,
     POST_CONFIG_DELAY = 0.1,
     SPACE_POST_CONFIG_DELAY = 0.0,
     SKETCHYBAR_BIN = "sketchybar",
@@ -84,6 +84,7 @@ local function test_items_left_layout()
   local found_focus_preset = false
   local found_presentation_preset = false
   local found_tile_here_preset = false
+  local found_front_app_default_row = false
   local front_app_move_prev = nil
   local front_app_move_next = nil
   for _, entry in ipairs(layout) do
@@ -93,6 +94,7 @@ local function test_items_left_layout()
       assert_equal(entry.props.label.drawing, false, "front_app should default to icon-only label state")
       assert_equal(entry.props.background.drawing, true, "front_app should render as a visible chip")
       assert_equal(entry.props.background.color, "0x18313a46", "front_app should use the shared idle chip background")
+      assert_equal(entry.props.click_script, "toggle:front_app", "front_app should use the generic direct popup toggle")
     elseif entry.type == "item" and entry.name == "front_app_divider" then
       found_front_app_divider = true
       assert_equal(entry.props.label.string, "·", "front_app divider should render a subtle dot separator")
@@ -118,6 +120,8 @@ local function test_items_left_layout()
     elseif entry.type == "item" and entry.name == "front_app.preset.tile_here" then
       found_tile_here_preset = true
       assert_true(entry.props.click_script:find("yabai_control%.sh window%-preset%-tile%-here") ~= nil, "tile-here preset should route through yabai_control.sh")
+    elseif entry.type == "item" and type(entry.name) == "string" and entry.name:match("^front_app%.default%.") then
+      found_front_app_default_row = true
     elseif entry.type == "item" and entry.name == "front_app.move.display_prev" then
       front_app_move_prev = entry
     elseif entry.type == "item" and entry.name == "front_app.move.display_next" then
@@ -135,6 +139,7 @@ local function test_items_left_layout()
   assert(found_focus_preset, "front_app focus preset not found in popup layout")
   assert(found_presentation_preset, "front_app presentation preset not found in popup layout")
   assert(found_tile_here_preset, "front_app tile-here preset not found in popup layout")
+  assert_true(not found_front_app_default_row, "front_app should leave persistent app defaults to Control Center")
   assert(front_app_move_prev ~= nil, "front_app move-to-prev-display action not found in popup layout")
   assert(front_app_move_next ~= nil, "front_app move-to-next-display action not found in popup layout")
   assert(front_app_hide.props.click_script:find("popup.drawing=off", 1, true) ~= nil, "front_app actions should close the popup after execution")
@@ -175,7 +180,7 @@ local function test_items_left_without_yabai()
     widget_height = 22,
     popup_background = function() return { drawing = true } end,
     hover_script_cmd = "hover.sh",
-    popup_toggle_action = function() return "toggle.sh" end,
+    popup_toggle_action = function(item_name) return "toggle:" .. tostring(item_name) end,
     POST_CONFIG_DELAY = 0.1,
     SKETCHYBAR_BIN = "sketchybar",
     associated_displays = "all",
@@ -277,7 +282,7 @@ local function test_items_left_control_center_custom_name()
     widget_height = 22,
     popup_background = function() return { drawing = true } end,
     hover_script_cmd = "hover.sh",
-    popup_toggle_action = function() return "toggle.sh" end,
+    popup_toggle_action = function(item_name) return "toggle:" .. tostring(item_name) end,
     POST_CONFIG_DELAY = 0.1,
     SKETCHYBAR_BIN = "sketchybar",
     associated_displays = "all",
@@ -296,9 +301,11 @@ local function test_items_left_control_center_custom_name()
     control_center_module = {
       create_widget = function(opts)
         assert_equal(opts.item_name, "status_hub", "items_left should pass the resolved control_center item name")
+        assert_equal(opts.popup_toggle_script, "toggle:status_hub", "control_center should receive the generic direct popup toggle")
         return {
           name = "status_hub",
           script = "/tmp/plugins/control_center.sh",
+          click_script = opts.popup_toggle_script,
           popup = { align = "left", background = { drawing = true } },
         }
       end,
@@ -623,11 +630,15 @@ local function test_items_right_layout()
   assert_true(added_items.clock.props.update_freq == nil, "clock timer should be disabled when daemon-managed")
   assert_true(added_items.system_info.props.script:find("/tmp/plugins/system_info%.sh") ~= nil, "system_info should keep the shell event wrapper")
   assert_true(added_items.system_info.props.update_freq == nil, "system_info timer should be disabled when daemon-managed")
-  assert_true(added_items.system_info.props.click_script:find("popup_refresh", 1, true) ~= nil, "system_info click should refresh popup details")
-  assert_true(added_items.volume.props.click_script:find("volume_click%.sh") ~= nil, "volume click should route through the dedicated click handler")
-  assert_equal(added_items.battery.props.script, "/tmp/plugins/battery.sh '0xffa6e3a1' '0xfff9e2af' '0xfff38ba8' '0xff89b4fa'", "battery should keep the shell event wrapper")
+  assert_true(added_items.system_info.props.click_script:find("popup.drawing=toggle", 1, true) ~= nil, "system_info click should toggle immediately")
+  assert_true(added_items.system_info.props.click_script:find("popup_refresh", 1, true) ~= nil, "system_info click should refresh popup details asynchronously")
+  assert_true(added_items.volume.props.click_script:find("popup.drawing=toggle", 1, true) ~= nil, "volume click should toggle immediately")
+  assert_true(added_items.volume.props.click_script:find("volume%.sh") ~= nil, "volume click should refresh details asynchronously")
+  assert_true(added_items.volume.props.click_script:find("volume_click%.sh") == nil, "volume click should not query before toggling through volume_click.sh")
+  assert_equal(added_items.battery.props.script, "/tmp/plugins/battery.sh 0xffa6e3a1 0xfff9e2af 0xfff38ba8 0xff89b4fa", "battery should keep the shell event wrapper")
   assert_true(added_items.battery.props.update_freq == nil, "battery timer should be disabled when daemon-managed")
-  assert_true(added_items.battery.props.click_script:find("popup_refresh", 1, true) ~= nil, "battery click should refresh popup details")
+  assert_true(added_items.battery.props.click_script:find("popup.drawing=toggle", 1, true) ~= nil, "battery click should toggle immediately")
+  assert_true(added_items.battery.props.click_script:find("popup_refresh", 1, true) ~= nil, "battery click should refresh popup details asynchronously")
   local compiled_summary = table.concat(compiled_calls, ",")
   assert_true(compiled_summary:find("system_info_widget", 1, true) ~= nil, "items_right should resolve the compiled system_info helper")
   assert_true(compiled_summary:find("widget_manager", 1, true) ~= nil, "items_right should resolve the compiled battery helper")

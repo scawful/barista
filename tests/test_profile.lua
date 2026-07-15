@@ -2,6 +2,21 @@
 
 local profile = require("profile")
 
+run_test("profile integrations: personal surfaces are opt-in", function()
+  local expected = {
+    minimal = false,
+    cozy = false,
+    work = false,
+    personal = true,
+  }
+
+  for name, enabled in pairs(expected) do
+    local selected = require("profiles." .. name)
+    assert_equal(selected.integrations.oracle, enabled, name .. " oracle integration")
+    assert_equal(selected.integrations.music, enabled, name .. " music integration")
+  end
+end)
+
 run_test("get_selected_profile: nil state returns minimal", function()
   local result = profile.get_selected_profile(nil)
   assert_equal(result, "minimal", "default profile")

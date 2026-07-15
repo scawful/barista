@@ -46,6 +46,7 @@ local widgets_module = require("widgets")
 local menu_module    = require("menu")
 local yaze_module    = require("yaze")
 local oracle_module  = require("oracle")
+local music_module   = require("music")
 local emacs_module   = require("emacs")
 
 -- Extracted utility modules
@@ -54,6 +55,7 @@ local paths_module     = require("paths")
 local binary_resolver  = require("binary_resolver")
 local runtime_daemon   = require("runtime_daemon")
 local runtime_startup  = require("runtime_startup")
+local ui_builder       = require("ui_builder")
 
 -- Initialize component switcher for C/Lua hybrid architecture
 local component_switcher = require("component_switcher")
@@ -170,9 +172,12 @@ local function compiled_script(binary_name, fallback)
 end
 
 local HOVER_SCRIPT         = compiled_script("popup_hover",    PLUGIN_DIR .. "/popup_hover.sh")
-local POPUP_ANCHOR_SCRIPT  = compiled_script("popup_anchor",   PLUGIN_DIR .. "/popup_anchor.sh")
+local POPUP_ANCHOR_SCRIPT  = PLUGIN_DIR .. "/popup_anchor.sh"
 local SUBMENU_HOVER_SCRIPT = compiled_script("submenu_hover",  PLUGIN_DIR .. "/submenu_hover.sh")
 local POPUP_MANAGER_SCRIPT = compiled_script("popup_manager",  PLUGIN_DIR .. "/popup_manager.sh")
+local POPUP_MANAGER_SCRIPT_CMD = shell_utils.env_prefix({
+  DISMISS_ON_APP_SWITCH = "0",
+}) .. POPUP_MANAGER_SCRIPT
 local POPUP_GUARD_SCRIPT   = compiled_script("popup_guard",    PLUGIN_DIR .. "/popup_guard.sh")
 local WIDGET_MANAGER_BIN   = compiled_script("widget_manager", "")
 local SPACE_VISUALS_SCRIPT = PLUGIN_DIR .. "/space_visuals.sh"
@@ -222,6 +227,7 @@ end
 
 local yaze_enabled   = integration_enabled("yaze")
 local oracle_enabled = integration_enabled("oracle")
+local music_enabled  = integration_enabled("music")
 local emacs_enabled  = integration_enabled("emacs")
 local halext_enabled = integration_enabled("halext")
 local halext_module  = halext_enabled and require("halext") or nil
@@ -250,35 +256,26 @@ if control_center_module and type(control_center_module.get_item_name) == "funct
 elseif control_center_module then
   control_center_item_name = "control_center"
 end
+local music_item_name = nil
+if music_enabled then
+  if type(music_module.get_item_name) == "function" then
+    music_item_name = music_module.get_item_name({ state = state })
+  end
+  if type(music_item_name) ~= "string" or music_item_name == "" then
+    music_item_name = "music_studio"
+  end
+end
 
 local widget_daemon_enabled = runtime_daemon.should_enable_widget_daemon(state, {
   binary_path = WIDGET_MANAGER_BIN,
   lua_only = LUA_ONLY,
 })
 
--- Popup toggle
-local POPUP_TOGGLE_SCRIPT = SCRIPTS_DIR .. "/focus_display_and_toggle_popup.sh"
-if not shell_utils.file_exists(POPUP_TOGGLE_SCRIPT) then
-  local fallback = CONFIG_DIR .. "/scripts/focus_display_and_toggle_popup.sh"
-  if shell_utils.file_exists(fallback) then POPUP_TOGGLE_SCRIPT = fallback end
-end
-local POPUP_TOGGLE_AVAILABLE = shell_utils.file_exists(POPUP_TOGGLE_SCRIPT)
-
 local function direct_popup_toggle(item_name)
-  if item_name and item_name ~= "" then
-    return string.format("%q --set %q popup.drawing=toggle", SKETCHYBAR_BIN, item_name)
-  end
-  return [[sketchybar -m --set $NAME popup.drawing=toggle]]
+  return ui_builder.toggle(item_name, { sketchybar_bin = SKETCHYBAR_BIN })
 end
 
-local function popup_toggle_action(item_name, opts)
-  opts = type(opts) == "table" and opts or {}
-  if opts.direct or opts.focus_display == false or opts.origin == "submenu" then
-    return direct_popup_toggle(item_name)
-  end
-  if POPUP_TOGGLE_AVAILABLE then
-    return shell_utils.call_script(POPUP_TOGGLE_SCRIPT, item_name or "$NAME")
-  end
+local function popup_toggle_action(item_name, _opts)
   return direct_popup_toggle(item_name)
 end
 
@@ -288,7 +285,13 @@ local function attach_hover(name)
 end
 
 local function subscribe_popup_autoclose(name)
-  shell_utils.shell_exec_background(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited mouse.exited.global", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name))
+  -- Do not subscribe popup anchors to mouse.exited.global by default. On the
+  -- live bar, SketchyBar can emit a global-exit event during/just after a
+  -- click as focus moves between the bar window and the popup surface; that
+  -- makes the popup appear to ignore clicks by opening and immediately closing.
+  -- Keep hover enter/exit for visual feedback and let explicit second-click,
+  -- popup actions, and space/display/wake events dismiss popups.
+  shell_utils.shell_exec_background(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name))
 end
 
 -- Spaces module
@@ -335,6 +338,7 @@ local helpers = { help_center = CONFIG_DIR .. "/gui/bin/help_center" }
 local integrations = {
   yaze   = yaze_enabled   and yaze_module   or nil,
   oracle = oracle_enabled and oracle_module or nil,
+  music  = music_enabled  and music_module  or nil,
   emacs  = emacs_enabled  and emacs_module  or nil,
   halext = halext_enabled  and halext_module or nil,
   premia = premia_module,
@@ -366,6 +370,8 @@ local barista_context = {
   group_border_width   = bc.group_border_width,
   group_corner_radius  = bc.group_corner_radius,
   hover_color               = bc.hover_color,
+  hover_border_color        = bc.hover_border_color,
+  hover_border_width        = bc.hover_border_width,
   hover_animation_curve     = bc.hover_animation_curve,
   hover_animation_duration  = bc.hover_animation_duration,
 
@@ -379,13 +385,15 @@ local barista_context = {
   shell_exec               = shell_utils.shell_exec,
   shell_exec_background    = shell_utils.shell_exec_background,
   call_script              = shell_utils.call_script,
+  shell_quote              = shell_utils.shell_quote,
   open_path                = shell_utils.open_path,
   open_url                 = shell_utils.open_url,
   env_prefix               = shell_utils.env_prefix,
   attach_hover             = attach_hover,
   subscribe_popup_autoclose = subscribe_popup_autoclose,
   popup_toggle_action      = popup_toggle_action,
-  popup_toggle_script      = POPUP_TOGGLE_AVAILABLE and POPUP_TOGGLE_SCRIPT or nil,
+  ui_builder               = ui_builder,
+  popup_toggle_script      = nil,
   popup_anchor_script      = POPUP_ANCHOR_SCRIPT,
 
   -- Directories & binaries
@@ -474,7 +482,7 @@ shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event display_removed >/dev/nu
 sbar.add("item", "popup_manager", {
   position = "left",
   drawing = false,
-  script = POPUP_MANAGER_SCRIPT,
+  script = POPUP_MANAGER_SCRIPT_CMD,
 })
 
 -- Space runtime coordinator (single batch updater for all space visuals)
@@ -578,6 +586,9 @@ end
 if oracle_enabled then
   table.insert(popup_manager_items, "triforce")
 end
+if music_item_name then
+  table.insert(popup_manager_items, music_item_name)
+end
 local registry_start_ms = runtime_startup.current_time_ms()
 submenu_registry.register(
   -- Popup parents (items with popup.drawing=toggle)
@@ -588,7 +599,7 @@ submenu_registry.register(
 registry_duration_ms = runtime_startup.current_time_ms() - registry_start_ms
 
 shell_utils.shell_exec(string.format(
-  "sleep %.1f; %s --subscribe popup_manager space_active_refresh display_changed display_added display_removed system_woke front_app_switched",
+  "sleep %.1f; %s --subscribe popup_manager space_change display_changed display_added display_removed system_woke",
   POST_CONFIG_DELAY,
   SKETCHYBAR_BIN
 ))

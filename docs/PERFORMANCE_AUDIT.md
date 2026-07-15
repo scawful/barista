@@ -26,6 +26,7 @@ Following the initial audit, the active runtime path was tightened again in Apri
     - `front_app_context.sh` prefers the cached front-app state before falling back to direct yabai/System Events discovery
     - `media_control.sh` prefers cached player/output state before falling back to direct AppleScript / `SwitchAudioSource`
     - the volume popup now exposes cached output routes and switches outputs by cached index instead of rediscovering devices on every popup refresh
+    - the compiled helper drains a per-refresh autorelease pool on every daemon iteration and explicitly closes task pipe handles, bounding descriptor use and reducing Foundation task/data retention across long-running sessions
     - shell smoke tests now cover the helper delegation path, front-app fallback behavior, daemon cache warming, and cached output switching
 *   **Result:** the hottest front-app / spaces path no longer depends on the shell implementation of `runtime_context.sh`, while audio continues to share the same cache surface.
 
@@ -35,7 +36,7 @@ Following the initial audit, the active runtime path was tightened again in Apri
 *   **Result:** Reduced 5 fork+exec cycles to 1 per update interval. Perl-based timeouts remain as safety.
 
 ### 2. Space Management (Verified Active Path)
-*   **Files:** `plugins/refresh_spaces.sh`, `plugins/simple_spaces.sh`, `plugins/space.sh`, `plugins/space_visuals.sh`, `main.lua`
+*   **Files:** `plugins/refresh_spaces.sh`, `plugins/simple_spaces.sh`, `plugins/space.sh`, `plugins/space_visuals.sh`, `scripts/app_icon.sh`, `helpers/space_visual_helper.m`, `main.lua`
 *   **Update:**
     - topology rebuild stays in `refresh_spaces.sh` + `simple_spaces.sh`
     - real `space_changed` yabai signals now route through `refresh_spaces.sh`, so active-space updates reuse the same cache/lock path as topology refreshes
@@ -76,14 +77,24 @@ Following the initial audit, the active runtime path was tightened again in Apri
     - `refresh_spaces.sh` now passes the already-fetched spaces payload into `space_visuals.sh`, so authoritative visual refreshes reuse the same `yabai query --spaces` result instead of querying spaces twice
     - `space_active_refresh` now uses the same focused-space fast path as `front_app_switched`, so an active-space-only refresh no longer falls back to the full spaces + windows snapshot path when the focused-space helper already has the answer
     - pure active-space refreshes no longer emit a redundant `space_mode_refresh`; the existing `space_change` event is enough for the active-path listeners and cuts orchestration overhead on space switches
-    - authoritative visual refreshes now resolve app state with scoped `yabai query --windows --space <index>` calls for visible spaces instead of taking one global window snapshot for every space
+    - authoritative visual refreshes now resolve app state with scoped visible-space window queries instead of taking one global window snapshot for every space
+    - when `bin/space_visual_helper` is available, `space_visuals.sh` batches those visible-space app lookups through one helper invocation and avoids per-space shell/jq parsing; the shell scoped-query path remains the fallback
+    - `scripts/app_icon.sh --batch` resolves missing app glyphs for the helper-loaded visible apps in one script process before `space_visuals.sh` writes the app-glyph cache
+    - `space_visuals.sh` now applies and persists a complete focused/visible/idle style set for each space, so hover restore uses `cache/space_visuals/style_state/` instead of re-deriving active state from a stale selected-space cache
     - the active spaces scripts (`refresh_spaces.sh`, `simple_spaces.sh`, `space_visuals.sh`) now all accept injected `BARISTA_*_BIN` overrides so shell smoke tests exercise the same runtime boundary deterministically
     - startup now schedules one delayed direct `space_visuals.sh` pass after the runtime subscriptions are back up, so the spaces strip settles to the real focused space after reload instead of relying only on the first topology-driven pass or the event/subscription race
+    - contended `refresh_spaces.sh` runs now record the last pending reason and schedule one coalesced follow-up after the active lock clears, so display/space bursts do not spin duplicate topology work or silently drop the final topology state
 *   **Result:**
     - per-space handlers are now hover-only
     - full rebuilds create fewer items and avoid unused popup rows
     - startup reloads produce both topology and visual refresh timings
     - the `space_visual_refresh` event can be triggered independently for focused visual updates.
+
+### 2a. Music Menu Routine Path (Verified)
+*   **Files:** `modules/integrations/music.lua`, `plugins/music_studio.sh`
+*   **Update:** The music launcher now stays click/hover driven only (`updates=false`), and its popup model points at the current `Studio/` songforge/studio CLI paths plus shallow kit folders.
+    Anchor clicks are direct popup toggles from `modules/ui_builder.lua`; the shell plugin only owns hover/status behavior.
+*   **Result:** the Music menu no longer wakes on a periodic forced update just to do no-op hover logic; the only work is popup construction at reload and click/hover handling at interaction time.
 
 ### 2b. Control-Center Popup Cleanup (Verified Active Path)
 *   **Files:** `modules/integrations/control_center.lua`, `plugins/control_center.sh`
@@ -96,6 +107,29 @@ Following the initial audit, the active runtime path was tightened again in Apri
 *   **File:** `helpers/popup_hover.c`
 *   **Update:** Replaced `system()` with `execlp()`.
 *   **Result:** Eliminates shell parsing and one fork per hover event. Subsecond latency on popups.
+
+### 3a. Anchor Chip Styling (Verified)
+*   **Files:** `modules/ui_builder.lua`, `modules/items_left.lua`, `modules/apple_menu_enhanced.lua`, `plugins/lib/common.sh`, `plugins/popup_anchor.sh`
+*   **Update:** Left-side popup anchors share one filled idle chip and hover-restore contract. Hover scripts now restore configured idle background/border props instead of always clearing the background to transparent.
+*   **Result:** Apple, Triforce, Music, Control Center, and Front App can keep a consistent visual language without adding query-before-toggle click controllers.
+
+### 3b. SketchyBar Binary Resolution + Plugin Runaway Guard (Resolved)
+*   **Files:** `plugins/lib/common.sh`, `plugins/space.sh`, `plugins/space_visuals.sh`, `plugins/refresh_spaces.sh`, `scripts/process_manager.sh`
+*   **Update:**
+    - plugin scripts now preserve the absolute `SKETCHYBAR_BIN` resolved by `common.sh` instead of re-running `command -v sketchybar` after the shared `sketchybar()` wrapper function exists
+    - caller `PATH` remains ahead of fallback paths so tests and live wrappers can inject stubs safely
+    - `process_manager.sh barista` and `process_manager.sh runaways` expose the live Barista process family and flag duplicated/hot plugin scripts without destructive cleanup by default
+*   **Result:** space hover/visual scripts avoid self-recursive SketchyBar wrapper calls, and live CPU spikes can be diagnosed before cleanup.
+
+### 3c. Space Visual Phase Attribution (Verified)
+*   **Files:** `plugins/space_visuals.sh`, `bin/barista-stats.sh`, `plugins/lib/space_style.sh`, `helpers/space_visual_helper.m`, `scripts/app_icon.sh`
+*   **Update:**
+    - `space_visuals.sh` keeps the normal hot path coarse-timed, but `BARISTA_SPACE_VISUAL_PHASE_METRICS=1` adds phase fields for spaces payload, item lookup, state maps, visible app lookup, glyph resolution, style-state work, and SketchyBar apply
+    - `barista-stats.sh show` summarizes those phase fields when detailed samples exist
+    - visible-space app lookup can now be helper-backed and app glyph misses are batch-resolved before the main visual loop
+    - style-state files are only rewritten when the saved state/properties differ, while hover restore still reads the same persisted state
+    - focused/visible/idle style argument arrays are cached once per run, so full visual passes no longer re-render and re-split identical style properties for every space chip
+*   **Result:** detailed attribution is available for targeted tuning without adding timing subprocesses to every routine visual refresh.
 
 ### 4. Yabai Query merging (Resolved)
 *   **File:** `plugins/refresh_spaces.sh`
@@ -143,7 +177,7 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
 *   **Result:** reload time, topology rebuild time, incremental topology update time, and visual refresh time are now measurable from the installed runtime.
 
 ## Remaining Considerations
-1.  **Window snapshot cost:** `space_visuals.sh` now uses one full window snapshot per pass, but that yabai query is still part of the visual-refresh hot path.
+1.  **Visible app lookup cost:** `space_visuals.sh` avoids full snapshots and batches helper-backed visible-space lookups when the compiled helper exists, but full visual passes still depend on yabai window data for each visible space.
 2.  **Clock daemon coverage:** the current daemon path is verified live, but there is still no dedicated test coverage around `main.lua` startup instrumentation.
 3.  **Topology rebuild cost:** `simple_spaces.sh` is materially cheaper after removing dead popup rows, but full rebuild remains the dominant startup cost.
 4.  **Async I/O:** the current architecture is event-driven enough for daily use, but long-term migration to a fully async runtime remains the cleaner end state.

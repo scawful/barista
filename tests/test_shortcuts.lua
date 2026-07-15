@@ -49,6 +49,54 @@ run_test("shortcuts.get_command: toggle_control_center is a popup toggle command
   assert_true(command:match("popup%.drawing=toggle") ~= nil, "toggle command toggles popup drawing")
 end)
 
+run_test("shortcuts.get_command: task focus uses the compact calendar surface", function()
+  local shortcut = shortcuts.get("open_task_focus")
+  local command = shortcuts.get_command("open_task_focus")
+  assert_true(shortcut ~= nil, "open_task_focus shortcut should be listed")
+  assert_equal(shortcut.symbol, "⌘⌥D", "open_task_focus symbol")
+  assert_type(command, "string", "task focus command")
+  assert_true(command:match("scripts/task_focus%.sh") ~= nil, "task focus should use task_focus.sh")
+end)
+
+run_test("shortcuts AFS Studio action: manifest-backed launcher wins", function()
+  local command = shortcuts._build_afs_studio_action({
+    apps_launcher = "/tmp/code/tools/afs/launch.sh",
+    apps_launcher_ok = true,
+    studio_launcher = "/tmp/code/lab/afs-scawful/scripts/afs/utils/afs-studio",
+    studio_launcher_ok = true,
+  })
+  assert_true(command:match("/lab/afs/apps/studio") == nil, "AFS Studio must not target retired apps/studio")
+  assert_true(command:match("tools/afs/launch%.sh.*launch afs_studio") ~= nil, "AFS Studio should use the manifest launcher")
+end)
+
+run_test("shortcuts AFS Studio action: missing launcher fallback stays hidden", function()
+  local command = shortcuts._build_afs_studio_action({
+    studio_launcher = "/tmp/code/lab/afs-scawful/scripts/afs/utils/afs-studio",
+    studio_launcher_ok = false,
+  })
+  assert_equal(command, "", "unresolved launcher fallback must not become an action")
+end)
+
+run_test("shortcuts.get_command: missing AFS Labeler has no synthetic build action", function()
+  local command = shortcuts.get_command("launch_afs_labeler")
+  assert_type(command, "string", "AFS Labeler command")
+  assert_true(command:match("/lab/afs/apps/studio") == nil, "Labeler must not target retired apps/studio")
+  assert_true(command:match("cmake %-%-build") == nil, "missing Labeler should not synthesize a build command")
+end)
+
+run_test("shortcuts.list_declared: documentation catalog is machine-independent", function()
+  local declared = shortcuts.list_declared()
+  assert_equal(#declared, #shortcuts.global, "declared catalog should include every global shortcut")
+  local found_z3ed = false
+  for _, shortcut in ipairs(declared) do
+    if shortcut.action == "launch_z3ed" then
+      found_z3ed = true
+      assert_equal(shortcut.requires, "z3ed", "declared shortcut should retain availability metadata")
+    end
+  end
+  assert_true(found_z3ed, "declared catalog should retain conditional shortcuts")
+end)
+
 run_test("shortcuts.get_command: window display moves route through yabai_control", function()
   local next_command = shortcuts.get_command("window_display_next")
   local prev_command = shortcuts.get_command("window_display_prev")

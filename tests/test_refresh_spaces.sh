@@ -221,4 +221,25 @@ PATH="$BIN_DIR:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
 [ "$(wc -l < "$METRICS_PATH_LOG" | tr -d ' ')" = "2" ] || { echo "FAIL: reload/no-reason path should rebuild spaces when the live bar is empty despite cached lookup data" >&2; exit 1; }
 grep -Fqx -- 'query bar' "$CALLS_LOG" || { echo "FAIL: reload/no-reason path should verify the live bar instead of trusting cached space item lookup" >&2; exit 1; }
 
+printf '' > "$CALLS_LOG"
+printf 'topology\n' > "$MODE_FILE"
+rm -f "$CONFIG_DIR/.spaces_cache" "$CONFIG_DIR/.spaces_active_cache"
+mkdir "$CONFIG_DIR/.refresh_spaces.lock"
+PATH="$BIN_DIR:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+  BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
+  BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+  BARISTA_REASON="space_created" \
+  BARISTA_SPACE_REFRESH_COALESCE_DELAY="0.01" \
+  CONFIG_DIR="$CONFIG_DIR" \
+  SCRIPTS_DIR="$CONFIG_DIR/scripts" \
+  "$SCRIPT"
+
+[ "$(wc -l < "$METRICS_PATH_LOG" | tr -d ' ')" = "2" ] || { echo "FAIL: contended refresh should not run topology immediately" >&2; exit 1; }
+rmdir "$CONFIG_DIR/.refresh_spaces.lock"
+for _ in $(seq 1 50); do
+  [ "$(wc -l < "$METRICS_PATH_LOG" | tr -d ' ')" = "3" ] && break
+  sleep 0.05
+done
+[ "$(wc -l < "$METRICS_PATH_LOG" | tr -d ' ')" = "3" ] || { echo "FAIL: contended refresh should schedule one coalesced follow-up" >&2; exit 1; }
+
 printf 'test_refresh_spaces.sh: ok\n'

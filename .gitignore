@@ -53,6 +53,9 @@ component_settings.json
 data/machine.local.json
 data/work_apps.local.json
 data/interface_extensions.local.json
+data/workflow_shortcuts.local.json
+data/workflow_shortcuts.local.generated.json
+data/workflow_shortcuts.extra.json
 *.icon_backup
 state.json.*backup
 themes/theme.local.lua

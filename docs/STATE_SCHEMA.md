@@ -79,7 +79,7 @@
 | `icons` | object | Named icon overrides such as `apple`, `wifi`, `volume`. |
 | `widget_colors` | object | Per-widget color overrides. |
 | `space_icons` | object | Custom icon per space number. |
-| `space_modes` | object | Saved layout mode per space number. |
+| `space_modes` | object | Saved layout mode per space number (`bsp`, `stack`, or `float`). |
 | `spaces` | object | Space-management behavior toggles. |
 | `system_info_items` | object | Controls which system-info popup rows are shown. |
 | `modes` | object | Runtime mode switches such as window manager and backend selection. |
@@ -126,6 +126,9 @@ Common keys:
 
 Menu popup rows are separate from the bar now: `menu_item_height`, `menu_header_height`, and `menu_padding` control popup density without changing the bar height.
 
+Barista's normal top placement keeps `bar_y_offset` explicit. The live default
+is `0`; do not introduce implicit offset behavior when debugging popup clicks.
+
 Barista uses two menu terms deliberately:
 
 - `popup section` means a grouped block of rows inside a popup.
@@ -146,6 +149,21 @@ Supported keys:
 Restricted work-laptop setup writes `window_manager = "disabled"`,
 `runtime_backend = "lua"`, and `widget_daemon = "disabled"` so Barista avoids
 yabai/skhd and compiled helper paths.
+
+### `window_defaults`
+
+Supported keys:
+
+- `apps.<App Name>.mode`: `float` or `tile`
+- `apps.<App Name>.app_regex`: exact app regex installed as a yabai rule
+- `apps.<App Name>.rule_label`: stable `barista-default-*` yabai rule label
+- `apps.<App Name>.manage` / `sub_layer`: the conservative rule fields Barista writes
+
+These entries are written by `scripts/yabai_control.sh app-default ...` and by
+the `front_app` / Control Center popup rows. `float` means unmanaged/manual
+(`manage=off sub-layer=normal`); `tile` means managed by yabai
+(`manage=on sub-layer=normal`). Unsetting an app removes the persisted state and
+attempts to remove the matching live yabai rule label.
 
 ### `machine`
 
@@ -205,6 +223,21 @@ Nested `items[]` rows support:
 - `type = "separator"`
 - standard rows with `label`, `command`/`action`, `url`, `icon`, `shortcut`, and optional nested `items[]`
 
+### `menus.calendar`
+
+Supported keys used by the calendar popup:
+
+- `task_sources`: string or array of local Markdown/Org task files for compact `Today`, `Next`, and `Blocked` summaries
+
+Defaults read the canonical personal task board at
+`~/src/folio/tasks/active.md`, then the Oracle project board at
+`~/src/hobby/oracle-of-secrets/Docs/oracle.org`. The personal board may use
+Markdown checkboxes grouped under `Active`, `Waiting`, or `Blocked`; explicit
+markers such as `[NEXT]` and `[BLOCKED]` are also recognized. Org task headings
+remain supported for project-specific sources. Calendar task rows are
+status-only; they should not become doc, repo, tracker, or terminal launcher
+rows.
+
 ### `menus.extensions`
 
 Supported keys:
@@ -248,7 +281,9 @@ Section visibility and ordering shape the shallow Triforce popup. In the current
 Notes:
 
 - `menus.oracle` still configures the bar-facing Zelda surface, not the full native panel layout.
-- The native Zelda tab reads the same Oracle status snapshot (`scripts/oos_status.py`) but does not currently add its own persisted state keys.
+- Oracle Hub owns the deeper status view backed by
+  `Scripts/Debug/oos_status.py`; Barista does not add separate persisted task
+  state for that workflow.
 - Oracle status items like `today`, `next`, and `blocked` still exist in the status snapshot for the native panel, but they no longer create nested Triforce popup sections.
 - `open_control_panel.sh --oracle` forwards to Oracle Hub.
 

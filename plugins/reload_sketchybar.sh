@@ -115,34 +115,36 @@ if wait_for_recent_reload; then
   exit 0
 fi
 
+finish_reload() {
+  schedule_space_repair
+  if ! ensure_live_config; then
+    echo "SketchyBar restarted, but core item '$CORE_ITEM' did not load." >&2
+    return 1
+  fi
+  if ! wait_for_item space.1 4; then
+    local refresh_script="${CONFIG_DIR}/plugins/refresh_spaces.sh"
+    [ -f "$refresh_script" ] && env CONFIG_DIR="$CONFIG_DIR" BARISTA_CONFIG_DIR="$CONFIG_DIR" "$refresh_script" >/dev/null 2>&1 || true
+    wait_for_item space.1 3 || true
+  fi
+  return 0
+}
+
 if [[ -x "$HELPER" ]]; then
   "$HELPER" restart "$AGENT"
-  schedule_space_repair
-  if ensure_live_config; then
-    exit 0
-  fi
-  echo "SketchyBar restarted, but core item '$CORE_ITEM' did not load." >&2
-  exit 1
+  finish_reload
+  exit $?
 fi
 
 if launchctl kickstart -k "$LABEL" >/dev/null 2>&1; then
-  schedule_space_repair
-  if ensure_live_config; then
-    exit 0
-  fi
-  echo "SketchyBar restarted, but core item '$CORE_ITEM' did not load." >&2
-  exit 1
+  finish_reload
+  exit $?
 fi
 
 # Fallback to unload/load if kickstart failed (e.g., label missing)
 if [ -f "$PLIST" ]; then
   launchctl unload "$PLIST" >/dev/null 2>&1 || true
   launchctl load "$PLIST"
-  schedule_space_repair
-  if ensure_live_config; then
-    exit 0
-  fi
-  echo "SketchyBar reloaded LaunchAgent, but core item '$CORE_ITEM' did not load." >&2
+  finish_reload
 else
   echo "LaunchAgent plist not found: $PLIST" >&2
   exit 1

@@ -35,6 +35,7 @@ set -euo pipefail
 LOG_FILE="$LOG_FILE"
 POPUP_FILE="$POPUP_FILE"
 if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "volume" ]; then
+  printf 'query\n' >> "\$LOG_FILE"
   state=\$(cat "\$POPUP_FILE")
   printf '{\"popup\":{\"drawing\":\"%s\"}}\n' "\$state"
   exit 0
@@ -45,6 +46,13 @@ if [ "\${1:-}" = "--set" ] && [ "\${2:-}" = "volume" ]; then
     case "\$arg" in
       popup.drawing=on) printf 'on\n' > "\$POPUP_FILE" ;;
       popup.drawing=off) printf 'off\n' > "\$POPUP_FILE" ;;
+      popup.drawing=toggle)
+        if [ "\$(cat "\$POPUP_FILE")" = "on" ]; then
+          printf 'off\n' > "\$POPUP_FILE"
+        else
+          printf 'on\n' > "\$POPUP_FILE"
+        fi
+        ;;
     esac
   done
 fi
@@ -63,7 +71,12 @@ if [ "$(cat "$POPUP_FILE")" != "on" ]; then
 fi
 
 if [ "$(wc -l < "$REFRESH_FILE")" -ne 1 ]; then
-  echo "FAIL: first click should refresh volume state before opening" >&2
+  echo "FAIL: first click should refresh volume state after toggling" >&2
+  exit 1
+fi
+
+if grep -Fq 'query' "$LOG_FILE"; then
+  echo "FAIL: volume click should not query popup state before toggling" >&2
   exit 1
 fi
 
@@ -76,8 +89,8 @@ if [ "$(cat "$POPUP_FILE")" != "off" ]; then
   exit 1
 fi
 
-if [ "$(wc -l < "$REFRESH_FILE")" -ne 1 ]; then
-  echo "FAIL: closing the popup should not re-run the refresh path" >&2
+if [ "$(wc -l < "$REFRESH_FILE")" -ne 2 ]; then
+  echo "FAIL: second click should use the same toggle-then-refresh path" >&2
   exit 1
 fi
 

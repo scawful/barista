@@ -1,16 +1,19 @@
 #!/bin/bash
 set -euo pipefail
 
-PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
+PATH="${PATH:-}:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin"
 
 _d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
 
-SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-$(command -v sketchybar 2>/dev/null || true)}"
+SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-${SKETCHYBAR_BIN:-}}"
 YABAI_BIN="${BARISTA_YABAI_BIN:-$(command -v yabai 2>/dev/null || true)}"
 JQ_BIN="${BARISTA_JQ_BIN:-$(command -v jq 2>/dev/null || true)}"
 CACHE_FILE="${CONFIG_DIR}/.spaces_cache"
 ACTIVE_CACHE_FILE="${CONFIG_DIR}/.spaces_active_cache"
 LOCK_DIR="${CONFIG_DIR}/.refresh_spaces.lock"
+PENDING_REFRESH_FILE="${CONFIG_DIR}/cache/space_refresh_pending"
+PENDING_REFRESH_LOCK_DIR="${CONFIG_DIR}/cache/space_refresh_pending.lock"
+SPACE_REFRESH_COALESCE_DELAY="${BARISTA_SPACE_REFRESH_COALESCE_DELAY:-0.12}"
 ICON_CACHE_DIR="${CONFIG_DIR}/cache/space_icons"
 PERF_STATS_BIN="${CONFIG_DIR}/bin/barista-stats.sh"
 SPACE_VISUALS_SCRIPT="${CONFIG_DIR}/plugins/space_visuals.sh"
@@ -45,6 +48,32 @@ create_metrics_file() {
 cleanup_metrics() {
   [ -n "$SPACE_METRICS_FILE" ] || return 0
   rm -f "$SPACE_METRICS_FILE" >/dev/null 2>&1 || true
+}
+
+queue_coalesced_refresh() {
+  local reason="${BARISTA_REASON:-${SENDER:-coalesced_refresh}}"
+  mkdir -p "$(dirname "$PENDING_REFRESH_FILE")" >/dev/null 2>&1 || true
+  printf '%s' "$reason" > "$PENDING_REFRESH_FILE" 2>/dev/null || true
+
+  if ! mkdir "$PENDING_REFRESH_LOCK_DIR" 2>/dev/null; then
+    return 0
+  fi
+
+  (
+    trap 'rmdir "$PENDING_REFRESH_LOCK_DIR" >/dev/null 2>&1 || true' EXIT
+    sleep "$SPACE_REFRESH_COALESCE_DELAY"
+    local tries=0
+    while [ -d "$LOCK_DIR" ] && [ "$tries" -lt 80 ]; do
+      sleep 0.05
+      tries=$((tries + 1))
+    done
+    [ -f "$PENDING_REFRESH_FILE" ] || exit 0
+    local pending_reason=""
+    IFS= read -r pending_reason < "$PENDING_REFRESH_FILE" || pending_reason=""
+    rm -f "$PENDING_REFRESH_FILE" >/dev/null 2>&1 || true
+    [ -n "$pending_reason" ] || pending_reason="coalesced_refresh"
+    BARISTA_REASON="$pending_reason" CONFIG_DIR="$CONFIG_DIR" "$0" >/dev/null 2>&1 &
+  ) >/dev/null 2>&1 &
 }
 
 update_external_bar_if_needed() {
@@ -363,6 +392,7 @@ if [ -d "$LOCK_DIR" ]; then
   fi
 fi
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  queue_coalesced_refresh
   exit 0
 fi
 cleanup_lock() {

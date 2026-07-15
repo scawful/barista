@@ -90,7 +90,7 @@ These shortcuts work system-wide and don't conflict with common applications:
 
 #### Barista UI
 - `⌘⌥P` - Open Barista
-- `⌘⌥C` - Toggle Cortex
+- `⌘⌥D` - Refresh and open Task Focus in the clock popup
 - `⌘⌥/` - Toggle Control Center
 - `⌘⌥H` - Open Help Center
 - `⌘⌥I` - Open Icon Browser
@@ -100,19 +100,20 @@ These shortcuts work system-wide and don't conflict with common applications:
 - `⌘⌥⇧R` - Rebuild + Reload SketchyBar
 - `⌘⌥Y` - Toggle Yabai Shortcuts
 
-#### Audio
-- `⌘⌥F` - Launch StemForge
-- `⌘⌥M` - Launch StemSampler
-
 #### Apps
 - `⌘⌥Z` - Launch z3ed in Ghostty
-- `⌘⌥D` - Open Sys Manual
 
 Note: The `z3ed` shortcut only appears when a `z3ed` launcher is found. It launches through Ghostty when Ghostty is installed and falls back to Terminal-backed shell execution otherwise.
 
+Task Focus reads the same `menus.calendar.task_sources` configuration as the
+clock popup. With no override, it uses `~/src/folio/tasks/active.md` as the
+canonical personal task board.
+
 #### AFS app paths
 - The AFS Browser shortcut prefers `AFS_BROWSER_APP`, then falls back to the local `afs-studio` launcher/binary.
-- AFS Labeler prefers `%CODE%/lab/afs/apps/studio` binaries; CLI fallback requires `menus.apple.terminal = true`.
+- AFS Studio prefers the manifest-backed `%CODE%/tools/afs/launch.sh` launcher,
+  then an installed binary or the legacy `afs-scawful` launcher. AFS Labeler is
+  hidden unless an explicit or installed Labeler binary exists.
 
 #### Display Management
 - `⌘⌥⇧→` - Send Window to Next Display
@@ -133,7 +134,7 @@ Note: Window-manager shortcuts are generated only when `modes.window_manager` pe
 
 ### Generating skhd Configuration
 
-Generate the shortcuts configuration file:
+Generate the skhd configuration and Help Center workflow reference:
 
 ```bash
 # From the Barista repo
@@ -143,6 +144,7 @@ BARISTA_CONFIG_DIR=/path/to/barista lua helpers/generate_shortcuts.lua
 lua ~/.config/sketchybar/helpers/generate_shortcuts.lua
 
 # Output: ~/.config/skhd/barista_shortcuts.conf
+# Also updates: data/workflow_shortcuts.json
 ```
 
 ### Integrating with skhd
@@ -222,12 +224,23 @@ end
 Icons and shortcuts are automatically integrated into menu items. Shortcuts are displayed next to menu items:
 
 ```
-Toggle Cortex       ⌘⌥C
+Open Task Focus     ⌘⌥D
 Reload SketchyBar   ⌘⌥R
 Open Barista        ⌘⌥P
 ```
 
-Help Center + Barista shortcut data is sourced from `data/workflow_shortcuts.json`. Keep it aligned with `modules/shortcuts.lua` and regenerate the skhd file after edits.
+Help Center + Barista shortcut data is generated into
+`data/workflow_shortcuts.json` from `modules/shortcuts.lua`. For machine-local
+editor/shell entries, docs, and quick actions, copy
+`data/workflow_shortcuts.local.example.json` to the ignored
+`data/workflow_shortcuts.local.json` and generate an ignored local view with:
+
+```bash
+BARISTA_WORKFLOW_EXTRAS=data/workflow_shortcuts.local.json \
+  lua helpers/generate_shortcuts.lua
+```
+
+Do not hand-edit either generated file.
 
 ## Best Practices
 

@@ -1,78 +1,106 @@
 {
+  "generated": {
+    "generator": "helpers/generate_shortcuts.lua",
+    "source": "modules/shortcuts.lua"
+  },
   "keymap": [
     {
-      "section": "Zelda Hacking",
+      "source": "modules/shortcuts.lua",
+      "section": "Barista (generated)",
       "items": [
-        { "keys": "SPC o w o", "description": "Open the Oracle workbench in Emacs" },
-        { "keys": "SPC o w c", "description": "Continue the current Oracle testing focus" },
-        { "keys": "SPC o w b", "description": "Quick build + reload the Oracle ROM" },
-        { "keys": "SPC o w v", "description": "Run the Oracle verify build" },
-        { "keys": "SPC o w t", "description": "Run the Oracle transition regression subset" },
-        { "keys": "SPC o w n", "description": "Send a clickable Oracle reminder notification" },
-        { "keys": "SPC o w m", "description": "Jump into the Maku Tree debug session" },
-        { "keys": "SPC o w 4", "description": "Jump into the D4 / Zora Temple session" },
-        { "keys": "SPC o w 6", "description": "Jump into the D6 entrance session" }
-      ]
-    },
-    {
-      "section": "Project Navigation",
-      "items": [
-        { "keys": "⌃⌥O", "description": "Open Oracle of Secrets" },
-        { "keys": "⌃⌥Y", "description": "Open YAZE Editor" },
-        { "keys": "⌘⌥T", "description": "Open Ghostty" },
-        { "keys": "⌘⌥Z", "description": "Launch z3ed in Ghostty" },
-        { "keys": "⌃⌥G", "description": "Open LazyGit" },
-        { "keys": "fp <name>", "description": "Fuzzy Find Project (Zsh)" }
-      ]
-    },
-    {
-      "section": "Window Management",
-      "items": [
-        { "keys": "⌥G", "description": "Toggle Zen Mode (Gaps)" },
-        { "keys": "⌥B", "description": "Balance Layout" },
-        { "keys": "⌃⌥←/→", "description": "Prev/Next Space" },
-        { "keys": "⌃⌥R", "description": "Rotate Layout" }
-      ]
-    },
-    {
-      "section": "System",
-      "items": [
-        { "keys": "⌃⌥R", "description": "Restart Services" },
-        { "keys": "syshelp", "description": "Show System Help" }
-      ]
-    },
-    {
-      "section": "Syshelp & Panel",
-      "items": [
-        { "keys": "⌃⌥H", "description": "Toggle Syshelp Panel (overlay)" },
-        { "keys": "⌃⌥P", "description": "Open Barista" },
-        { "keys": "whichkey", "description": "Toggle WhichKey HUD" }
+        {
+          "keys": "⌘⌥P",
+          "description": "Open Barista",
+          "action": "open_control_panel"
+        },
+        {
+          "keys": "⌘⌥D",
+          "description": "Open Task Focus",
+          "action": "open_task_focus"
+        },
+        {
+          "keys": "⌘⌥/",
+          "description": "Toggle Control Center",
+          "action": "toggle_control_center"
+        },
+        {
+          "keys": "⌘⌥H",
+          "description": "Open Help Center",
+          "action": "open_help_center"
+        },
+        {
+          "keys": "⌘⌥I",
+          "description": "Open Icon Browser",
+          "action": "open_icon_browser"
+        },
+        {
+          "keys": "⌘⌥T",
+          "description": "Open Terminal",
+          "action": "open_terminal"
+        },
+        {
+          "keys": "⌘⌥Z",
+          "description": "Launch z3ed",
+          "action": "launch_z3ed"
+        },
+        {
+          "keys": "⌘⌥O",
+          "description": "Toggle Keyboard Overlay",
+          "action": "toggle_keyboard_overlay"
+        },
+        {
+          "keys": "⌘⌥R",
+          "description": "Reload SketchyBar",
+          "action": "reload_sketchybar"
+        },
+        {
+          "keys": "⌘⌥⇧R",
+          "description": "Rebuild + Reload SketchyBar",
+          "action": "rebuild_and_reload"
+        },
+        {
+          "keys": "⌘⌥Y",
+          "description": "Toggle Yabai Shortcuts",
+          "action": "toggle_yabai_shortcuts"
+        },
+        {
+          "keys": "⌃←",
+          "description": "Previous Space (wrap)",
+          "action": "space_prev"
+        },
+        {
+          "keys": "⌃→",
+          "description": "Next Space (wrap)",
+          "action": "space_next"
+        },
+        {
+          "keys": "⌘⌥⇧←",
+          "description": "Send to Prev Display",
+          "action": "window_display_prev"
+        },
+        {
+          "keys": "⌘⌥⇧→",
+          "description": "Send to Next Display",
+          "action": "window_display_next"
+        },
+        {
+          "keys": "⌃⇧F",
+          "description": "Set Float Layout",
+          "action": "set_layout_float"
+        },
+        {
+          "keys": "⌃⇧B",
+          "description": "Set BSP Layout",
+          "action": "set_layout_bsp"
+        },
+        {
+          "keys": "⌃⇧S",
+          "description": "Set Stack Layout",
+          "action": "set_layout_stack"
+        }
       ]
     }
   ],
-  "actions": [
-    { "id": "oracle_dashboard", "title": "Open Oracle Workbench", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench dashboard" },
-    { "id": "oracle_continue", "title": "Continue Oracle Testing", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench continue-play" },
-    { "id": "oracle_quick", "title": "Oracle Quick Build", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench quick-build" },
-    { "id": "oracle_verify", "title": "Oracle Verify Build", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench verify" },
-    { "id": "oracle_transition", "title": "Oracle Transition Tests", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench transition-tests" },
-    { "id": "oracle_notify", "title": "Oracle Reminder Notification", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench notify" },
-    { "id": "oracle_maku", "title": "Oracle Maku Session", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench session maku" },
-    { "id": "oracle_d6", "title": "Oracle D6 Session", "command": "/Users/scawful/src/config/dotfiles/bin/oos-workbench session d6" },
-    { "id": "reload_bar", "title": "Reload SketchyBar" },
-    { "id": "open_terminal", "title": "Open Ghostty" },
-    { "id": "launch_yaze", "title": "Launch YAZE" },
-    { "id": "launch_z3ed", "title": "Launch z3ed in Ghostty" },
-    { "id": "focus_emacs", "title": "Focus Emacs" },
-    { "id": "syshelp_panel", "title": "Toggle Syshelp Panel" },
-    { "id": "syshelp_cli", "title": "Open syshelp" },
-    { "id": "whichkey_toggle", "title": "Toggle WhichKey HUD" },
-    { "id": "open_control_panel", "title": "Open Barista" }
-  ],
-  "docs": [
-    { "id": "oracle_handoff", "title": "Oracle Handoff", "path": "~/src/hobby/oracle-of-secrets/.context/scratchpad/agent_handoff.md" },
-    { "id": "oracle_workflow", "title": "Oracle Workflow Plan", "path": "~/src/hobby/oracle-of-secrets/Docs/Planning/Plans/development_workflow_alignment_2026-03-28.md" },
-    { "id": "oracle_runbook", "title": "Oracle Runbook", "path": "~/src/hobby/oracle-of-secrets/RUNBOOK.md" },
-    { "id": "oracle_tracker", "title": "Oracle Tracker", "path": "~/src/hobby/oracle-of-secrets/oracle.org" }
-  ]
+  "actions": [],
+  "docs": []
 }

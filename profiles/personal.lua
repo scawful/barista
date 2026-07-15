@@ -16,6 +16,7 @@ profile.integrations = {
   control_center = true, -- Primary window-manager status + controls
   yaze = true,        -- ROM hacking with Yaze
   oracle = true,      -- Oracle cockpit + shortcuts
+  music = true,       -- Studio launchers + SongForge helpers
   emacs = true,       -- Personal Emacs org-mode workflows
   halext = false,     -- halext-org (when ready)
   journal = true,     -- Journal/org-mode capture + inbox

@@ -86,6 +86,7 @@ menus.extensions = {
 
 - `afs_browser`, `afs_studio`, `afs_labeler`
 - `afs_context`, `afs_scratchpad`
+- `chatgpt`, `claude`, `cursor`
 - `stemforge`, `stem_sampler`
 - `yaze`, `mesen_oos`, `oracle_agent_manager`
 - `help_center`, `sys_manual`, `icon_browser`, `keyboard_overlay`, `barista_config`, `reload_bar`
@@ -132,7 +133,8 @@ script-only path and also writes the machine-local capability profile.
 
 - Missing tools are hidden unless `show_missing` is enabled.
 - Missing/blocked items open Barista Config so you can adjust paths or disable them.
-- Terminal-only tools are hidden unless `menus.apple.terminal` is enabled (AFS Labeler CLI fallback honors this).
+- Terminal-only custom tools are hidden unless `menus.apple.terminal` is enabled.
+- ChatGPT, Claude, and Cursor are direct app-bundle launchers only; they do not add shell, repo, or Finder rows.
 - Help Center and Icon Browser fall back to docs when binaries are missing; Sys Manual requires the app binary.
 - Shortcut glyphs are sourced from `modules/shortcuts.lua` (per-action) and rendered in the menu.
 - Hover styles can be overridden via `menus.apple.hover` or env vars:
@@ -147,9 +149,12 @@ script-only path and also writes the machine-local capability profile.
 
 ## AFS app resolution
 
-- **AFS Browser row**: prefers `AFS_BROWSER_APP`, then falls back to the local `afs-studio` launcher/binary when that is the only AFS desktop surface on disk.
-- **AFS Labeler**: direct binaries in `AFS_STUDIO_ROOT` or `%CODE%/lab/afs/apps/studio`.
-  Terminal fallback uses `AFS_ROOT` CLI and requires `menus.apple.terminal = true`.
+- **AFS Browser row**: prefers `AFS_BROWSER_APP`, then uses the manifest-backed
+  `%CODE%/tools/afs/launch.sh launch afs_studio` path or an installed Studio
+  binary when that is the only AFS desktop surface on disk.
+- **AFS Labeler**: shown only when `AFS_LABELER_BIN`, `AFS_LABELER_APP`, or an
+  installed `afs-labeler` executable resolves. Barista no longer invents a build
+  command when the current AFS manifest has no Labeler app.
 - **AFS Root**: `AFS_ROOT` env var or `%CODE%/lab/afs`.
 
 ## Yaze resolution

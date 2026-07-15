@@ -16,8 +16,8 @@
    (Or copy instead of symlink if you prefer.)
 4. **Build the GUI tools** (optional but recommended):
    ```sh
-   cd ~/src/sketchybar/gui
-   make
+   cd ~/src/sketchybar
+   ./rebuild_gui.sh
    ```
 5. **Apply the minimal machine variant** (disables Triforce/Oracle, Music,
    ROM-hacking, and Emacs integrations while keeping window management optional):

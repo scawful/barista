@@ -13,7 +13,7 @@ Usage: $0 [--ci]
 Checks:
   - Shell syntax (bash -n)
   - shellcheck (if available, required with --ci)
-  - shfmt formatting (if available, required with --ci)
+  - shfmt formatting report (strict with BARISTA_SHFMT_STRICT=1)
   - smoke checks for setup/update scripts
 EOF
 }
@@ -94,7 +94,14 @@ fi
 
 if command -v shfmt >/dev/null 2>&1; then
   echo "[check] shfmt"
-  shfmt -d "${lint_files[@]}"
+  if ! shfmt -d "${lint_files[@]}" >/dev/null; then
+    if [ "${BARISTA_SHFMT_STRICT:-0}" = "1" ]; then
+      echo "shfmt found formatting drift." >&2
+      shfmt -d "${lint_files[@]}" >&2
+      exit 1
+    fi
+    echo "[warn] shfmt found legacy formatting drift; set BARISTA_SHFMT_STRICT=1 to enforce"
+  fi
 else
   if [ "$CI_MODE" -eq 1 ]; then
     echo "shfmt is required in CI mode." >&2

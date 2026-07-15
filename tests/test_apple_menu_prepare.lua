@@ -184,9 +184,83 @@ run_test("apple_menu.prepare: expands approved app launchers and keeps Oracle ou
   assert_true(by_id.cursor ~= nil, "Cursor should appear as an approved app launcher")
   assert_true(by_id.cursor.action:find("Cursor%.app", 1, false) ~= nil, "Cursor row should open the app bundle")
   assert_nil(by_id.afs_studio, "AFS Studio should no longer appear in the Apple menu")
+  assert_nil(by_id.afs_labeler, "missing AFS Labeler should not become a build action")
   assert_nil(by_id.oracle_agent_manager, "Oracle Hub should move out of the Apple menu")
   assert_nil(by_id.yaze, "Yaze should move out of the Apple menu")
   assert_nil(by_id.mesen_oos, "Mesen2 OoS should move out of the Apple menu")
+
+  cleanup(root)
+end)
+
+run_test("apple_menu.prepare: AFS Browser fallback uses manifest-backed Studio launcher", function()
+  local root = make_temp_dir("apple_menu_prepare_afs_apps_launcher")
+  local config_dir = root .. "/config"
+  local code_dir = root .. "/code"
+  local afs_root = code_dir .. "/lab/afs"
+  local apps_launcher = code_dir .. "/tools/afs/launch.sh"
+
+  mkdir(config_dir)
+  mkdir(afs_root)
+  mkdir(code_dir .. "/tools/afs")
+  write_file(apps_launcher, "#!/bin/sh\nexit 0\n")
+  chmod_x(apps_launcher)
+
+  local prepared = apple_menu.prepare(build_ctx(root, {
+    paths = {
+      afs = afs_root,
+      afs_apps_launcher = apps_launcher,
+    },
+  }))
+
+  local by_id = {}
+  for _, entry in ipairs(prepared.rendered or {}) do
+    by_id[entry.id] = entry
+  end
+
+  assert_true(by_id.afs_browser ~= nil, "AFS Browser fallback row should render")
+  assert_equal(
+    by_id.afs_browser.action,
+    string.format("%q launch afs_studio", apps_launcher),
+    "AFS fallback should route through tools/afs/launch.sh"
+  )
+  assert_nil(by_id.afs_labeler, "missing Labeler should stay hidden")
+
+  cleanup(root)
+end)
+
+run_test("apple_menu.prepare: AFS Labeler app bundles launch through open", function()
+  local root = make_temp_dir("apple_menu_prepare_afs_labeler_app")
+  local config_dir = root .. "/config"
+  local code_dir = root .. "/code"
+  local afs_root = code_dir .. "/lab/afs"
+  local labeler_app = root .. "/apps/AFS Labeler.app"
+
+  mkdir(config_dir)
+  mkdir(afs_root)
+  mkdir(labeler_app)
+
+  local ctx = build_ctx(root, {
+    paths = {
+      afs = afs_root,
+      afs_labeler_app = labeler_app,
+    },
+  })
+  ctx.state.menus.apple.items = {
+    afs_labeler = { enabled = true },
+  }
+  local prepared = apple_menu.prepare(ctx)
+
+  local by_id = {}
+  for _, entry in ipairs(prepared.rendered or {}) do
+    by_id[entry.id] = entry
+  end
+
+  assert_true(by_id.afs_labeler ~= nil, "explicit AFS Labeler app should render")
+  assert_equal(
+    by_id.afs_labeler.action,
+    string.format("open %q", labeler_app),
+    "AFS Labeler app should launch through open"
+  )
 
   cleanup(root)
 end)
@@ -247,6 +321,7 @@ run_test("apple_menu.prepare: missing app rows stay hidden instead of becoming C
   assert_nil(by_id.cursor, "missing Cursor should be hidden")
   assert_nil(by_id.afs_context, "AFS Context Query should not appear by default")
   assert_nil(by_id.afs_scratchpad, "AFS Scratchpad should not appear by default")
+  assert_nil(by_id.afs_labeler, "missing AFS Labeler should stay hidden")
 
   cleanup(root)
 end)

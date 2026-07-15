@@ -1316,7 +1316,10 @@
 }
 
 - (NSDictionary *)loadWorkflowData {
-  NSString *path = [self.configPath stringByAppendingPathComponent:@"data/workflow_shortcuts.json"];
+  NSString *localPath = [self.configPath stringByAppendingPathComponent:@"data/workflow_shortcuts.local.generated.json"];
+  NSString *path = [[NSFileManager defaultManager] fileExistsAtPath:localPath]
+    ? localPath
+    : [self.configPath stringByAppendingPathComponent:@"data/workflow_shortcuts.json"];
   NSData *data = [NSData dataWithContentsOfFile:path];
   if (!data) return @{};
   NSError *error = nil;

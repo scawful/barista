@@ -8,12 +8,22 @@ local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchy
 local CODE_DIR = os.getenv("BARISTA_CODE_DIR") or (HOME .. "/src")
 local EMACS_DIR = CODE_DIR .. "/lisp"
 local DOCS_DIR = CODE_DIR .. "/docs/workflow"
+local TASKS_DIR = CODE_DIR .. "/folio/tasks"
+local TASK_STATES = {
+  TODO = true,
+  NEXT = true,
+  ACTIVE = true,
+  WAITING = true,
+  BLOCKED = true,
+  DONE = true,
+  CANCELLED = true,
+}
 
 -- Configuration
 emacs.config = {
   emacs_dir = EMACS_DIR,
   docs_dir = DOCS_DIR,
-  tasks_file = DOCS_DIR .. "/tasks.org",
+  tasks_file = TASKS_DIR .. "/active.md",
   rom_workflow = DOCS_DIR .. "/rom-hacking.org",
   dev_workflow = DOCS_DIR .. "/development.org",
   workspace_name = "Emacs", -- Default workspace/space name for Emacs
@@ -158,76 +168,101 @@ function emacs.get_recent_org_files(max_count)
   return org_files
 end
 
--- Get org-mode task count from tasks.org
-function emacs.get_task_count()
-  local tasks_file = emacs.config.tasks_file
-  local file = io.open(tasks_file, "r")
-  if not file then
-    return 0
+local function parse_task_line(line, section)
+  local status, title = line:match("^%*+%s+(%u+)%s+(.+)$")
+  if status and TASK_STATES[status] and title then
+    return status, title
   end
 
-  local todo_count = 0
+  local marker, markdown_title = line:match("^%s*[-*]%s+%[([ xX%-])%]%s+(.+)$")
+  if not marker then
+    return nil, nil
+  end
+  local explicit_state, explicit_title = markdown_title:match("^%[(%u+)%]%s+(.+)$")
+  if explicit_state and not TASK_STATES[explicit_state] then
+    explicit_state, explicit_title = nil, nil
+  end
+  if marker == "x" or marker == "X" then
+    return "DONE", explicit_title or markdown_title
+  end
+  if marker == "-" then
+    return "CANCELLED", explicit_title or markdown_title
+  end
+  if explicit_state then
+    return explicit_state, explicit_title
+  end
+  local normalized_section = (section or ""):lower()
+  if normalized_section == "active" then
+    return "ACTIVE", markdown_title
+  end
+  if normalized_section == "waiting" then
+    return "WAITING", markdown_title
+  end
+  if normalized_section == "blocked" then
+    return "BLOCKED", markdown_title
+  end
+  return "TODO", markdown_title
+end
+
+local function task_rows()
+  local file = io.open(emacs.config.tasks_file, "r")
+  if not file then
+    return {}
+  end
+
+  local rows = {}
+  local section = ""
   for line in file:lines() do
-    if line:match("^%*+%s+TODO") then
-      todo_count = todo_count + 1
+    local markdown_section = line:match("^##+%s+(.+)%s*$")
+    if markdown_section then
+      section = markdown_section
+    else
+      local status, title = parse_task_line(line, section)
+      if status and title then
+        table.insert(rows, { status = status, title = title })
+      end
     end
   end
   file:close()
+  return rows
+end
 
+-- Get open task count from the canonical Markdown/Org task board.
+function emacs.get_task_count()
+  local todo_count = 0
+  for _, task in ipairs(task_rows()) do
+    if task.status ~= "DONE" and task.status ~= "CANCELLED" then
+      todo_count = todo_count + 1
+    end
+  end
   return todo_count
 end
 
 -- Get done task count
 function emacs.get_done_count()
-  local tasks_file = emacs.config.tasks_file
-  local file = io.open(tasks_file, "r")
-  if not file then
-    return 0
-  end
-
   local done_count = 0
-  for line in file:lines() do
-    if line:match("^%*+%s+DONE") then
+  for _, task in ipairs(task_rows()) do
+    if task.status == "DONE" then
       done_count = done_count + 1
     end
   end
-  file:close()
-
   return done_count
 end
 
--- Parse tasks from tasks.org
+-- Parse tasks from the canonical Markdown/Org task board.
 function emacs.get_tasks(max_count)
   max_count = max_count or 10
-  local tasks_file = emacs.config.tasks_file
-  local file = io.open(tasks_file, "r")
-  if not file then
-    return {}
-  end
-
   local tasks = {}
-  for line in file:lines() do
+  for _, task in ipairs(task_rows()) do
     if #tasks >= max_count then
       break
     end
-
-    local status, title = line:match("^%*+%s+(TODO)%s+(.+)$")
-    if not status then
-      status, title = line:match("^%*+%s+(DONE)%s+(.+)$")
-    end
-    if status and title then
-      table.insert(tasks, {
-        status = status,
-        title = title,
-      })
-    end
+    table.insert(tasks, task)
   end
-  file:close()
-
   return tasks
 end
 
--- Open tasks.org
+-- Open the canonical task board.
 function emacs.open_tasks()
   return emacs.open_file(emacs.config.tasks_file)
 end
@@ -297,7 +332,7 @@ function emacs.create_menu_items(ctx)
     type = "item",
     name = "emacs.tasks",
     icon = "󰩹",
-    label = "Tasks.org",
+    label = "Task Board",
     action = ctx.open_path(emacs.config.tasks_file),
   })
 

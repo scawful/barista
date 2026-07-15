@@ -216,9 +216,10 @@ end
 
 function locator.resolve_afs_root(opts)
   local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
   return locator.resolve_path({
     option_value(opts, "afs"),
-    os.getenv("AFS_ROOT"),
+    use_global_apps and os.getenv("AFS_ROOT") or nil,
     code_dir .. "/lab/afs",
     code_dir .. "/afs",
   }, true)
@@ -226,9 +227,11 @@ end
 
 function locator.resolve_afs_studio_root(opts, afs_root)
   local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
   return locator.resolve_path({
     option_value(opts, "afs_studio"),
-    os.getenv("AFS_STUDIO_ROOT"),
+    use_global_apps and os.getenv("AFS_STUDIO_ROOT") or nil,
+    afs_root,
     afs_root and (afs_root .. "/apps/studio") or nil,
     code_dir .. "/lab/afs_suite",
     code_dir .. "/lab/afs/apps/studio",
@@ -236,6 +239,17 @@ function locator.resolve_afs_studio_root(opts, afs_root)
     code_dir .. "/afs/apps/studio",
     code_dir .. "/afs_studio",
   }, true)
+end
+
+function locator.resolve_afs_apps_launcher(opts)
+  local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
+  return locator.resolve_executable_path({
+    option_value(opts, "afs_apps_launcher"),
+    os.getenv("AFS_APPS_LAUNCHER"),
+    code_dir .. "/tools/afs/launch.sh",
+    use_global_apps and (HOME .. "/src/tools/afs/launch.sh") or nil,
+  })
 end
 
 function locator.resolve_afs_browser_app(opts)
@@ -554,15 +568,31 @@ function locator.resolve_afs_studio_launcher(opts)
   })
 end
 
-function locator.resolve_afs_labeler_binary(studio_root)
-  return locator.resolve_path({
-    studio_root and (studio_root .. "/build_ai/apps/studio/afs-labeler.app") or nil,
+function locator.resolve_afs_labeler_binary(studio_root, opts)
+  local command_path = locator.command_path("afs-labeler") or locator.command_path("afs_labeler")
+  local resolved, found = locator.resolve_executable_path({
+    option_value(opts, "afs_labeler_bin"),
+    os.getenv("AFS_LABELER_BIN"),
+    command_path,
     studio_root and (studio_root .. "/build_ai/apps/studio/afs-labeler") or nil,
-    studio_root and (studio_root .. "/build/apps/studio/afs-labeler.app") or nil,
     studio_root and (studio_root .. "/build/apps/studio/afs-labeler") or nil,
     studio_root and (studio_root .. "/build/afs_labeler") or nil,
     studio_root and (studio_root .. "/build/bin/afs_labeler") or nil,
-  }, false)
+  })
+  if found then
+    return resolved, true
+  end
+
+  local app, app_found = locator.resolve_path({
+    option_value(opts, "afs_labeler_app"),
+    os.getenv("AFS_LABELER_APP"),
+    studio_root and (studio_root .. "/build_ai/apps/studio/afs-labeler.app") or nil,
+    studio_root and (studio_root .. "/build/apps/studio/afs-labeler.app") or nil,
+  }, true)
+  if app_found then
+    return app, true
+  end
+  return nil, false
 end
 
 function locator.afs_studio_layout(studio_root)

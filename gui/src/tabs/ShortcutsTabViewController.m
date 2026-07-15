@@ -261,7 +261,10 @@
 
   // JSON fallback: if Lua parsing yielded nothing, try workflow_shortcuts.json
   if (shortcuts.count == 0) {
-    NSString *jsonPath = [config.configPath stringByAppendingPathComponent:@"data/workflow_shortcuts.json"];
+    NSString *localPath = [config.configPath stringByAppendingPathComponent:@"data/workflow_shortcuts.local.generated.json"];
+    NSString *jsonPath = [[NSFileManager defaultManager] fileExistsAtPath:localPath]
+      ? localPath
+      : [config.configPath stringByAppendingPathComponent:@"data/workflow_shortcuts.json"];
     NSData *jsonData = [NSData dataWithContentsOfFile:jsonPath];
     if (jsonData) {
       NSDictionary *json = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil];
@@ -469,7 +472,7 @@
 
   NSAlert *alert = [[NSAlert alloc] init];
   alert.messageText = @"Shortcuts updated";
-  alert.informativeText = @"Generated barista_shortcuts.conf and reloaded skhd.";
+  alert.informativeText = @"Generated barista_shortcuts.conf plus the Help Center reference, then reloaded skhd.";
   [alert runModal];
 }
 

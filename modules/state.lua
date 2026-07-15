@@ -169,9 +169,8 @@ local default_state = {
     },
     calendar = {
       task_sources = {
-        "~/src/docs/workflow/tasks.org",
+        "~/src/folio/tasks/active.md",
         "~/src/hobby/oracle-of-secrets/Docs/oracle.org",
-        "~/src/folio/tasks/inbox.org",
       },
     },
     apps = {

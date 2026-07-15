@@ -59,6 +59,14 @@ local function resolve_afs_studio_root(ctx, afs_root)
   return select(1, locator.resolve_afs_studio_root(ctx, afs_root))
 end
 
+local function resolve_afs_apps_launcher(ctx)
+  return locator.resolve_afs_apps_launcher(ctx)
+end
+
+local function resolve_afs_studio_launcher(ctx)
+  return locator.resolve_afs_studio_launcher(ctx)
+end
+
 local function resolve_stemforge_app(ctx)
   return select(1, locator.resolve_stemforge_app(ctx))
 end
@@ -73,17 +81,6 @@ end
 
 local function resolve_yaze_launcher()
   return select(1, locator.resolve_yaze_launcher())
-end
-
-local function afs_cli(afs_root, args)
-  local pythonpath = afs_root .. "/src"
-  return string.format(
-    "cd %s && AFS_ROOT=%s PYTHONPATH=%s python3 -m afs %s",
-    shell_quote(afs_root),
-    shell_quote(afs_root),
-    shell_quote(pythonpath),
-    args or ""
-  )
 end
 
 local function append_items(target, items)
@@ -168,7 +165,7 @@ local function emacs_items(ctx)
   local code_dir = (ctx.paths and ctx.paths.code_dir) or (os.getenv("BARISTA_CODE_DIR") or (os.getenv("HOME") .. "/src"))
   return {
     { type = "item", name = "menu.emacs.launch", icon = "", label = "Launch Emacs", action = "open -a Emacs" },
-    { type = "item", name = "menu.emacs.tasks", icon = "󰩹", label = "Tasks.org", action = ctx.open_path(code_dir .. "/docs/workflow/tasks.org") },
+    { type = "item", name = "menu.emacs.tasks", icon = "󰩹", label = "Task Board", action = ctx.open_path(code_dir .. "/folio/tasks/active.md") },
     { type = "item", name = "menu.emacs.focus", icon = "󰘔", label = "Focus Emacs Space", action = focus_emacs_action(ctx) },
   }
 end
@@ -368,6 +365,8 @@ function menu.render_all_menus(ctx)
 
   local afs_root = resolve_afs_root(ctx)
   local studio_root = resolve_afs_studio_root(ctx, afs_root)
+  local afs_apps_launcher, afs_apps_launcher_ok = resolve_afs_apps_launcher(ctx)
+  local afs_studio_launcher, afs_studio_launcher_ok = resolve_afs_studio_launcher(ctx)
   local stemforge_app = resolve_stemforge_app(ctx)
   local stem_sampler_app = resolve_stem_sampler_app(ctx)
   local yaze_app = resolve_yaze_app(ctx)
@@ -384,75 +383,50 @@ function menu.render_all_menus(ctx)
     })
   end
 
-  if studio_root then
-    local studio_bin = select(1, locator.resolve_afs_studio_binary(studio_root))
+  if studio_root or afs_apps_launcher_ok or afs_studio_launcher_ok then
+    local studio_bin, studio_bin_ok = locator.resolve_afs_studio_binary(studio_root)
     local studio_action
-    if studio_bin and studio_bin ~= "" then
+    if afs_apps_launcher_ok and afs_apps_launcher then
+      studio_action = string.format("%s launch afs_studio", shell_quote(afs_apps_launcher))
+    elseif studio_bin_ok and studio_bin then
       if studio_bin:match("%.app/?$") then
         studio_action = string.format("open %s", shell_quote(studio_bin))
       else
-        studio_action = open_terminal(shell_quote(studio_bin))
+        studio_action = shell_quote(studio_bin)
       end
-    elseif afs_root then
-      studio_action = open_terminal(afs_cli(afs_root, "studio run --build"))
-    else
-      if locator.afs_studio_layout(studio_root) == "suite" then
-        local build_dir = locator.afs_build_dir(studio_root)
-        studio_action = open_terminal(string.format(
-          "cd %s && cmake --build %s --target afs-studio && ./%s/apps/studio/afs-studio",
-          shell_quote(studio_root),
-          build_dir,
-          build_dir
-        ))
-      else
-        studio_action = open_terminal(string.format(
-          "cd %s && cmake --build build --target afs_studio && ./build/afs_studio",
-          shell_quote(studio_root)
-        ))
-      end
+    elseif afs_studio_launcher_ok and afs_studio_launcher then
+      studio_action = shell_quote(afs_studio_launcher)
     end
-    table.insert(apple_menu_items, {
-      type = "item",
-      name = "menu.tools.afs.studio",
-      icon = "󰆍",
-      label = "AFS Studio",
-      action = studio_action,
-    })
+    if studio_action and studio_action ~= "" then
+      table.insert(apple_menu_items, {
+        type = "item",
+        name = "menu.tools.afs.studio",
+        icon = "󰆍",
+        label = "AFS Studio",
+        action = studio_action,
+      })
+    end
 
-    local labeler_bin = select(1, locator.resolve_afs_labeler_binary(studio_root))
+    local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(studio_root, ctx)
     local labeler_csv = os.getenv("AFS_LABELER_CSV")
-    local labeler_cmd
-    if labeler_bin and labeler_bin ~= "" then
-      labeler_cmd = shell_quote(labeler_bin)
-      if labeler_csv and labeler_csv ~= "" then
-        labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
-      end
-    else
-      if locator.afs_studio_layout(studio_root) == "suite" then
-        local build_dir = locator.afs_build_dir(studio_root)
-        labeler_cmd = string.format(
-          "cd %s && cmake --build %s --target afs-labeler && ./%s/apps/studio/afs-labeler",
-          shell_quote(studio_root),
-          build_dir,
-          build_dir
-        )
+    if labeler_bin_ok and labeler_bin then
+      local labeler_cmd
+      if labeler_bin:match("%.app/?$") then
+        labeler_cmd = string.format("open %s", shell_quote(labeler_bin))
       else
-        labeler_cmd = string.format(
-          "cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler",
-          shell_quote(studio_root)
-        )
+        labeler_cmd = shell_quote(labeler_bin)
       end
       if labeler_csv and labeler_csv ~= "" then
         labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
       end
+      table.insert(apple_menu_items, {
+        type = "item",
+        name = "menu.tools.afs.labeler",
+        icon = "󰓹",
+        label = "AFS Labeler",
+        action = labeler_cmd,
+      })
     end
-    table.insert(apple_menu_items, {
-      type = "item",
-      name = "menu.tools.afs.labeler",
-      icon = "󰓹",
-      label = labeler_bin and "AFS Labeler" or "Build AFS Labeler",
-      action = open_terminal(labeler_cmd),
-    })
   end
 
   if stemforge_app then

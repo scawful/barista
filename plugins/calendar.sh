@@ -104,9 +104,8 @@ lines.append(f"{moon_icon}  {day_name}, {today.strftime('%b')} {today.day} · {t
 
 # Compact local-task summary. Keep this popup status-only: no repo/doc links.
 DEFAULT_TASK_SOURCES = [
-    "~/src/docs/workflow/tasks.org",
+    "~/src/folio/tasks/active.md",
     "~/src/hobby/oracle-of-secrets/Docs/oracle.org",
-    "~/src/folio/tasks/inbox.org",
 ]
 
 def clean_title(title):
@@ -134,8 +133,11 @@ def task_sources():
             yield path
 
 def read_local_tasks():
-    buckets = dict(today=[], next=[], blocked=[])
+    buckets = dict(today=[], next=[], next_fallback=[], blocked=[])
     heading_re = re.compile(r"^\*+\s+(TODO|NEXT|DOING|STARTED|WAITING|BLOCKED)\s+(.*)$", re.I)
+    markdown_section_re = re.compile(r"^#{2,6}\s+(.+?)\s*$")
+    markdown_task_re = re.compile(r"^\s*[-*]\s+\[([ xX-])\]\s+(.*)$")
+    explicit_state_re = re.compile(r"^\[(TODO|NEXT|ACTIVE|DOING|STARTED|WAITING|BLOCKED|DONE|CANCELLED)\]\s+(.*)$", re.I)
     date_re = re.compile(r"<(\d{4}-\d{2}-\d{2})")
 
     def add(bucket, title):
@@ -149,8 +151,39 @@ def read_local_tasks():
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as handle:
                 current = None
+                markdown_section = ""
                 for raw_line in handle:
                     line = raw_line.rstrip("\n")
+                    section_match = markdown_section_re.match(line)
+                    if section_match:
+                        markdown_section = section_match.group(1).strip().lower()
+                        current = None
+                        continue
+                    markdown_match = markdown_task_re.match(line)
+                    if markdown_match:
+                        marker = markdown_match.group(1)
+                        title = markdown_match.group(2).strip()
+                        if marker in ("x", "X", "-"):
+                            current = None
+                            continue
+                        explicit = explicit_state_re.match(title)
+                        status = ""
+                        if explicit:
+                            status = explicit.group(1).upper()
+                            title = explicit.group(2).strip()
+                        if status in ("DONE", "CANCELLED"):
+                            current = None
+                            continue
+                        if status in ("BLOCKED", "WAITING") or markdown_section in ("blocked", "waiting"):
+                            add("blocked", title)
+                        elif status == "NEXT" or markdown_section in ("inbox", "next"):
+                            add("next", title)
+                        elif not buckets["today"]:
+                            add("today", title)
+                        else:
+                            add("next_fallback", title)
+                        current = None
+                        continue
                     match = heading_re.match(line)
                     if match:
                         status = match.group(1).upper()
@@ -174,6 +207,8 @@ def read_local_tasks():
                                 add("today", current[1])
         except OSError:
             continue
+    if not buckets["next"]:
+        buckets["next"] = buckets["next_fallback"]
     return buckets
 
 tasks = read_local_tasks()

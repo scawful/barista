@@ -79,6 +79,18 @@ run_test("tool_locator.resolve_afs_studio_root: finds afs_suite layout", functio
   cleanup(root)
 end)
 
+run_test("tool_locator.resolve_afs_studio_root: uses the current AFS repo root", function()
+  local root = make_temp_dir("locator_afs_current")
+  local code_dir = root .. "/code"
+  local afs_root = code_dir .. "/lab/afs"
+  mkdir(afs_root)
+
+  local resolved, ok = locator.resolve_afs_studio_root({ code_dir = code_dir }, afs_root)
+  assert_true(ok, "found current AFS root")
+  assert_equal(resolved, afs_root, "current AFS repo is the Studio root")
+  cleanup(root)
+end)
+
 run_test("tool_locator.resolve_afs_studio_binary: finds suite binary", function()
   local root = make_temp_dir("locator_afs_bin")
   local studio_root = root .. "/afs_suite"
@@ -142,6 +154,51 @@ run_test("tool_locator.resolve_afs_studio_launcher: finds afs-scawful helper", f
   local resolved, found = locator.resolve_afs_studio_launcher({ code_dir = code_dir })
   assert_true(found, "found studio launcher")
   assert_equal(resolved, launcher, "launcher path")
+  cleanup(root)
+end)
+
+run_test("tool_locator.resolve_afs_apps_launcher: finds manifest-backed launcher", function()
+  local root = make_temp_dir("locator_afs_apps_launcher")
+  local code_dir = root .. "/code"
+  local launcher = code_dir .. "/tools/afs/launch.sh"
+  mkdir(code_dir .. "/lab")
+  mkdir(code_dir .. "/tools/afs")
+  write_file(launcher, "#!/bin/sh\n")
+  local ok = os.execute(string.format("chmod +x %q", launcher))
+  assert_true(ok == 0 or ok == true, "chmod AFS apps launcher")
+
+  local resolved, found = locator.resolve_afs_apps_launcher({ code_dir = code_dir })
+  assert_true(found, "found manifest-backed launcher")
+  assert_equal(resolved, launcher, "AFS apps launcher path")
+  cleanup(root)
+end)
+
+run_test("tool_locator.resolve_afs_labeler_binary: missing labeler has no fallback command", function()
+  local root = make_temp_dir("locator_afs_labeler_missing")
+  mkdir(root .. "/studio")
+
+  local resolved, found = locator.resolve_afs_labeler_binary(root .. "/studio", {
+    code_dir = root,
+  })
+  assert_true(not found, "labeler should be unavailable")
+  assert_nil(resolved, "missing labeler should not return a build target")
+  cleanup(root)
+end)
+
+run_test("tool_locator.resolve_afs_labeler_binary: explicit installed binary wins", function()
+  local root = make_temp_dir("locator_afs_labeler_explicit")
+  local binary = root .. "/bin/afs-labeler"
+  mkdir(root .. "/bin")
+  write_file(binary, "#!/bin/sh\n")
+  local ok = os.execute(string.format("chmod +x %q", binary))
+  assert_true(ok == 0 or ok == true, "chmod AFS Labeler")
+
+  local resolved, found = locator.resolve_afs_labeler_binary(nil, {
+    code_dir = root,
+    afs_labeler_bin = binary,
+  })
+  assert_true(found, "found explicit labeler")
+  assert_equal(resolved, binary, "explicit labeler path")
   cleanup(root)
 end)
 

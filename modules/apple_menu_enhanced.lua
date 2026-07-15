@@ -159,6 +159,10 @@ local function resolve_afs_studio_launcher(ctx)
   return locator.resolve_afs_studio_launcher(ctx)
 end
 
+local function resolve_afs_apps_launcher(ctx)
+  return locator.resolve_afs_apps_launcher(ctx)
+end
+
 local function resolve_afs_browser_app(ctx)
   return locator.resolve_afs_browser_app(ctx)
 end
@@ -284,67 +288,9 @@ local function build_prepared(ctx)
     show_missing = menu_config.show_missing
   end
 
-  local function normalize_bool(value)
-    if type(value) == "boolean" then
-      return value
-    end
-    if type(value) == "number" then
-      return value ~= 0
-    end
-    if type(value) == "string" then
-      local lowered = value:lower()
-      if lowered == "true" or lowered == "yes" or lowered == "1" then
-        return true
-      end
-      if lowered == "false" or lowered == "no" or lowered == "0" then
-        return false
-      end
-    end
-    return nil
-  end
-
-  local terminal_defaults = {}
-
-  local function terminal_allowed(item_id)
-    local override = menu_config.items[item_id] or {}
-    if type(override.launch) == "string" then
-      return override.launch:lower() == "terminal"
-    end
-    local override_terminal = normalize_bool(override.terminal or override.open_terminal)
-    if override_terminal ~= nil then
-      return override_terminal
-    end
-    local enabled_override = normalize_bool(override.enabled)
-    if enabled_override == true then
-      return true
-    end
-    if type(menu_config.launch) == "string" then
-      return menu_config.launch:lower() == "terminal"
-    end
-    local menu_terminal = normalize_bool(menu_config.terminal or menu_config.open_terminal)
-    if menu_terminal ~= nil then
-      return menu_terminal
-    end
-    local env = os.getenv("BARISTA_MENU_TERMINAL")
-    if env and env ~= "" then
-      env = env:lower()
-      return env == "1" or env == "true" or env == "yes"
-    end
-    return terminal_defaults[item_id] == true
-  end
-
-  local function terminal_action(item_id, command)
-    if not command or command == "" then
-      return nil
-    end
-    if not terminal_allowed(item_id) then
-      return nil
-    end
-    return open_terminal(command)
-  end
-
-  local afs_root, afs_ok = resolve_afs_root(ctx)
-  local studio_root, studio_ok = resolve_afs_studio_root(ctx, afs_root)
+  local afs_root = select(1, resolve_afs_root(ctx))
+  local studio_root = select(1, resolve_afs_studio_root(ctx, afs_root))
+  local afs_apps_launcher, afs_apps_launcher_ok = resolve_afs_apps_launcher(ctx)
   local afs_studio_launcher, afs_studio_launcher_ok = resolve_afs_studio_launcher(ctx)
   local afs_studio_bin, afs_studio_bin_ok = locator.resolve_afs_studio_binary(studio_root)
   local afs_browser_app, afs_browser_ok = resolve_afs_browser_app(ctx)
@@ -425,6 +371,9 @@ local function build_prepared(ctx)
   if afs_browser_app and afs_browser_ok then
     afs_action = string.format("open %s", shell_quote(afs_browser_app))
     afs_available = true
+  elseif afs_apps_launcher and afs_apps_launcher_ok then
+    afs_action = string.format("%s launch afs_studio", shell_quote(afs_apps_launcher))
+    afs_available = true
   elseif afs_studio_launcher and afs_studio_launcher_ok then
     afs_action = shell_quote(afs_studio_launcher)
     afs_available = true
@@ -460,35 +409,20 @@ local function build_prepared(ctx)
   if cortex_launcher and cortex_ok then
     cortex_action = shell_quote(cortex_launcher)
   end
-  local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(studio_root)
+  local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(studio_root, ctx)
   local labeler_csv = os.getenv("AFS_LABELER_CSV")
   local labeler_cmd
   local labeler_action
   if labeler_bin_ok and labeler_bin then
-    labeler_cmd = shell_quote(labeler_bin)
-    if labeler_csv and labeler_csv ~= "" then
-      labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
-    end
-    labeler_action = labeler_cmd
-  elseif studio_root then
-    local build_dir = locator.afs_build_dir(studio_root)
-    if locator.afs_studio_layout(studio_root) == "suite" then
-      labeler_cmd = string.format(
-        "cd %s && cmake --build %s --target afs-labeler && ./%s/apps/studio/afs-labeler",
-        shell_quote(studio_root),
-        build_dir,
-        build_dir
-      )
+    if labeler_bin:match("%.app/?$") then
+      labeler_action = string.format("open %s", shell_quote(labeler_bin))
     else
-      labeler_cmd = string.format(
-        "cd %s && cmake --build build --target afs_labeler && ./build/afs_labeler",
-        shell_quote(studio_root)
-      )
+      labeler_cmd = shell_quote(labeler_bin)
+      if labeler_csv and labeler_csv ~= "" then
+        labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
+      end
+      labeler_action = labeler_cmd
     end
-    if labeler_csv and labeler_csv ~= "" then
-      labeler_cmd = labeler_cmd .. " --csv " .. shell_quote(labeler_csv)
-    end
-    labeler_action = terminal_action("afs_labeler", labeler_cmd)
   end
   -- AFS context helpers
   local afs_context_root = os.getenv("AFS_CONTEXT_ROOT")
@@ -604,8 +538,8 @@ local function build_prepared(ctx)
       section = "apps",
       action = labeler_action or "",
       shortcut_action = "launch_afs_labeler",
-      available = studio_ok and labeler_cmd ~= nil,
-      blocked = studio_ok and labeler_cmd ~= nil and labeler_action == nil,
+      available = labeler_bin_ok and labeler_action ~= nil,
+      blocked = false,
       default_enabled = false,
     },
     {

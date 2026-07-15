@@ -94,20 +94,20 @@ local function build_ctx(overrides)
           title = "Play Maku Tree at 0 crystals",
           label = "Maku 0",
           detail = "Verify message and icon state.",
-          command = "./scripts/oos-session.sh maku --crystals 0",
+          command = "./Scripts/Build/oos-session.sh maku --crystals 0",
         },
         today = {
           {
             title = "Maku 1",
             action = "session-maku-1",
-            command = "./scripts/oos-session.sh maku --crystals 1",
+            command = "./Scripts/Build/oos-session.sh maku --crystals 1",
           },
         },
         next = {
           {
             title = "Maku 3 / 5 / 7",
             action = "session-maku-3",
-            command = "./scripts/oos-session.sh maku --crystals 3",
+            command = "./Scripts/Build/oos-session.sh maku --crystals 3",
           },
         },
         blocked = {
@@ -118,13 +118,13 @@ local function build_ctx(overrides)
         },
       },
       commands = {
-        quick = "./scripts/oos-quick.sh 168",
-        verify = "./scripts/oos-verify.sh 168",
+        quick = "./Scripts/Build/oos-quick.sh 168",
+        verify = "./Scripts/Build/oos-verify.sh 168",
         sessions = {
-          maku0 = "./scripts/oos-session.sh maku --crystals 0",
-          maku3 = "./scripts/oos-session.sh maku --crystals 3",
-          d6 = "./scripts/oos-session.sh d6",
-          menu = "./scripts/oos-session.sh menu",
+          maku0 = "./Scripts/Build/oos-session.sh maku --crystals 0",
+          maku3 = "./Scripts/Build/oos-session.sh maku --crystals 3",
+          d6 = "./Scripts/Build/oos-session.sh d6",
+          menu = "./Scripts/Build/oos-session.sh menu",
         },
       },
     },

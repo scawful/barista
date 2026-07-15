@@ -227,7 +227,7 @@ local function read_status_snapshot(ctx)
     command = string.format("%s status-json --barista 2>/dev/null", shell_quote(bin))
   elseif path_exists(oracle.config.repo_path, true) then
     command = string.format(
-      "cd %s && ./scripts/oos-triforce.sh status-json --barista 2>/dev/null",
+      "cd %s && ./Scripts/Build/oos-triforce.sh status-json --barista 2>/dev/null",
       shell_quote(oracle.config.repo_path)
     )
   end
@@ -375,8 +375,8 @@ local function build_state(ctx)
     )
     z3ed_action = terminal_action(command, ctx)
   end
-  local continue_action = repo_action(focus.command or "./scripts/oos-session.sh maku --crystals 0")
-  local patch_and_play_action = repo_action("./scripts/oos-triforce.sh patch-and-play")
+  local continue_action = repo_action(focus.command or "./Scripts/Build/oos-session.sh maku --crystals 0")
+  local patch_and_play_action = repo_action("./Scripts/Build/oos-triforce.sh patch-and-play")
   local density = current_density(ctx and ctx.state or {})
   local widget_icon = ui.triforce.icon
   if widget_icon == "" then

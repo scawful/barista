@@ -84,6 +84,7 @@ local function test_items_left_layout()
   local found_focus_preset = false
   local found_presentation_preset = false
   local found_tile_here_preset = false
+  local found_front_app_default_row = false
   local front_app_move_prev = nil
   local front_app_move_next = nil
   for _, entry in ipairs(layout) do
@@ -119,6 +120,8 @@ local function test_items_left_layout()
     elseif entry.type == "item" and entry.name == "front_app.preset.tile_here" then
       found_tile_here_preset = true
       assert_true(entry.props.click_script:find("yabai_control%.sh window%-preset%-tile%-here") ~= nil, "tile-here preset should route through yabai_control.sh")
+    elseif entry.type == "item" and type(entry.name) == "string" and entry.name:match("^front_app%.default%.") then
+      found_front_app_default_row = true
     elseif entry.type == "item" and entry.name == "front_app.move.display_prev" then
       front_app_move_prev = entry
     elseif entry.type == "item" and entry.name == "front_app.move.display_next" then
@@ -136,6 +139,7 @@ local function test_items_left_layout()
   assert(found_focus_preset, "front_app focus preset not found in popup layout")
   assert(found_presentation_preset, "front_app presentation preset not found in popup layout")
   assert(found_tile_here_preset, "front_app tile-here preset not found in popup layout")
+  assert_true(not found_front_app_default_row, "front_app should leave persistent app defaults to Control Center")
   assert(front_app_move_prev ~= nil, "front_app move-to-prev-display action not found in popup layout")
   assert(front_app_move_next ~= nil, "front_app move-to-next-display action not found in popup layout")
   assert(front_app_hide.props.click_script:find("popup.drawing=off", 1, true) ~= nil, "front_app actions should close the popup after execution")

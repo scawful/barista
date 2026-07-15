@@ -469,18 +469,6 @@ local function get_layout(ctx)
       add_front_row(entry.name, entry)
     end
 
-    add_front_separator("front_app.sep_defaults")
-    add_front_header("front_app.defaults_header", "App Defaults", tc("PEACH"))
-
-    local default_actions = {
-      { name = "front_app.default.float", icon = "󰒄", icon_color = tc("PEACH"), label = "Default This App: Float", action = call_script(YABAI_CONTROL_SCRIPT, "app-default-current float") },
-      { name = "front_app.default.tile", icon = "󰆾", icon_color = tc("TEAL"), label = "Default This App: Tile", action = call_script(YABAI_CONTROL_SCRIPT, "app-default-current tile") },
-      { name = "front_app.default.unset", icon = "󰅖", icon_color = tc("RED"), label = "Unset This App Default", action = call_script(YABAI_CONTROL_SCRIPT, "app-default-current unset") },
-    }
-    for _, entry in ipairs(default_actions) do
-      add_front_row(entry.name, entry)
-    end
-
     add_front_separator("front_app.sep2")
     add_front_header("front_app.move_header", "Move", tc("MAUVE", "LAVENDER"))
 

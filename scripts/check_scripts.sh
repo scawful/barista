@@ -41,10 +41,12 @@ cd "$REPO_ROOT"
 if command -v rg >/dev/null 2>&1; then
   mapfile -t shell_files < <(rg --files -g 'scripts/**' -g 'plugins/**' -g 'bin/**' | while read -r f; do
     [ -f "$f" ] || continue
-    head -n 1 "$f" | grep -Eq '^#!.*(ba|z|sh)' && echo "$f"
+    head -n 1 "$f" | grep -Eq '^#!.*[/[:space:]](bash|zsh|sh)([[:space:]]|$)' && echo "$f"
   done | sort)
 else
-  mapfile -t shell_files < <(find scripts plugins bin -type f | sort)
+  mapfile -t shell_files < <(find scripts plugins bin -type f | while read -r f; do
+    head -n 1 "$f" | grep -Eq '^#!.*[/[:space:]](bash|zsh|sh)([[:space:]]|$)' && echo "$f"
+  done | sort)
 fi
 
 if [ "${#shell_files[@]}" -eq 0 ]; then

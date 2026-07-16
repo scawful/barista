@@ -28,6 +28,11 @@ FRONT_APP_IDLE_BG="${BARISTA_ANCHOR_IDLE_BG:-0x18313a46}"
 FRONT_APP_ICON_COLOR="0xFFcad3f5"
 FRONT_APP_IDLE_BORDER_WIDTH="${BARISTA_ANCHOR_IDLE_BORDER_WIDTH:-0}"
 FRONT_APP_IDLE_BORDER_COLOR="${BARISTA_ANCHOR_IDLE_BORDER_COLOR:-0x00000000}"
+FRONT_APP_ACTION_ROWS="${BARISTA_FRONT_APP_ACTION_ROWS:-1}"
+case "$FRONT_APP_ACTION_ROWS" in
+  0) ;;
+  *) FRONT_APP_ACTION_ROWS=1 ;;
+esac
 FRONT_APP_IDLE_PROPS="$(anchor_idle_props) icon.color=$FRONT_APP_ICON_COLOR"
 FRONT_APP_HOVER_PROPS="$(anchor_hover_props) icon.color=$FRONT_APP_ICON_COLOR"
 
@@ -112,15 +117,6 @@ if [ -z "$APP_ICON" ]; then
   APP_ICON="󰣆"
 fi
 
-animate_set "$NAME" icon="$APP_ICON" icon.drawing=on icon.color="$FRONT_APP_ICON_COLOR" icon.padding_left=8 icon.padding_right=8 label="" label.drawing=off background.drawing=on background.color="$FRONT_APP_IDLE_BG" background.border_width="$FRONT_APP_IDLE_BORDER_WIDTH" background.border_color="$FRONT_APP_IDLE_BORDER_COLOR"
-sketchybar --set front_app.header label="App · $APP_NAME" >/dev/null 2>&1 || true
-
-sketchybar --set front_app.state \
-  icon="$STATE_ICON" \
-  label="$STATE_LABEL" >/dev/null 2>&1 || true
-sketchybar --set front_app.location \
-  label="$LOCATION_LABEL" >/dev/null 2>&1 || true
-
 FLOAT_ACTION_LABEL="Float Window"
 FULLSCREEN_ACTION_LABEL="Enter Fullscreen"
 TOPMOST_ACTION_LABEL="Make Topmost"
@@ -143,7 +139,30 @@ else
   esac
 fi
 
-sketchybar --set front_app.window.float label="$FLOAT_ACTION_LABEL" >/dev/null 2>&1 || true
-sketchybar --set front_app.window.fullscreen label="$FULLSCREEN_ACTION_LABEL" >/dev/null 2>&1 || true
-sketchybar --set front_app.window.topmost label="$TOPMOST_ACTION_LABEL" >/dev/null 2>&1 || true
-sketchybar --set front_app.preset.tile_here label="$TILE_PRESET_LABEL" >/dev/null 2>&1 || true
+FRONT_APP_UPDATE=(
+  "$NAME"
+  "icon=$APP_ICON"
+  icon.drawing=on
+  "icon.color=$FRONT_APP_ICON_COLOR"
+  icon.padding_left=8
+  icon.padding_right=8
+  label=
+  label.drawing=off
+  background.drawing=on
+  "background.color=$FRONT_APP_IDLE_BG"
+  "background.border_width=$FRONT_APP_IDLE_BORDER_WIDTH"
+  "background.border_color=$FRONT_APP_IDLE_BORDER_COLOR"
+  --set front_app.header "label=App · $APP_NAME"
+  --set front_app.state "icon=$STATE_ICON" "label=$STATE_LABEL"
+  --set front_app.location "label=$LOCATION_LABEL"
+)
+if [ "$FRONT_APP_ACTION_ROWS" = "1" ]; then
+  FRONT_APP_UPDATE+=(
+    --set front_app.window.float "label=$FLOAT_ACTION_LABEL"
+    --set front_app.window.fullscreen "label=$FULLSCREEN_ACTION_LABEL"
+    --set front_app.window.topmost "label=$TOPMOST_ACTION_LABEL"
+    --set front_app.preset.tile_here "label=$TILE_PRESET_LABEL"
+  )
+fi
+
+animate_set "${FRONT_APP_UPDATE[@]}" >/dev/null 2>&1 || true

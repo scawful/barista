@@ -1,5 +1,20 @@
 # SketchyBar Configuration Changelog
 
+## July 16, 2026 - Batched Front-App Popup Rendering
+
+- `front_app.sh` now applies the anchor, header, state, location, and four
+  action labels through one animated SketchyBar request instead of eight
+  separate CLI clients.
+- An animated-request failure retries the same complete payload once without
+  animation; custom SketchyBar binaries, quoted/Unicode labels, and portable
+  context fallbacks keep their existing behavior.
+- Disabled-yabai or unavailable-yabai layouts omit the four unavailable action
+  targets, so their anchor/header/state/location update also remains one
+  request.
+- On the enabled-action topology, a same-session sequential live sample reduced
+  median popup-detail refresh from 79.948 ms to
+  54.832 ms (31.4%) and p95 from 86.069 ms to 58.181 ms (32.4%).
+
 ## July 16, 2026 - Event-Driven Front-App Context
 
 - The existing native runtime helper now refreshes on application activation,

@@ -101,6 +101,15 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - the source-compiled test injects a private notification center, checks activation, active-space, and wake independently, and verifies that a sustained sub-debounce event stream cannot defer refresh indefinitely
 *   **Result:** the read-only live baseline observed 20 helper forks across 10.501 seconds, exactly one focused-window/spaces pair per roughly one-second refresh. A matched first post-reload sample observed 6 forks across 10.504 seconds (70% fewer), and a settled final sample observed 4 across 10.501 seconds, matching the five-second safety cadence's stable reduction from about 120 to 24 yabai executions per minute (80%). Event and popup refreshes remain demand-driven. Twenty live query pairs measured a combined 16.447 ms median and 20.103 ms p95 before this cadence reduction.
 
+### 0h. Batched Front-App Popup Apply (Verified)
+*   **Files:** `modules/items_left.lua`, `plugins/front_app.sh`, `tests/test_front_app_plugin.sh`, `tests/test_items.lua`
+*   **Update:**
+    - the anchor, header, state, location, and four mutable action labels now travel in one animated SketchyBar argument vector instead of eight separate CLI processes
+    - if the animated request fails, the exact same complete payload is retried once without animation; a second request failure keeps the existing best-effort behavior
+    - the layout tells the plugin whether optional yabai action rows exist, so yabai-enabled layouts send eight `--set` groups while disabled-yabai or unavailable-yabai layouts send only the four available anchor/header/state/location groups and do not trigger a failed retry
+    - deterministic tests require one successful client invocation, exact target/payload order, intact quoted/Unicode arguments, the configured SketchyBar binary, native-context and portable-context paths, and identical fallback payloads
+*   **Result:** on the enabled-action topology, a same-session sequential 60-run renderer-only sample reduced median apply latency from 27.173 ms to 3.563 ms (86.9%) and p95 from 29.133 ms to 3.773 ms (87.0%). A same-session sequential 25-run live popup-refresh sample reduced end-to-end median from 79.948 ms to 54.832 ms (31.4%) and p95 from 86.069 ms to 58.181 ms (32.4%). Both observed profiles ran the old path first against the same settled Ghostty/Tiled context. Fresh native context discovery remains the dominant roughly 40 ms portion, so a new UI helper would add coupling for comparatively little remaining benefit.
+
 ### 1. Network & System Info (Mitigated)
 *   **File:** `helpers/system_info_widget.c`
 *   **Update:** Batched 5 separate `system()` calls into a single `sketchybar` invocation.

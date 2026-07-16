@@ -52,6 +52,8 @@ local function get_layout(ctx)
   local control_center_item_name = nil
   local yabai_ready = type(ctx.yabai_available) == "function" and ctx.yabai_available()
   local window_manager_enabled = WINDOW_MANAGER_MODE ~= "disabled"
+  local yabai_controls_enabled = window_manager_enabled and yabai_ready
+    and YABAI_CONTROL_SCRIPT and YABAI_CONTROL_SCRIPT ~= ""
   local oracle_menu_model = nil
   local music_menu_model = nil
   local control_center_status = nil
@@ -141,7 +143,11 @@ local function get_layout(ctx)
 
   -- Front App indicator
   local front_app_start_ms = current_time_ms()
-  local front_app_script = anchor_script(PLUGIN_DIR .. "/front_app.sh")
+  local front_app_script = string.format(
+    "BARISTA_FRONT_APP_ACTION_ROWS=%s %s",
+    yabai_controls_enabled and "1" or "0",
+    anchor_script(PLUGIN_DIR .. "/front_app.sh")
+  )
   local front_app_refresh_prefix = ctx.lua_only and "/usr/bin/env BARISTA_LUA_ONLY=1 " or ""
   local front_app_popup_refresh = string.format(
     "%sSENDER=popup_refresh NAME=front_app CONFIG_DIR=%q %s",
@@ -341,7 +347,6 @@ local function get_layout(ctx)
   end
 
   -- Front App Popup Items
-  local yabai_controls_enabled = window_manager_enabled and yabai_ready and YABAI_CONTROL_SCRIPT and YABAI_CONTROL_SCRIPT ~= ""
   local front_app_style = ui.popup_style(ctx)
 
   local function add_front_popup_item(item)

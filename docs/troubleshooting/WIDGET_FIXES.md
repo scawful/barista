@@ -276,6 +276,12 @@ are ever removed.
   Front-app clicks still toggle immediately, then consume one fresh returned
   snapshot in the background; portable/Lua-only setups retain their base-tick
   producer and cannot reactivate a leftover compiled helper on click.
+- `front_app.sh` applies its anchor plus available mutable popup rows in one
+  animated SketchyBar request. Yabai-enabled layouts include all eight targets;
+  disabled-yabai or unavailable-yabai layouts omit unavailable action targets
+  and keep the four-item base batch to one request. An animated-request failure
+  retries the identical batch once without animation while retaining the
+  portable shell path and configured SketchyBar binary.
 
 ### 12. Reload Serialization
 **Current path**: `plugins/reload_sketchybar.sh`

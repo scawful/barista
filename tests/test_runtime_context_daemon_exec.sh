@@ -103,20 +103,36 @@ PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   BARISTA_JQ_BIN="$(command -v jq)" \
   BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
   BARISTA_SWITCH_AUDIO_SOURCE_BIN="$BIN_DIR/SwitchAudioSource" \
-  BARISTA_RUNTIME_CONTEXT_INTERVAL=5 \
+  BARISTA_RUNTIME_CONTEXT_INTERVAL=1 \
   CONFIG_DIR="$CONFIG_DIR" \
   "$SCRIPT" daemon >/dev/null 2>&1 &
 DAEMON_PID=$!
 
-sleep 0.3
-
-if pgrep -P "$DAEMON_PID" -f 'runtime_context\.sh daemon' >/dev/null 2>&1; then
-  echo "FAIL: runtime context daemon should not spawn a nested shell daemon when helper mode is enabled" >&2
-  exit 1
-fi
+for _ in {1..50}; do
+  if pgrep -P "$DAEMON_PID" -f 'runtime_context_helper daemon' >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.05
+done
 
 if ! pgrep -P "$DAEMON_PID" -f 'runtime_context_helper daemon' >/dev/null 2>&1; then
   echo "FAIL: runtime context daemon should launch the helper daemon directly" >&2
+  exit 1
+fi
+
+shell_tree_settled=0
+for _ in {1..40}; do
+  if ! pgrep -P "$DAEMON_PID" -f 'runtime_context\.sh daemon' >/dev/null 2>&1; then
+    sleep 0.05
+    if ! pgrep -P "$DAEMON_PID" -f 'runtime_context\.sh daemon' >/dev/null 2>&1; then
+      shell_tree_settled=1
+      break
+    fi
+  fi
+  sleep 0.05
+done
+if [[ "$shell_tree_settled" -ne 1 ]]; then
+  echo "FAIL: runtime context daemon should settle without a retained nested shell daemon" >&2
   exit 1
 fi
 
@@ -133,7 +149,7 @@ PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   BARISTA_JQ_BIN="$(command -v jq)" \
   BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
   BARISTA_SWITCH_AUDIO_SOURCE_BIN="$BIN_DIR/SwitchAudioSource" \
-  BARISTA_RUNTIME_CONTEXT_INTERVAL=5 \
+  BARISTA_RUNTIME_CONTEXT_INTERVAL=1 \
   CONFIG_DIR="$CONFIG_DIR" \
   "$SCRIPT" daemon >/dev/null 2>&1 &
 DAEMON_PID=$!

@@ -1,6 +1,10 @@
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
+#import <errno.h>
+#import <fcntl.h>
 #import <signal.h>
+#import <string.h>
+#import <sys/stat.h>
 #import <unistd.h>
 
 static volatile sig_atomic_t keep_running = 1;
@@ -393,15 +397,99 @@ static BOOL ensure_state_dir(void) {
                                                          error:&error];
 }
 
+static BOOL regular_file_matches_data(NSString *path, NSData *expected) {
+  if (path.length == 0 || expected == nil) {
+    return NO;
+  }
+
+  const char *filePath = path.fileSystemRepresentation;
+  if (filePath == NULL) {
+    return NO;
+  }
+
+  int descriptor;
+  do {
+    descriptor = open(filePath, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+  } while (descriptor < 0 && errno == EINTR);
+  if (descriptor < 0) {
+    return NO;
+  }
+
+  BOOL matches = NO;
+  struct stat metadata;
+  if (fstat(descriptor, &metadata) == 0 &&
+      S_ISREG(metadata.st_mode) &&
+      metadata.st_size >= 0 &&
+      (unsigned long long)metadata.st_size == (unsigned long long)expected.length) {
+    const unsigned char *expectedBytes = expected.bytes;
+    unsigned char buffer[4096];
+    NSUInteger offset = 0;
+    BOOL contentMatches = YES;
+
+    while (offset < expected.length) {
+      NSUInteger remaining = expected.length - offset;
+      size_t requested = remaining < sizeof(buffer) ? (size_t)remaining : sizeof(buffer);
+      ssize_t bytesRead;
+      do {
+        bytesRead = read(descriptor, buffer, requested);
+      } while (bytesRead < 0 && errno == EINTR);
+
+      if (bytesRead <= 0 ||
+          memcmp(buffer, expectedBytes + offset, (size_t)bytesRead) != 0) {
+        contentMatches = NO;
+        break;
+      }
+      offset += (NSUInteger)bytesRead;
+    }
+
+    if (contentMatches && offset == expected.length) {
+      unsigned char extraByte;
+      ssize_t extraRead;
+      do {
+        extraRead = read(descriptor, &extraByte, sizeof(extraByte));
+      } while (extraRead < 0 && errno == EINTR);
+      matches = extraRead == 0;
+    }
+  }
+
+  close(descriptor);
+  return matches;
+}
+
+static BOOL path_targets_directory(NSString *path) {
+  const char *filePath = path.fileSystemRepresentation;
+  if (filePath == NULL) {
+    return NO;
+  }
+
+  struct stat metadata;
+  return stat(filePath, &metadata) == 0 && S_ISDIR(metadata.st_mode);
+}
+
+static BOOL publish_front_app_content(NSString *content) {
+  NSData *data = [content dataUsingEncoding:NSUTF8StringEncoding];
+  NSString *path = front_app_file();
+  if (data == nil || path.length == 0) {
+    return NO;
+  }
+  if (regular_file_matches_data(path, data)) {
+    return YES;
+  }
+  if (path_targets_directory(path)) {
+    return NO;
+  }
+
+  NSError *error = nil;
+  return [data writeToFile:path options:NSDataWritingAtomic error:&error];
+}
+
 static int refresh_front_app_cache(void) {
   if (!ensure_state_dir()) {
     return 1;
   }
 
   NSString *content = record_to_tsv(build_front_app_record());
-  NSError *error = nil;
-  BOOL ok = [content writeToFile:front_app_file() atomically:YES encoding:NSUTF8StringEncoding error:&error];
-  return ok ? 0 : 1;
+  return publish_front_app_content(content) ? 0 : 1;
 }
 
 static int print_front_app_cache(void) {

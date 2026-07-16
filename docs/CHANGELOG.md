@@ -1,5 +1,18 @@
 # SketchyBar Configuration Changelog
 
+## July 16, 2026 - Native Front-App Cache Publication
+
+- `runtime_context_helper` now uses a bounded, no-follow byte comparison before
+  atomically publishing `front_app.tsv`, preserving its inode and modification
+  time across unchanged daemon ticks.
+- Corrupt regular files, file/dangling symlinks, and FIFOs are repaired while
+  directory targets (including symlinks to them) fail closed; the TSV schema
+  and one-helper runtime stay unchanged.
+- A Darwin-only test now compiles the real Objective-C helper and covers stable
+  publication, atomic updates, corruption repair, special-file handling, and
+  daemon shutdown. The helper-launch test also waits for the settled process
+  tree instead of racing startup command substitutions.
+
 ## July 16, 2026 - Adaptive Runtime Context
 
 - Collapsed Spotify/Music state and metadata discovery into one bounded,

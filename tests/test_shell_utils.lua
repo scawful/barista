@@ -49,6 +49,17 @@ run_test("env_prefix: sorted keys", function()
   assert_true(m_pos < z_pos, "M before Z")
 end)
 
+run_test("env_prefix: preserves shell metacharacters literally", function()
+  local value = "$(printf SUB)$HOME`printf TICK`'quote"
+  local command = shell_utils.env_prefix({ BARISTA_TEST_VALUE = value })
+    .. "/bin/sh -c " .. shell_utils.shell_quote("/usr/bin/printf '%s' \"$BARISTA_TEST_VALUE\"")
+  local handle = assert(io.popen(command))
+  local result = handle:read("*a")
+  local ok = handle:close()
+  assert_true(ok ~= nil, "quoted environment command should succeed")
+  assert_equal(result, value, "environment values must not execute command or variable substitutions")
+end)
+
 run_test("file_exists: nil path", function()
   assert_true(not shell_utils.file_exists(nil), "nil returns false")
 end)

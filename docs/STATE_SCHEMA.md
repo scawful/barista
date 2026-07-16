@@ -13,7 +13,8 @@
   "profile": "personal",
   "widgets": {
     "clock": true,
-    "battery": true
+    "battery": true,
+    "task_focus": true
   },
   "appearance": {
     "theme": "default",
@@ -54,6 +55,10 @@
     },
     "work": {
       "workspace_domain": "example.com"
+    },
+    "calendar": {
+      "task_provider": "files",
+      "task_sources": ["~/src/folio/tasks/active.md"]
     },
     "extensions": {
       "enabled": true,
@@ -101,8 +106,14 @@ Common keys:
 - `volume`
 - `battery`
 - `network`
+- `task_focus`
 
 `lmstudio` controls the dedicated LM Studio quick-switch widget on the right side of the bar. Personal machines enable it by profile; minimal, cozy, work, and restricted variants disable it by default.
+
+`task_focus` controls the optional Task Pulse chip. Its default is `false`, and
+the item is not created unless `menus.calendar.task_sources` also contains at
+least one non-empty source. This two-part gate keeps shared installs free of
+personal task UI and paths.
 
 ### `appearance`
 
@@ -227,16 +238,54 @@ Nested `items[]` rows support:
 
 Supported keys used by the calendar popup:
 
-- `task_sources`: string or array of local Markdown/Org task files for compact `Today`, `Next`, and `Blocked` summaries
+- `task_provider`: `files` or `syshelp` (`files` by default)
+- `task_sources`: string or array of local Markdown/Org task files
+- `meeting_cache_file`: optional local `events.tsv` cache for one next-meeting row
+- `meeting_cache_max_age_seconds`: positive cache freshness limit (`86400`, or 24 hours, by default)
+- `syshelp_path`: optional absolute `syshelp` executable path for launchd environments
+- `capture_section`: optional syshelp capture section (`Active` by default)
+- `capture_state`: optional syshelp capture state (`TODO` by default)
 
-Defaults read the canonical personal task board at
-`~/src/folio/tasks/active.md`, then the Oracle project board at
-`~/src/hobby/oracle-of-secrets/Docs/oracle.org`. The personal board may use
-Markdown checkboxes grouped under `Active`, `Waiting`, or `Blocked`; explicit
-markers such as `[NEXT]` and `[BLOCKED]` are also recognized. Org task headings
-remain supported for project-specific sources. Calendar task rows are
-status-only; they should not become doc, repo, tracker, or terminal launcher
-rows.
+Committed defaults use `task_provider="files"` and an empty `task_sources`
+array. Configure personal and work boards only in ignored `state.json` or
+`barista_config.lua`. Applying the `work` or `restricted-work` machine variant
+resets the provider to `files`, clears all task sources, and disables
+`widgets.task_focus` as a privacy boundary.
+
+The `files` provider parses configured Markdown checkboxes and Org task
+headings, including explicit `NEXT`, `WAITING`, and `BLOCKED` states. It is
+read-only: `Capture Task` opens the first configured board rather than guessing
+how to mutate an arbitrary file. The `syshelp` provider requires the local
+`syshelp` command, reads `syshelp plan tasks json`, and captures through
+`syshelp plan tasks add` using `capture_section` and `capture_state`. Set
+machine-local `syshelp_path` when launchd's reduced `PATH` cannot find the
+executable; do not commit a user-specific absolute path.
+
+The clock popup keeps status-only `Focus`, `Next`, `Waiting`, and `Blocked`
+rows. It refreshes when opened and does not poll while closed. If Task Pulse is
+enabled, its separate popup contains `Summary`, `Focus`, `Next`, `Waiting`, and
+`Blocked` status rows plus `Capture Task`, `Open Board`, and one menu-only
+25-minute focus-session toggle. Focus state is local under ignored
+`cache/focus_session/state.json`; it creates no additional bar widget or daemon.
+Successful syshelp capture emits `task_state_changed`, and external task tools
+can trigger the same event so the optional chip can refresh without a timer.
+
+`meeting_cache_file` is read-only and opt-in. When configured, the clock popup
+shows at most one bounded cached event containing only its time and title. The
+row stays hidden when the path is unset, missing, invalid, older than
+`meeting_cache_max_age_seconds`, larger than 1 MiB, or has no future events. The TSV header must
+contain `start_date`, `start_time`, and `title`; dates use `YYYY-MM-DD`, times
+use `HH:MM`/`HH:MM:SS` or 12-hour `H:MM AM`, and all-day rows keep an empty
+`start_time`. Additional fields such as location, description, and calendar are
+ignored and never rendered. Barista never starts calendar authentication,
+syncing, or network work; an external owner such as `syshelp calendar sync`
+must write the TSV cache. Work and restricted-work setup clear this
+machine-local path.
+
+Schema v2 migrates the former bundled personal source pair conservatively. It
+clears that exact unmodified list only on a non-Personal profile with no task or
+meeting opt-in markers. Personal profiles, custom source lists, and explicit
+task configuration remain unchanged.
 
 ### `menus.extensions`
 
@@ -355,6 +404,11 @@ the shared item name for:
 - popup-parent registration and dismissal
 - helper popup attachment that targets the control center
 - the generated `toggle_control_center` shortcut command
+
+The Work profile leaves `halext`, `halext_org`, and `workspace` disabled by
+default. Enable only the integration a particular work Mac actually provides
+through its ignored local state or `barista_config.lua`; they are not portable
+Work prerequisites.
 
 ## Notes
 

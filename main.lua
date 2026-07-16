@@ -477,6 +477,7 @@ shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event space_visual_refresh >/d
 shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event display_changed >/dev/null 2>&1 || true")
 shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event display_added >/dev/null 2>&1 || true")
 shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event display_removed >/dev/null 2>&1 || true")
+shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event task_state_changed >/dev/null 2>&1 || true")
 
 -- Global popup manager (invisible item that handles popup dismissal)
 sbar.add("item", "popup_manager", {
@@ -580,6 +581,22 @@ local popup_manager_items = {
   "battery",
   unpack(menu_metadata.popup_parents or {}),
 }
+local task_focus_sources = type(state.menus) == "table"
+  and type(state.menus.calendar) == "table"
+  and state.menus.calendar.task_sources
+  or nil
+local task_focus_has_source = type(task_focus_sources) == "string" and task_focus_sources:match("%S") ~= nil
+if type(task_focus_sources) == "table" then
+  for _, source in ipairs(task_focus_sources) do
+    if type(source) == "string" and source:match("%S") then
+      task_focus_has_source = true
+      break
+    end
+  end
+end
+if type(state.widgets) == "table" and state.widgets.task_focus == true and task_focus_has_source then
+  table.insert(popup_manager_items, "task_focus")
+end
 if control_center_item_name then
   table.insert(popup_manager_items, control_center_item_name)
 end

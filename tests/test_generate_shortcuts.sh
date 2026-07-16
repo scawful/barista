@@ -47,6 +47,10 @@ unique_count=$(jq '[.keymap[0].items[].keys] | unique | length' "$WORKFLOW_OUTPU
 
 jq -e '.keymap[0].items[] | select(.action == "open_task_focus" and .keys == "⌘⌥D")' \
   "$WORKFLOW_OUTPUT" >/dev/null
+jq -e '.keymap[0].items[] | select(.action == "capture_task" and .keys == "⌘⌥N")' \
+  "$WORKFLOW_OUTPUT" >/dev/null
+jq -e '.keymap[0].items[] | select(.action == "capture_task" and .requires == "task_source")' \
+  "$WORKFLOW_OUTPUT" >/dev/null
 grep -Fq 'cmd + alt - d :' "$SKHD_OUTPUT"
 
 cat >"$LOCAL_WORKFLOW" <<'JSON'
@@ -76,6 +80,77 @@ jq -e '.generated.supplement == "BARISTA_WORKFLOW_EXTRAS"' "$LOCAL_OUTPUT" >/dev
 jq -e '[.keymap[].section] | index("Local Tools") != null' "$LOCAL_OUTPUT" >/dev/null
 jq -e '.actions[] | select(.id == "local_action")' "$LOCAL_OUTPUT" >/dev/null
 jq -e '.docs[] | select(.id == "local_doc")' "$LOCAL_OUTPUT" >/dev/null
+
+RUNTIME_CONFIG="$TMP_DIR/runtime-config"
+RUNTIME_SKHD="$TMP_DIR/runtime-shortcuts.conf"
+RUNTIME_WORKFLOW="$TMP_DIR/runtime-workflow.json"
+TASK_LOG="$TMP_DIR/task-action.log"
+mkdir -p "$RUNTIME_CONFIG/helpers" "$RUNTIME_CONFIG/scripts"
+ln -s "$ROOT_DIR/modules" "$RUNTIME_CONFIG/modules"
+ln -s "$ROOT_DIR/helpers/lib" "$RUNTIME_CONFIG/helpers/lib"
+cat >"$RUNTIME_CONFIG/state.json" <<'JSON'
+{
+  "menus": {
+    "calendar": {
+      "task_provider": "files",
+      "task_sources": []
+    }
+  }
+}
+JSON
+cat >"$RUNTIME_CONFIG/barista_config.lua" <<'LUA'
+return {
+  menus = {
+    calendar = {
+      task_sources = { "~/tasks/config's board.md" },
+      capture_section = "Configured",
+    },
+  },
+}
+LUA
+cat >"$RUNTIME_CONFIG/scripts/task_capture.sh" <<'SH'
+#!/bin/sh
+printf '%s\n%s\n%s\n' \
+  "${BARISTA_CALENDAR_TASK_SOURCES:-}" \
+  "${BARISTA_TASK_PROVIDER:-}" \
+  "${BARISTA_CAPTURE_SECTION:-}" >"${BARISTA_SHORTCUT_TEST_LOG:?}"
+SH
+chmod +x "$RUNTIME_CONFIG/scripts/task_capture.sh"
+
+BARISTA_CONFIG_DIR="$RUNTIME_CONFIG" lua "$ROOT_DIR/helpers/generate_shortcuts.lua" \
+  "$RUNTIME_SKHD" "$RUNTIME_WORKFLOW" >/dev/null
+grep -Fq '# barista-action: capture_task' "$RUNTIME_SKHD"
+runtime_command="$(sed -n 's/^cmd + alt - n : //p' "$RUNTIME_SKHD")"
+[ -n "$runtime_command" ] || {
+  echo "FAIL: barista_config.lua task source did not enable capture" >&2
+  exit 1
+}
+export BARISTA_SHORTCUT_TEST_LOG="$TASK_LOG"
+eval "$runtime_command"
+# Task sources intentionally preserve a literal tilde.
+# shellcheck disable=SC2088
+EXPECTED_CONFIG_SOURCE="~/tasks/config's board.md"
+[ "$(sed -n '1p' "$TASK_LOG")" = "$EXPECTED_CONFIG_SOURCE" ]
+[ "$(sed -n '2p' "$TASK_LOG")" = "files" ]
+[ "$(sed -n '3p' "$TASK_LOG")" = "Configured" ]
+
+SUBSTITUTION_MARKER="$TMP_DIR/substitution-ran"
+BACKTICK_MARKER="$TMP_DIR/backtick-ran"
+HOSTILE_SOURCE="\$(touch '$SUBSTITUTION_MARKER') and \`touch '$BACKTICK_MARKER'\` and it's data"
+BARISTA_CONFIG_DIR="$RUNTIME_CONFIG" \
+  BARISTA_CALENDAR_TASK_SOURCES="   " \
+  BARISTA_TASK_SOURCES="$HOSTILE_SOURCE" \
+  BARISTA_TASK_PROVIDER="syshelp" \
+  lua "$ROOT_DIR/helpers/generate_shortcuts.lua" \
+    "$RUNTIME_SKHD" "$RUNTIME_WORKFLOW" >/dev/null
+runtime_command="$(sed -n 's/^cmd + alt - n : //p' "$RUNTIME_SKHD")"
+eval "$runtime_command"
+[ "$(sed -n '1p' "$TASK_LOG")" = "$HOSTILE_SOURCE" ]
+[ "$(sed -n '2p' "$TASK_LOG")" = "syshelp" ]
+if [ -e "$SUBSTITUTION_MARKER" ] || [ -e "$BACKTICK_MARKER" ]; then
+  echo "FAIL: generated task shortcut executed shell substitutions from configuration" >&2
+  exit 1
+fi
 
 BARISTA_CONFIG_DIR="$ROOT_DIR" lua "$ROOT_DIR/helpers/generate_shortcuts.lua" \
   "$TMP_DIR/barista_shortcuts.second.conf" "$SECOND_OUTPUT" >/dev/null

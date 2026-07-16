@@ -179,6 +179,16 @@ Expected: click scripts are direct
 `sketchybar -m --set "<item>" popup.drawing=toggle` commands, not
 `BARISTA_*_ACTION=click ...`.
 
+### 7c. Popup Registry Test Isolation
+
+`tests/test_submenu_registry.lua` writes popup and submenu lists into a unique
+temporary directory. Tests must not write or remove the live
+`$TMPDIR/sketchybar_popup_list` or `$TMPDIR/sketchybar_submenu_list`: missing
+authoritative lists make the helpers fall back to retired hard-coded entries
+such as `yaze.recent_roms` and `emacs.recent_org`, producing repeated
+`Item not found` warnings. Reload Barista to regenerate both live lists if they
+are ever removed.
+
 ### 8. Apple Menu Reload Stability
 **Current path**: `modules/menu.lua` + `modules/apple_menu_enhanced.lua` + `helpers/popup_anchor.c` + `plugins/popup_anchor.sh`
 - The Apple menu hover now highlights the anchor, but click still opens the popup.

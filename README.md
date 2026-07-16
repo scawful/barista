@@ -7,9 +7,10 @@ Barista is a curated configuration for [SketchyBar](https://github.com/FelixKrat
 ## Features
 
 - **Dynamic Island**: Context-aware popups for volume, brightness, and music.
+- **Task Pulse**: Optional, local-first task status and capture actions without committing personal task paths.
 - **Profile variants**: Switch between Minimal, Cozy, Personal, Work, and Restricted Work modes.
 - **Modular Architecture**: Lua-based configuration system decomposed for high performance and testability.
-- **Integrations**: Optional support for Yabai (tiling), Skhd (hotkeys), Journal (org-mode capture/inbox), NERV (transfer queue + host monitoring), and Halext-org (task dashboard). Integrations are toggled per profile.
+- **Integrations**: Optional support for Yabai (tiling), Skhd (hotkeys), Journal (org-mode capture/inbox), NERV (transfer queue + host monitoring), and Halext. Integrations are toggled per profile or machine.
 
 ## Product Boundary
 
@@ -45,12 +46,23 @@ The installer will guide you through:
 | :--- | :--- | :--- | :--- |
 | **Minimal** | Clean, distraction-free. Good for new users. | Optional | ⚪️ Clean |
 | **Cozy** | Warm colors, larger text, simplified metrics. | **Disabled** | 🧸 Cozy |
-| **Work** | High info density, meeting indicators, calendar integration. | Required | 💼 Pro |
+| **Work** | Emacs and work-oriented spaces; personal integrations stay opt-in. | Required | 💼 Pro |
 | **Personal** | The default dev setup. Code, media, and tiling. | Required | ⚡️ Fast |
 
 Triforce/Oracle and Music Studio are Personal-profile integrations. Minimal,
 Cozy, Work, and restricted-work leave both off unless that Mac explicitly opts
 in through its ignored local state or `barista_config.lua`.
+
+Task configuration is portable by default: committed defaults contain no task
+paths and keep the Task Pulse widget off. Applying `work` or `restricted-work`
+also clears task sources and disables Task Pulse so a synced work Mac cannot
+inherit a personal board. Halext remains an explicit local opt-in on Work
+rather than an implied profile dependency.
+
+When an older non-Personal state first upgrades to schema v2, Barista removes
+only the exact former pair of bundled personal task paths. Personal profiles,
+custom source lists, and explicit task opt-ins are preserved. Re-enable any
+work-specific source locally after switching to Work.
 
 ## Window Management (Yabai)
 
@@ -139,8 +151,53 @@ For quick workflow access, the generated skhd shortcuts include:
 
 - `⌘⌥T` to open a terminal window (Ghostty when installed, Terminal as fallback)
 - `⌘⌥Z` to launch `z3ed` in Ghostty
-- `⌘⌥D` to refresh and open the clock popup's `Today` / `Next` / `Blocked`
-  task focus, backed by `~/src/folio/tasks/active.md` by default
+- `⌘⌥D` to open the clock popup's local `Focus` / `Next` / `Waiting` /
+  `Blocked` task focus; configure its sources per machine
+
+## Task Pulse
+
+Task Pulse is an optional right-side chip for a configured local task board. It
+is absent unless both `widgets.task_focus=true` and at least one
+`menus.calendar.task_sources` entry are present. Clicking the chip opens a
+bounded popup with `Summary`, `Focus`, `Next`, `Waiting`, and `Blocked` rows plus
+`Capture Task`, `Open Board`, and a single menu-only focus-session action. The
+focus row starts or stops a 25-minute session without adding another bar widget,
+daemon, or polling timer. The closed chip stays narrow:
+its task icon is followed only by the open count (or `Clear` / `Tasks !` for the
+empty and source-or-provider-unavailable states). Task titles remain inside
+bounded popup rows.
+
+Keep the paths in ignored `state.json` or `barista_config.lua`, not in a shared
+profile:
+
+```json
+{
+  "widgets": {
+    "task_focus": true
+  },
+  "menus": {
+    "calendar": {
+      "task_provider": "files",
+      "task_sources": ["~/src/folio/tasks/active.md"]
+    }
+  }
+}
+```
+
+`task_provider` supports `files` and `syshelp`. The portable `files` provider
+reads Markdown/Org sources but does not invent mutation rules: capture opens the
+configured board. The opt-in `syshelp` provider reads
+`syshelp plan tasks json` and captures with `syshelp plan tasks add`. If launchd
+cannot resolve that command, set machine-local `menus.calendar.syshelp_path` to
+its absolute executable path. When a task source exists, generated skhd
+shortcuts also include `⌘⌥N` for conditional task capture. Successful syshelp
+capture and external task tools can trigger
+`task_state_changed`, which refreshes Task Pulse without adding a polling timer.
+
+The existing clock popup can also show one next meeting from an explicitly
+configured local `menus.calendar.meeting_cache_file`. This is a read-only menu
+row: Barista never launches calendar authentication or syncing, and hides the
+row when the cache is unavailable.
 
 ## Customization
 
@@ -152,6 +209,11 @@ For quick workflow access, the generated skhd shortcuts include:
 # Switch to Work mode
 ./scripts/set_mode.sh work required
 ```
+
+`set_mode.sh` preserves explicit machine-local overrides so profile switching
+is reversible. To scrub personal task paths and integrations when preparing a
+work Mac, use `setup_machine.sh --profile-variant work` (or
+`--restricted-work`) instead.
 
 ### Configuration
 Edit `~/.config/sketchybar/state.json` to toggle widgets and appearance, or use `barista_config.lua` for overrides that survive the GUI. See [docs/guides/CUSTOMIZATION.md](docs/guides/CUSTOMIZATION.md) for state.json, profiles, themes, and fonts; [docs/STATE_SCHEMA.md](docs/STATE_SCHEMA.md) for the live runtime key schema; [docs/architecture/SKETCHYBAR_LAYOUT.md](docs/architecture/SKETCHYBAR_LAYOUT.md) for which file defines each bar item. To validate theme files: `lua scripts/validate_theme.lua [theme_name]`.
@@ -291,7 +353,8 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 
 - **Hover animation:** In `state.json` or in `modules/state.lua` defaults, `hover_animation_duration` (default 8) and `hover_animation_curve` (default `sin`) control popup hover speed. Lower duration (e.g. 6) for even snappier feel.
 - **Process Batching:** Barista minimizes process forks. Space topology rebuilds stay batched, and the post-rebuild visual pass now runs once through `plugins/space_visuals.sh` instead of per-space `space_change` handlers.
-- **Widget Daemon:** `clock`, `system_info`, and `battery` can run as daemon-managed surfaces. Their steady-state updates come from the long-lived `widget_manager daemon`, while popup detail refresh still happens only on click.
+- **Widget Daemon:** `clock`, `system_info`, and `battery` can run as daemon-managed surfaces. The compiled daemon updates the clock on minute boundaries, system info every 10 seconds, and battery every 120 seconds; popup detail refresh still happens only on click.
+- **Event-driven task surfaces:** the closed calendar popup has no periodic header timer. Opening it via the clock or `⌘⌥D` refreshes on demand and applies all calendar rows in one SketchyBar call, while optional Task Pulse refreshes on click, `task_state_changed`, and `system_woke`.
 - **Runtime Context Helper:** `scripts/runtime_context.sh` now prefers the compiled `bin/runtime_context_helper` for front-app and focused-space cache reads/writes, while the shell path still owns media/output state.
 - **Batched Space Visual Helper:** full visual passes prefer `bin/space_visual_helper` for one helper-backed visible-space app lookup, then resolve missing app glyphs through one `app_icon.sh --batch` call before the single SketchyBar apply.
 - **Spaces Diff Path:** `plugins/simple_spaces.sh` now updates `space.*` incrementally for reorder and add/remove topology changes instead of dropping the full spaces stack in those cases.

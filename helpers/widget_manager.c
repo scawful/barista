@@ -392,11 +392,12 @@ void batch_update(const char* widgets[], int count) {
 // Widget daemon mode - continuously update widgets
 void daemon_mode() {
     Widget widgets[] = {
-        {WIDGET_CLOCK, 1, 0, "clock", NULL},
-        {WIDGET_BATTERY, 10, 0, "battery", NULL},
-        {WIDGET_CPU, 2, 0, "system_info", NULL},
+        {WIDGET_CLOCK, 60, 0, "clock", NULL},
+        {WIDGET_BATTERY, 120, 0, "battery", NULL},
+        {WIDGET_CPU, 10, 0, "system_info", NULL},
     };
     int widget_count = sizeof(widgets) / sizeof(Widget);
+    time_t last_clock_minute = -1;
 
     printf("Widget manager daemon started\n");
 
@@ -404,7 +405,15 @@ void daemon_mode() {
         time_t now = time(NULL);
 
         for (int i = 0; i < widget_count; i++) {
-            if (now - widgets[i].last_update >= widgets[i].interval) {
+            int should_update = now - widgets[i].last_update >= widgets[i].interval;
+            if (widgets[i].type == WIDGET_CLOCK) {
+                time_t current_minute = now / 60;
+                should_update = current_minute != last_clock_minute;
+                if (should_update) {
+                    last_clock_minute = current_minute;
+                }
+            }
+            if (should_update) {
                 switch (widgets[i].type) {
                     case WIDGET_CLOCK:
                         update_clock(widgets[i].name);
@@ -422,7 +431,7 @@ void daemon_mode() {
             }
         }
 
-        usleep(100000); // 100ms
+        sleep(1);
     }
 }
 

@@ -16,8 +16,8 @@ NC='\033[0m' # No Color
 
 # Configuration
 INSTALL_DIR="${HOME}/.config/sketchybar"
-REPO_URL="https://github.com/scawful/barista"  # TODO: Update when uploaded
-DEFAULT_PROFILE="minimal"
+REPO_URL="https://github.com/scawful/barista"
+window_manager_mode=""
 
 echo_info() {
   echo -e "${BLUE}[INFO]${NC} $1"
@@ -88,6 +88,76 @@ backup_existing() {
   fi
 }
 
+# Copy only portable repository content. This helper is intentionally
+# sourceable so the privacy boundary can be exercised without running the
+# interactive installer.
+copy_local_config() {
+  local source_dir="$1"
+  local destination="$2"
+  local git_root=""
+  local source_path=""
+
+  # A Git checkout already has the authoritative privacy boundary: copy
+  # tracked files plus untracked, non-ignored work, but never ignored machine
+  # state/cache/history. Tracked runtime binaries still come across even when
+  # a broad build-artifact pattern also matches them.
+  git_root="$(git -C "$source_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$git_root" ] \
+    && [ "$(cd "$git_root" && pwd -P)" = "$(cd "$source_dir" && pwd -P)" ]; then
+    git -C "$source_dir" ls-files -co --exclude-standard -z \
+      | while IFS= read -r -d '' source_path; do
+          if [ -e "$source_dir/$source_path" ] || [ -L "$source_dir/$source_path" ]; then
+            printf '%s\0' "$source_path"
+          fi
+        done \
+      | rsync -a --from0 --files-from=- "$source_dir/" "$destination/"
+    return
+  fi
+
+  # Non-Git source bundles fall back to the explicit portable boundary.
+  rsync -a \
+      --exclude ".git" \
+      --exclude "build" \
+      --exclude "cache" \
+      --exclude ".context" \
+      --exclude ".context.pruned-*" \
+      --exclude ".claude" \
+      --exclude ".spaces_*" \
+      --exclude "__pycache__" \
+      --exclude ".venv" \
+      --exclude "logs" \
+      --exclude "*.log" \
+      --exclude "*.pyc" \
+      --exclude "*.pyo" \
+      --exclude "/state.json" \
+      --exclude "/state.json.*backup" \
+      --exclude "/barista_config.lua" \
+      --exclude "/component_settings.json" \
+      --exclude "/data/machine.local.json" \
+      --exclude "/data/work_apps.local.json" \
+      --exclude "/data/interface_extensions.local.json" \
+      --exclude "/data/workflow_shortcuts.local.json" \
+      --exclude "/data/workflow_shortcuts.local.generated.json" \
+      --exclude "/data/workflow_shortcuts.extra.json" \
+      --exclude "/themes/theme.local.lua" \
+      --exclude "/.barista_stats*" \
+      --exclude "/imgui.ini" \
+      --exclude "/links" \
+      --exclude "/.context" \
+      --exclude "/scratch" \
+      --exclude "/bin/Barista.app" \
+      --exclude "/bin/BaristaControlPanel.app" \
+      --exclude "/gui/BaristaControlPanel.app" \
+      --exclude "*.tmp" \
+      --exclude "*.backup" \
+      --exclude "*.old" \
+      --exclude "*.bak" \
+      --exclude "*.swp" \
+      --exclude "*~" \
+      --exclude ".DS_Store" \
+      "$source_dir/" "$destination/"
+}
+
 # Install configuration
 install_config() {
   echo_info "Installing SketchyBar configuration..."
@@ -106,12 +176,7 @@ install_config() {
   if [ -n "$source_dir" ]; then
     # Installing from local directory
     echo_info "Copying files from local directory..."
-    rsync -a \
-      --exclude ".git" \
-      --exclude "build" \
-      --exclude "cache" \
-      --exclude ".DS_Store" \
-      "$source_dir/" "$INSTALL_DIR/"
+    copy_local_config "$source_dir" "$INSTALL_DIR"
   else
     # Clone from GitHub
     echo_info "Cloning from GitHub..."
@@ -124,6 +189,7 @@ install_config() {
 # Build all components with CMake
 build_components() {
   echo_info "Building components with CMake..."
+  local build_jobs
 
   cd "$INSTALL_DIR"
   
@@ -147,7 +213,8 @@ build_components() {
     exit 1
   fi
 
-  if ! cmake --build . -j$(sysctl -n hw.ncpu 2>/dev/null || echo 4); then
+  build_jobs="$(sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
+  if ! cmake --build . --parallel "$build_jobs"; then
     echo_error "Build failed"
     exit 1
   fi
@@ -175,7 +242,7 @@ setup_profile() {
     echo "  5) custom   - Create your own from template"
     echo ""
 
-    read -p "Select profile [1]: " profile_choice
+    read -r -p "Select profile [1]: " profile_choice
     profile_choice=${profile_choice:-1}
 
     case $profile_choice in
@@ -192,7 +259,7 @@ setup_profile() {
         SELECTED_PROFILE="cozy"
         ;;
       5)
-        read -p "Enter custom profile name: " custom_name
+        read -r -p "Enter custom profile name: " custom_name
         SELECTED_PROFILE="$custom_name"
 
         # Create from template
@@ -243,10 +310,10 @@ setup_profile() {
   elif [ "$SELECTED_PROFILE" = "work" ]; then
     INTEGRATION_YAZE=false
     INTEGRATION_EMACS=true
-    INTEGRATION_HALEXT=true
+    INTEGRATION_HALEXT=false
   fi
 
-  local window_manager_mode="${BARISTA_WINDOW_MANAGER_MODE:-}"
+  window_manager_mode="${BARISTA_WINDOW_MANAGER_MODE:-}"
   if [ -z "$window_manager_mode" ]; then
     case "$SELECTED_PROFILE" in
       cozy)
@@ -271,7 +338,7 @@ setup_profile() {
       echo "  required - Expect yabai/skhd to be configured"
       echo "  disabled - Hide yabai/skhd features"
       echo ""
-      read -p "Select window manager mode [$window_manager_mode]: " wm_choice
+      read -r -p "Select window manager mode [$window_manager_mode]: " wm_choice
       if [ -n "$wm_choice" ]; then
         window_manager_mode="$wm_choice"
       fi
@@ -348,7 +415,7 @@ setup_fonts_panel_and_work_apps() {
   local install_extras="${BARISTA_INSTALL_EXTRAS:-}"
   if [ -z "$install_extras" ] && [ -z "${BARISTA_INSTALL_NONINTERACTIVE:-}" ]; then
     echo ""
-    read -p "Install missing fonts + configure alternative control panel (TUI)? [Y/n]: " install_extras
+    read -r -p "Install missing fonts + configure alternative control panel (TUI)? [Y/n]: " install_extras
   fi
   if [ -z "$install_extras" ] || [[ "$install_extras" =~ ^[Yy]$ ]]; then
     enable_extras=1
@@ -360,7 +427,7 @@ setup_fonts_panel_and_work_apps() {
     enable_work_apps=1
     if [ -z "$domain" ] && [ -z "${BARISTA_INSTALL_NONINTERACTIVE:-}" ]; then
       echo ""
-      read -p "Workspace domain for Google apps (optional, e.g. company.com): " domain
+      read -r -p "Workspace domain for Google apps (optional, e.g. company.com): " domain
     fi
   fi
 
@@ -380,7 +447,12 @@ setup_fonts_panel_and_work_apps() {
   fi
 
   if [ "$enable_work_apps" -eq 1 ]; then
-    args+=(--work-apps --replace-work-apps)
+    args+=(
+      --profile-variant work
+      --window-manager "$window_manager_mode"
+      --work-apps
+      --replace-work-apps
+    )
     if [ -n "$domain" ]; then
       args+=(--domain "$domain")
     fi
@@ -404,7 +476,7 @@ setup_window_manager() {
   echo ""
   
   if [ -z "${BARISTA_INSTALL_NONINTERACTIVE:-}" ]; then
-    read -p "Install bundled Yabai/Skhd configs? [y/N]: " install_wm
+    read -r -p "Install bundled Yabai/Skhd configs? [y/N]: " install_wm
   else
     install_wm="n"
   fi
@@ -437,6 +509,21 @@ setup_window_manager() {
         echo_warning "Backed up existing skhdrc"
       fi
       cp "$INSTALL_DIR/extras/skhd/skhdrc" "$HOME/.config/skhd/skhdrc"
+      if command -v lua >/dev/null 2>&1 && [ -f "$INSTALL_DIR/helpers/generate_shortcuts.lua" ]; then
+        local generated_shortcuts="$HOME/.config/skhd/barista_shortcuts.conf"
+        local generated_workflow="$INSTALL_DIR/data/workflow_shortcuts.local.generated.json"
+        if BARISTA_CONFIG_DIR="$INSTALL_DIR" \
+          BARISTA_STATE_FILE="$INSTALL_DIR/state.json" \
+          lua "$INSTALL_DIR/helpers/generate_shortcuts.lua" \
+            "$generated_shortcuts" "$generated_workflow" >/dev/null; then
+          local load_line=".load \"$generated_shortcuts\""
+          if ! grep -Fqx "$load_line" "$HOME/.config/skhd/skhdrc"; then
+            printf '\n# Barista generated shortcuts\n%s\n' "$load_line" >>"$HOME/.config/skhd/skhdrc"
+          fi
+        else
+          echo_warning "Could not generate optional Barista shortcuts"
+        fi
+      fi
       echo_success "Installed skhdrc"
       
       # Restart Skhd
@@ -490,7 +577,7 @@ start_sketchybar() {
     echo_success "SketchyBar started successfully!"
   else
     echo_error "Failed to start SketchyBar"
-    echo_info "Try running: sketchybar --reload"
+    echo_info "Try running: $INSTALL_DIR/bin/recover_sketchybar.sh"
     exit 1
   fi
 }
@@ -504,12 +591,12 @@ print_next_steps() {
   echo "  1. Customize your profile: $INSTALL_DIR/profiles/$SELECTED_PROFILE.lua"
   echo "  2. Edit state.json: $INSTALL_DIR/state.json"
   echo "  3. Open control panel: Shift + Click Apple menu icon"
-  echo "  4. Reload SketchyBar: sketchybar --reload"
+  echo "  4. Reload SketchyBar: $INSTALL_DIR/plugins/reload_sketchybar.sh"
   echo ""
   echo "Documentation:"
   echo "  - README: $INSTALL_DIR/README.md"
-  echo "  - Control Panel: $INSTALL_DIR/docs/CONTROL_PANEL_V2.md"
-  echo "  - Improvements: $INSTALL_DIR/docs/IMPROVEMENTS.md"
+  echo "  - Control Panel: $INSTALL_DIR/docs/features/CONTROL_PANEL_V2.md"
+  echo "  - Improvements: $INSTALL_DIR/docs/dev/IMPROVEMENTS.md"
   echo ""
   echo "Enjoy your new status bar!"
 }
@@ -534,5 +621,7 @@ main() {
   print_next_steps
 }
 
-# Run installation
-main
+# Run installation unless the file is being sourced for a focused helper test.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

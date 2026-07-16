@@ -31,8 +31,10 @@ Legacy note: the standalone `yabai_status` widget path was removed. Window-manag
 | Item(s) | Plugin script | Events subscribed to | Notes |
 |--------|----------------|----------------------|--------|
 | `lmstudio` | `plugins/lmstudio_model.sh` | `system_woke` | Optional right-side widget. Personal profiles enable it; work/restricted profiles disable it. The base popup shows current/open/unload actions; model presets are loaded from `interface_extensions` on the `lmstudio` surface. |
-| `clock` | `plugins/clock.sh` (or C `clock_widget`) | — | When `modes.widget_daemon` resolves on, routine updates come from `widget_manager daemon`; popup = calendar |
-| `clock.calendar.*` | `plugins/calendar.sh` (header) | — | Popup items for calendar plus compact `Today` / `Next` / `Blocked` local task summaries. Clock clicks refresh the popup before opening so date/time/task rows do not stay stale; `⌘⌥D` opens the same surface through `scripts/task_focus.sh`. |
+| `clock` | `plugins/clock.sh` (or C `clock_widget`) | — | When `modes.widget_daemon` resolves on, routine updates come from `widget_manager daemon`; popup = calendar. |
+| `clock.calendar.*` | `plugins/calendar.sh` | — | Popup items for calendar plus an optional single cached meeting and compact `Focus` / `Next` / `Waiting` / `Blocked` local task summaries. Clock clicks open the popup immediately and then refresh it asynchronously; `⌘⌥D` opens the same surface through `scripts/task_focus.sh`. The popup has no closed-state polling timer, never initiates calendar auth/sync, and one batched SketchyBar call applies all rows. |
+| `task_focus` | `plugins/task_pulse.sh` | `task_state_changed`, `system_woke` | Optional compact Task Pulse anchor. It exists only when `widgets.task_focus=true` and a local task source is configured. Its closed label is only the open count, `Clear`, or `Tasks !`; full task titles stay in the popup. Click toggles its own popup immediately and refreshes asynchronously. |
+| `task_focus.*` (popup) | `plugins/task_pulse.sh` | — | Capped rows: summary, focus, next, waiting, blocked, Capture Task, Open Board, and one menu-only 25-minute focus-session toggle. Capture routes through `scripts/task_capture.sh`; open routes through `scripts/task_action.sh open`; focus state lives in ignored `cache/focus_session/state.json` with no daemon or polling timer. |
 | `ai_resource` | `plugins/ai_resource_toggle.sh` | `ai_resource_update` | AI resource indicator |
 | `system_info` | `plugins/system_info.sh` | — | Shell wrapper for hover/events; routine updates prefer compiled helpers or the widget daemon; full popup detail refresh happens on click |
 | `system_info.*` (popup) | (hover script) | — | Popup items for system info |
@@ -46,8 +48,8 @@ Legacy note: the standalone `yabai_status` widget path was removed. Window-manag
 ## Brackets (visual grouping)
 
 - `control_center` + `front_app` (left group)
-- `lmstudio` + `clock` + `system_info` (right group when LM Studio is enabled)
-- `clock` + `system_info` (right group when LM Studio is disabled)
+- `lmstudio` + `clock` + optional `task_focus` + `system_info` (right group when LM Studio is enabled)
+- `clock` + optional `task_focus` + `system_info` (right group when LM Studio is disabled)
 - `volume` + `battery` (right group)
 
 ## Control Center Path
@@ -93,6 +95,7 @@ configured idle chip instead of clearing the anchor to transparent.
 
 - **space_change**, **space_mode_refresh**: Added as sketchybar events in main.lua. Real `space_changed` yabai signals now route through `refresh_spaces.sh`, which emits `space_change` only when the active space truly changed and emits `space_mode_refresh` after active/topology updates.
 - **space_visual_refresh**: Added as a dedicated post-topology and on-demand visual refresh event; handled by `space_runtime`.
+- **task_state_changed**: Added as the local task refresh event; successful syshelp capture and explicit external refresh actions can trigger it, and optional `task_focus` consumes it. No task widget is created when the machine has no configured source.
 - **Yabai signals** (space_changed, space_created, space_destroyed, display_*) are wired in main.lua `watch_spaces()` and all point at `refresh_spaces.sh` so cache/lock handling stays in one place.
   If a signal arrives while `refresh_spaces.sh` already owns the topology lock,
   the script writes the pending reason and schedules one delayed follow-up after
@@ -102,7 +105,7 @@ configured idle chip instead of clearing the anchor to transparent.
 
 ## Runtime Sidecars
 
-- **`widget_manager daemon`** owns steady-state `clock`, `system_info`, and `battery` updates when the compiled runtime is enabled.
+- **`widget_manager daemon`** owns steady-state updates when the compiled runtime is enabled: clock on minute boundaries, system info every 10 seconds, and battery every 120 seconds. Its supervisor loop sleeps for one second between due checks.
 - **`scripts/runtime_context.sh daemon`** owns shared runtime caches under `cache/runtime_context/`.
 - **`bin/runtime_context_helper`** owns the hot front-app / focused-space cache path when the compiled helper is present.
 - **`scripts/front_app_context.sh`** reads that cache first, then falls back to direct yabai/System Events discovery.
@@ -117,6 +120,7 @@ configured idle chip instead of clearing the anchor to transparent.
 - **Add/remove a left-side item:** main.lua (search for `sbar.add("item",` and `position = "left"`) or items_left module after refactor.
 - **Add/remove a right-side item:** main.lua (search for `position = "right"`) or items_right module after refactor.
 - **Change what a widget does:** Edit the corresponding script in `plugins/` (e.g. `plugins/clock.sh`, `plugins/volume.sh`).
-- **Change popup contents:** `modules/items_left.lua` for front-app and Desk extension rows, `modules/integrations/control_center.lua` for Control Center rows, and `modules/items_right.lua` for LM Studio/calendar/system-info rows.
+- **Change popup contents:** `modules/items_left.lua` for front-app and Desk extension rows, `modules/integrations/control_center.lua` for Control Center rows, and `modules/items_right.lua` for LM Studio/calendar/Task Pulse/system-info rows.
+- **Change task snapshot semantics:** `scripts/task_snapshot.py`; keep source/provider paths machine-local.
 - **Change control-center popup rows:** `modules/integrations/control_center.lua`.
 - **Change control-center item placement/wiring:** `modules/items_left.lua` and `main.lua`.

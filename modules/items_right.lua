@@ -58,7 +58,7 @@ local function get_layout(ctx)
     return table.concat(parts, " ")
   end
   local function compact_string_list(values)
-    if type(values) == "string" and values ~= "" then
+    if type(values) == "string" and values:match("%S") then
       return values
     end
     if type(values) ~= "table" then
@@ -66,7 +66,7 @@ local function get_layout(ctx)
     end
     local result = {}
     for _, value in ipairs(values) do
-      if type(value) == "string" and value ~= "" then
+      if type(value) == "string" and value:match("%S") then
         table.insert(result, value)
       end
     end
@@ -183,8 +183,20 @@ local function get_layout(ctx)
     and state.menus.calendar
     or {}
   local calendar_task_sources = compact_string_list(calendar_state.task_sources)
+  local meeting_cache_max_age_seconds = tonumber(calendar_state.meeting_cache_max_age_seconds) or 86400
+  if meeting_cache_max_age_seconds <= 0 then
+    meeting_cache_max_age_seconds = 86400
+  end
+  meeting_cache_max_age_seconds = math.floor(meeting_cache_max_age_seconds)
   local calendar_script = env_prefix({
     BARISTA_CALENDAR_TASK_SOURCES = calendar_task_sources,
+    BARISTA_TASK_PROVIDER = type(calendar_state.task_provider) == "string" and calendar_state.task_provider or nil,
+    BARISTA_SYSHELP_BIN = type(calendar_state.syshelp_path) == "string" and calendar_state.syshelp_path or nil,
+    BARISTA_CALENDAR_MEETING_CACHE = type(calendar_state.meeting_cache_file) == "string"
+      and calendar_state.meeting_cache_file:match("%S")
+      and calendar_state.meeting_cache_file
+      or nil,
+    BARISTA_CALENDAR_MEETING_MAX_AGE_SECONDS = tostring(meeting_cache_max_age_seconds),
   }) .. PLUGIN_DIR .. "/calendar.sh"
 
   -- Clock
@@ -203,17 +215,136 @@ local function get_layout(ctx)
   table.insert(layout, { action = "subscribe_popup_autoclose", name = "clock" })
   table.insert(layout, { action = "attach_hover", name = "clock" })
 
+  local task_focus_enabled = type(state.widgets) == "table"
+    and state.widgets.task_focus == true
+    and calendar_task_sources ~= nil
+  if task_focus_enabled then
+    local task_provider = type(calendar_state.task_provider) == "string"
+      and calendar_state.task_provider:match("%S")
+      and calendar_state.task_provider
+      or "files"
+    local task_env = env_prefix({
+      BARISTA_CALENDAR_TASK_SOURCES = calendar_task_sources,
+      BARISTA_CAPTURE_SECTION = type(calendar_state.capture_section) == "string"
+        and calendar_state.capture_section:match("%S")
+        and calendar_state.capture_section
+        or nil,
+      BARISTA_CAPTURE_STATE = type(calendar_state.capture_state) == "string"
+        and calendar_state.capture_state:match("%S")
+        and calendar_state.capture_state
+        or nil,
+      BARISTA_TASK_PROVIDER = task_provider,
+      BARISTA_SYSHELP_BIN = type(calendar_state.syshelp_path) == "string"
+        and calendar_state.syshelp_path:match("%S")
+        and calendar_state.syshelp_path
+        or nil,
+    })
+    -- Task helpers ship with Barista and must not follow the optional external
+    -- yabai-control scripts override.
+    local task_scripts_dir = CONFIG_DIR .. "/scripts"
+    local task_pulse_command = task_env .. build_script_action(PLUGIN_DIR .. "/task_pulse.sh")
+    local task_capture_command = task_env .. build_script_action(task_scripts_dir .. "/task_capture.sh")
+    local task_open_command = task_env .. build_script_action(task_scripts_dir .. "/task_action.sh", "open")
+    local focus_session_command = shell_quote(task_scripts_dir .. "/focus_session.py") .. " toggle 25"
+      .. " >/dev/null 2>&1 && " .. shell_quote(SKETCHYBAR_BIN) .. " --trigger task_state_changed"
+
+    ui.anchor(layout, {
+      ctx = ctx,
+      name = "task_focus",
+      events = { "task_state_changed", "system_woke" },
+      props = ui.apply_anchor_chip({
+        position = "right",
+        drawing = true,
+        icon = {
+          string = "󰄱",
+          color = tc("SKY"),
+          padding_left = 6,
+          padding_right = 3,
+        },
+        label = {
+          string = "Tasks",
+          color = tc("WHITE"),
+          padding_left = 2,
+          padding_right = 7,
+          font = font_small,
+        },
+        script = task_pulse_command,
+        click_script = ui.toggle_then_refresh_async("task_focus", task_pulse_command, {
+          sketchybar_bin = SKETCHYBAR_BIN,
+        }),
+        popup = {
+          align = "right",
+          background = popup_background(),
+        },
+      }, ctx, {
+        corner_radius = math.max(group_corner_radius, 4),
+        height = widget_height,
+      }),
+    })
+    table.insert(right_group_children, "task_focus")
+
+    local add_task = popup_items.make_add("task_focus", { hover_script = hover_script_cmd })
+    local task_status_rows = {
+      { name = "task_focus.summary", icon = "󰄱", label = "Tasks: …", color = tc("LAVENDER") },
+      { name = "task_focus.focus", icon = "󰓾", label = "Focus: —", color = tc("WHITE") },
+      { name = "task_focus.next", icon = "󰒭", label = "Next: —", color = tc("SKY") },
+      { name = "task_focus.waiting", icon = "󰔟", label = "Waiting: Clear", color = tc("YELLOW") },
+      { name = "task_focus.blocked", icon = "󰅖", label = "Blocked: Clear", color = tc("RED") },
+    }
+    for _, entry in ipairs(task_status_rows) do
+      table.insert(layout, add_task(entry.name, {
+        icon = entry.icon,
+        label = entry.label,
+        ["label.font"] = font_small,
+        ["label.color"] = entry.color,
+        background = { drawing = false },
+      }))
+    end
+
+    local task_actions = {
+      {
+        name = "task_focus.capture",
+        icon = "󰐕",
+        label = "Capture Task",
+        click_script = close_popup_after("task_focus", task_capture_command),
+      },
+      {
+        name = "task_focus.open",
+        icon = "󰈙",
+        label = "Open Board",
+        click_script = close_popup_after("task_focus", task_open_command),
+      },
+      {
+        name = "task_focus.timer",
+        icon = "󰔛",
+        label = "Start 25m Focus",
+        click_script = close_popup_after("task_focus", focus_session_command),
+      },
+    }
+    for _, entry in ipairs(task_actions) do
+      table.insert(layout, add_task(entry.name, {
+        icon = entry.icon,
+        label = entry.label,
+        click_script = entry.click_script,
+        ["label.font"] = font_small,
+        hover = true,
+      }))
+    end
+  end
+
   -- Calendar popup items (tc = theme color with fallback for themes that omit accent keys)
   local calendar_items = {
-    { name = "clock.calendar.header", icon = "", script = calendar_script, update_freq = 1800, font_style = "Semibold", color = tc("LAVENDER"), ["icon.font"] = font_string(settings.font.icon, settings.font.style_map["Bold"], settings.font.sizes.small) },
+    { name = "clock.calendar.header", icon = "", script = calendar_script, font_style = "Semibold", color = tc("LAVENDER"), ["icon.font"] = font_string(settings.font.icon, settings.font.style_map["Bold"], settings.font.sizes.small) },
     { name = "clock.calendar.weekdays", icon = "", font_style = "Bold", color = theme.DARK_WHITE or theme.WHITE },
   }
   for i = 1, 6 do
     table.insert(calendar_items, { name = string.format("clock.calendar.week%d", i), icon = "", font_style = "Regular", color = theme.WHITE })
   end
   table.insert(calendar_items, { name = "clock.calendar.summary", icon = "", font_style = "Semibold", color = tc("YELLOW") })
+  table.insert(calendar_items, { name = "clock.calendar.meeting.next", icon = "󰃰", text_row = true, font_style = "Regular", color = tc("MAUVE", "LAVENDER") })
   table.insert(calendar_items, { name = "clock.calendar.tasks.today", icon = "", font_style = "Regular", color = theme.WHITE })
   table.insert(calendar_items, { name = "clock.calendar.tasks.next", icon = "", font_style = "Regular", color = tc("SKY") })
+  table.insert(calendar_items, { name = "clock.calendar.tasks.waiting", icon = "", font_style = "Regular", color = tc("YELLOW") })
   table.insert(calendar_items, { name = "clock.calendar.tasks.blocked", icon = "", font_style = "Regular", color = tc("YELLOW") })
   table.insert(calendar_items, { name = "clock.calendar.weekend", icon = "", font_style = "Regular", color = tc("SKY") })
   table.insert(calendar_items, { name = "clock.calendar.progress", icon = "", font_style = "Regular", color = theme.DARK_WHITE or theme.WHITE })
@@ -224,7 +355,7 @@ local function get_layout(ctx)
     local is_summary = item.name == "clock.calendar.summary"
     local is_footer = item.name == "clock.calendar.footer"
     local is_task_row = item.name:match("^clock%.calendar%.tasks%.") ~= nil
-    local is_text_row = is_header or is_summary or is_footer or is_task_row or item.name == "clock.calendar.weekend" or item.name == "clock.calendar.progress"
+    local is_text_row = item.text_row == true or is_header or is_summary or is_footer or is_task_row or item.name == "clock.calendar.weekend" or item.name == "clock.calendar.progress"
     local item_font = settings.font.numbers
     if is_text_row then item_font = settings.font.text end
     local opts = {
@@ -234,6 +365,7 @@ local function get_layout(ctx)
       ["label.font"] = font_string(item_font, settings.font.style_map[item.font_style or "Regular"] or settings.font.style_map["Regular"], is_header and settings.font.sizes.text or settings.font.sizes.small),
       ["label.color"] = item.color or theme.WHITE,
       ["icon.font"] = item["icon.font"] or font_string(settings.font.icon, settings.font.style_map["Bold"], settings.font.sizes.small),
+      ["icon.color"] = item.color or theme.WHITE,
       ["icon.drawing"] = item.icon ~= "" and true or false,
       ["label.padding_left"] = 6,
       ["label.padding_right"] = 6,

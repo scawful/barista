@@ -11,6 +11,9 @@ static char kWorkflowActionKey;
 @property (strong) NSTabView *tabs;
 @property (strong) NSSegmentedControl *tabControl;
 @property (strong) NSDictionary *workflowData;
+@property (copy) NSString *shortcutConfigContents;
+@property (copy) NSString *shortcutConfigPath;
+@property BOOL shortcutConfigLoadedBySkhd;
 @property (copy) NSString *configPath;
 @property (copy) NSString *scriptsPath;
 @property (copy) NSString *codePath;
@@ -21,6 +24,8 @@ static char kWorkflowActionKey;
 @property (strong) NSDictionary *repoSummary;
 @property (strong) NSTableView *repoTable;
 @property (strong) NSSearchField *repoSearchField;
+- (NSArray<NSDictionary *> *)filteredWorkflowItems:(NSArray<NSDictionary *> *)items
+                                generatedShortcuts:(BOOL)generatedShortcuts;
 @end
 
 @implementation HelpCenterController
@@ -30,6 +35,7 @@ static char kWorkflowActionKey;
   self.configPath = config.configPath;
   self.scriptsPath = config.scriptsPath;
   self.codePath = config.codePath;
+  self.shortcutConfigContents = [self loadShortcutConfigContents];
   self.workflowData = [self loadWorkflowData];
   self.keymapRows = [self buildKeymapRows];
   [self loadWorkspaceData];
@@ -428,7 +434,8 @@ static char kWorkflowActionKey;
   for (NSDictionary *section in sections) {
     NSString *title = section[@"section"] ?: @"Shortcuts";
     NSArray *items = section[@"items"];
-    NSArray *filteredItems = [self filteredWorkflowItems:items];
+    BOOL generatedShortcuts = [section[@"source"] isEqualToString:@"modules/shortcuts.lua"];
+    NSArray *filteredItems = [self filteredWorkflowItems:items generatedShortcuts:generatedShortcuts];
     if (filteredItems.count == 0) {
       continue;
     }
@@ -802,7 +809,107 @@ static char kWorkflowActionKey;
   return NO;
 }
 
-- (BOOL)workflowItemIsAvailable:(NSDictionary *)item {
+- (NSString *)loadShortcutConfigContents {
+  NSString *path = [[[NSProcessInfo processInfo] environment] objectForKey:@"BARISTA_SKHD_SHORTCUTS_FILE"];
+  if (![path isKindOfClass:[NSString class]] || path.length == 0) {
+    path = [NSHomeDirectory() stringByAppendingPathComponent:@".config/skhd/barista_shortcuts.conf"];
+  }
+  self.shortcutConfigPath = [path stringByStandardizingPath];
+  self.shortcutConfigLoadedBySkhd = [self skhdConfigLoadsShortcutPath:self.shortcutConfigPath];
+  NSError *error = nil;
+  NSString *contents = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:&error];
+  return error ? @"" : (contents ?: @"");
+}
+
+- (BOOL)skhdConfigLoadsShortcutPath:(NSString *)shortcutPath {
+  if (![shortcutPath isKindOfClass:[NSString class]] || shortcutPath.length == 0) {
+    return NO;
+  }
+  NSString *skhdPath = [[[NSProcessInfo processInfo] environment] objectForKey:@"BARISTA_SKHD_CONFIG_FILE"];
+  if (![skhdPath isKindOfClass:[NSString class]] || skhdPath.length == 0) {
+    skhdPath = [NSHomeDirectory() stringByAppendingPathComponent:@".config/skhd/skhdrc"];
+  }
+  skhdPath = [skhdPath stringByStandardizingPath];
+  if ([skhdPath isEqualToString:shortcutPath]) {
+    return YES;
+  }
+
+  NSError *error = nil;
+  NSString *contents = [NSString stringWithContentsOfFile:skhdPath encoding:NSUTF8StringEncoding error:&error];
+  if (error || !contents) {
+    return NO;
+  }
+  NSString *baseDirectory = [skhdPath stringByDeletingLastPathComponent];
+  __block BOOL loaded = NO;
+  [contents enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
+    NSString *trimmed = [line stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    if (![trimmed hasPrefix:@".load "]) {
+      return;
+    }
+    NSString *candidate = [[trimmed substringFromIndex:6]
+      stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    if (candidate.length >= 2) {
+      unichar first = [candidate characterAtIndex:0];
+      unichar last = [candidate characterAtIndex:candidate.length - 1];
+      if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+        candidate = [candidate substringWithRange:NSMakeRange(1, candidate.length - 2)];
+      }
+    }
+    if ([candidate hasPrefix:@"~/"]) {
+      candidate = [candidate stringByReplacingCharactersInRange:NSMakeRange(0, 1) withString:NSHomeDirectory()];
+    } else if (![candidate hasPrefix:@"/"]) {
+      candidate = [baseDirectory stringByAppendingPathComponent:candidate];
+    }
+    if ([[candidate stringByStandardizingPath] isEqualToString:shortcutPath]) {
+      loaded = YES;
+      *stop = YES;
+    }
+  }];
+  return loaded;
+}
+
+- (BOOL)shortcutConfigContainsLine:(NSString *)expected {
+  if (![expected isKindOfClass:[NSString class]] || expected.length == 0) {
+    return NO;
+  }
+  __block BOOL found = NO;
+  [self.shortcutConfigContents enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
+    if ([line isEqualToString:expected]) {
+      found = YES;
+      *stop = YES;
+    }
+  }];
+  return found;
+}
+
+- (BOOL)generatedShortcutIsActive:(NSDictionary *)item {
+  if (!self.shortcutConfigLoadedBySkhd) {
+    return NO;
+  }
+  NSString *action = item[@"action"];
+  if (![action isKindOfClass:[NSString class]] || action.length == 0) {
+    return NO;
+  }
+  NSString *marker = [NSString stringWithFormat:@"# barista-action: %@", action];
+  if ([self shortcutConfigContainsLine:marker]) {
+    return YES;
+  }
+
+  // Compatibility with shortcut maps generated before action markers existed.
+  NSString *description = item[@"description"];
+  NSString *keys = item[@"keys"];
+  if ([description isKindOfClass:[NSString class]] && description.length > 0
+      && [keys isKindOfClass:[NSString class]] && keys.length > 0) {
+    return [self shortcutConfigContainsLine:
+      [NSString stringWithFormat:@"# %@ - %@", description, keys]];
+  }
+  return NO;
+}
+
+- (BOOL)workflowItemIsAvailable:(NSDictionary *)item generatedShortcut:(BOOL)generatedShortcut {
+  if (generatedShortcut) {
+    return [self generatedShortcutIsActive:item];
+  }
   id requires = item[@"requires"];
   if ([requires isKindOfClass:[NSString class]]) {
     return [self isIntegrationEnabled:requires];
@@ -818,6 +925,11 @@ static char kWorkflowActionKey;
 }
 
 - (NSArray<NSDictionary *> *)filteredWorkflowItems:(NSArray<NSDictionary *> *)items {
+  return [self filteredWorkflowItems:items generatedShortcuts:NO];
+}
+
+- (NSArray<NSDictionary *> *)filteredWorkflowItems:(NSArray<NSDictionary *> *)items
+                                generatedShortcuts:(BOOL)generatedShortcuts {
   if (![items isKindOfClass:[NSArray class]]) {
     return @[];
   }
@@ -826,7 +938,7 @@ static char kWorkflowActionKey;
     if (![item isKindOfClass:[NSDictionary class]]) {
       continue;
     }
-    if ([self workflowItemIsAvailable:item]) {
+    if ([self workflowItemIsAvailable:item generatedShortcut:generatedShortcuts]) {
       [filtered addObject:item];
     }
   }

@@ -19,6 +19,12 @@
           "action": "open_task_focus"
         },
         {
+          "keys": "⌘⌥N",
+          "description": "Capture Task",
+          "action": "capture_task",
+          "requires": "task_source"
+        },
+        {
           "keys": "⌘⌥/",
           "description": "Toggle Control Center",
           "action": "toggle_control_center"
@@ -41,7 +47,8 @@
         {
           "keys": "⌘⌥Z",
           "description": "Launch z3ed",
-          "action": "launch_z3ed"
+          "action": "launch_z3ed",
+          "requires": "z3ed"
         },
         {
           "keys": "⌘⌥O",
@@ -61,42 +68,50 @@
         {
           "keys": "⌘⌥Y",
           "description": "Toggle Yabai Shortcuts",
-          "action": "toggle_yabai_shortcuts"
+          "action": "toggle_yabai_shortcuts",
+          "requires": "window_manager"
         },
         {
           "keys": "⌃←",
           "description": "Previous Space (wrap)",
-          "action": "space_prev"
+          "action": "space_prev",
+          "requires": "window_manager"
         },
         {
           "keys": "⌃→",
           "description": "Next Space (wrap)",
-          "action": "space_next"
+          "action": "space_next",
+          "requires": "window_manager"
         },
         {
           "keys": "⌘⌥⇧←",
           "description": "Send to Prev Display",
-          "action": "window_display_prev"
+          "action": "window_display_prev",
+          "requires": "window_manager"
         },
         {
           "keys": "⌘⌥⇧→",
           "description": "Send to Next Display",
-          "action": "window_display_next"
+          "action": "window_display_next",
+          "requires": "window_manager"
         },
         {
           "keys": "⌃⇧F",
           "description": "Set Float Layout",
-          "action": "set_layout_float"
+          "action": "set_layout_float",
+          "requires": "window_manager"
         },
         {
           "keys": "⌃⇧B",
           "description": "Set BSP Layout",
-          "action": "set_layout_bsp"
+          "action": "set_layout_bsp",
+          "requires": "window_manager"
         },
         {
           "keys": "⌃⇧S",
           "description": "Set Stack Layout",
-          "action": "set_layout_stack"
+          "action": "set_layout_stack",
+          "requires": "window_manager"
         }
       ]
     }

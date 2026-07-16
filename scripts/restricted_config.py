@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -27,6 +28,8 @@ DEFAULT_WORK_APPS = [
     ("sheets", "Sheets", "https://docs.google.com/spreadsheets/u/0/", 5),
     ("meet", "Meet", "https://meet.google.com/", 6),
 ]
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
 def expand_path(raw: str | None, state_file: Path | None = None) -> Path | None:
@@ -205,8 +208,95 @@ def apply_work_apps(
     return apps_file
 
 
+def apply_work_privacy_boundary(state: dict[str, Any]) -> None:
+    integrations = ensure_dict(state, "integrations")
+    for name in (
+        "oracle",
+        "music",
+        "journal",
+        "nerv",
+        "yaze",
+        "halext",
+        "halext_org",
+        "workspace",
+    ):
+        ensure_dict(integrations, name)["enabled"] = False
+
+    menus = ensure_dict(state, "menus")
+    calendar = ensure_dict(menus, "calendar")
+    calendar["task_provider"] = "files"
+    calendar["task_sources"] = []
+    calendar["meeting_cache_file"] = ""
+    calendar["syshelp_path"] = ""
+
+    ensure_dict(state, "widgets")["task_focus"] = False
+
+
+def sanitize_work_task_shortcuts(dry_run: bool = False) -> bool:
+    """Remove stale personal task env from Barista's generated skhd map."""
+    raw_path = os.environ.get("BARISTA_SKHD_SHORTCUTS_FILE")
+    shortcut_path = Path(raw_path).expanduser() if raw_path else Path.home() / ".config/skhd/barista_shortcuts.conf"
+    if not shortcut_path.is_file() or dry_run:
+        return False
+
+    try:
+        lines = shortcut_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as error:
+        raise SystemExit(f"could not inspect shortcut map: {shortcut_path}: {error}") from error
+
+    removed_prefixes = (
+        "# Open Task Focus - ",
+        "# Capture Task - ",
+        "# barista-action: open_task_focus",
+        "# barista-action: capture_task",
+        "cmd + alt - d :",
+        "cmd + alt - n :",
+    )
+    retained = [line for line in lines if not line.strip().startswith(removed_prefixes)]
+    while retained and not retained[-1].strip():
+        retained.pop()
+    if retained:
+        retained.append("")
+    retained.extend(
+        (
+            "# Open Task Focus - ⌘⌥D",
+            "# barista-action: open_task_focus",
+            f"cmd + alt - d : {shlex.quote(str(ROOT_DIR / 'scripts/task_focus.sh'))}",
+            "",
+        )
+    )
+    content = "\n".join(retained)
+    current = shortcut_path.read_text(encoding="utf-8", errors="replace")
+    if content == current:
+        return False
+
+    try:
+        mode = shortcut_path.stat().st_mode & 0o777
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=str(shortcut_path.parent),
+            delete=False,
+        ) as handle:
+            handle.write(content)
+            temp_name = handle.name
+        os.chmod(temp_name, mode)
+        os.replace(temp_name, shortcut_path)
+    except OSError as error:
+        raise SystemExit(f"could not sanitize shortcut map: {shortcut_path}: {error}") from error
+    return True
+
+
+def maybe_reload_skhd(enabled: bool) -> None:
+    if not enabled or os.environ.get("BARISTA_RELOAD_SKHD", "1") == "0":
+        return
+    skhd = shutil.which("skhd")
+    if skhd:
+        subprocess.run([skhd, "--reload"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def apply_restricted_defaults(state: dict[str, Any], args: argparse.Namespace) -> None:
-    state["_version"] = state.get("_version", 1)
+    state["_version"] = state.get("_version", 2)
     state["profile"] = args.profile
 
     modes = ensure_dict(state, "modes")
@@ -248,6 +338,7 @@ def apply_restricted_defaults(state: dict[str, Any], args: argparse.Namespace) -
     sections = ensure_dict(apple, "sections")
     sections.setdefault("work", {"label": "Work Apps", "order": 3})
     sections.setdefault("custom", {"label": "Custom", "order": 8})
+    apply_work_privacy_boundary(state)
 
 
 def menu_item_from_args(args: argparse.Namespace) -> dict[str, Any]:
@@ -395,6 +486,8 @@ def main(argv: list[str] | None = None) -> int:
                 args.dry_run,
             )
         atomic_write_json(state_file, state, dry_run=args.dry_run)
+        shortcuts_changed = sanitize_work_task_shortcuts(dry_run=args.dry_run)
+        maybe_reload_skhd(shortcuts_changed and args.reload and not args.no_reload and not args.dry_run)
         maybe_reload(args.reload and not args.no_reload and not args.dry_run)
     elif args.subcommand == "work-apps":
         apps = load_apps_file(expand_path(args.from_file, state_file)) if args.from_file else default_work_apps(args.domain)

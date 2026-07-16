@@ -90,7 +90,8 @@ These shortcuts work system-wide and don't conflict with common applications:
 
 #### Barista UI
 - `⌘⌥P` - Open Barista
-- `⌘⌥D` - Refresh and open Task Focus in the clock popup
+- `⌘⌥D` - Open the clock Task Focus popup, then refresh it asynchronously
+- `⌘⌥N` - Capture a task (generated only when a task source is configured)
 - `⌘⌥/` - Toggle Control Center
 - `⌘⌥H` - Open Help Center
 - `⌘⌥I` - Open Icon Browser
@@ -105,9 +106,21 @@ These shortcuts work system-wide and don't conflict with common applications:
 
 Note: The `z3ed` shortcut only appears when a `z3ed` launcher is found. It launches through Ghostty when Ghostty is installed and falls back to Terminal-backed shell execution otherwise.
 
-Task Focus reads the same `menus.calendar.task_sources` configuration as the
-clock popup. With no override, it uses `~/src/folio/tasks/active.md` as the
-canonical personal task board.
+Task Focus and Task Pulse read the same machine-local
+`menus.calendar.task_sources` configuration. The committed default is empty;
+Barista does not impose a personal board on fresh or Work installs. Set
+`menus.calendar.task_provider` to `files` for local Markdown/Org parsing or
+`syshelp` for `syshelp plan tasks json` plus CLI capture.
+For launchd environments with a reduced `PATH`, set the ignored local
+`menus.calendar.syshelp_path` to the absolute executable instead of committing
+a machine-specific path.
+
+`⌘⌥D` remains available as the calendar/task-status entry point. `⌘⌥N` is
+conditional: it is included in the generated skhd map only when a task source
+exists in state or `BARISTA_CALENDAR_TASK_SOURCES` / `BARISTA_TASK_SOURCES`.
+With the `files` provider, capture opens the configured board without mutating
+it. With the explicit `syshelp` provider, capture uses
+`syshelp plan tasks add` and triggers `task_state_changed` after success.
 
 #### AFS app paths
 - The AFS Browser shortcut prefers `AFS_BROWSER_APP`, then falls back to the local `afs-studio` launcher/binary.
@@ -225,6 +238,7 @@ Icons and shortcuts are automatically integrated into menu items. Shortcuts are 
 
 ```
 Open Task Focus     ⌘⌥D
+Capture Task        ⌘⌥N  (when configured)
 Reload SketchyBar   ⌘⌥R
 Open Barista        ⌘⌥P
 ```

@@ -60,6 +60,7 @@ BINARIES=(
   "popup_guard"
   "menu_action"
   "state_manager"
+  "widget_manager"
   "space_manager"
   "space_visual_helper"
   "clock_widget"
@@ -72,6 +73,12 @@ for bin in "${BINARIES[@]}"; do
     skip_check "binary: $bin (not built)"
   fi
 done
+
+if [ "$(uname -s)" = "Darwin" ] && command -v clang >/dev/null 2>&1; then
+  check "source: widget_manager.c" clang -fsyntax-only "$CONFIG_DIR/helpers/widget_manager.c"
+else
+  skip_check "source: widget_manager.c (Darwin clang unavailable)"
+fi
 
 echo ""
 echo "${YELLOW}▸ Configuration Checks${RESET}"

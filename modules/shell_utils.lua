@@ -107,7 +107,7 @@ function M.env_prefix(vars)
   table.sort(keys)
   local parts = {}
   for _, key in ipairs(keys) do
-    table.insert(parts, string.format("%s=%q", key, vars[key]))
+    table.insert(parts, string.format("%s=%s", key, M.shell_quote(vars[key])))
   end
   return "env " .. table.concat(parts, " ") .. " "
 end

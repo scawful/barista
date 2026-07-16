@@ -10,7 +10,12 @@ local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchy
 local STATE_FILE = CONFIG_DIR .. "/state.json"
 
 -- State version for migrations
-local STATE_VERSION = 1
+local STATE_VERSION = 2
+
+local LEGACY_DEFAULT_TASK_SOURCES = {
+  "~/src/folio/tasks/active.md",
+  "~/src/hobby/oracle-of-secrets/Docs/oracle.org",
+}
 
 -- Save writes are immediate today; keep dirty tracking explicit.
 local dirty_flag = false
@@ -27,6 +32,7 @@ local default_state = {
     clock = true,
     volume = true,
     battery = true,
+    task_focus = false,
   },
   appearance = {
     theme = "default",
@@ -168,10 +174,10 @@ local default_state = {
       items = {},
     },
     calendar = {
-      task_sources = {
-        "~/src/folio/tasks/active.md",
-        "~/src/hobby/oracle-of-secrets/Docs/oracle.org",
-      },
+      task_provider = "files",
+      task_sources = {},
+      meeting_cache_file = "",
+      meeting_cache_max_age_seconds = 86400,
     },
     apps = {
       enabled = true,
@@ -316,8 +322,39 @@ local function migrate_state(data, from_version, to_version)
   -- Migration 0 -> 1: Add _version field
   if (from_version or 0) < 1 and to_version >= 1 then
     data._version = 1
-    -- Future migrations can be added here:
-    -- if from_version < 2 then ... end
+  end
+  -- Migration 1 -> 2: remove the former shared personal task defaults only
+  -- when they are still unmodified on a non-Personal profile. Version 1 did
+  -- not record provenance, so custom lists and explicit v2 opt-ins must win.
+  if (from_version or 0) < 2 and to_version >= 2 then
+    local menus = type(data.menus) == "table" and data.menus or nil
+    local calendar = menus and type(menus.calendar) == "table" and menus.calendar or nil
+    local widgets = type(data.widgets) == "table" and data.widgets or nil
+    local sources = calendar and calendar.task_sources or nil
+    local legacy_sources = type(sources) == "table" and #sources == #LEGACY_DEFAULT_TASK_SOURCES
+    if legacy_sources then
+      for index, value in ipairs(LEGACY_DEFAULT_TASK_SOURCES) do
+        if sources[index] ~= value then
+          legacy_sources = false
+          break
+        end
+      end
+    end
+    local explicit_task_opt_in = calendar and (
+      calendar.task_provider ~= nil
+      or calendar.meeting_cache_file ~= nil
+      or calendar.meeting_cache_max_age_seconds ~= nil
+      or (widgets and widgets.task_focus ~= nil)
+    )
+    local profile_name = type(data.profile) == "string" and data.profile or "minimal"
+    if profile_name ~= "personal" and legacy_sources and not explicit_task_opt_in then
+      calendar.task_provider = "files"
+      calendar.task_sources = {}
+      calendar.meeting_cache_file = ""
+      data.widgets = widgets or {}
+      data.widgets.task_focus = false
+    end
+    data._version = 2
   end
   return data
 end

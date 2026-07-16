@@ -2,6 +2,7 @@
 
 local items_left = require("items_left")
 local items_right = require("items_right")
+local shell_utils = require("shell_utils")
 local widgets_module = require("widgets")
 
 local function test_items_left_layout()
@@ -312,7 +313,7 @@ local function test_items_left_control_center_custom_name()
       create_popup_items = function(_, _, _, _, opts)
         received_popup_opts = opts
         return {
-          { name = "status_hub.header", position = "popup.status_hub", label = { string = "Header" } },
+          { name = "status_hub.action", position = "popup.status_hub", label = { string = "Action" }, hover = true },
         }
       end,
     },
@@ -341,6 +342,7 @@ local function test_items_left_control_center_custom_name()
   local found_custom_item = false
   local found_custom_subscribe = false
   local found_custom_bracket = false
+  local found_custom_popup_action = false
 
   for _, entry in ipairs(layout) do
     if entry.type == "item" and entry.name == "status_hub" then
@@ -348,6 +350,12 @@ local function test_items_left_control_center_custom_name()
     end
     if entry.action == "subscribe_popup_autoclose" and entry.name == "status_hub" then
       found_custom_subscribe = true
+    end
+    if entry.type == "item" and entry.name == "status_hub.action" then
+      found_custom_popup_action = true
+      assert_nil(entry.props.hover, "control_center hover metadata should not reach SketchyBar properties")
+      assert_equal(entry.props.script, "hover.sh", "control_center hover rows should receive the shared hover script")
+      assert_equal(entry.attach_hover, true, "control_center hover rows should attach hover events")
     end
     if entry.type == "bracket" and entry.name == "left_group" then
       for _, child in ipairs(entry.children or {}) do
@@ -362,6 +370,7 @@ local function test_items_left_control_center_custom_name()
   assert_true(found_custom_item, "custom control_center item should exist")
   assert_true(found_custom_subscribe, "custom control_center item should be subscribed by name")
   assert_true(found_custom_bracket, "left_group should include custom control_center item name")
+  assert_true(found_custom_popup_action, "custom control_center popup action should exist")
   assert_type(received_popup_opts, "table", "popup items should receive opts")
   assert_equal(received_popup_opts.item_name, "status_hub", "popup items should inherit the resolved item name")
   assert_equal(received_popup_opts.config_dir, "/tmp/config", "popup items should receive CONFIG_DIR")
@@ -779,11 +788,223 @@ local function test_items_right_lmstudio_extension_rows()
   print("  items_right LM Studio extension test passed!")
 end
 
+local function test_items_right_task_focus_surface()
+  print("Testing items_right Task Pulse surface...")
+
+  local function build_layout(widgets, task_sources, task_provider, meeting_cache_file, capture_section, capture_state, meeting_cache_max_age_seconds)
+    local state = {
+      appearance = { widget_scale = 1.0, bar_height = 28, corner_radius = 6 },
+      widgets = widgets or {},
+      menus = {
+        calendar = {
+          task_sources = task_sources,
+          task_provider = task_provider,
+          meeting_cache_file = meeting_cache_file,
+          meeting_cache_max_age_seconds = meeting_cache_max_age_seconds,
+          capture_section = capture_section,
+          capture_state = capture_state,
+        },
+      },
+    }
+    local mock_ctx = {
+      settings = {
+        font = {
+          text = "Inter",
+          numbers = "JetBrains Mono",
+          icon = "Symbols Nerd Font",
+          style_map = { Regular = "Regular", Bold = "Bold", Semibold = "Semibold" },
+          sizes = { small = 12, text = 14, icon = 16, numbers = 14 },
+        },
+      },
+      theme = {
+        WHITE = "0xffffffff",
+        DARK_WHITE = "0xffbac2de",
+        GREEN = "0xffa6e3a1",
+        YELLOW = "0xfff9e2af",
+        RED = "0xfff38ba8",
+        BLUE = "0xff89b4fa",
+        SKY = "0xff89dceb",
+        LAVENDER = "0xffb4befe",
+        BG_SEC_COLR = "0x18313a46",
+        bar = { bg = "0xff1e1e2e" },
+      },
+      state = state,
+      font_string = function(f, s, sz) return string.format("%s:%s:%0.1f", f, s, sz) end,
+      CONFIG_DIR = "/tmp/config",
+      CODE_DIR = "/tmp/code",
+      PLUGIN_DIR = "/tmp/plugins",
+      SCRIPTS_DIR = "/tmp/scripts",
+      widget_corner_radius = 6,
+      widget_height = 22,
+      popup_background = function() return { drawing = true } end,
+      hover_script_cmd = "hover.sh",
+      POST_CONFIG_DELAY = 0.1,
+      SKETCHYBAR_BIN = "sketchybar",
+      group_bg_color = "0x44000000",
+      group_border_color = "0xffffffff",
+      group_border_width = 1,
+      group_corner_radius = 4,
+      icon_for = function(_, fallback) return fallback end,
+      state_module = { get_icon = function() return "" end },
+      env_prefix = shell_utils.env_prefix,
+      call_script = shell_utils.call_script,
+      compiled_script = function(_, fallback) return fallback end,
+      widget_daemon_enabled = false,
+      hover_color = "0x44ffffff",
+      hover_border_color = "0xffffffff",
+      hover_border_width = 1,
+      hover_animation_curve = "ease_out",
+      hover_animation_duration = 10,
+    }
+    mock_ctx.widget_factory = widgets_module.create_factory(
+      { add = function() end, set = function() end },
+      mock_ctx.theme,
+      mock_ctx.settings,
+      state,
+      {
+        widget_height = mock_ctx.widget_height,
+        widget_corner_radius = mock_ctx.widget_corner_radius,
+      }
+    )
+    return items_right.get_layout(mock_ctx)
+  end
+
+  local function find_entry(layout, name)
+    for _, entry in ipairs(layout) do
+      if entry.name == name then
+        return entry
+      end
+    end
+    return nil
+  end
+
+  local default_layout = build_layout({}, { "/tmp/tasks.md" }, "files")
+  assert_true(find_entry(default_layout, "task_focus") == nil, "Task Pulse should remain absent by default")
+
+  local empty_layout = build_layout({ task_focus = true }, { "", "   " }, "files")
+  assert_true(find_entry(empty_layout, "task_focus") == nil, "Task Pulse should stay absent without a non-empty source")
+
+  local sources = {
+    "/tmp/tasks board.md",
+    "/tmp/tasks;touch should-not-run.org",
+  }
+  local provider = "files;touch should-not-run"
+  local layout = build_layout(
+    { task_focus = true },
+    sources,
+    provider,
+    "/tmp/events cache.tsv",
+    "Inbox $(touch should-not-run)",
+    "NEXT`touch should-not-run`",
+    7200
+  )
+  local task_focus = find_entry(layout, "task_focus")
+  assert_true(task_focus ~= nil, "Task Pulse should render when explicitly enabled with task sources")
+  assert_equal(task_focus.props.label.string, "Tasks", "Task Pulse should start with a compact Tasks label")
+  assert_equal(task_focus.props.drawing, true, "Task Pulse should draw when enabled")
+
+  local expected_env = shell_utils.env_prefix({
+    BARISTA_CALENDAR_TASK_SOURCES = table.concat(sources, ":"),
+    BARISTA_CAPTURE_SECTION = "Inbox $(touch should-not-run)",
+    BARISTA_CAPTURE_STATE = "NEXT`touch should-not-run`",
+    BARISTA_TASK_PROVIDER = provider,
+  })
+  assert_equal(task_focus.props.script:sub(1, #expected_env), expected_env, "Task Pulse should safely prefix provider and source environment")
+  assert_true(task_focus.props.script:find("/tmp/plugins/task_pulse%.sh") ~= nil, "Task Pulse events should run the pulse plugin")
+  assert_true(task_focus.props.click_script:find("popup%.drawing=toggle") ~= nil, "Task Pulse click should open its own popup immediately")
+  assert_true(task_focus.props.click_script:find("task_pulse%.sh") ~= nil, "Task Pulse click should refresh popup data")
+  assert_true(task_focus.props.click_script:match("&%s*$") ~= nil, "Task Pulse click refresh should be asynchronous")
+
+  local expected_rows = {
+    "task_focus.summary",
+    "task_focus.focus",
+    "task_focus.next",
+    "task_focus.waiting",
+    "task_focus.blocked",
+    "task_focus.capture",
+    "task_focus.open",
+    "task_focus.timer",
+  }
+  local row_count = 0
+  for _, name in ipairs(expected_rows) do
+    local row = find_entry(layout, name)
+    assert_true(row ~= nil, name .. " should be present in the capped Task Pulse popup")
+    row_count = row_count + 1
+  end
+  local actual_row_count = 0
+  for _, entry in ipairs(layout) do
+    if entry.type == "item" and type(entry.name) == "string" and entry.name:match("^task_focus%.") then
+      actual_row_count = actual_row_count + 1
+    end
+  end
+  assert_equal(actual_row_count, row_count, "Task Pulse popup should contain only its eight static rows")
+
+  local capture = find_entry(layout, "task_focus.capture")
+  local open_board = find_entry(layout, "task_focus.open")
+  local timer = find_entry(layout, "task_focus.timer")
+  assert_true(capture.props.click_script:find("/tmp/config/scripts/task_capture%.sh") ~= nil, "Capture Task should use Barista's task_capture.sh")
+  assert_true(capture.props.click_script:find("BARISTA_CAPTURE_SECTION='Inbox $(touch should-not-run)'", 1, true) ~= nil,
+    "Capture Task should pass the configured capture section literally")
+  assert_true(capture.props.click_script:find("BARISTA_CAPTURE_STATE='NEXT`touch should-not-run`'", 1, true) ~= nil,
+    "Capture Task should pass the configured capture state literally")
+  assert_true(open_board.props.click_script:find("/tmp/config/scripts/task_action%.sh") ~= nil, "Open Board should use Barista's task_action.sh")
+  assert_true(open_board.props.click_script:find("open", 1, true) ~= nil, "Open Board should request the open action")
+  assert_true(timer.props.click_script:find("/tmp/config/scripts/focus_session%.py") ~= nil, "Focus timer should use the local session engine")
+  assert_true(timer.props.click_script:find("bash '/tmp/config/scripts/focus_session.py'", 1, true) == nil,
+    "Focus timer should execute its Python shebang instead of passing it to Bash")
+  assert_true(timer.props.click_script:find("toggle", 1, true) ~= nil, "Focus timer should toggle one menu-only session")
+  assert_true(timer.props.click_script:find("task_state_changed", 1, true) ~= nil, "Focus timer should refresh Task Pulse after changes")
+
+  local subscribed = false
+  local popup_autoclose = false
+  local hover_attached = false
+  local grouped = false
+  for _, entry in ipairs(layout) do
+    if entry.action == "exec" and type(entry.cmd) == "string"
+      and entry.cmd:find("--subscribe task_focus task_state_changed system_woke", 1, true) ~= nil then
+      subscribed = true
+    elseif entry.action == "subscribe_popup_autoclose" and entry.name == "task_focus" then
+      popup_autoclose = true
+    elseif entry.action == "attach_hover" and entry.name == "task_focus" then
+      hover_attached = true
+    elseif entry.type == "bracket" and entry.name == "right_group_1" then
+      for _, child in ipairs(entry.children or {}) do
+        if child == "task_focus" then
+          grouped = true
+        end
+      end
+    end
+  end
+  assert_true(subscribed, "Task Pulse should subscribe to task changes and wake events")
+  assert_true(popup_autoclose, "Task Pulse should register popup autoclose")
+  assert_true(hover_attached, "Task Pulse should register hover feedback")
+  assert_true(grouped, "Task Pulse should join the right-side clock group")
+
+  local calendar_header = find_entry(layout, "clock.calendar.header")
+  assert_true(calendar_header ~= nil, "calendar header should remain present")
+  assert_true(calendar_header.props.update_freq == nil, "calendar popup should not poll while closed")
+  assert_true(calendar_header.props.script:find("BARISTA_CALENDAR_MEETING_CACHE=", 1, true) ~= nil, "calendar should pass the opt-in meeting cache path")
+  assert_true(calendar_header.props.script:find("BARISTA_CALENDAR_MEETING_MAX_AGE_SECONDS='7200'", 1, true) ~= nil,
+    "calendar should pass the configured meeting cache freshness limit")
+  local meeting = find_entry(layout, "clock.calendar.meeting.next")
+  assert_true(meeting ~= nil, "calendar should own one cached meeting row")
+  assert_equal(meeting.props.icon, "󰃰", "cached meeting should keep its calendar glyph in the icon field")
+  assert_equal(meeting.props["icon.drawing"], true, "cached meeting icon should draw with the row")
+  assert_true(meeting.props["icon.font"]:find("Symbols Nerd Font:", 1, true) == 1,
+    "cached meeting icon should use the configured icon font")
+  assert_true(meeting.props["label.font"]:find("Inter:", 1, true) == 1,
+    "cached meeting label should use the text font rather than the numbers font")
+  assert_true(find_entry(layout, "clock.calendar.tasks.waiting") ~= nil, "calendar should expose a distinct waiting row")
+
+  print("  items_right Task Pulse surface test passed!")
+end
+
 test_items_left_layout()
 test_items_left_without_yabai()
 test_items_left_control_center_custom_name()
 test_items_left_reuses_oracle_and_control_center_status()
 test_items_right_layout()
 test_items_right_lmstudio_extension_rows()
+test_items_right_task_focus_surface()
 
 print("\nAll item layout tests passed!")

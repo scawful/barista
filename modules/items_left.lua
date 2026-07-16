@@ -570,6 +570,7 @@ local function get_layout(ctx)
       local item_name = popup_item.name
       popup_item.name = nil
       local should_hover = popup_item.hover == true
+      popup_item.hover = nil
       if should_hover and not popup_item.script then
         popup_item.script = hover_script_cmd
       end

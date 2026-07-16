@@ -66,10 +66,11 @@ local preferred_key_order = {
   keys = 10,
   description = 11,
   action = 12,
-  id = 13,
-  title = 14,
-  command = 15,
-  path = 16,
+  requires = 13,
+  id = 14,
+  title = 15,
+  command = 16,
+  path = 17,
 }
 
 local function pretty_json(value, depth)
@@ -127,6 +128,9 @@ local function build_workflow_data(extras, has_supplement)
       description = shortcut.desc,
       action = shortcut.action,
     }
+    if shortcut.requires ~= nil then
+      item.requires = shortcut.requires
+    end
     table.insert(generated_items, item)
   end
 

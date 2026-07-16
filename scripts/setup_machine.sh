@@ -14,6 +14,7 @@ RUNTIME_BACKEND="${BARISTA_RUNTIME_BACKEND:-}"
 WORK_DOMAIN="${BARISTA_WORK_GOOGLE_DOMAIN:-}"
 WORK_APPS_FILE=""
 WORK_APPS_OUT_FILE=""
+WINDOW_MANAGER_OVERRIDE=""
 
 INSTALL_FONTS=1
 CONFIGURE_PANEL=1
@@ -27,6 +28,7 @@ AUTO_YES=0
 DO_RELOAD=1
 DRY_RUN=0
 REPORT=0
+REFRESH_SHORTCUTS=0
 
 ACTION_FONTS=0
 ACTION_PANEL=0
@@ -44,6 +46,8 @@ Core options:
   --state <path>                          State file (default: ~/.config/sketchybar/state.json)
   --profile-variant <name>                Apply machine profile variant: minimal, cozy, personal, work, restricted-work
   --machine-file <path>                   Machine-local profile JSON path (default: data/machine.local.json)
+  --window-manager <mode>                 Override the selected variant's window-manager mode
+  --refresh-shortcuts-only                Regenerate/load the machine-local skhd map only
   --yes                                   Non-interactive confirmation
   --no-reload                             Skip sketchybar reload
   --dry-run                               Show planned changes without modifying files/system
@@ -146,6 +150,20 @@ while [[ $# -gt 0 ]]; do
       RUNTIME_BACKEND="$2"
       CONFIGURE_RUNTIME=1
       shift 2
+      ;;
+    --window-manager)
+      require_value "$1" "${2:-}"
+      WINDOW_MANAGER_OVERRIDE="$2"
+      shift 2
+      ;;
+    --refresh-shortcuts-only)
+      INSTALL_FONTS=0
+      CONFIGURE_PANEL=0
+      CONFIGURE_RUNTIME=0
+      CONFIGURE_WORK_APPS=0
+      CONFIGURE_MACHINE_PROFILE=0
+      REFRESH_SHORTCUTS=1
+      shift
       ;;
     --work-apps|--configure-work-apps)
       CONFIGURE_WORK_APPS=1
@@ -321,11 +339,6 @@ run_restricted_work_setup() {
   python3 "$restricted_script" "${args[@]}"
 }
 
-if [ "$RESTRICTED_WORK" -eq 1 ]; then
-  run_restricted_work_setup
-  exit 0
-fi
-
 confirm() {
   local prompt="$1"
   if [ "$AUTO_YES" -eq 1 ]; then
@@ -470,6 +483,9 @@ apply_machine_profile_variant() {
   if [ -n "$RUNTIME_BACKEND" ]; then
     args+=(--runtime-backend "$RUNTIME_BACKEND")
   fi
+  if [ -n "$WINDOW_MANAGER_OVERRIDE" ]; then
+    args+=(--window-manager "$WINDOW_MANAGER_OVERRIDE")
+  fi
   if [ "$CONFIGURE_PANEL" -eq 1 ] && [ -n "$PANEL_MODE" ]; then
     args+=(--panel-mode "$PANEL_MODE")
   fi
@@ -483,6 +499,62 @@ apply_machine_profile_variant() {
 
   python3 "$machine_script" "${args[@]}"
 }
+
+regenerate_shortcuts() {
+  local generator="$ROOT_DIR/helpers/generate_shortcuts.lua"
+  local skhd_output="${BARISTA_SKHD_SHORTCUTS_FILE:-$HOME/.config/skhd/barista_shortcuts.conf}"
+  local workflow_output="${BARISTA_RUNTIME_WORKFLOW_FILE:-$ROOT_DIR/data/workflow_shortcuts.local.generated.json}"
+  local skhd_config="${BARISTA_SKHD_CONFIG_FILE:-$HOME/.config/skhd/skhdrc}"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    note_dry "[shortcuts] would regenerate $skhd_output"
+    return 0
+  fi
+  if ! command -v lua >/dev/null 2>&1; then
+    if [ "$PROFILE_VARIANT" = "work" ] || [ "$PROFILE_VARIANT" = "restricted-work" ]; then
+      note_warn "[shortcuts] lua unavailable; stale personal task bindings were removed, but the full map was not regenerated"
+      return 0
+    fi
+    echo "lua is required to refresh shortcuts after a machine profile change." >&2
+    return 1
+  fi
+  if [ ! -f "$generator" ]; then
+    echo "Shortcut generator missing: $generator" >&2
+    return 1
+  fi
+
+  mkdir -p "$(dirname "$skhd_output")" "$(dirname "$workflow_output")"
+  BARISTA_CONFIG_DIR="$ROOT_DIR" \
+    BARISTA_STATE_FILE="$STATE_FILE" \
+    lua "$generator" "$skhd_output" "$workflow_output" >/dev/null
+  note "[shortcuts] regenerated machine-local skhd map"
+
+  local escaped_output="${skhd_output//\\/\\\\}"
+  escaped_output="${escaped_output//\"/\\\"}"
+  local load_line=".load \"$escaped_output\""
+  mkdir -p "$(dirname "$skhd_config")"
+  touch "$skhd_config"
+  if ! grep -Fqx "$load_line" "$skhd_config"; then
+    printf '\n# Barista generated shortcuts\n%s\n' "$load_line" >>"$skhd_config"
+    note "[shortcuts] added generated map to skhdrc"
+  fi
+
+  if [ "${BARISTA_RELOAD_SKHD:-1}" != "0" ] \
+    && command -v skhd >/dev/null 2>&1 \
+    && pgrep -x skhd >/dev/null 2>&1; then
+    if skhd --reload >/dev/null 2>&1; then
+      note "[shortcuts] reloaded skhd"
+    else
+      note_warn "[shortcuts] generated the map, but skhd reload failed"
+    fi
+  fi
+}
+
+if [ "$RESTRICTED_WORK" -eq 1 ]; then
+  BARISTA_RELOAD_SKHD=0 run_restricted_work_setup
+  regenerate_shortcuts
+  exit 0
+fi
 
 apply_menu_readability_defaults() {
   jq_edit_state '
@@ -704,7 +776,7 @@ print_report() {
   printf 'setup.report.actions.reload=%s\n' "$ACTION_RELOAD"
 }
 
-if [ "$INSTALL_FONTS" -eq 0 ] && [ "$CONFIGURE_PANEL" -eq 0 ] && [ "$CONFIGURE_RUNTIME" -eq 0 ] && [ "$CONFIGURE_WORK_APPS" -eq 0 ] && [ "$CONFIGURE_MACHINE_PROFILE" -eq 0 ]; then
+if [ "$INSTALL_FONTS" -eq 0 ] && [ "$CONFIGURE_PANEL" -eq 0 ] && [ "$CONFIGURE_RUNTIME" -eq 0 ] && [ "$CONFIGURE_WORK_APPS" -eq 0 ] && [ "$CONFIGURE_MACHINE_PROFILE" -eq 0 ] && [ "$REFRESH_SHORTCUTS" -eq 0 ]; then
   note "No setup actions selected."
   print_report
   exit 0
@@ -738,6 +810,11 @@ if [ "$CONFIGURE_WORK_APPS" -eq 1 ]; then
   if confirm "Configure work Google apps menu items?"; then
     apply_work_apps
   fi
+fi
+
+if { [ "$ACTION_MACHINE_PROFILE" -eq 1 ] && [ "${BARISTA_SKIP_SHORTCUT_REFRESH:-0}" != "1" ]; } \
+  || [ "$REFRESH_SHORTCUTS" -eq 1 ]; then
+  regenerate_shortcuts
 fi
 
 if [ "$DO_RELOAD" -eq 1 ] && command -v sketchybar >/dev/null 2>&1; then

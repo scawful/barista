@@ -2,7 +2,9 @@
 
 local submenu_registry = require("submenu_registry")
 
-local tmpdir = os.getenv("TMPDIR") or "/tmp"
+local tmpdir = os.tmpname() .. ".d"
+os.remove(tmpdir)
+assert(os.execute("mkdir -p " .. string.format("%q", tmpdir)))
 local test_submenu_file = tmpdir .. "/sketchybar_submenu_list"
 local test_popup_file   = tmpdir .. "/sketchybar_popup_list"
 
@@ -14,7 +16,7 @@ end
 
 run_test("write_submenu_list: creates file with names", function()
   cleanup()
-  submenu_registry.write_submenu_list({"menu.foo", "menu.bar", "menu.baz"})
+  submenu_registry.write_submenu_list({"menu.foo", "menu.bar", "menu.baz"}, tmpdir)
   local fh = io.open(test_submenu_file, "r")
   assert_true(fh ~= nil, "file should exist")
   local content = fh:read("*a")
@@ -27,7 +29,7 @@ end)
 
 run_test("write_popup_list: creates file with names", function()
   cleanup()
-  submenu_registry.write_popup_list({"apple_menu", "clock"})
+  submenu_registry.write_popup_list({"apple_menu", "clock"}, tmpdir)
   local fh = io.open(test_popup_file, "r")
   assert_true(fh ~= nil, "file should exist")
   local content = fh:read("*a")
@@ -41,7 +43,8 @@ run_test("register: writes both files", function()
   cleanup()
   submenu_registry.register(
     {"popup1", "popup2"},
-    {"sub1", "sub2", "sub3"}
+    {"sub1", "sub2", "sub3"},
+    tmpdir
   )
   local fh1 = io.open(test_popup_file, "r")
   assert_true(fh1 ~= nil, "popup file should exist")
@@ -62,7 +65,7 @@ end)
 
 run_test("write_submenu_list: entries are one per line", function()
   cleanup()
-  submenu_registry.write_submenu_list({"item.a", "item.b"})
+  submenu_registry.write_submenu_list({"item.a", "item.b"}, tmpdir)
   local fh = io.open(test_submenu_file, "r")
   assert_true(fh ~= nil, "file should exist")
   local lines = {}
@@ -78,7 +81,7 @@ end)
 
 run_test("register: nil popups skips popup file", function()
   cleanup()
-  submenu_registry.register(nil, {"sub.only"})
+  submenu_registry.register(nil, {"sub.only"}, tmpdir)
   local fh = io.open(test_popup_file, "r")
   assert_true(fh == nil, "popup file should not exist")
   local fh2 = io.open(test_submenu_file, "r")
@@ -89,7 +92,7 @@ end)
 
 run_test("register: nil submenus skips submenu file", function()
   cleanup()
-  submenu_registry.register({"popup.only"}, nil)
+  submenu_registry.register({"popup.only"}, nil, tmpdir)
   local fh = io.open(test_submenu_file, "r")
   assert_true(fh == nil, "submenu file should not exist")
   local fh2 = io.open(test_popup_file, "r")
@@ -100,7 +103,7 @@ end)
 
 run_test("write_submenu_list: dedupes repeated names", function()
   cleanup()
-  submenu_registry.write_submenu_list({"item.a", "item.a", "item.b"})
+  submenu_registry.write_submenu_list({"item.a", "item.a", "item.b"}, tmpdir)
   local fh = io.open(test_submenu_file, "r")
   assert_true(fh ~= nil, "file should exist")
   local lines = {}
@@ -116,7 +119,7 @@ end)
 
 run_test("write_submenu_list: empty list still creates authoritative empty file", function()
   cleanup()
-  submenu_registry.write_submenu_list({})
+  submenu_registry.write_submenu_list({}, tmpdir)
   local fh = io.open(test_submenu_file, "r")
   assert_true(fh ~= nil, "empty file should exist")
   local content = fh:read("*a")
@@ -124,3 +127,6 @@ run_test("write_submenu_list: empty list still creates authoritative empty file"
   assert_equal(content, "", "empty list should write empty file")
   cleanup()
 end)
+
+cleanup()
+os.execute("rmdir " .. string.format("%q", tmpdir) .. " >/dev/null 2>&1")

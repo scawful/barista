@@ -4,8 +4,9 @@
 
 set -e
 
-CONFIG_DIR="${HOME}/.config/sketchybar"
-STATE_FILE="${CONFIG_DIR}/state.json"
+CONFIG_DIR="${BARISTA_CONFIG_DIR:-${HOME}/.config/sketchybar}"
+STATE_FILE="${BARISTA_STATE_FILE:-${CONFIG_DIR}/state.json}"
+NO_RELOAD="${BARISTA_NO_RELOAD:-0}"
 
 if [ ! -f "$STATE_FILE" ]; then
   echo "Error: State file not found at $STATE_FILE"
@@ -32,7 +33,9 @@ if [ -n "$PROFILE" ]; then
     echo "Warning: Profile '$PROFILE' not found in $CONFIG_DIR/profiles/"
   fi
   
-  # Use jq to update
+  # Profile switching is intentionally reversible: preserve explicit local
+  # overrides. Use setup_machine.sh --profile-variant work when a privacy
+  # boundary should clear personal task and integration state.
   tmp=$(mktemp)
   jq --arg p "$PROFILE" '.profile = $p' "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
   echo "Switched to profile: $PROFILE"
@@ -51,5 +54,21 @@ if [ -n "$WM_MODE" ]; then
   fi
 fi
 
-echo "Reloading SketchyBar..."
-sketchybar --reload
+if [ -x "$CONFIG_DIR/scripts/setup_machine.sh" ]; then
+  if [ "$NO_RELOAD" = "1" ]; then
+    BARISTA_RELOAD_SKHD=0 "$CONFIG_DIR/scripts/setup_machine.sh" \
+      --state "$STATE_FILE" --refresh-shortcuts-only --yes --no-reload >/dev/null
+  else
+    "$CONFIG_DIR/scripts/setup_machine.sh" \
+      --state "$STATE_FILE" --refresh-shortcuts-only --yes --no-reload >/dev/null
+  fi
+fi
+
+if [ "$NO_RELOAD" != "1" ]; then
+  echo "Reloading SketchyBar..."
+  if [ -x "$CONFIG_DIR/plugins/reload_sketchybar.sh" ]; then
+    "$CONFIG_DIR/plugins/reload_sketchybar.sh"
+  else
+    sketchybar --reload
+  fi
+fi

@@ -5,11 +5,68 @@
 local shortcuts = {}
 local binary_resolver = require("binary_resolver")
 local paths_module = require("paths")
+local shell_utils = require("shell_utils")
 local locator = require("tool_locator")
 
 local HOME = os.getenv("HOME") or ""
 local CONFIG_DIR = locator.resolve_config_dir()
-local runtime_state = locator.load_state(CONFIG_DIR) or {}
+
+local function nonblank(value)
+  return type(value) == "string" and value:match("%S") and value or nil
+end
+
+local function load_json_table(path)
+  if not nonblank(path) then
+    return nil
+  end
+  local ok_json, json = pcall(require, "json")
+  if not ok_json then
+    return nil
+  end
+  local file = io.open(path, "r")
+  if not file then
+    return nil
+  end
+  local contents = file:read("*a")
+  file:close()
+  local ok_decode, decoded = pcall(json.decode, contents)
+  if not ok_decode or type(decoded) ~= "table" then
+    return nil
+  end
+  return decoded
+end
+
+local state_file = nonblank(os.getenv("BARISTA_STATE_FILE"))
+local runtime_state
+if state_file then
+  runtime_state = load_json_table(state_file) or {}
+else
+  runtime_state = locator.load_state(CONFIG_DIR) or {}
+end
+
+local function merge_tables(target, source)
+  for key, value in pairs(source or {}) do
+    if type(value) == "table" and type(target[key]) == "table" then
+      merge_tables(target[key], value)
+    else
+      target[key] = value
+    end
+  end
+end
+
+local function state_directory(path)
+  return type(path) == "string" and path:match("^(.+)/[^/]+$") or nil
+end
+
+local config_file = nonblank(os.getenv("BARISTA_CONFIG_FILE"))
+  or ((state_file and state_directory(state_file)) or CONFIG_DIR) .. "/barista_config.lua"
+local config_chunk = loadfile(config_file)
+if config_chunk then
+  local ok_config, user_config = pcall(config_chunk)
+  if ok_config and type(user_config) == "table" then
+    merge_tables(runtime_state, user_config)
+  end
+end
 local SKETCHYBAR_BIN = binary_resolver.resolve_sketchybar_bin()
 local DEFAULT_CONTROL_CENTER_ITEM_NAME = "control_center"
 
@@ -27,7 +84,7 @@ local function service_running(name)
 end
 
 local function shell_quote(value)
-  return string.format("%q", tostring(value))
+  return shell_utils.shell_quote(value)
 end
 
 function shortcuts.resolve_control_center_item_name(state, getenv_fn)
@@ -48,15 +105,25 @@ function shortcuts.resolve_control_center_item_name(state, getenv_fn)
   return DEFAULT_CONTROL_CENTER_ITEM_NAME
 end
 
-local function build_control_center_toggle_command(item_name)
-  return string.format("%q --set %q popup.drawing=toggle", SKETCHYBAR_BIN, item_name)
+function shortcuts.build_control_center_toggle_command(item_name)
+  return string.format(
+    "%s --set %s popup.drawing=toggle",
+    shell_quote(SKETCHYBAR_BIN),
+    shell_quote(item_name)
+  )
 end
 
-local function open_terminal(command)
+function shortcuts.build_terminal_session_command(command)
   if not command or command == "" then
     return ""
   end
-  return string.format("osascript -e 'tell application \"Terminal\" to do script %q'", command)
+  return table.concat({
+    shell_quote("osascript"),
+    "-e " .. shell_quote("on run argv"),
+    "-e " .. shell_quote('tell application "Terminal" to do script (item 1 of argv)'),
+    "-e " .. shell_quote("end run"),
+    "-- " .. shell_quote(command),
+  }, " ")
 end
 
 local function resolve_window_manager_mode()
@@ -126,26 +193,96 @@ local function open_path_command(path)
   return string.format("open %s", shell_quote(path))
 end
 
-local function task_focus_action()
-  local action = shell_quote(CONFIG_DIR .. "/scripts/task_focus.sh")
-  local menus = type(runtime_state.menus) == "table" and runtime_state.menus or nil
+local function task_calendar_config(state)
+  local menus = type(state.menus) == "table" and state.menus or nil
   local calendar = menus and type(menus.calendar) == "table" and menus.calendar or nil
+  return calendar or {}
+end
+
+local function task_sources(calendar)
   local sources = calendar and calendar.task_sources or nil
-  if type(sources) == "string" and sources ~= "" then
-    return "BARISTA_CALENDAR_TASK_SOURCES=" .. shell_quote(sources) .. " " .. action
+  if nonblank(sources) then
+    return sources
   end
   if type(sources) == "table" then
     local values = {}
     for _, source in ipairs(sources) do
-      if type(source) == "string" and source ~= "" then
+      if nonblank(source) then
         table.insert(values, source)
       end
     end
     if #values > 0 then
-      return "BARISTA_CALENDAR_TASK_SOURCES=" .. shell_quote(table.concat(values, ":")) .. " " .. action
+      return table.concat(values, ":")
     end
   end
-  return action
+  return nil
+end
+
+local function first_nonblank_env(getenv, ...)
+  if type(getenv) ~= "function" then
+    return nil
+  end
+  for index = 1, select("#", ...) do
+    local value = nonblank(getenv(select(index, ...)))
+    if value then
+      return value
+    end
+  end
+  return nil
+end
+
+function shortcuts.resolve_task_config(state, getenv_fn)
+  local getenv = getenv_fn or os.getenv
+  local calendar = task_calendar_config(type(state) == "table" and state or runtime_state)
+  return {
+    task_sources = first_nonblank_env(getenv, "BARISTA_CALENDAR_TASK_SOURCES", "BARISTA_TASK_SOURCES")
+      or task_sources(calendar),
+    task_provider = first_nonblank_env(getenv, "BARISTA_TASK_PROVIDER")
+      or nonblank(calendar.task_provider),
+    syshelp_path = first_nonblank_env(getenv, "BARISTA_SYSHELP_BIN")
+      or nonblank(calendar.syshelp_path),
+    capture_section = first_nonblank_env(getenv, "BARISTA_CAPTURE_SECTION")
+      or nonblank(calendar.capture_section),
+    capture_state = first_nonblank_env(getenv, "BARISTA_CAPTURE_STATE")
+      or nonblank(calendar.capture_state),
+  }
+end
+
+function shortcuts.has_task_source(state, getenv_fn)
+  return shortcuts.resolve_task_config(state, getenv_fn).task_sources ~= nil
+end
+
+function shortcuts.build_task_script_action(script_name, state, getenv_fn, config_dir)
+  local action = shell_quote((config_dir or CONFIG_DIR) .. "/scripts/" .. script_name)
+  local task_config = shortcuts.resolve_task_config(state, getenv_fn)
+  local env = {}
+  if task_config.task_sources then
+    table.insert(env, "BARISTA_CALENDAR_TASK_SOURCES=" .. shell_quote(task_config.task_sources))
+  end
+  if task_config.task_provider then
+    table.insert(env, "BARISTA_TASK_PROVIDER=" .. shell_quote(task_config.task_provider))
+  end
+  if task_config.syshelp_path then
+    table.insert(env, "BARISTA_SYSHELP_BIN=" .. shell_quote(task_config.syshelp_path))
+  end
+  if task_config.capture_section then
+    table.insert(env, "BARISTA_CAPTURE_SECTION=" .. shell_quote(task_config.capture_section))
+  end
+  if task_config.capture_state then
+    table.insert(env, "BARISTA_CAPTURE_STATE=" .. shell_quote(task_config.capture_state))
+  end
+  if #env == 0 then
+    return action
+  end
+  return table.concat(env, " ") .. " " .. action
+end
+
+local function task_focus_action()
+  return shortcuts.build_task_script_action("task_focus.sh")
+end
+
+local function task_capture_action()
+  return shortcuts.build_task_script_action("task_capture.sh")
 end
 
 local function bash_literal(value)
@@ -183,7 +320,7 @@ local function terminal_session_command(key, command)
       string.format("open -na %s --args -e /bin/zsh -lc %s", shell_quote(GHOSTTY_APP), shell_quote(command))
     )
   end
-  return open_terminal(command)
+  return shortcuts.build_terminal_session_command(command)
 end
 
 local function open_app_command(app_path, app_name)
@@ -292,6 +429,8 @@ if YAZE_ENABLED then
 end
 local OPEN_TERMINAL_ACTION = terminal_app_command()
 local TASK_FOCUS_ACTION = task_focus_action()
+local TASK_CAPTURE_ACTION = task_capture_action()
+local TASK_SOURCE_CONFIGURED = shortcuts.has_task_source(runtime_state)
 local Z3ED_ACTION = ""
 if Z3ED_OK and Z3ED_BIN and Z3ED_BIN ~= "" then
   local command = string.format(
@@ -344,6 +483,14 @@ shortcuts.global = {
     action = "open_task_focus",
     desc = "Open Task Focus",
     symbol = "⌘⌥D"
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "n",
+    action = "capture_task",
+    desc = "Capture Task",
+    symbol = "⌘⌥N",
+    requires = "task_source"
   },
   {
     mods = {"cmd", "alt"},
@@ -483,7 +630,8 @@ shortcuts.actions = {
   rebuild_and_reload = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh",
   open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh --tab home",
   open_task_focus = TASK_FOCUS_ACTION,
-  toggle_control_center = build_control_center_toggle_command(shortcuts.resolve_control_center_item_name(runtime_state)),
+  capture_task = TASK_CAPTURE_ACTION,
+  toggle_control_center = shortcuts.build_control_center_toggle_command(shortcuts.resolve_control_center_item_name(runtime_state)),
   open_help_center = help_center_action(),
   open_icon_browser = icon_browser_action(),
   open_sys_manual = sys_manual_action(),
@@ -566,6 +714,8 @@ local function all_shortcuts()
       table.insert(list, shortcut)
     elseif requires == "z3ed" and Z3ED_ACTION ~= "" then
       table.insert(list, shortcut)
+    elseif requires == "task_source" and TASK_SOURCE_CONFIGURED then
+      table.insert(list, shortcut)
     elseif requires == "window_manager" and wm_enabled then
       table.insert(list, shortcut)
     end
@@ -631,6 +781,7 @@ function shortcuts.generate_skhd_config()
     local formatted = shortcuts.format_for_skhd(shortcut)
     if formatted then
       table.insert(lines, string.format("# %s - %s", shortcut.desc, shortcut.symbol))
+      table.insert(lines, string.format("# barista-action: %s", shortcut.action))
       table.insert(lines, formatted)
       table.insert(lines, "")
     end

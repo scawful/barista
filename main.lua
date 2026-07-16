@@ -668,6 +668,7 @@ if shell_utils.file_exists(RUNTIME_CONTEXT_SCRIPT) then
   runtime_daemon.ensure_runtime_context_daemon(RUNTIME_CONTEXT_SCRIPT, {
     trace = trace_startup,
     force_restart = true,
+    lua_only = LUA_ONLY,
   })
 else
   runtime_daemon.stop_runtime_context_daemon({ trace = trace_startup })

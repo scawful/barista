@@ -1,6 +1,6 @@
 # Barista Performance & Safety Audit
 
-**Date:** 2026-07-15
+**Date:** 2026-07-16
 **Status:** Active runtime app-model path verified
 **Scope:** `main.lua`, `modules/`, `helpers/`, `plugins/`, `scripts/`
 
@@ -62,6 +62,17 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - `SwitchAudioSource` capability detection checks an explicit override, inherited `PATH`, and standard Homebrew prefixes; absent capability keeps all four route actions hidden
     - Lua-only/helper-missing, unsupported CoreAudio, `BARISTA_VOLUME_NATIVE_DISABLE=1`, and IPC-failure paths retain `plugins/volume.sh`
 *   **Result:** a 20-pair alternating live sample reduced median detail-refresh latency from 281.08 ms to 49.32 ms (82%, 5.70x) and p95 from 298.94 ms to 55.61 ms (81%, 5.38x), with no additional widget or polling timer.
+
+### 0d. Adaptive Media Cache Producer (Verified)
+*   **Files:** `scripts/runtime_context.sh`, `modules/runtime_daemon.lua`, `main.lua`
+*   **Update:**
+    - one versioned AppleScript snapshot now resolves Spotify/Music lifecycle, state, track, and artist in a single bounded call; malformed or timed-out responses fail closed into the legacy probes
+    - the media probe stays at one-second cadence while playing, backs off to two ticks for a paused/running player, and three ticks when no supported player is running
+    - media and output candidates are compared with the actual regular cache file before atomic publication, so unchanged snapshots retain their inode and modification time; missing targets, symlinks to files, and FIFOs are replaced rather than trusted, while directory targets (including symlinks to them) are rejected
+    - output topology remains checked every base tick for bounded route staleness, but unchanged rows are no longer rewritten; current-route failure leaves all rows unselected instead of fabricating the first route as current
+    - media AppleScript and `SwitchAudioSource` work is timeout-bounded, TSV fields and route counts are capped, and one current-output read is shared when media/output work is due together; the portable front-app/TCC path keeps its existing behavior
+    - explicit Lua-only launches now pass `BARISTA_LUA_ONLY=1` into the runtime-context daemon so a leftover compiled helper cannot silently reactivate on a restricted/work setup
+*   **Result:** the idle/no-player path drops from two AppleScript launches every second to one combined launch every three seconds, while explicit media actions still refresh immediately and the four-row popup/cache contract is unchanged. Before reload, unchanged live media/output caches were each replaced 10 times in 10.299 seconds; after reload, each held one inode/mtime across 10 samples spanning 9.45 seconds. A directional isolated sample reduced median explicit no-player refresh time from 78.543 ms to 64.710 ms (17.6%); system-load drift makes the live churn/call-count result the stronger signal.
 
 ### 1. Network & System Info (Mitigated)
 *   **File:** `helpers/system_info_widget.c`
@@ -218,7 +229,7 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
 2.  **Clock daemon coverage:** the current daemon path is verified live, but there is still no dedicated test coverage around `main.lua` startup instrumentation.
 3.  **Topology rebuild cost:** `simple_spaces.sh` is materially cheaper after removing dead popup rows, but full rebuild remains the dominant startup cost.
 4.  **Async I/O:** the current architecture is event-driven enough for daily use, but long-term migration to a fully async runtime remains the cleaner end state.
-5.  **Media cache steady-state churn:** `runtime_context.sh daemon` still refreshes media and output TSV caches every second. Its player resolution probes Music and Spotify through AppleScript and rewrites the cache snapshots even when playback state is unchanged; a future event/change-detected media sidecar is the next audio-path optimization.
+5.  **Fully event-driven media state:** the producer is now adaptive and change-detected, but Spotify/Music do not expose a shared portable event stream. A future native event source could remove the remaining bounded idle probe without weakening Lua-only/work-machine portability.
 
 ## Shell Script Optimization Summary
 - **AWK Variable Naming**: Standardized to avoid collisions.

@@ -8,6 +8,7 @@ TMP_DIR="$(mktemp -d)"
 BIN_DIR="$TMP_DIR/bin"
 LOG_FILE="$TMP_DIR/sketchybar.log"
 MEDIA_STUB="$TMP_DIR/media_control.sh"
+MEDIA_LOG="$TMP_DIR/media_control.log"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -47,6 +48,9 @@ chmod +x "$BIN_DIR/SwitchAudioSource"
 cat > "$MEDIA_STUB" <<'EOF'
 #!/bin/bash
 set -euo pipefail
+if [ -n "${BARISTA_TEST_MEDIA_LOG:-}" ]; then
+  printf '%s\n' "${1:-}" >> "$BARISTA_TEST_MEDIA_LOG"
+fi
 case "${1:-}" in
   status)
     printf 'player\tMusic\n'
@@ -64,6 +68,7 @@ case "${1:-}" in
 esac
 EOF
 chmod +x "$MEDIA_STUB"
+: > "$MEDIA_LOG"
 
 PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   NAME=volume \
@@ -72,6 +77,7 @@ PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
   BARISTA_SWITCH_AUDIO_SOURCE_BIN="$BIN_DIR/SwitchAudioSource" \
   BARISTA_MEDIA_CONTROL_SCRIPT="$MEDIA_STUB" \
+  BARISTA_TEST_MEDIA_LOG="$MEDIA_LOG" \
   BARISTA_TEST_SKETCHYBAR_LOG="$LOG_FILE" \
   "$SCRIPT"
 
@@ -99,6 +105,10 @@ grep -Fq -- '--set volume.output.2 drawing=on icon=󰓃 label=MacBook Pro Speake
   echo "FAIL: alternate output row should be visible" >&2
   exit 1
 }
+grep -Fxq -- 'outputs' "$MEDIA_LOG" || {
+  echo "FAIL: available output switching should load output routes" >&2
+  exit 1
+}
 
 : > "$LOG_FILE"
 PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
@@ -108,6 +118,7 @@ PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
   BARISTA_SWITCH_AUDIO_SOURCE_BIN="$BIN_DIR/SwitchAudioSource" \
   BARISTA_MEDIA_CONTROL_SCRIPT="$MEDIA_STUB" \
+  BARISTA_TEST_MEDIA_LOG="$MEDIA_LOG" \
   BARISTA_MEDIA_LABEL_MAX=32 \
   BARISTA_TEST_SKETCHYBAR_LOG="$LOG_FILE" \
   "$SCRIPT"
@@ -116,5 +127,33 @@ grep -Fq -- 'label=Now Playing: Girl, so confusing…' "$LOG_FILE" || {
   echo "FAIL: media row should truncate overly long labels without extra process work" >&2
   exit 1
 }
+
+: > "$LOG_FILE"
+: > "$MEDIA_LOG"
+PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+  NAME=volume \
+  SENDER=routine \
+  BARISTA_CONFIG_DIR="$ROOT_DIR" \
+  BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
+  BARISTA_SWITCH_AUDIO_SOURCE_BIN="$TMP_DIR/missing-switch-audio-source" \
+  BARISTA_MEDIA_CONTROL_SCRIPT="$MEDIA_STUB" \
+  BARISTA_TEST_MEDIA_LOG="$MEDIA_LOG" \
+  BARISTA_TEST_SKETCHYBAR_LOG="$LOG_FILE" \
+  "$SCRIPT"
+
+grep -Fxq -- 'status' "$MEDIA_LOG" || {
+  echo "FAIL: unavailable output switching should still load cached media status" >&2
+  exit 1
+}
+if grep -Fxq -- 'outputs' "$MEDIA_LOG"; then
+  echo "FAIL: unavailable output switching should not rediscover unusable output routes" >&2
+  exit 1
+fi
+for index in 1 2 3 4; do
+  grep -Fq -- "--set volume.output.$index drawing=off label=" "$LOG_FILE" || {
+    echo "FAIL: unavailable output switching should keep route $index hidden" >&2
+    exit 1
+  }
+done
 
 printf 'test_volume_plugin.sh: ok\n'

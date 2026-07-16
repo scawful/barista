@@ -163,10 +163,14 @@ sketchybar --reload
 - Popup anchors no longer subscribe to `mouse.exited.global` in normal runtime. This trades automatic pointer-exit dismissal for reliable click-open behavior; second-click, action rows, and space/display/wake events still close menus.
 - The global popup manager dismisses on real `space_change`, not visual-only `space_active_refresh`; focused-space visual repairs should not close a popup that was just opened.
 - Left-side popup anchors use a shared dark idle chip style from
-  `modules/ui_builder.lua`. Anchor hover scripts restore configured idle
-  background/border props through `plugins/lib/common.sh` instead of clearing
-  the background, so Apple, Triforce, Music, Control Center, and Front App keep
-  the same geometry after hover.
+  `modules/ui_builder.lua`. The native `popup_anchor` helper and shell plugins
+  consume the same `BARISTA_ANCHOR_*` values to restore configured idle
+  background/border props instead of clearing the background, so Apple,
+  Triforce, Music, Control Center, and Front App keep the same geometry after
+  hover.
+- Native-helper setups resolve the Apple anchor to `bin/popup_anchor`; Lua-only
+  and helper-missing setups retain `plugins/popup_anchor.sh`. Popup action-row
+  hover uses direct-argv `bin/popup_hover` rather than a nested shell command.
 
 Regression checklist before declaring popup clicks fixed:
 ```bash
@@ -190,7 +194,7 @@ such as `yaze.recent_roms` and `emacs.recent_org`, producing repeated
 are ever removed.
 
 ### 8. Apple Menu Reload Stability
-**Current path**: `modules/menu.lua` + `modules/apple_menu_enhanced.lua` + `helpers/popup_anchor.c` + `plugins/popup_anchor.sh`
+**Current path**: `modules/menu.lua` + `modules/apple_menu_enhanced.lua` + `helpers/popup_anchor.c` (native) / `plugins/popup_anchor.sh` (fallback)
 - The Apple menu hover now highlights the anchor, but click still opens the popup.
 - The hover highlight now clears itself after the short bar timer, so anchors do not stay lit while you linger.
 - `apple_menu` still uses the popup-anchor helper for hover/click handling, but it no longer sets `POPUP_OPEN_ON_ENTER=1` and normal runtime does not subscribe it to `mouse.exited.global`.
@@ -208,6 +212,9 @@ are ever removed.
 - `plugins/volume_click.sh` is only a compatibility wrapper for the same toggle-then-refresh behavior; the live item uses the generated direct click script.
 - The popup now surfaces output route, now-playing state, and transport controls through `scripts/media_control.sh`, plus mute and Sound settings.
 - `scripts/media_control.sh` prefers the shared `scripts/runtime_context.sh` cache for player state and output routes, so the popup and output switch rows reuse the same runtime snapshot.
+- If `SwitchAudioSource` is not installed, the refresh skips output-route
+  discovery and leaves those action rows hidden instead of regenerating an
+  unusable empty route cache on every click. Now Playing still refreshes.
 - Long now-playing labels are truncated in the shell script before they hit SketchyBar, keeping the popup width predictable without adding another subprocess to the routine update path.
 - This keeps the volume anchor aligned with the other right-side widgets that
   toggle immediately and refresh detail state asynchronously.

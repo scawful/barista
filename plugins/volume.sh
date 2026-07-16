@@ -101,12 +101,14 @@ if [ -x "$MEDIA_CONTROL_SCRIPT" ]; then
     esac
   done < <("$MEDIA_CONTROL_SCRIPT" status 2>/dev/null || true)
 
-  while IFS=$'\t' read -r kind index selected output_name; do
-    [ "$kind" = "output" ] || continue
-    [ -n "$index" ] || continue
-    OUTPUT_SWITCH_NAMES[$index]="$output_name"
-    OUTPUT_SWITCH_SELECTED[$index]="$selected"
-  done < <("$MEDIA_CONTROL_SCRIPT" outputs 2>/dev/null || true)
+  if [ -x "$SWITCH_AUDIO_SOURCE_BIN" ]; then
+    while IFS=$'\t' read -r kind index selected output_name; do
+      [ "$kind" = "output" ] || continue
+      [ -n "$index" ] || continue
+      OUTPUT_SWITCH_NAMES[$index]="$output_name"
+      OUTPUT_SWITCH_SELECTED[$index]="$selected"
+    done < <("$MEDIA_CONTROL_SCRIPT" outputs 2>/dev/null || true)
+  fi
 fi
 
 if [ -n "$MEDIA_CURRENT_OUTPUT" ]; then

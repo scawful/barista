@@ -57,6 +57,7 @@ run_test("ui_builder: anchor chip style and hover env", function()
     widget_corner_radius = 6,
     hover_border_color = "0x60111111",
     hover_border_width = 2,
+    SKETCHYBAR_BIN = "/opt/homebrew/bin/sketchybar",
     env_prefix = function(vars)
       return string.format(
         "IDLE=%s HOVER=%s BORDER=%s ",
@@ -76,6 +77,7 @@ run_test("ui_builder: anchor chip style and hover env", function()
   assert_equal(env.BARISTA_ANCHOR_IDLE_DRAWING, "on", "hover env should preserve idle drawing")
   assert_equal(env.BARISTA_ANCHOR_HOVER_BORDER_WIDTH, "2", "hover env should pass border width")
   assert_equal(env.BARISTA_ANCHOR_HOVER_BORDER_COLOR, "0x60111111", "hover env should pass border color")
+  assert_equal(env.BARISTA_SKETCHYBAR_BIN, "/opt/homebrew/bin/sketchybar", "hover env should pass the resolved SketchyBar binary")
   assert_equal(ui.anchor_script("/tmp/plugin.sh", ctx), "IDLE=0x18313a46 HOVER=0x28505a6a BORDER=2 /tmp/plugin.sh", "anchor_script should prefix hover state env")
 end)
 

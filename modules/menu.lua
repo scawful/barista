@@ -304,6 +304,8 @@ function menu.render_all_menus(ctx)
       popup_toggle_action = ctx.popup_toggle_action,
       popup_toggle_script = ctx.popup_toggle_script,
       popup_anchor_script = ctx.popup_anchor_script,
+      SKETCHYBAR_BIN = ctx.SKETCHYBAR_BIN,
+      sketchybar_bin = ctx.sketchybar_bin,
       apple_menu_prepared = ctx.prepared_menus and ctx.prepared_menus.apple_menu or nil,
     })
     merge_metadata(enhanced_meta)

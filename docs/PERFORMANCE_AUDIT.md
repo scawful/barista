@@ -46,6 +46,7 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - `front_app_context.sh` prefers the cached front-app state before falling back to direct yabai/System Events discovery
     - `media_control.sh` prefers cached player/output state before falling back to direct AppleScript / `SwitchAudioSource`
     - the volume popup now exposes cached output routes and switches outputs by cached index instead of rediscovering devices on every popup refresh
+    - when `SwitchAudioSource` is unavailable, the volume popup skips output-route discovery entirely, keeps the unusable route rows hidden, and still reads cached Now Playing state; an interleaved local profile reduced median refresh work from 292 ms to 238 ms (19%)
     - the compiled helper drains a per-refresh autorelease pool on every daemon iteration and explicitly closes task pipe handles, bounding descriptor use and reducing Foundation task/data retention across long-running sessions
     - shell smoke tests now cover the helper delegation path, front-app fallback behavior, daemon cache warming, and cached output switching
 *   **Result:** the hottest front-app / spaces path no longer depends on the shell implementation of `runtime_context.sh`, while audio continues to share the same cache surface.
@@ -124,13 +125,17 @@ collection, task snapshots, and space visuals run on explicit event paths.
 *   **Result:** the control-center runtime now matches the simplified popup and avoids unnecessary work on each refresh.
 
 ### 3. Popup & Submenu Execution (Resolved)
-*   **File:** `helpers/popup_hover.c`
-*   **Update:** Replaced `system()` with `execlp()`.
-*   **Result:** Eliminates shell parsing and one fork per hover event. Subsecond latency on popups.
+*   **Files:** `helpers/popup_hover.c`, `helpers/popup_anchor.c`, `main.lua`, `modules/menu.lua`, `modules/ui_builder.lua`
+*   **Update:**
+    - `popup_hover` now passes a bounded argument vector directly to `execvp()` instead of rebuilding a command and routing it through `sh -c`
+    - popup row names and properties remain single arguments, removing shell interpolation from the pointer hot path
+    - the Apple anchor now selects the compiled `popup_anchor` helper through the normal runtime-backend resolver, with the shell implementation retained for Lua-only and helper-missing setups
+    - the enhanced Apple-menu context forwards the resolved absolute SketchyBar binary to the native anchor, so launchd does not depend on Homebrew being present in `PATH`
+*   **Result:** a 400-event no-op benchmark reduced popup-row hover median from 6.39 ms to 2.87 ms (55%); a 30-pair alternating live Apple-anchor sample reduced median handler time from 22.58 ms to 6.54 ms (71%) and p95 from 40.86 ms to 12.03 ms.
 
 ### 3a. Anchor Chip Styling (Verified)
-*   **Files:** `modules/ui_builder.lua`, `modules/items_left.lua`, `modules/apple_menu_enhanced.lua`, `plugins/lib/common.sh`, `plugins/popup_anchor.sh`
-*   **Update:** Left-side popup anchors share one filled idle chip and hover-restore contract. Hover scripts now restore configured idle background/border props instead of always clearing the background to transparent.
+*   **Files:** `modules/ui_builder.lua`, `modules/items_left.lua`, `modules/apple_menu_enhanced.lua`, `helpers/popup_anchor.c`, `plugins/lib/common.sh`, `plugins/popup_anchor.sh`
+*   **Update:** Left-side popup anchors share one filled idle chip and `BARISTA_ANCHOR_*` hover-restore contract. The native anchor helper and shell fallbacks both restore configured idle background/border props instead of always clearing the background to transparent.
 *   **Result:** Apple, Triforce, Music, Control Center, and Front App can keep a consistent visual language without adding query-before-toggle click controllers.
 
 ### 3b. SketchyBar Binary Resolution + Plugin Runaway Guard (Resolved)
@@ -201,7 +206,7 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
 2.  **Clock daemon coverage:** the current daemon path is verified live, but there is still no dedicated test coverage around `main.lua` startup instrumentation.
 3.  **Topology rebuild cost:** `simple_spaces.sh` is materially cheaper after removing dead popup rows, but full rebuild remains the dominant startup cost.
 4.  **Async I/O:** the current architecture is event-driven enough for daily use, but long-term migration to a fully async runtime remains the cleaner end state.
-5.  **Mixed runtime boundary:** front-app context is now helper-backed, but media/output state still depends on the shell runtime and AppleScript / `SwitchAudioSource`.
+5.  **Mixed runtime boundary:** front-app context is helper-backed, but volume detail still depends on two serial AppleScript reads and multiple SketchyBar row updates. A future click-only native helper should use CoreAudio plus the existing media/output caches and one bounded NUL-delimited Mach argument payload. Cache-derived labels must not pass through `sketchybar.h`'s quote parser; retain the current shell fallback for Lua-only, unsupported-device, and protocol-drift cases.
 
 ## Shell Script Optimization Summary
 - **AWK Variable Naming**: Standardized to avoid collisions.

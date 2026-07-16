@@ -1,5 +1,16 @@
 # SketchyBar Configuration Changelog
 
+## July 15, 2026 - Popup Responsiveness
+
+- `helpers/popup_hover.c` now calls SketchyBar with a bounded argument vector
+  instead of invoking `sh -c`; the focused no-op benchmark improved median row
+  hover latency from 6.39 ms to 2.87 ms.
+- `main.lua` resolves the compiled `popup_anchor` for native-helper setups and
+  keeps the shell anchor as the portable fallback; the enhanced Apple menu now
+  forwards the resolved SketchyBar binary to either implementation.
+- `plugins/volume.sh` skips output-route discovery when `SwitchAudioSource` is
+  unavailable, while preserving cached media status and hiding unusable rows.
+
 ## March 1, 2026 - Performance Overhaul & Regression Testing
 
 ### 🏗️ Architecture: main.lua Decomposition (Phase 1)
@@ -32,7 +43,8 @@ Decomposed the monolithic `main.lua` (751 → 280 lines) into focused modules:
 `plugins/refresh_spaces.sh` merged 3 separate `yabai -m query` calls into 1, deriving display/space/active state via jq from the same payload.
 
 #### Popup & Submenu Performance
-- `helpers/popup_hover.c`: Replaced `system()` with `execlp()` — saves one fork+exec per hover event
+- `helpers/popup_hover.c`: Replaced `system()` with `execlp()`; the remaining
+  `sh -c` boundary was removed in the July follow-up above.
 - `helpers/submenu_hover.c` and `helpers/popup_manager.c`: Now read item lists from `$TMPDIR/sketchybar_submenu_list` and `$TMPDIR/sketchybar_popup_list` at startup (written by `submenu_registry.lua`), with hardcoded fallback for backward compatibility
 - Shell fallback scripts (`submenu_hover.sh`, `popup_manager.sh`) replaced with thin stubs
 

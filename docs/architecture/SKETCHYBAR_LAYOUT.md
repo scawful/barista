@@ -87,9 +87,16 @@ and the global popup manager listens to real `space_change` rather than the
 visual-only `space_active_refresh`; both events can arrive during the same focus
 transition as a click. Use a second click, popup action rows, or real
 space/display/wake events to dismiss.
-Left-side popup anchors share a filled idle chip and hover-restore style through
-`modules/ui_builder.lua` plus `plugins/lib/common.sh`; hover should restore that
-configured idle chip instead of clearing the anchor to transparent.
+Left-side popup anchors share a filled idle chip and `BARISTA_ANCHOR_*`
+hover-restore contract through `modules/ui_builder.lua`, implemented by
+`helpers/popup_anchor.c` or the `plugins/lib/common.sh` fallback. Hover should
+restore that configured idle chip instead of clearing the anchor to transparent.
+The Apple anchor uses compiled `bin/popup_anchor` when native helpers are
+available and falls back to `plugins/popup_anchor.sh` in Lua-only or portable
+setups. Both receive the resolved SketchyBar binary through
+`BARISTA_SKETCHYBAR_BIN`, including the enhanced Apple-menu context. Actionable
+popup rows use `bin/popup_hover`; that helper executes the
+SketchyBar update directly without a nested `sh -c`.
 
 ## Events and triggers
 

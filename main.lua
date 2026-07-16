@@ -172,7 +172,7 @@ local function compiled_script(binary_name, fallback)
 end
 
 local HOVER_SCRIPT         = compiled_script("popup_hover",    PLUGIN_DIR .. "/popup_hover.sh")
-local POPUP_ANCHOR_SCRIPT  = PLUGIN_DIR .. "/popup_anchor.sh"
+local POPUP_ANCHOR_SCRIPT  = compiled_script("popup_anchor",   PLUGIN_DIR .. "/popup_anchor.sh")
 local SUBMENU_HOVER_SCRIPT = compiled_script("submenu_hover",  PLUGIN_DIR .. "/submenu_hover.sh")
 local POPUP_MANAGER_SCRIPT = compiled_script("popup_manager",  PLUGIN_DIR .. "/popup_manager.sh")
 local POPUP_MANAGER_SCRIPT_CMD = shell_utils.env_prefix({

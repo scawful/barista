@@ -15,6 +15,13 @@ static char state_dir[PATH_MAX];
 static char state_path[PATH_MAX];
 static char parent_state_path[PATH_MAX];
 
+static const char *sketchybar_bin(void) {
+  const char *value = getenv("BARISTA_SKETCHYBAR_BIN");
+  if (value && value[0] != '\0') return value;
+  value = getenv("SKETCHYBAR_BIN");
+  return value && value[0] != '\0' ? value : "sketchybar";
+}
+
 static void ensure_dir(const char *path) {
   struct stat st;
   if (stat(path, &st) == -1) {
@@ -143,7 +150,7 @@ static int run_sketchybar_set(const char *name, const char *const props[], size_
 
   char *argv[16];
   size_t argc = 0;
-  argv[argc++] = "sketchybar";
+  argv[argc++] = (char *)sketchybar_bin();
   if (animate) {
     argv[argc++] = "--animate";
     argv[argc++] = (char *)animation_curve();

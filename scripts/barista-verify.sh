@@ -62,6 +62,7 @@ BINARIES=(
   "state_manager"
   "widget_manager"
   "space_manager"
+  "runtime_context_helper"
   "space_visual_helper"
   "volume_popup_helper"
   "clock_widget"

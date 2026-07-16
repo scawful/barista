@@ -74,6 +74,15 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - explicit Lua-only launches now pass `BARISTA_LUA_ONLY=1` into the runtime-context daemon so a leftover compiled helper cannot silently reactivate on a restricted/work setup
 *   **Result:** the idle/no-player path drops from two AppleScript launches every second to one combined launch every three seconds, while explicit media actions still refresh immediately and the four-row popup/cache contract is unchanged. Before reload, unchanged live media/output caches were each replaced 10 times in 10.299 seconds; after reload, each held one inode/mtime across 10 samples spanning 9.45 seconds. A directional isolated sample reduced median explicit no-player refresh time from 78.543 ms to 64.710 ms (17.6%); system-load drift makes the live churn/call-count result the stronger signal.
 
+### 0e. Change-Driven Native Front-App Publication (Verified)
+*   **Files:** `helpers/runtime_context_helper.m`, `tests/test_runtime_context_helper_publication.sh`, `tests/test_runtime_context_daemon_exec.sh`, `scripts/check_scripts.sh`
+*   **Update:**
+    - the native helper compares the deterministic front-app TSV against an existing regular file before atomic publication, preserving inode and modification time when the bytes are identical
+    - comparison uses a no-follow, nonblocking descriptor, exact-size validation, a fixed 4 KiB buffer, binary comparison, and an EOF check; symlinks, FIFOs, directories, NUL suffixes, and oversized prefix-equal files cannot be accepted as unchanged
+    - missing, changed, corrupt, symlinked-file, FIFO, and dangling-link targets are still atomically repaired; directory targets, including symlinks to directories, fail closed
+    - a Darwin-only source-compiled test now covers the real Objective-C publisher and daemon lifecycle instead of relying only on shell helper stubs; the daemon-exec test waits for helper readiness before checking the settled process tree
+*   **Result:** the unchanged live baseline produced 11 inode/mtime identities across 11 samples spanning 10.002 seconds despite one content hash. After rebuilding and reloading, 11 live samples retained one inode/mtime/hash identity; the helper remained the single child of the shell supervisor and no Barista runaways were detected. The focused native test also holds identity across explicit refreshes and daemon ticks while still replacing changed and corrupt snapshots. Per-tick yabai discovery remains unchanged.
+
 ### 1. Network & System Info (Mitigated)
 *   **File:** `helpers/system_info_widget.c`
 *   **Update:** Batched 5 separate `system()` calls into a single `sketchybar` invocation.

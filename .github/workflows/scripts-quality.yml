@@ -11,10 +11,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Shellcheck
+      - name: Install shell tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck
+          sudo apt-get install -y shellcheck lua5.4
+          sudo ln -sf /usr/bin/lua5.4 /usr/local/bin/lua
 
       - name: Install shfmt
         run: |

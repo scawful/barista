@@ -101,9 +101,33 @@ if ok and state_module then
     assert_equal(normalized.widgets.volume, true, "missing widget default applied")
     assert_equal(normalized.modes.widget_daemon, "auto", "widget daemon mode default applied")
     assert_equal(normalized.integrations.control_center.item_name, "control_center", "control_center item name default applied")
+    assert_equal(normalized.widgets.task_focus, false, "task focus should be opt-in")
+    assert_equal(normalized.menus.calendar.task_provider, "files", "calendar should use the portable file provider")
     assert_type(normalized.menus.calendar.task_sources, "table", "calendar task source defaults present")
-    assert_equal(normalized.menus.calendar.task_sources[1], "~/src/folio/tasks/active.md", "calendar should default to the canonical personal task board")
-    assert_equal(normalized.menus.calendar.task_sources[2], "~/src/hobby/oracle-of-secrets/Docs/oracle.org", "calendar should default to the live Oracle task file")
+    assert_equal(#normalized.menus.calendar.task_sources, 0, "calendar task sources should be machine-local")
+    assert_equal(normalized.menus.calendar.meeting_cache_file, "", "calendar meeting cache should be opt-in")
+    assert_equal(normalized.menus.calendar.meeting_cache_max_age_seconds, 86400, "calendar meeting cache should expire after 24 hours by default")
+  end)
+
+  run_test("state.normalize: preserves explicit task configuration", function()
+    local normalized = state_module.normalize({
+      widgets = { task_focus = true },
+      menus = {
+        calendar = {
+          task_provider = "custom",
+          task_sources = { "/tmp/work.md" },
+          meeting_cache_file = "/tmp/events.tsv",
+          meeting_cache_max_age_seconds = 7200,
+          custom_option = "keep",
+        },
+      },
+    })
+    assert_equal(normalized.widgets.task_focus, true, "explicit task focus preserved")
+    assert_equal(normalized.menus.calendar.task_provider, "custom", "explicit task provider preserved")
+    assert_equal(normalized.menus.calendar.task_sources[1], "/tmp/work.md", "explicit task source preserved")
+    assert_equal(normalized.menus.calendar.meeting_cache_file, "/tmp/events.tsv", "explicit meeting cache preserved")
+    assert_equal(normalized.menus.calendar.meeting_cache_max_age_seconds, 7200, "explicit meeting cache freshness preserved")
+    assert_equal(normalized.menus.calendar.custom_option, "keep", "unrelated calendar setting preserved")
   end)
 else
   run_test("state module: load check (skipped - module not available in test env)", function()

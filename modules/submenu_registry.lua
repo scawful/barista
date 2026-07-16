@@ -22,21 +22,21 @@ end
 
 --- Register submenu section names so C helpers can discover them.
 --- Call this after menus are rendered.
-function M.write_submenu_list(submenu_names)
-  local tmpdir = os.getenv("TMPDIR") or "/tmp"
+function M.write_submenu_list(submenu_names, directory)
+  local tmpdir = directory or os.getenv("TMPDIR") or "/tmp"
   write_list(tmpdir .. "/sketchybar_submenu_list", submenu_names)
 end
 
 --- Register popup parent names for the popup_manager.
-function M.write_popup_list(popup_names)
-  local tmpdir = os.getenv("TMPDIR") or "/tmp"
+function M.write_popup_list(popup_names, directory)
+  local tmpdir = directory or os.getenv("TMPDIR") or "/tmp"
   write_list(tmpdir .. "/sketchybar_popup_list", popup_names)
 end
 
 --- Convenience: write both lists at once.
-function M.register(popups, submenus)
-  if popups then M.write_popup_list(popups) end
-  if submenus then M.write_submenu_list(submenus) end
+function M.register(popups, submenus, directory)
+  if popups then M.write_popup_list(popups, directory) end
+  if submenus then M.write_submenu_list(submenus, directory) end
 end
 
 return M

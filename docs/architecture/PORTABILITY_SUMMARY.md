@@ -1,6 +1,9 @@
 # Portability Implementation Summary
 
-This document summarizes the portability improvements made to enable easy sharing and deployment across different users and machines.
+This document summarizes the active portability boundaries used to share and
+deploy Barista across different users and machines. Machine-local task paths,
+work apps, and integration credentials are intentionally excluded from the
+committed defaults.
 
 ## 🎯 Goals Achieved
 
@@ -8,7 +11,7 @@ This document summarizes the portability improvements made to enable easy sharin
 - **Minimal**: Clean baseline with no personal integrations
 - **Cozy**: Warm, low-maintenance setup with yabai disabled
 - **Personal**: Full ROM hacking + Emacs setup
-- **Work**: Emacs + halext-org, no ROM hacking
+- **Work**: Emacs + work-oriented spaces, with personal integrations off
 - **Restricted Work**: Script-only work-laptop setup without yabai or compiled helpers
 
 ### 2. ✅ Multi-Machine Support
@@ -17,16 +20,15 @@ This document summarizes the portability improvements made to enable easy sharin
 - Clean separation of machine-specific vs. user-specific config
 
 ### 3. ✅ Easy Installation
-- One-command installer: `./install.sh`
+- One-command installer: `./scripts/install.sh`
 - Automatic dependency checking
 - Interactive profile selection
 - Builds all components automatically
 
 ### 4. ✅ GitHub-Ready
-- Professional README with badges
+- Focused README and install guidance
 - MIT License
-- Contributing guidelines
-- Comprehensive documentation
+- Architecture and troubleshooting documentation
 - Clean .gitignore
 
 ## 📂 Profile System
@@ -38,7 +40,7 @@ profiles/
 ├── minimal.lua      # Template - Clean, no integrations
 ├── cozy.lua         # Warm, simple setup
 ├── personal.lua     # scawful personal - ROM hacking + Emacs
-└── work.lua         # Work - Emacs + halext-org
+└── work.lua         # Work - Emacs + work spaces; local extras opt in
 ```
 
 ### How It Works
@@ -51,17 +53,16 @@ profiles/
    }
    ```
 
-2. **Or via Environment**:
+2. **Or via Environment for one reload**:
    ```bash
    export SKETCHYBAR_PROFILE=work
-   sketchybar --reload
+   ./plugins/reload_sketchybar.sh
    ```
 
 3. **Profile Loading** (`modules/profile.lua`):
    - Loads selected profile
    - Merges appearance/widgets/integrations
-   - Adds custom paths and menu items
-   - Runs init hooks
+   - Applies profile appearance, widget, integration, mode, and space defaults
 
 ### Profile Structure
 
@@ -115,26 +116,34 @@ git clone https://github.com/scawful/barista ~/.config/sketchybar
 cd ~/.config/sketchybar
 
 # Run installer
-./install.sh
+./scripts/install.sh
 # Select minimal or cozy profile
 
 # Done! SketchyBar starts with clean config
 ```
 
-### For Work Computer:
+### Install a New Work Computer:
+
+Run `./scripts/install.sh` and select Work when prompted. The installer owns
+dependencies, the initial build, service configuration, and startup.
+
+### Apply Work Defaults to an Existing Runtime:
 
 ```bash
-# Clone repository
-git clone https://github.com/scawful/barista ~/.config/sketchybar
-cd ~/.config/sketchybar
-
-# Run installer
-./install.sh
-# Select option 3 (work profile)
-
-# Configure halext-org
-# Shift-click Apple menu → Integrations tab → halext-org section
+# Apply normal Work defaults
+./scripts/setup_machine.sh --yes \
+  --profile-variant work \
+  --panel-mode tui \
+  --runtime-backend auto \
+  --skip-fonts \
+  --report
 ```
+
+Work setup explicitly disables personal Oracle/Music/Journal/NERV/Yaze state,
+sets the task provider to `files`, clears task, syshelp, and meeting-cache
+paths, removes stale generated task-capture bindings, and leaves Task Pulse
+off. Halext is an opt-in local integration, not a Work-profile requirement.
+Use `--restricted-work` instead for the Lua-only/no-yabai lane.
 
 ### Creating Custom Profile:
 
@@ -145,11 +154,8 @@ cp profiles/minimal.lua profiles/design.lua
 # Edit profile
 vim profiles/design.lua
 
-# Activate
-echo '{"profile": "design"}' > state.json
-
-# Reload
-sketchybar --reload
+# Activate without replacing the rest of state.json; this reloads safely.
+./scripts/set_mode.sh design
 ```
 
 ## 🔧 Technical Implementation
@@ -197,8 +203,40 @@ end
 ### Work (profiles/work.lua)
 - ❌ No ROM hacking
 - ✅ Emacs for org-mode
-- ✅ halext-org integration
+- ❌ Halext and dormant experimental integration flags stay off until locally enabled
+- ❌ No shared task source or Task Pulse state
 - ✅ Work-appropriate space setup
+
+### Machine-local task tracking
+
+Committed task defaults are portable: `menus.calendar.task_sources=[]`,
+`menus.calendar.task_provider="files"`, and `widgets.task_focus=false`. A
+personal or work Mac can opt in through ignored `state.json` or
+`barista_config.lua`:
+
+```json
+{
+  "widgets": { "task_focus": true },
+  "menus": {
+    "calendar": {
+      "task_provider": "files",
+      "task_sources": ["~/path/to/tasks.md"]
+    }
+  }
+}
+```
+
+Use `task_provider="syshelp"` only on a machine that intentionally provides the
+`syshelp plan tasks` CLI. The conditional `⌘⌥N` capture shortcut is generated
+only when a source exists; fresh and Work installs do not expose it. If launchd
+cannot find `syshelp`, set ignored local `menus.calendar.syshelp_path` to its
+absolute executable path rather than committing that machine-specific path.
+
+The schema v2 upgrade removes only the exact former two-path personal default
+from non-Personal states without an explicit task or meeting opt-in. It
+preserves Personal states and custom source lists; applying the Work variant is
+the deliberate operation that clears any remaining local task and meeting
+configuration.
 
 ### Cozy (profiles/cozy.lua)
 - ❌ No required window manager
@@ -206,156 +244,21 @@ end
 - ✅ Simple widgets
 
 ### Minimal (profiles/minimal.lua)
-- ❌ No integrations
-- ✅ All widgets enabled
+- ❌ No personal integrations
+- ✅ Conservative core-widget defaults
 - ✅ Sensible defaults
 - ✅ Clean starting point
 
-## 🐛 Fixes Included
+## 🚀 Current Distribution
 
-### 1. Submenu Hover Inconsistency
-**Problem**: Submenus would close unexpectedly or not highlight properly
-
-**Fix**:
-- Added `menu.halext.section` to submenu list
-- Increased `CLOSE_DELAY` from 0.15s to 0.25s
-- Made delay configurable via `SUBMENU_CLOSE_DELAY` env var
-
-**File**: `helpers/submenu_hover.c`
-
-### 2. halext Module Loading
-**Problem**: Module loaded unconditionally, causing errors
-
-**Fix**:
-- Conditional loading based on `integration_enabled()` function
-- Matches yaze/emacs pattern
-- Only loads when profile enables it
-
-**File**: `main.lua`
-
-## 📝 Documentation Created
-
-### User-Facing
-- **README.md**: Professional project overview, quick start, features
-- **CONTRIBUTING.md**: How to contribute, coding standards, testing
-- **LICENSE**: MIT license
-- **install.sh**: Automated installer with profile selection
-
-### Developer-Facing
-- **docs/CONTROL_PANEL_V2.md**: Complete GUI documentation
-- **docs/IMPROVEMENTS.md**: Architecture and performance details
-- **docs/HOMEBREW_TAP.md**: Homebrew distribution strategy
-
-## 🎨 C Component Customization
-
-### Configurable Parameters
-
-All C helpers now support customization:
-
-#### 1. Submenu Hover Delay
-```bash
-export SUBMENU_CLOSE_DELAY=0.3  # seconds
-sketchybar --reload
-```
-
-#### 2. Popup Hover Color
-```c
-// helpers/popup_hover.c
-static const char *DEFAULT_HIGHLIGHT = "0x40f5c2e7";
-// Rebuild after changing
-```
-
-#### 3. Submenu Hover Colors
-```c
-// helpers/submenu_hover.c
-static const char *HOVER_BG = "0x80cba6f7";
-static const char *IDLE_BG = "0x00000000";
-// Rebuild after changing
-```
-
-### Future: Control Panel Integration
-
-Plan to add to Control Panel → Advanced tab:
-- Slider for submenu close delay
-- Color pickers for hover backgrounds
-- Live preview of C component settings
-- Save to environment or config file
-
-## 📦 Homebrew Tap Strategy
-
-### Proposed Tap: `homebrew-halext`
-
-```bash
-# Future usage
-brew tap scawful/halext
-brew install halext-org          # Server
-brew install halext-cli          # CLI client
-brew install sketchybar-halext   # SketchyBar integration
-```
-
-See `docs/HOMEBREW_TAP.md` for complete strategy.
-
-## 🚀 Next Steps for GitHub
-
-### 1. Create GitHub Repository
-
-```bash
-# Create repo (if not exists)
-gh repo create barista --public --description "Advanced SketchyBar configuration with native control panel"
-
-# Add remote
-git remote add origin https://github.com/scawful/barista.git
-
-# Push
-git push -u origin master
-```
-
-### 2. Add GitHub-Specific Files
-
-Already created:
-- ✅ README.md with badges
-- ✅ LICENSE (MIT)
-- ✅ CONTRIBUTING.md
-- ✅ .gitignore
-
-Still needed:
-- [ ] CHANGELOG.md
-- [ ] .github/ISSUE_TEMPLATE/
-- [ ] .github/PULL_REQUEST_TEMPLATE.md
-- [ ] .github/workflows/ (CI/CD)
-
-### 3. Create First Release
-
-```bash
-# Tag release
-git tag -a v1.0.0 -m "Initial public release"
-git push origin v1.0.0
-
-# Create GitHub release
-gh release create v1.0.0 \
-  --title "Version 1.0.0 - Initial Release" \
-  --notes "See README.md for features"
-```
-
-### 4. Share with Chris
-
-```bash
-# Chris can install with:
-git clone https://github.com/scawful/barista ~/.config/sketchybar
-cd ~/.config/sketchybar
-./install.sh
-# Select "minimal" profile
-```
-
-### 5. Deploy to Work Computer
-
-```bash
-# On work Mac:
-git clone https://github.com/scawful/barista ~/.config/sketchybar
-cd ~/.config/sketchybar
-./install.sh
-# Select "work" profile
-```
+The repository is already published at `scawful/barista` and uses GitHub
+Actions. Install through `scripts/install.sh`; use `bin/barista-update` only
+when the live runtime itself is a Git checkout. A copied install should be
+updated from its source checkout by rerunning the installer. Use
+`scripts/work_mac_sync.sh` or
+`scripts/update_work_mac.sh` for an explicitly targeted work Mac. Do not copy
+ignored `state.json`, `barista_config.lua`, task paths, or local extension files
+between personal and work machines.
 
 ## 📈 Benefits Summary
 
@@ -365,11 +268,11 @@ cd ~/.config/sketchybar
 - ✅ Version-controlled profiles
 - ✅ No need to maintain separate forks
 
-### For Chris
+### For Work Setups
 - ✅ One-command installation
 - ✅ No confusing ROM hacking stuff
 - ✅ Clean minimal setup
-- ✅ Can customize without breaking yours
+- ✅ Machine-local customization without leaking personal paths
 
 ### For Community
 - ✅ Professional open-source project
@@ -379,33 +282,16 @@ cd ~/.config/sketchybar
 
 ## 🎉 Success Metrics
 
-- **Portability**: 3 profiles supporting different use cases
-- **Performance**: 10-50x faster than shell scripts
-- **Documentation**: 2000+ lines of comprehensive docs
+- **Portability**: five profile variants, including a restricted work lane
+- **Performance**: event-driven popup detail paths plus optional compiled helpers
+- **Privacy**: shared defaults contain no task source or personal integration state
 - **Code Quality**: Clean, modular, well-tested
-- **User Experience**: One-command install, GUI configuration
+- **User Experience**: installer, machine-profile setup, native/TUI configuration
 
-## 🔮 Future Enhancements
+## Maintenance Boundaries
 
-### Short Term
-- [ ] Add CHANGELOG.md
-- [ ] GitHub Actions CI
-- [ ] More profile examples
-- [ ] Screenshots for README
-
-### Medium Term
-- [ ] Control Panel C component settings
-- [ ] Profile switcher in menu
-- [ ] Export/import profiles
-- [ ] Profile validation
-
-### Long Term
-- [ ] Homebrew tap for halext-org
-- [ ] Profile marketplace
-- [ ] Cloud sync profiles
-- [ ] Visual profile editor
-
----
-
-**Status**: ✅ Ready for GitHub upload
-**Next Action**: Push to GitHub and share installation link
+- Keep committed task sources empty.
+- Keep personal workflow paths in ignored local config or interface extensions.
+- Treat Halext and workspace status as opt-in until their active runtime paths
+  and credential handling are verified.
+- Re-run the Work privacy setup when preparing a managed or shared machine.

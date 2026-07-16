@@ -17,6 +17,15 @@ run_test("profile integrations: personal surfaces are opt-in", function()
   end
 end)
 
+run_test("profile integrations: unfinished work sources stay disabled", function()
+  local work = require("profiles.work")
+  assert_equal(work.integrations.halext, false, "work halext integration")
+  assert_equal(work.integrations.oracle, false, "work Oracle integration")
+  assert_equal(work.integrations.music, false, "work music integration")
+  assert_equal(work.widgets.cpp_build_status, nil, "work should not advertise a dormant C++ widget")
+  assert_equal(work.widgets.ssh_connections, nil, "work should not advertise a dormant SSH widget")
+end)
+
 run_test("get_selected_profile: nil state returns minimal", function()
   local result = profile.get_selected_profile(nil)
   assert_equal(result, "minimal", "default profile")

@@ -1,11 +1,11 @@
 -- Work Profile (Generic)
--- Emacs for org-mode, halext-org, and C++/SSH workflows
+-- Emacs and work-oriented spaces; machine-specific tools stay opt-in
 
 local profile = {}
 
 -- Profile metadata
 profile.name = "work"
-profile.description = "Work setup with Emacs and productivity integrations"
+profile.description = "Portable Work setup with Emacs and no personal surfaces"
 profile.author = "scawful"
 
 -- Integration toggles
@@ -15,13 +15,9 @@ profile.integrations = {
   oracle = false,     -- Keep the personal Triforce menu opt-in
   music = false,      -- Keep Music Studio launchers machine-local
   emacs = true,       -- Keep Emacs for org-mode
-  halext = true,      -- Use halext-org for task management
-  cpp_dev = true,     -- C++ development tools
-  ssh_cloud = true,   -- SSH and cloud workflows
+  halext = false,     -- Keep unfinished halext integration opt-in
   journal = false,    -- Hide personal journal at work
   nerv = false,       -- Hide NERV at work
-  halext_org = true,  -- Halext-org dashboard
-  workspace = true,   -- Workspace status
 }
 
 -- Window manager mode (expects yabai/skhd on work machines)
@@ -29,21 +25,8 @@ profile.modes = {
   window_manager = "required",
 }
 
--- Custom paths
-profile.paths = {
-  work_docs = os.getenv("HOME") .. "/work/docs",
-  code = os.getenv("BARISTA_CODE_DIR") or (os.getenv("HOME") .. "/src"),  -- General code directory
-  -- Add work-specific program paths here
-  -- Example: custom_tool = os.getenv("HOME") .. "/work/tools/custom_tool",
-}
-
--- Custom menu sections (add to Apple menu)
-profile.menu_sections = {
-  { type = "submenu", name = "menu.emacs.section", icon = "", label = "Emacs Workspace", order = 60 },
-  { type = "submenu", name = "menu.halext.section", icon = "󱓷", label = "halext-org", order = 70 },
-  { type = "submenu", name = "menu.cpp.section", icon = "󰨞", label = "C++ Dev", order = 90 },
-  { type = "submenu", name = "menu.ssh.section", icon = "󰆍", label = "SSH & Cloud", order = 100 },
-}
+profile.paths = {}
+profile.menu_sections = {}
 
 -- Appearance preferences
 profile.appearance = {
@@ -62,8 +45,6 @@ profile.widgets = {
   network = true,
   system_info = true,
   volume = true,
-  cpp_build_status = true,  -- C++ build status widget
-  ssh_connections = true,   -- SSH connection status widget
 }
 
 -- Space configuration
@@ -78,15 +59,5 @@ profile.spaces = {
     ["5"] = "",  -- Meetings
   }
 }
-
--- Custom scripts
-profile.scripts = function(base_scripts)
-  return base_scripts
-end
-
--- Initialization hook
-profile.init = function(sbar, config, modules)
-  print("Loaded work profile: Emacs + C++ + SSH")
-end
 
 return profile

@@ -298,7 +298,7 @@ def machine_profile_payload(
 
 
 def apply_basic_variant_state(state: dict[str, Any], variant: str, payload: dict[str, Any]) -> None:
-    state["_version"] = state.get("_version", 1)
+    state["_version"] = state.get("_version", 2)
     state["profile"] = payload["state_profile"]
 
     modes = ensure_dict(state, "modes")
@@ -321,6 +321,10 @@ def apply_basic_variant_state(state: dict[str, Any], variant: str, payload: dict
     machine["restricted"] = payload["restricted"]
     machine["menu_packs"] = payload["menu_packs"]
     machine["allowed_features"] = payload["allowed_features"]
+
+
+def apply_work_privacy_boundary(state: dict[str, Any]) -> None:
+    restricted_config.apply_work_privacy_boundary(state)
 
 
 def apply_work_apps_if_requested(
@@ -380,6 +384,9 @@ def run_apply(args: argparse.Namespace) -> int:
     else:
         apply_basic_variant_state(state, variant, payload)
 
+    if variant == "work":
+        apply_work_privacy_boundary(state)
+
     apps_file = apply_work_apps_if_requested(
         state,
         state_file,
@@ -391,6 +398,12 @@ def run_apply(args: argparse.Namespace) -> int:
 
     atomic_write_json(machine_file, payload, dry_run=args.dry_run)
     atomic_write_json(state_file, state, dry_run=args.dry_run)
+    shortcuts_changed = False
+    if variant in {"work", "restricted-work"}:
+        shortcuts_changed = restricted_config.sanitize_work_task_shortcuts(dry_run=args.dry_run)
+    restricted_config.maybe_reload_skhd(
+        shortcuts_changed and args.reload and not args.no_reload and not args.dry_run
+    )
     maybe_reload(args.reload and not args.no_reload and not args.dry_run)
 
     if args.report:

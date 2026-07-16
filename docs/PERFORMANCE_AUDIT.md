@@ -1,11 +1,15 @@
 # Barista Performance & Safety Audit
 
-**Date:** 2026-04-05
+**Date:** 2026-07-15
 **Status:** Active runtime app-model path verified
-**Scope:** `barista/src`, `barista/helpers`, `barista/plugins`
+**Scope:** `main.lua`, `modules/`, `helpers/`, `plugins/`, `scripts/`
 
 ## Executive Summary
-Following the initial audit, the active runtime path was tightened again in April 2026. The number of process forks on hot paths is still materially lower than the original shell-heavy bar, but the more important change is architectural: routine updates now stay on long-lived helpers, while expensive detail collection and space visuals run on explicit event paths.
+Following the initial audit, the active runtime path was tightened through July
+2026. The number of process forks on hot paths is still materially lower than
+the original shell-heavy bar, but the more important change is architectural:
+routine updates now stay on long-lived helpers, while expensive detail
+collection, task snapshots, and space visuals run on explicit event paths.
 
 ## Resolved / Mitigated "Hot Spots"
 
@@ -13,10 +17,26 @@ Following the initial audit, the active runtime path was tightened again in Apri
 *   **Files:** `main.lua`, `modules/items_right.lua`, `modules/runtime_daemon.lua`, `plugins/system_info.sh`, `plugins/battery.sh`, `helpers/widget_manager.c`
 *   **Update:**
     - `clock`, `system_info`, and `battery` can be daemon-managed through `widget_manager daemon`
+    - the compiled daemon updates the clock only when the minute changes, system info every 10 seconds, and battery every 120 seconds
+    - its scheduler sleeps for one second between due checks instead of waking every 100 ms
     - expensive popup rows refresh only when the popup is opened
     - `modes.widget_daemon` now controls whether the daemon is `auto`, `enabled`, or `disabled`
     - reload now force-restarts the daemon so rebuilt helpers replace the running process instead of leaving stale code resident
 *   **Result:** steady-state right-side updates no longer depend on per-item timer scripts when the compiled runtime is available.
+
+### 0a. Calendar + Task Pulse Event Path (Verified)
+*   **Files:** `modules/items_right.lua`, `plugins/calendar.sh`, `plugins/task_pulse.sh`, `scripts/task_snapshot.py`, `scripts/task_focus.sh`, `scripts/task_capture.sh`, `main.lua`
+*   **Update:**
+    - the calendar popup header no longer has a periodic `update_freq`; clock clicks and `⌘⌥D` open immediately and refresh the popup asynchronously
+    - `plugins/calendar.sh` applies every calendar/task row in one batched SketchyBar invocation
+    - one optional next-meeting row reads only a configured local TSV cache; Barista performs no auth, sync, or network calls
+    - optional Task Pulse has no polling timer and is not created unless both `widgets.task_focus=true` and a task source are configured
+    - its closed anchor renders only an open-count label; the popup owns bounded task detail and one local 25-minute focus-session toggle
+    - focus-session state is deadline-derived from a private ignored cache file, with no resident timer process or extra bar widget
+    - Task Pulse refresh runs on click, `task_state_changed`, or `system_woke`
+    - task capture emits `task_state_changed` after a successful syshelp write; external task tools can trigger the same event explicitly
+    - task source/provider values are passed through quoted environment fields; committed defaults contain no task paths
+*   **Result:** closed task/calendar surfaces add no steady-state task parsing or popup-update work, while configured users still get immediate refresh after interaction or task mutation.
 
 ### 0b. Runtime Context Cache + Shared Front-App / Media Boundary (Verified)
 *   **Files:** `main.lua`, `modules/runtime_daemon.lua`, `scripts/runtime_context.sh`, `scripts/front_app_context.sh`, `scripts/media_control.sh`, `plugins/volume.sh`

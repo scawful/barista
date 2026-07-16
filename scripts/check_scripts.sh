@@ -61,6 +61,8 @@ done
 
 lint_candidates=(
   scripts/setup_machine.sh
+  scripts/install.sh
+  scripts/set_mode.sh
   scripts/configure_restricted_work_barista.sh
   scripts/detect_capabilities.sh
   scripts/barista-fonts.sh
@@ -72,6 +74,11 @@ lint_candidates=(
   scripts/install_missing_fonts_and_panel.sh
   scripts/install-tui.sh
   scripts/configure_work_google_apps.sh
+  scripts/task_action.sh
+  scripts/task_capture.sh
+  scripts/task_focus.sh
+  plugins/calendar.sh
+  plugins/task_pulse.sh
   bin/open_control_panel.sh
   bin/barista-debug
 )
@@ -121,7 +128,18 @@ printf '{}' > "$tmp_state"
 ./scripts/setup_machine.sh --state "$tmp_state" --profile-variant cozy --skip-fonts --skip-panel --dry-run --yes --no-reload >/dev/null
 python3 -m py_compile scripts/restricted_config.py
 python3 -m py_compile scripts/machine_profile.py
+python3 -m py_compile scripts/focus_session.py
 python3 scripts/machine_profile.py capabilities --format env >/dev/null
+python3 tests/test_focus_session.py >/dev/null
+python3 tests/test_task_snapshot.py >/dev/null
+bash tests/test_task_actions.sh >/dev/null
+bash tests/test_task_focus.sh >/dev/null
+bash tests/test_task_pulse.sh >/dev/null
+bash tests/test_calendar_tasks.sh >/dev/null
+bash tests/test_restricted_config.sh >/dev/null
+bash tests/test_setup_machine_shortcuts.sh >/dev/null
+bash tests/test_state_migration.sh >/dev/null
+bash tests/test_work_profile_entrypoints.sh >/dev/null
 rm -f "$tmp_state" >/dev/null 2>&1 || true
 ./scripts/barista-doctor.sh --help >/dev/null
 ./scripts/install-tui.sh --check >/dev/null || true

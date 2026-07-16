@@ -1,6 +1,7 @@
 -- test_shortcuts.lua - Focused tests for shortcuts helper logic
 
 local ok, shortcuts = pcall(require, "shortcuts")
+local shell_utils = require("shell_utils")
 
 if not ok then
   run_test("shortcuts module: load (skipped)", function()
@@ -49,6 +50,37 @@ run_test("shortcuts.get_command: toggle_control_center is a popup toggle command
   assert_true(command:match("popup%.drawing=toggle") ~= nil, "toggle command toggles popup drawing")
 end)
 
+run_test("shortcuts.build_control_center_toggle_command: item names are POSIX quoted", function()
+  local hostile = "$(touch /tmp/barista-control-center-injection)'item"
+  local command = shortcuts.build_control_center_toggle_command(hostile)
+  assert_true(command:find("--set '$(", 1, true) ~= nil, "item name should start in a single-quoted field")
+  assert_true(command:find("'\\''", 1, true) ~= nil, "embedded apostrophe should be escaped")
+end)
+
+run_test("shortcuts.build_terminal_session_command: shell text is passed as argv", function()
+  local tmpdir = os.tmpname() .. ".d"
+  os.remove(tmpdir)
+  assert_true(os.execute("mkdir -p " .. shell_utils.shell_quote(tmpdir)) ~= nil, "create terminal test directory")
+  local marker = tmpdir .. "/injected"
+  local log = tmpdir .. "/osascript.log"
+  local fake = assert(io.open(tmpdir .. "/osascript", "w"))
+  fake:write("#!/bin/sh\n/usr/bin/printf '%s\\n' \"$@\" >", shell_utils.shell_quote(log), "\n")
+  fake:close()
+  assert_true(os.execute("chmod +x " .. shell_utils.shell_quote(tmpdir .. "/osascript")) ~= nil, "make fake osascript executable")
+
+  local payload = "printf '%s' \"$(touch " .. marker .. ")\""
+  local command = shortcuts.build_terminal_session_command(payload)
+  local result = os.execute("PATH=" .. shell_utils.shell_quote(tmpdir .. ":/usr/bin:/bin") .. " " .. command)
+  assert_true(result == true or result == 0, "terminal argv command should execute")
+  assert_true(io.open(marker, "r") == nil, "outer shell must not evaluate terminal payload")
+  local logged = assert(io.open(log, "r")):read("*a")
+  assert_true(logged:find(payload, 1, true) ~= nil, "osascript should receive the original shell text as one argument")
+
+  os.remove(log)
+  os.remove(tmpdir .. "/osascript")
+  os.execute("rmdir " .. shell_utils.shell_quote(tmpdir) .. " >/dev/null 2>&1")
+end)
+
 run_test("shortcuts.get_command: task focus uses the compact calendar surface", function()
   local shortcut = shortcuts.get("open_task_focus")
   local command = shortcuts.get_command("open_task_focus")
@@ -56,6 +88,71 @@ run_test("shortcuts.get_command: task focus uses the compact calendar surface", 
   assert_equal(shortcut.symbol, "⌘⌥D", "open_task_focus symbol")
   assert_type(command, "string", "task focus command")
   assert_true(command:match("scripts/task_focus%.sh") ~= nil, "task focus should use task_focus.sh")
+end)
+
+run_test("shortcuts.get_command: task capture is declarative and provider-backed", function()
+  local command = shortcuts.get_command("capture_task")
+  assert_type(command, "string", "capture task command")
+  assert_true(command:match("scripts/task_capture%.sh") ~= nil, "capture should use task_capture.sh")
+
+  local found = false
+  for _, shortcut in ipairs(shortcuts.list_declared()) do
+    if shortcut.action == "capture_task" then
+      found = true
+      assert_equal(shortcut.symbol, "⌘⌥N", "capture task symbol")
+      assert_equal(shortcut.requires, "task_source", "capture should require a configured task source")
+    end
+  end
+  assert_true(found, "capture task shortcut should remain in the portable catalog")
+end)
+
+run_test("shortcuts.has_task_source: state and environment remain machine-local", function()
+  assert_true(shortcuts.has_task_source({
+    menus = { calendar = { task_sources = { "~/tasks/work.md" } } },
+  }, function() return nil end), "configured state source should enable task actions")
+  assert_true(shortcuts.has_task_source({}, function(key)
+    if key == "BARISTA_TASK_SOURCES" then return "~/tasks/env.md" end
+    return nil
+  end), "environment source should enable task actions")
+  assert_true(not shortcuts.has_task_source({}, function() return nil end), "missing sources should keep capture disabled")
+end)
+
+run_test("shortcuts.resolve_task_config: nonblank environment values override local config", function()
+  local env = {
+    BARISTA_CALENDAR_TASK_SOURCES = "   ",
+    BARISTA_TASK_SOURCES = "~/tasks/from-env.md",
+    BARISTA_TASK_PROVIDER = "syshelp",
+    BARISTA_SYSHELP_BIN = "/opt/local/bin/syshelp",
+    BARISTA_CAPTURE_SECTION = "Inbox",
+    BARISTA_CAPTURE_STATE = "NEXT",
+  }
+  local resolved = shortcuts.resolve_task_config({
+    menus = {
+      calendar = {
+        task_sources = { "~/tasks/from-state.md" },
+        task_provider = "files",
+      },
+    },
+  }, function(key)
+    return env[key]
+  end)
+
+  assert_equal(resolved.task_sources, "~/tasks/from-env.md", "blank primary env should not shadow fallback")
+  assert_equal(resolved.task_provider, "syshelp", "provider env override")
+  assert_equal(resolved.syshelp_path, "/opt/local/bin/syshelp", "syshelp env override")
+  assert_equal(resolved.capture_section, "Inbox", "capture section env override")
+  assert_equal(resolved.capture_state, "NEXT", "capture state env override")
+end)
+
+run_test("shortcuts.build_task_script_action: task values use POSIX single quoting", function()
+  local hostile = "~/tasks/it's-$(not-a-command)-`still-data`.md"
+  local command = shortcuts.build_task_script_action("task_capture.sh", {
+    menus = { calendar = { task_sources = { hostile } } },
+  }, function() return nil end, "/tmp/barista")
+
+  assert_true(command:find("BARISTA_CALENDAR_TASK_SOURCES='", 1, true) ~= nil, "source should be single quoted")
+  assert_true(command:find("'\\''", 1, true) ~= nil, "embedded apostrophes should be escaped")
+  assert_true(command:find("'/tmp/barista/scripts/task_capture.sh'", 1, true) ~= nil, "script path should be quoted")
 end)
 
 run_test("shortcuts AFS Studio action: manifest-backed launcher wins", function()

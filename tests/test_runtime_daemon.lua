@@ -139,3 +139,35 @@ run_test("runtime_daemon.ensure_runtime_context_daemon: launch command is token-
   assert_true(launched:find("echo $$ > \"$pid_file\"", 1, true) ~= nil, "launch should write the pid from the wrapper shell")
   assert_true(launched:find("exec ", 1, true) ~= nil and launched:find("/tmp/runtime_context.sh", 1, true) ~= nil, "launch should still exec the requested daemon")
 end)
+
+run_test("runtime_daemon.ensure_runtime_context_daemon: lua-only launch disables compiled helper", function()
+  local files = {}
+  local launched = nil
+
+  local ok, reason = runtime_daemon.ensure_runtime_context_daemon("/tmp/runtime_context.sh", {
+    lua_only = true,
+    pid_file = "/tmp/runtime-context-lua-test.pid",
+    start_token_file = "/tmp/runtime-context-lua-test.start",
+    read_text = function(path)
+      return files[path]
+    end,
+    write_text = function(path, content)
+      files[path] = content
+      return true
+    end,
+    matching_pids = function()
+      return {}
+    end,
+    execute = function(command)
+      launched = command
+      return true
+    end,
+  })
+
+  assert_true(ok, "lua-only runtime context launch should succeed")
+  assert_equal(reason, "started", "lua-only launch reason")
+  assert_true(
+    type(launched) == "string" and launched:find("/usr/bin/env BARISTA_LUA_ONLY=1", 1, true) ~= nil,
+    "lua-only launch should export the helper-disable flag"
+  )
+end)

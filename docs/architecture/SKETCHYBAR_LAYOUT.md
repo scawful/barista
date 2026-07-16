@@ -113,8 +113,9 @@ SketchyBar update directly without a nested `sh -c`.
 ## Runtime Sidecars
 
 - **`widget_manager daemon`** owns steady-state updates when the compiled runtime is enabled: clock on minute boundaries, system info every 10 seconds, and battery every 120 seconds. Its supervisor loop sleeps for one second between due checks.
-- **`scripts/runtime_context.sh daemon`** owns shared runtime caches under `cache/runtime_context/`.
+- **`scripts/runtime_context.sh daemon`** owns shared runtime caches under `cache/runtime_context/`. Front-app state stays warm every base tick (or is delegated to the compiled helper); media uses one bounded versioned snapshot at playing/running/idle cadences of 1/2/3 ticks, output topology stays on the base tick, and unchanged media/output snapshots are not republished.
 - **`bin/runtime_context_helper`** owns the hot front-app / focused-space cache path when the compiled helper is present.
+- **Lua-only ownership:** `main.lua` launches the runtime-context daemon with `BARISTA_LUA_ONLY=1` when `runtime_backend=lua`, so an executable helper left on disk is ignored.
 - **`scripts/front_app_context.sh`** reads that cache first, then falls back to direct yabai/System Events discovery.
 - **`scripts/media_control.sh`** reads cached player/output state first, but still dispatches playback and output-switch actions directly.
 - **`scripts/process_manager.sh barista|runaways`** inspects the live process family and flags duplicated/hot Barista plugin scripts without cleanup by default.

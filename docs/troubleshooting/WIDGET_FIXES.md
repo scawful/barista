@@ -261,6 +261,10 @@ are ever removed.
 **Current path**: `main.lua` + `modules/runtime_daemon.lua` + `scripts/runtime_context.sh` + `bin/runtime_context_helper`
 - Barista now uses `runtime_context_helper` for the front-app / focused-space cache path when the helper is built.
 - `runtime_context.sh` still owns media/output cache refresh and supervises the helper-side front-app daemon.
+- Media discovery uses one strict, versioned AppleScript snapshot with a bounded legacy fallback. The daemon checks it every tick while playing, every two ticks for a paused/running player, and every three ticks while idle; `refresh media` and media actions remain immediate.
+- `media.tsv` and `outputs.tsv` are atomically replaced only when their bytes change. Stable inode/mtime values are expected during unchanged playback/output state and no longer indicate a stuck daemon.
+- Audio probes are timeout-bounded, failed current-output discovery leaves route rows unselected, and only the four routes the popup can display are cached.
+- A runtime launched with `runtime_backend=lua` propagates `BARISTA_LUA_ONLY=1`, preventing a leftover `bin/runtime_context_helper` from being used by the daemon.
 - The shared cache under `cache/runtime_context/` is the current source for front-app state, focused-space fast-path refreshes, media state, and audio output switching.
 - `runtime_daemon.stop_runtime_context_daemon()` now kills the whole runtime-context family on restart, including stale `runtime_context_helper daemon` and `refresh-front-app` children, so reloads do not accumulate orphaned helper/query processes.
 - `runtime_context.sh daemon` now backgrounds the helper binary directly instead of backgrounding a shell function, so the live runtime settles to one shell supervisor plus one helper daemon instead of leaving a redundant nested shell layer.

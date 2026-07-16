@@ -363,9 +363,14 @@ function runtime_daemon.ensure_runtime_context_daemon(script_path, opts)
   if not script_path or script_path == "" then
     return false, "missing_script"
   end
-  local expected_fragment = tostring(script_path) .. " daemon"
-  local command = string.format("%s daemon", shell_quote(script_path))
   opts = type(opts) == "table" and opts or {}
+  local expected_fragment = tostring(script_path) .. " daemon"
+  local command
+  if opts.lua_only then
+    command = string.format("/usr/bin/env BARISTA_LUA_ONLY=1 %s daemon", shell_quote(script_path))
+  else
+    command = string.format("%s daemon", shell_quote(script_path))
+  end
   opts.match_fragments = opts.match_fragments or {
     "runtime_context.sh daemon",
     "runtime_context_helper daemon",

@@ -1,5 +1,18 @@
 # SketchyBar Configuration Changelog
 
+## July 16, 2026 - Adaptive Runtime Context
+
+- Collapsed Spotify/Music state and metadata discovery into one bounded,
+  versioned AppleScript snapshot with a fail-closed legacy fallback.
+- Media polling now runs every tick only while playing, then backs off to two
+  ticks for a paused/running player and three while idle. Output topology stays
+  on the base tick so the popup's displayed route indexes remain current.
+- `media.tsv` and `outputs.tsv` now use byte-aware atomic publication, keeping
+  stable inodes and mtimes when state is unchanged; audio probes, TSV fields,
+  and the four visible output routes are bounded.
+- Lua-only runtime-context launches now disable leftover compiled helpers,
+  preserving restricted/work-machine behavior after a repo sync.
+
 ## July 15, 2026 - Popup Responsiveness
 
 - `helpers/volume_popup_helper.m` now refreshes the ten mutable volume/popup

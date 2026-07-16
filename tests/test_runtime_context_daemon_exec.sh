@@ -121,3 +121,28 @@ if ! pgrep -P "$DAEMON_PID" -f 'runtime_context_helper daemon' >/dev/null 2>&1; 
 fi
 
 echo "PASS: runtime context daemon launches helper directly"
+
+kill "$DAEMON_PID" >/dev/null 2>&1 || true
+wait "$DAEMON_PID" >/dev/null 2>&1 || true
+DAEMON_PID=""
+
+PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+  BARISTA_LUA_ONLY=1 \
+  BARISTA_RUNTIME_CONTEXT_HELPER_BIN="$HELPER_BIN" \
+  BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+  BARISTA_JQ_BIN="$(command -v jq)" \
+  BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
+  BARISTA_SWITCH_AUDIO_SOURCE_BIN="$BIN_DIR/SwitchAudioSource" \
+  BARISTA_RUNTIME_CONTEXT_INTERVAL=5 \
+  CONFIG_DIR="$CONFIG_DIR" \
+  "$SCRIPT" daemon >/dev/null 2>&1 &
+DAEMON_PID=$!
+
+sleep 0.3
+
+if pgrep -P "$DAEMON_PID" -f 'runtime_context_helper' >/dev/null 2>&1; then
+  echo "FAIL: Lua-only runtime context should not launch a compiled helper" >&2
+  exit 1
+fi
+
+echo "PASS: Lua-only runtime context keeps the helper disabled"

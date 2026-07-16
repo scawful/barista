@@ -6,7 +6,8 @@
   instead of invoking `sh -c`; the focused no-op benchmark improved median row
   hover latency from 6.39 ms to 2.87 ms.
 - `main.lua` resolves the compiled `popup_anchor` for native-helper setups and
-  keeps the shell anchor as the portable fallback.
+  keeps the shell anchor as the portable fallback; the enhanced Apple menu now
+  forwards the resolved SketchyBar binary to either implementation.
 - `plugins/volume.sh` skips output-route discovery when `SwitchAudioSource` is
   unavailable, while preserving cached media status and hiding unusable rows.
 

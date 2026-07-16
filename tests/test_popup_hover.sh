@@ -30,7 +30,12 @@ done
 SH
 chmod +x "$BIN_DIR/sketchybar"
 
-clang -std=c99 -O2 -Wall -Wextra -o "$HELPER_BIN" "$HELPER_SOURCE"
+CC_BIN="${CC:-$(command -v clang 2>/dev/null || command -v cc 2>/dev/null || true)}"
+if [[ -z "$CC_BIN" ]]; then
+  printf 'test_popup_hover.sh: skipped (C compiler unavailable)\n'
+  exit 0
+fi
+"$CC_BIN" -std=c99 -O2 -Wall -Wextra -o "$HELPER_BIN" "$HELPER_SOURCE"
 
 assert_arg() {
   local index="$1"

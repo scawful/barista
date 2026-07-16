@@ -98,6 +98,9 @@ function ui.anchor_hover_env(ctx, opts)
     BARISTA_ANCHOR_HOVER_BORDER_WIDTH = tostring(hover_border_width),
     BARISTA_ANCHOR_HOVER_BORDER_COLOR = tostring(hover_border_color),
   }
+  if ctx and (ctx.SKETCHYBAR_BIN or ctx.sketchybar_bin) then
+    env.BARISTA_SKETCHYBAR_BIN = tostring(ctx.SKETCHYBAR_BIN or ctx.sketchybar_bin)
+  end
   if ctx and ctx.hover_animation_curve then
     env.BARISTA_HOVER_ANIMATION_CURVE = tostring(ctx.hover_animation_curve)
   end

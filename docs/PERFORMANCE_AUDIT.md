@@ -125,12 +125,13 @@ collection, task snapshots, and space visuals run on explicit event paths.
 *   **Result:** the control-center runtime now matches the simplified popup and avoids unnecessary work on each refresh.
 
 ### 3. Popup & Submenu Execution (Resolved)
-*   **Files:** `helpers/popup_hover.c`, `helpers/popup_anchor.c`, `main.lua`
+*   **Files:** `helpers/popup_hover.c`, `helpers/popup_anchor.c`, `main.lua`, `modules/menu.lua`, `modules/ui_builder.lua`
 *   **Update:**
     - `popup_hover` now passes a bounded argument vector directly to `execvp()` instead of rebuilding a command and routing it through `sh -c`
     - popup row names and properties remain single arguments, removing shell interpolation from the pointer hot path
     - the Apple anchor now selects the compiled `popup_anchor` helper through the normal runtime-backend resolver, with the shell implementation retained for Lua-only and helper-missing setups
-*   **Result:** a 400-event no-op benchmark reduced popup-row hover median from 6.39 ms to 2.87 ms (55%); a live Apple-anchor script sample reduced median handler time from 23.65 ms to 9.26 ms (61%).
+    - the enhanced Apple-menu context forwards the resolved absolute SketchyBar binary to the native anchor, so launchd does not depend on Homebrew being present in `PATH`
+*   **Result:** a 400-event no-op benchmark reduced popup-row hover median from 6.39 ms to 2.87 ms (55%); a 30-pair alternating live Apple-anchor sample reduced median handler time from 22.58 ms to 6.54 ms (71%) and p95 from 40.86 ms to 12.03 ms.
 
 ### 3a. Anchor Chip Styling (Verified)
 *   **Files:** `modules/ui_builder.lua`, `modules/items_left.lua`, `modules/apple_menu_enhanced.lua`, `helpers/popup_anchor.c`, `plugins/lib/common.sh`, `plugins/popup_anchor.sh`

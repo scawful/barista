@@ -5,6 +5,10 @@
 #include <sys/stat.h>
 #include <limits.h>
 
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
 /*
  * Popup Hover Handler (Brutalist Edition)
  * Optimized for zero-slop execution and minimal binary size.

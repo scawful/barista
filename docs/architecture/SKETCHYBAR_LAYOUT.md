@@ -93,7 +93,9 @@ hover-restore contract through `modules/ui_builder.lua`, implemented by
 restore that configured idle chip instead of clearing the anchor to transparent.
 The Apple anchor uses compiled `bin/popup_anchor` when native helpers are
 available and falls back to `plugins/popup_anchor.sh` in Lua-only or portable
-setups. Actionable popup rows use `bin/popup_hover`; that helper executes the
+setups. Both receive the resolved SketchyBar binary through
+`BARISTA_SKETCHYBAR_BIN`, including the enhanced Apple-menu context. Actionable
+popup rows use `bin/popup_hover`; that helper executes the
 SketchyBar update directly without a nested `sh -c`.
 
 ## Events and triggers

@@ -24,6 +24,14 @@ exit 0
 EOF
 chmod +x "$BIN_DIR/sketchybar"
 
+cat > "$BIN_DIR/custom-sketchybar" <<EOF
+#!/bin/bash
+set -euo pipefail
+printf 'custom\t%s\n' "\$*" >> "$LOG_FILE"
+exit 0
+EOF
+chmod +x "$BIN_DIR/custom-sketchybar"
+
 run_target_checks() {
   local target="$1"
   : > "$LOG_FILE"
@@ -104,6 +112,19 @@ run_target_checks() {
 
   if ! grep -Fq -- 'popup.drawing=off' "$LOG_FILE"; then
     echo "FAIL: popup anchor should close popup on global exit ($target)" >&2
+    exit 1
+  fi
+
+  : > "$LOG_FILE"
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    TMPDIR="$TMP_DIR" \
+    NAME="apple_menu" \
+    SENDER="mouse.exited" \
+    BARISTA_SKETCHYBAR_BIN="$BIN_DIR/custom-sketchybar" \
+    "$target"
+
+  if ! grep -Fq -- $'custom\t--animate sin 12 --set apple_menu' "$LOG_FILE"; then
+    echo "FAIL: popup anchor should honor BARISTA_SKETCHYBAR_BIN ($target)" >&2
     exit 1
   fi
 }

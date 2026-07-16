@@ -38,8 +38,8 @@ Legacy note: the standalone `yabai_status` widget path was removed. Window-manag
 | `ai_resource` | `plugins/ai_resource_toggle.sh` | `ai_resource_update` | AI resource indicator |
 | `system_info` | `plugins/system_info.sh` | — | Shell wrapper for hover/events; routine updates prefer compiled helpers or the widget daemon; full popup detail refresh happens on click |
 | `system_info.*` (popup) | (hover script) | — | Popup items for system info |
-| `volume` | `plugins/volume.sh` | `volume_change` | Click toggles the popup immediately, then refreshes audio/media rows asynchronously through `plugins/volume.sh`; `plugins/volume_click.sh` remains a compatibility wrapper for the same toggle-then-refresh behavior. |
-| `volume.*` (popup) | (hover script) | — | Popup items for prefixed `Volume`, `Output`, and `Now Playing` state, output routes, transport controls, mute, and settings. `scripts/media_control.sh` prefers the shared `runtime_context` cache for state/output lookups, and action rows close the popup after firing. |
+| `volume` | `plugins/volume.sh` | `volume_change` | Routine `volume_change` and hover events stay on the portable shell wrapper. Click toggles immediately, then compiled setups run `bin/volume_popup_helper` asynchronously with `plugins/volume.sh popup_refresh` as the Lua-only/unsupported/disabled/IPC-failure fallback; `plugins/volume_click.sh` remains a compatibility wrapper. |
+| `volume.*` (popup) | `bin/volume_popup_helper` (click detail) | — | Popup items for prefixed `Volume`, `Output`, and `Now Playing` state, output routes, transport controls, mute, and settings. The native click path reads CoreAudio plus bounded shared `runtime_context` caches and applies the ten mutable items in one request/reply. `scripts/media_control.sh` owns playback/output actions, and action rows close the popup after firing. |
 | `battery` | `plugins/battery.sh` | `system_woke`, `power_source_change` | Shell wrapper for hover/events; routine main-label updates prefer `widget_manager` or the widget daemon; popup detail refresh happens on click |
 | `battery.*` (popup) | (hover script) | — | Popup items for battery details. Popup refresh handles AC/charging states explicitly and action rows close the popup after firing. |
 
@@ -126,7 +126,7 @@ SketchyBar update directly without a nested `sh -c`.
 - **Bar appearance** (height, padding, colors, fonts): main.lua → appearance/state values and `sbar.bar()` / `sbar.default()`.
 - **Add/remove a left-side item:** main.lua (search for `sbar.add("item",` and `position = "left"`) or items_left module after refactor.
 - **Add/remove a right-side item:** main.lua (search for `position = "right"`) or items_right module after refactor.
-- **Change what a widget does:** Edit the corresponding script in `plugins/` (e.g. `plugins/clock.sh`, `plugins/volume.sh`).
+- **Change what a widget does:** Edit the corresponding script in `plugins/`; volume click-detail behavior is split between `helpers/volume_popup_helper.m` and its `plugins/volume.sh` fallback.
 - **Change popup contents:** `modules/items_left.lua` for front-app and Desk extension rows, `modules/integrations/control_center.lua` for Control Center rows, and `modules/items_right.lua` for LM Studio/calendar/Task Pulse/system-info rows.
 - **Change task snapshot semantics:** `scripts/task_snapshot.py`; keep source/provider paths machine-local.
 - **Change control-center popup rows:** `modules/integrations/control_center.lua`.

@@ -11,7 +11,7 @@ ORIGINAL_TARGETS = clock_widget system_info_widget space_manager submenu_hover \
                    popup_anchor popup_hover popup_manager popup_guard menu_action
 
 # New enhanced targets
-NEW_TARGETS = icon_manager state_manager widget_manager menu_renderer space_visual_helper
+NEW_TARGETS = icon_manager state_manager widget_manager menu_renderer space_visual_helper volume_popup_helper
 
 TARGETS = $(ORIGINAL_TARGETS) $(NEW_TARGETS)
 
@@ -61,6 +61,9 @@ menu_renderer: menu_renderer.c
 space_visual_helper: space_visual_helper.m
 	$(CC) -O2 -Wall -Wextra -fobjc-arc -framework Foundation -o $@ $<
 
+volume_popup_helper: volume_popup_helper.m
+	$(CC) -O2 -Wall -Wextra -fobjc-arc -framework Foundation -framework CoreAudio -framework AudioToolbox -o $@ $<
+
 install: $(TARGETS)
 	mkdir -p $(INSTALL_DIR)
 	@echo "Installing original components..."
@@ -79,6 +82,7 @@ install: $(TARGETS)
 	install -m 755 widget_manager $(INSTALL_DIR)/
 	install -m 755 menu_renderer $(INSTALL_DIR)/
 	install -m 755 space_visual_helper $(INSTALL_DIR)/
+	install -m 755 volume_popup_helper $(INSTALL_DIR)/
 	@echo ""
 	@echo "=== Installation Complete ==="
 	@echo ""
@@ -90,6 +94,7 @@ install: $(TARGETS)
 	@echo "  • widget_manager  - High-performance widget updates and daemon mode"
 	@echo "  • menu_renderer   - Cached menu rendering with batch operations"
 	@echo "  • space_visual_helper - Batched visible-space app lookups"
+	@echo "  • volume_popup_helper - Native batched volume popup refresh"
 	@echo ""
 	@echo "To use the new components:"
 	@echo "  1. Initialize state: $(INSTALL_DIR)/state_manager init"

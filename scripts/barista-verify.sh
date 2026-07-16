@@ -63,6 +63,7 @@ BINARIES=(
   "widget_manager"
   "space_manager"
   "space_visual_helper"
+  "volume_popup_helper"
   "clock_widget"
   "system_info_widget"
 )

@@ -139,6 +139,7 @@ bash tests/test_calendar_tasks.sh >/dev/null
 bash tests/test_popup_anchor.sh >/dev/null
 bash tests/test_popup_hover.sh >/dev/null
 bash tests/test_volume_plugin.sh >/dev/null
+bash tests/test_volume_popup_helper.sh >/dev/null
 bash tests/test_restricted_config.sh >/dev/null
 bash tests/test_setup_machine_shortcuts.sh >/dev/null
 bash tests/test_state_migration.sh >/dev/null

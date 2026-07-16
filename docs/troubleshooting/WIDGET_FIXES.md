@@ -206,18 +206,36 @@ are ever removed.
   - no `env = { ... }` table on the `apple_menu` item
 
 ### 9. Volume Popup Click Path
-**Current path**: generated `ui.toggle_then_refresh_async("volume", ...)` click script + `plugins/volume.sh`
+**Current path**: generated `ui.toggle_then_refresh_async("volume", ...)` click script + `bin/volume_popup_helper` (compiled) / `plugins/volume.sh` (portable fallback)
 - Volume no longer queries popup state before opening.
 - Click toggles the popup immediately, then refreshes popup rows in the background.
+- Compiled setups read volume/mute/output state through CoreAudio, reuse bounded
+  `cache/runtime_context/{media,outputs}.tsv` snapshots, and update the ten
+  mutable items in one bounded SketchyBar request/reply.
+- The native helper waits for SketchyBar's reply; transport, timeout, and
+  semantic `[!]` failures run the shell refresh instead. From the repo, test
+  that fallback once with
+  `BARISTA_VOLUME_NATIVE_DISABLE=1 build/bin/volume_popup_helper popup_refresh || plugins/volume.sh popup_refresh`.
+  To force live clicks onto the shell path, run
+  `launchctl setenv BARISTA_VOLUME_NATIVE_DISABLE 1` and reload Barista; undo
+  with `launchctl unsetenv BARISTA_VOLUME_NATIVE_DISABLE` plus another reload.
+- Invalid, oversized, non-UTF-8, symlinked, or non-regular cache files are
+  ignored independently by the native helper: bad media becomes empty state,
+  bad outputs hide route rows, and neither rejected file is handed back to the
+  shell path.
 - `plugins/volume_click.sh` is only a compatibility wrapper for the same toggle-then-refresh behavior; the live item uses the generated direct click script.
 - The popup now surfaces output route, now-playing state, and transport controls through `scripts/media_control.sh`, plus mute and Sound settings.
 - `scripts/media_control.sh` prefers the shared `scripts/runtime_context.sh` cache for player state and output routes, so the popup and output switch rows reuse the same runtime snapshot.
 - If `SwitchAudioSource` is not installed, the refresh skips output-route
   discovery and leaves those action rows hidden instead of regenerating an
   unusable empty route cache on every click. Now Playing still refreshes.
-- Long now-playing labels are truncated in the shell script before they hit SketchyBar, keeping the popup width predictable without adding another subprocess to the routine update path.
+- Long now-playing labels are truncated before they hit SketchyBar on both
+  native and shell paths, keeping the popup width predictable. The native path
+  preserves composed Unicode and passes labels as direct protocol arguments,
+  not shell text.
 - This keeps the volume anchor aligned with the other right-side widgets that
-  toggle immediately and refresh detail state asynchronously.
+  toggle immediately and refresh detail state asynchronously; it adds no new
+  widget or polling timer.
 
 ### 10. Front App Context Fallback
 **Current path**: `plugins/front_app.sh` + `scripts/front_app_context.sh`

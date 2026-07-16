@@ -70,6 +70,10 @@ Runtime sidecars:
   - compiled front-app / focused-space helper
 - `helpers/widget_manager.c`
   - steady-state daemon for right-side widgets when enabled
+- `helpers/volume_popup_helper.m`
+  - click-only CoreAudio/cache detail refresh for the volume popup; compiled
+    setups use one acknowledged SketchyBar batch and retain `plugins/volume.sh`
+    as the portable/failure fallback
 
 ## Current Interaction Contracts
 
@@ -224,6 +228,7 @@ If the issue is about:
 - control-center popup behavior:
   - `modules/integrations/control_center.lua`
 - volume/media popup behavior:
+  - `helpers/volume_popup_helper.m`
   - `plugins/volume.sh`
   - `plugins/volume_click.sh`
   - `scripts/media_control.sh`

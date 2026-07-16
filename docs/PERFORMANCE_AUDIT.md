@@ -51,6 +51,18 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - shell smoke tests now cover the helper delegation path, front-app fallback behavior, daemon cache warming, and cached output switching
 *   **Result:** the hottest front-app / spaces path no longer depends on the shell implementation of `runtime_context.sh`, while audio continues to share the same cache surface.
 
+### 0c. Native Volume Popup Detail Path (Verified)
+*   **Files:** `helpers/volume_popup_helper.m`, `modules/items_right.lua`, `plugins/volume.sh`, `tests/test_volume_popup_helper.sh`, `tests/test_items.lua`
+*   **Update:**
+    - the anchor still toggles immediately; compiled setups then refresh the ten mutable volume/popup items through one click-only Objective-C helper
+    - volume and mute state come from CoreAudio, including virtual-main, main-element, preferred-stereo, and bounded discovered-channel fallbacks; the real CoreAudio output-device name is used when no cached route name exists
+    - media and output rows reuse the existing runtime TSV caches through bounded regular-file reads (64 KiB file / 4 KiB line caps, strict UTF-8, no symlinks or FIFOs); invalid media data becomes an empty media snapshot, invalid output data hides route rows, and neither falls through to an unbounded shell read
+    - all ten item updates use one bounded NUL-delimited Mach request and wait for SketchyBar's bounded reply, so transport failures and `[!]` semantic errors select the shell fallback
+    - cache labels remain individual protocol arguments, preserving quotes and composed Unicode without shell evaluation; payload, token, argument, and label lengths are capped
+    - `SwitchAudioSource` capability detection checks an explicit override, inherited `PATH`, and standard Homebrew prefixes; absent capability keeps all four route actions hidden
+    - Lua-only/helper-missing, unsupported CoreAudio, `BARISTA_VOLUME_NATIVE_DISABLE=1`, and IPC-failure paths retain `plugins/volume.sh`
+*   **Result:** a 20-pair alternating live sample reduced median detail-refresh latency from 281.08 ms to 49.32 ms (82%, 5.70x) and p95 from 298.94 ms to 55.61 ms (81%, 5.38x), with no additional widget or polling timer.
+
 ### 1. Network & System Info (Mitigated)
 *   **File:** `helpers/system_info_widget.c`
 *   **Update:** Batched 5 separate `system()` calls into a single `sketchybar` invocation.
@@ -206,7 +218,7 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
 2.  **Clock daemon coverage:** the current daemon path is verified live, but there is still no dedicated test coverage around `main.lua` startup instrumentation.
 3.  **Topology rebuild cost:** `simple_spaces.sh` is materially cheaper after removing dead popup rows, but full rebuild remains the dominant startup cost.
 4.  **Async I/O:** the current architecture is event-driven enough for daily use, but long-term migration to a fully async runtime remains the cleaner end state.
-5.  **Mixed runtime boundary:** front-app context is helper-backed, but volume detail still depends on two serial AppleScript reads and multiple SketchyBar row updates. A future click-only native helper should use CoreAudio plus the existing media/output caches and one bounded NUL-delimited Mach argument payload. Cache-derived labels must not pass through `sketchybar.h`'s quote parser; retain the current shell fallback for Lua-only, unsupported-device, and protocol-drift cases.
+5.  **Media cache steady-state churn:** `runtime_context.sh daemon` still refreshes media and output TSV caches every second. Its player resolution probes Music and Spotify through AppleScript and rewrites the cache snapshots even when playback state is unchanged; a future event/change-detected media sidecar is the next audio-path optimization.
 
 ## Shell Script Optimization Summary
 - **AWK Variable Naming**: Standardized to avoid collisions.

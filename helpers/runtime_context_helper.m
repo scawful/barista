@@ -210,7 +210,7 @@ static NSDictionary *space_record_for_index(NSArray *spaces, NSNumber *index) {
   return nil;
 }
 
-static NSString *frontmost_app_name(void) {
+static NSString *frontmost_app_name(NSDictionary *focusedWindow) {
   NSString *override = env_value(@"BARISTA_RUNTIME_CONTEXT_FRONT_APP_NAME");
   if (override.length > 0) {
     return override;
@@ -218,7 +218,6 @@ static NSString *frontmost_app_name(void) {
 
   NSRunningApplication *frontmost = NSWorkspace.sharedWorkspace.frontmostApplication;
   NSString *workspaceName = frontmost.localizedName;
-  NSDictionary *focusedWindow = query_object(@[@"-m", @"query", @"--windows", @"--window"]);
   NSString *focusedApp = string_value(focusedWindow[@"app"]);
   if (focusedApp.length > 0 && !bool_value(focusedWindow[@"is-minimized"])) {
     if (workspaceName.length > 0 && [focusedApp caseInsensitiveCompare:workspaceName] == NSOrderedSame) {
@@ -254,12 +253,11 @@ static NSInteger window_rank(NSDictionary *window, NSString *appName, NSNumber *
   return rank;
 }
 
-static NSDictionary *select_matching_window(NSString *appName, NSNumber *spaceIndex, NSNumber *displayIndex) {
+static NSDictionary *select_matching_window(NSString *appName, NSNumber *spaceIndex, NSNumber *displayIndex, NSDictionary *focusedWindow) {
   if (appName.length == 0) {
     return nil;
   }
 
-  NSDictionary *focusedWindow = query_object(@[@"-m", @"query", @"--windows", @"--window"]);
   NSString *focusedApp = string_value(focusedWindow[@"app"]);
   if (focusedWindow && focusedApp.length > 0 && [focusedApp caseInsensitiveCompare:appName] == NSOrderedSame && !bool_value(focusedWindow[@"is-minimized"])) {
     return focusedWindow;
@@ -287,7 +285,8 @@ static NSDictionary *select_matching_window(NSString *appName, NSNumber *spaceIn
 }
 
 static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
-  NSString *appName = frontmost_app_name();
+  NSDictionary *focusedWindow = query_object(@[@"-m", @"query", @"--windows", @"--window"]);
+  NSString *appName = frontmost_app_name(focusedWindow);
   NSArray *spaces = all_space_records();
   NSDictionary *currentSpace = current_space_record_from_array(spaces);
   NSNumber *spaceIndex = number_value(currentSpace[@"index"]);
@@ -301,7 +300,7 @@ static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
                              displayIndex ? displayIndex.stringValue : @"?"];
   BOOL windowAvailable = NO;
 
-  NSDictionary *window = select_matching_window(appName, spaceIndex, displayIndex);
+  NSDictionary *window = select_matching_window(appName, spaceIndex, displayIndex, focusedWindow);
   if (window != nil) {
     windowAvailable = YES;
     NSString *windowApp = string_value(window[@"app"]);

@@ -81,7 +81,15 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - comparison uses a no-follow, nonblocking descriptor, exact-size validation, a fixed 4 KiB buffer, binary comparison, and an EOF check; symlinks, FIFOs, directories, NUL suffixes, and oversized prefix-equal files cannot be accepted as unchanged
     - missing, changed, corrupt, symlinked-file, FIFO, and dangling-link targets are still atomically repaired; directory targets, including symlinks to directories, fail closed
     - a Darwin-only source-compiled test now covers the real Objective-C publisher and daemon lifecycle instead of relying only on shell helper stubs; the daemon-exec test waits for helper readiness before checking the settled process tree
-*   **Result:** the unchanged live baseline produced 11 inode/mtime identities across 11 samples spanning 10.002 seconds despite one content hash. After rebuilding and reloading, 11 live samples retained one inode/mtime/hash identity; the helper remained the single child of the shell supervisor and no Barista runaways were detected. The focused native test also holds identity across explicit refreshes and daemon ticks while still replacing changed and corrupt snapshots. Per-tick yabai discovery remains unchanged.
+*   **Result:** the unchanged live baseline produced 11 inode/mtime identities across 11 samples spanning 10.002 seconds despite one content hash. After rebuilding and reloading, 11 live samples retained one inode/mtime/hash identity; the helper remained the single child of the shell supervisor and no Barista runaways were detected. The focused native test also holds identity across explicit refreshes and daemon ticks while still replacing changed and corrupt snapshots.
+
+### 0f. Single-Snapshot Native Front-App Discovery (Verified)
+*   **Files:** `helpers/runtime_context_helper.m`, `tests/test_runtime_context_helper_publication.sh`
+*   **Update:**
+    - each native refresh now resolves the focused-window snapshot once and passes the same record through frontmost-app naming and matching-window selection
+    - a matching focused window still takes the fast path; a minimized or mismatched snapshot still falls through to the ranked full-window list
+    - the real Objective-C regression test logs exact fake-yabai commands and requires one focused-window query on both the common match and full-list fallback cases
+*   **Result:** the normal no-override native refresh drops from three yabai launches (focused window, spaces, focused window again) to two, while its full-list fallback drops from four to three. This removes one subprocess per base tick without changing the cache schema, helper count, or polling cadence; explicit front-app override paths already skipped the naming query. After live reload, the runtime settled to one helper child, ten cache samples spanning 9.058 seconds retained one identity/hash, and a directional six-second helper sample accumulated 0.01 CPU-seconds, 52 context switches, and 338 BSD calls. When NSWorkspace or an override still supplies an app name, a transient failed focused query now proceeds directly to the full-window fallback instead of receiving an accidental second focused-query attempt.
 
 ### 1. Network & System Info (Mitigated)
 *   **File:** `helpers/system_info_widget.c`

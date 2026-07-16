@@ -112,6 +112,8 @@ local function test_items_left_layout()
         "front_app popup refresh should preserve the resolved SketchyBar binary")
       assert_true(entry.props.click_script:find("BARISTA_ANCHOR_IDLE_BG=0x18313a46", 1, true) ~= nil,
         "front_app popup refresh should preserve anchor styling")
+      assert_true(entry.props.click_script:find("BARISTA_FRONT_APP_ACTION_ROWS=1", 1, true) ~= nil,
+        "front_app popup refresh should include mutable yabai action rows when present")
       assert_true(entry.props.click_script:find("BARISTA_LUA_ONLY=1", 1, true) == nil,
         "compiled front_app popup refresh should not force Lua-only mode")
     elseif entry.type == "item" and entry.name == "front_app_divider" then
@@ -247,6 +249,7 @@ local function test_items_left_without_yabai()
   local foundExtensionGuide = false
   local foundMoveAction = false
   local foundLuaOnlyRefresh = false
+  local foundPortableActionRows = false
   for _, entry in ipairs(layout) do
     if entry.type == "item" and entry.name == "front_app.window.unavailable" then
       foundUnavailable = true
@@ -264,6 +267,10 @@ local function test_items_left_without_yabai()
         and entry.props.click_script:find("/usr/bin/env BARISTA_LUA_ONLY=1", 1, true) ~= nil then
       foundLuaOnlyRefresh = true
     end
+    if entry.type == "item" and entry.name == "front_app"
+        and entry.props.click_script:find("BARISTA_FRONT_APP_ACTION_ROWS=0", 1, true) ~= nil then
+      foundPortableActionRows = true
+    end
   end
 
   assert_true(foundUnavailable, "unavailable yabai row should exist")
@@ -271,6 +278,7 @@ local function test_items_left_without_yabai()
   assert_true(foundExtensionGuide, "disabled yabai path should link the extension guide")
   assert_true(not foundMoveAction, "move-window yabai actions should be hidden when yabai is unavailable")
   assert_true(foundLuaOnlyRefresh, "Lua-only front_app popup refresh should keep compiled helpers disabled")
+  assert_true(foundPortableActionRows, "portable front_app refresh should omit unavailable yabai action rows")
   print("  items_left no-yabai test passed!")
 end
 

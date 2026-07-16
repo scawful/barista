@@ -1,5 +1,19 @@
 # SketchyBar Configuration Changelog
 
+## July 16, 2026 - Event-Driven Front-App Context
+
+- The existing native runtime helper now refreshes on application activation,
+  active-space changes, and wake notifications, with a five-second safety
+  refresh instead of querying yabai every base tick while idle.
+- Related notifications debounce for 50 ms and cap scheduled deferral at
+  250 ms when the helper's main thread is available; query work stays
+  serialized there.
+- The front-app popup still toggles immediately, then consumes one native
+  refresh-and-return snapshot in the background so same-app window state does
+  not wait for the safety interval or trigger a second validation query chain.
+- Lua-only and helper-missing setups retain the one-second portable producer;
+  no widget, cache schema, or daemon was added.
+
 ## July 16, 2026 - Single-Snapshot Front-App Discovery
 
 - The native runtime helper now shares one focused-window yabai snapshot across

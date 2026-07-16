@@ -141,6 +141,14 @@ local function get_layout(ctx)
 
   -- Front App indicator
   local front_app_start_ms = current_time_ms()
+  local front_app_script = anchor_script(PLUGIN_DIR .. "/front_app.sh")
+  local front_app_refresh_prefix = ctx.lua_only and "/usr/bin/env BARISTA_LUA_ONLY=1 " or ""
+  local front_app_popup_refresh = string.format(
+    "%sSENDER=popup_refresh NAME=front_app CONFIG_DIR=%q %s",
+    front_app_refresh_prefix,
+    CONFIG_DIR,
+    front_app_script
+  )
   ui.anchor(layout, {
     ctx = ctx,
     name = "front_app",
@@ -148,8 +156,10 @@ local function get_layout(ctx)
     position = "left",
     icon = { drawing = true, string = "󰣆", padding_left = 8, padding_right = 8, color = theme.TEXT or theme.WHITE },
     label = { drawing = false },
-    script = anchor_script(PLUGIN_DIR .. "/front_app.sh"),
-    click_script = popup_toggle_action("front_app"),
+    script = front_app_script,
+    click_script = ui.toggle_then_refresh_async("front_app", front_app_popup_refresh, {
+      sketchybar_bin = SKETCHYBAR_BIN,
+    }),
     background = anchor_chip(),
     popup = {
       align = "left",

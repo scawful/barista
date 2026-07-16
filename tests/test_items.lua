@@ -35,7 +35,14 @@ local function test_items_left_layout()
     popup_toggle_action = function(item_name) return "toggle:" .. tostring(item_name) end,
     POST_CONFIG_DELAY = 0.1,
     SPACE_POST_CONFIG_DELAY = 0.0,
-    SKETCHYBAR_BIN = "sketchybar",
+    SKETCHYBAR_BIN = "/custom/sketchybar",
+    env_prefix = function(values)
+      return string.format(
+        "BARISTA_SKETCHYBAR_BIN=%s BARISTA_ANCHOR_IDLE_BG=%s ",
+        values.BARISTA_SKETCHYBAR_BIN,
+        values.BARISTA_ANCHOR_IDLE_BG
+      )
+    end,
     associated_displays = "all",
     FRONT_APP_ACTION_SCRIPT = "front_app_action.sh",
     YABAI_CONTROL_SCRIPT = "yabai_control.sh",
@@ -95,7 +102,18 @@ local function test_items_left_layout()
       assert_equal(entry.props.label.drawing, false, "front_app should default to icon-only label state")
       assert_equal(entry.props.background.drawing, true, "front_app should render as a visible chip")
       assert_equal(entry.props.background.color, "0x18313a46", "front_app should use the shared idle chip background")
-      assert_equal(entry.props.click_script, "toggle:front_app", "front_app should use the generic direct popup toggle")
+      assert_true(entry.props.click_script:find("/custom/sketchybar -m --set front_app popup.drawing=toggle", 1, true) ~= nil,
+        "front_app should toggle immediately")
+      assert_true(entry.props.click_script:find("SENDER=popup_refresh NAME=front_app", 1, true) ~= nil,
+        "front_app should refresh popup state asynchronously")
+      assert_true(entry.props.click_script:find("/tmp/plugins/front_app.sh", 1, true) ~= nil,
+        "front_app popup refresh should use the active plugin path")
+      assert_true(entry.props.click_script:find("BARISTA_SKETCHYBAR_BIN=/custom/sketchybar", 1, true) ~= nil,
+        "front_app popup refresh should preserve the resolved SketchyBar binary")
+      assert_true(entry.props.click_script:find("BARISTA_ANCHOR_IDLE_BG=0x18313a46", 1, true) ~= nil,
+        "front_app popup refresh should preserve anchor styling")
+      assert_true(entry.props.click_script:find("BARISTA_LUA_ONLY=1", 1, true) == nil,
+        "compiled front_app popup refresh should not force Lua-only mode")
     elseif entry.type == "item" and entry.name == "front_app_divider" then
       found_front_app_divider = true
       assert_equal(entry.props.label.string, "·", "front_app divider should render a subtle dot separator")
@@ -197,6 +215,7 @@ local function test_items_left_without_yabai()
     CONFIG_DIR = "/tmp/config",
     control_center_module = nil,
     WINDOW_MANAGER_MODE = "optional",
+    lua_only = true,
     group_bg_color = "0x44000000",
     group_border_color = "0xffffffff",
     group_border_width = 1,
@@ -227,6 +246,7 @@ local function test_items_left_without_yabai()
   local foundDeskHeader = false
   local foundExtensionGuide = false
   local foundMoveAction = false
+  local foundLuaOnlyRefresh = false
   for _, entry in ipairs(layout) do
     if entry.type == "item" and entry.name == "front_app.window.unavailable" then
       foundUnavailable = true
@@ -240,12 +260,17 @@ local function test_items_left_without_yabai()
     if entry.type == "item" and entry.name == "front_app.move.display_next" then
       foundMoveAction = true
     end
+    if entry.type == "item" and entry.name == "front_app"
+        and entry.props.click_script:find("/usr/bin/env BARISTA_LUA_ONLY=1", 1, true) ~= nil then
+      foundLuaOnlyRefresh = true
+    end
   end
 
   assert_true(foundUnavailable, "unavailable yabai row should exist")
   assert_true(foundDeskHeader, "disabled yabai path should expose Desk replacement rows")
   assert_true(foundExtensionGuide, "disabled yabai path should link the extension guide")
   assert_true(not foundMoveAction, "move-window yabai actions should be hidden when yabai is unavailable")
+  assert_true(foundLuaOnlyRefresh, "Lua-only front_app popup refresh should keep compiled helpers disabled")
   print("  items_left no-yabai test passed!")
 end
 

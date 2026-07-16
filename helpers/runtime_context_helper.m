@@ -5,13 +5,27 @@
 #import <signal.h>
 #import <string.h>
 #import <sys/stat.h>
+#import <time.h>
 #import <unistd.h>
 
 static volatile sig_atomic_t keep_running = 1;
+static const NSTimeInterval kDefaultSafetyRefreshSeconds = 5.0;
+static const NSTimeInterval kEventRefreshDebounceSeconds = 0.05;
+static const NSTimeInterval kEventRefreshMaximumDeferralSeconds = 0.25;
+static const NSTimeInterval kRunLoopMaximumSleepSeconds = 0.25;
 
 static void handle_signal(int signum) {
   (void)signum;
   keep_running = 0;
+}
+
+static NSTimeInterval monotonic_seconds(void) {
+  struct timespec timestamp = {0};
+  if (clock_gettime(CLOCK_MONOTONIC, &timestamp) == 0) {
+    return (NSTimeInterval)timestamp.tv_sec +
+        ((NSTimeInterval)timestamp.tv_nsec / 1000000000.0);
+  }
+  return NSProcessInfo.processInfo.systemUptime;
 }
 
 static NSString *sanitize_value(NSString *value) {
@@ -66,6 +80,15 @@ static NSTimeInterval task_timeout_seconds(void) {
   double seconds = value.length > 0 ? value.doubleValue : 1.0;
   if (seconds <= 0.0) {
     seconds = 1.0;
+  }
+  return seconds;
+}
+
+static NSTimeInterval safety_refresh_seconds(void) {
+  NSString *value = env_value(@"BARISTA_RUNTIME_CONTEXT_FRONT_APP_SAFETY_INTERVAL");
+  double seconds = value.length > 0 ? value.doubleValue : kDefaultSafetyRefreshSeconds;
+  if (seconds <= 0.0) {
+    seconds = kDefaultSafetyRefreshSeconds;
   }
   return seconds;
 }
@@ -482,13 +505,23 @@ static BOOL publish_front_app_content(NSString *content) {
   return [data writeToFile:path options:NSDataWritingAtomic error:&error];
 }
 
-static int refresh_front_app_cache(void) {
+static int refresh_front_app_cache_with_output(BOOL printContent) {
   if (!ensure_state_dir()) {
     return 1;
   }
 
   NSString *content = record_to_tsv(build_front_app_record());
-  return publish_front_app_content(content) ? 0 : 1;
+  if (!publish_front_app_content(content)) {
+    return 1;
+  }
+  if (printContent) {
+    printf("%s", content.UTF8String);
+  }
+  return 0;
+}
+
+static int refresh_front_app_cache(void) {
+  return refresh_front_app_cache_with_output(NO);
 }
 
 static int print_front_app_cache(void) {
@@ -506,37 +539,107 @@ static int print_front_app_cache(void) {
   return 0;
 }
 
-static int daemon_loop(void) {
+static int daemon_loop_with_notification_center(NSNotificationCenter *notificationCenter) {
   signal(SIGINT, handle_signal);
   signal(SIGTERM, handle_signal);
 
-  NSString *intervalText = env_value(@"BARISTA_RUNTIME_CONTEXT_INTERVAL") ?: @"1";
-  double intervalSeconds = intervalText.doubleValue;
-  if (intervalSeconds <= 0.0) {
-    intervalSeconds = 1.0;
+  __block BOOL eventRefreshPending = NO;
+  __block NSTimeInterval eventRefreshDeadline = 0.0;
+  __block NSTimeInterval eventRefreshLatestDeadline = 0.0;
+  void (^scheduleEventRefresh)(NSNotification *) = ^(__unused NSNotification *notification) {
+    NSTimeInterval now = monotonic_seconds();
+    if (!eventRefreshPending) {
+      eventRefreshLatestDeadline = now + kEventRefreshMaximumDeferralSeconds;
+    }
+    eventRefreshPending = YES;
+    eventRefreshDeadline = MIN(now + kEventRefreshDebounceSeconds,
+                               eventRefreshLatestDeadline);
+  };
+
+  NSOperationQueue *mainQueue = NSOperationQueue.mainQueue;
+  id activationObserver = [notificationCenter
+      addObserverForName:NSWorkspaceDidActivateApplicationNotification
+                  object:nil
+                   queue:mainQueue
+              usingBlock:scheduleEventRefresh];
+  id spaceObserver = [notificationCenter
+      addObserverForName:NSWorkspaceActiveSpaceDidChangeNotification
+                  object:nil
+                   queue:mainQueue
+              usingBlock:scheduleEventRefresh];
+  id wakeObserver = [notificationCenter
+      addObserverForName:NSWorkspaceDidWakeNotification
+                  object:nil
+                   queue:mainQueue
+              usingBlock:scheduleEventRefresh];
+
+  NSTimeInterval safetySeconds = safety_refresh_seconds();
+  @autoreleasepool {
+    refresh_front_app_cache();
   }
+  NSTimeInterval nextSafetyRefresh = monotonic_seconds() + safetySeconds;
 
   while (keep_running) {
-    @autoreleasepool {
-      refresh_front_app_cache();
+    NSTimeInterval now = monotonic_seconds();
+    BOOL eventRefreshDue = eventRefreshPending && now >= eventRefreshDeadline;
+    if (eventRefreshDue || now >= nextSafetyRefresh) {
+      eventRefreshPending = NO;
+      eventRefreshLatestDeadline = 0.0;
+      @autoreleasepool {
+        refresh_front_app_cache();
+      }
+      nextSafetyRefresh = monotonic_seconds() + safetySeconds;
+      continue;
     }
-    useconds_t sleepMicros = (useconds_t)(intervalSeconds * 1000000.0);
-    usleep(sleepMicros > 0 ? sleepMicros : 1000000);
+
+    NSTimeInterval nextWake = nextSafetyRefresh;
+    if (eventRefreshPending && eventRefreshDeadline < nextWake) {
+      nextWake = eventRefreshDeadline;
+    }
+    NSTimeInterval sleepSeconds = nextWake - now;
+    if (sleepSeconds > kRunLoopMaximumSleepSeconds) {
+      sleepSeconds = kRunLoopMaximumSleepSeconds;
+    }
+    if (sleepSeconds <= 0.0) {
+      continue;
+    }
+    @autoreleasepool {
+      [[NSRunLoop currentRunLoop]
+          runMode:NSDefaultRunLoopMode
+       beforeDate:[NSDate dateWithTimeIntervalSinceNow:sleepSeconds]];
+    }
+  }
+
+  if (activationObserver != nil) {
+    [notificationCenter removeObserver:activationObserver];
+  }
+  if (spaceObserver != nil) {
+    [notificationCenter removeObserver:spaceObserver];
+  }
+  if (wakeObserver != nil) {
+    [notificationCenter removeObserver:wakeObserver];
   }
 
   return 0;
 }
 
+static int daemon_loop(void) {
+  return daemon_loop_with_notification_center(NSWorkspace.sharedWorkspace.notificationCenter);
+}
+
 int main(int argc, const char *argv[]) {
   @autoreleasepool {
     if (argc < 2) {
-      fprintf(stderr, "Usage: %s <refresh-front-app|front-app|focused-space|daemon>\n", argv[0]);
+      fprintf(stderr, "Usage: %s <refresh-front-app|fresh-front-app|front-app|focused-space|daemon>\n", argv[0]);
       return 1;
     }
 
     NSString *command = [NSString stringWithUTF8String:argv[1]];
     if ([command isEqualToString:@"refresh-front-app"]) {
       return refresh_front_app_cache();
+    }
+    if ([command isEqualToString:@"fresh-front-app"]) {
+      return refresh_front_app_cache_with_output(YES);
     }
     if ([command isEqualToString:@"front-app"]) {
       return print_front_app_cache();

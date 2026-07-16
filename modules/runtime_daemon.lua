@@ -373,8 +373,11 @@ function runtime_daemon.ensure_runtime_context_daemon(script_path, opts)
   end
   opts.match_fragments = opts.match_fragments or {
     "runtime_context.sh daemon",
+    "runtime_context.sh refresh front-app",
+    "runtime_context.sh fresh-front-app",
     "runtime_context_helper daemon",
     "runtime_context_helper refresh-front-app",
+    "runtime_context_helper fresh-front-app",
   }
   return ensure_named_daemon("runtime-context", command, expected_fragment, opts)
 end
@@ -383,8 +386,11 @@ function runtime_daemon.stop_runtime_context_daemon(opts)
   opts = type(opts) == "table" and opts or {}
   opts.match_fragments = opts.match_fragments or {
     "runtime_context.sh daemon",
+    "runtime_context.sh refresh front-app",
+    "runtime_context.sh fresh-front-app",
     "runtime_context_helper daemon",
     "runtime_context_helper refresh-front-app",
+    "runtime_context_helper fresh-front-app",
   }
   return stop_named_daemon("runtime-context", "runtime_context.sh daemon", opts)
 end

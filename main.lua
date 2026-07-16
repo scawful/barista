@@ -410,6 +410,7 @@ local barista_context = {
   compiled_script = compiled_script,
   current_time_ms = runtime_startup.current_time_ms,
   widget_daemon_enabled = widget_daemon_enabled,
+  lua_only = LUA_ONLY,
 
   -- Paths, scripts, helpers, integrations
   paths       = paths,

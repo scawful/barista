@@ -8,6 +8,7 @@ TMP_DIR="$(mktemp -d)"
 CONFIG_DIR="$TMP_DIR/config"
 BIN_DIR="$TMP_DIR/bin"
 HELPER_BIN="$BIN_DIR/runtime_context_helper"
+HELPER_LOG="$TMP_DIR/helper.log"
 DAEMON_PID=""
 
 cleanup() {
@@ -24,6 +25,9 @@ mkdir -p "$CONFIG_DIR/cache" "$BIN_DIR"
 cat > "$HELPER_BIN" <<'EOF'
 #!/bin/bash
 set -euo pipefail
+if [ -n "${BARISTA_TEST_HELPER_LOG:-}" ]; then
+  printf '%s\n' "$*" >> "$BARISTA_TEST_HELPER_LOG"
+fi
 STATE_DIR="${BARISTA_RUNTIME_CONTEXT_DIR:?missing state dir}"
 FRONT_APP_FILE="$STATE_DIR/front_app.tsv"
 
@@ -43,6 +47,10 @@ TSV
 case "${1:-}" in
   refresh-front-app)
     write_cache
+    ;;
+  fresh-front-app)
+    write_cache
+    cat "$FRONT_APP_FILE"
     ;;
   front-app)
     [ -s "$FRONT_APP_FILE" ] || write_cache
@@ -72,6 +80,7 @@ TSV
 esac
 EOF
 chmod +x "$HELPER_BIN"
+: > "$HELPER_LOG"
 
 cat > "$BIN_DIR/osascript" <<'EOF'
 #!/bin/bash
@@ -176,6 +185,41 @@ FOCUSED_OUTPUT="$(
 )"
 printf '%s\n' "$FOCUSED_OUTPUT" | grep -Fxq $'app_name\tCursor' || { echo "FAIL: focused-space should request a fresh helper-backed focused-space record" >&2; exit 1; }
 printf '%s\n' "$FOCUSED_OUTPUT" | grep -Fxq $'location_label\tSpace 4 · Display 1' || { echo "FAIL: focused-space should not reuse stale cached front-app state" >&2; exit 1; }
+
+: > "$HELPER_LOG"
+FRESH_OUTPUT="$(
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    BARISTA_TEST_HELPER_LOG="$HELPER_LOG" \
+    BARISTA_RUNTIME_CONTEXT_HELPER_BIN="$HELPER_BIN" \
+    BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+    BARISTA_JQ_BIN="$(command -v jq)" \
+    CONFIG_DIR="$CONFIG_DIR" \
+    "$SCRIPT" fresh-front-app
+)"
+[ "$(cat "$HELPER_LOG")" = "fresh-front-app" ] || {
+  echo "FAIL: compiled popup refresh should invoke exactly one native fresh-front-app command" >&2
+  cat "$HELPER_LOG" >&2
+  exit 1
+}
+printf '%s\n' "$FRESH_OUTPUT" | grep -Fxq $'app_name\tFinder' || {
+  echo "FAIL: compiled popup refresh should forward the native fresh snapshot" >&2
+  exit 1
+}
+
+: > "$HELPER_LOG"
+PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+  BARISTA_LUA_ONLY=1 \
+  BARISTA_TEST_HELPER_LOG="$HELPER_LOG" \
+  BARISTA_RUNTIME_CONTEXT_HELPER_BIN="$HELPER_BIN" \
+  BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+  BARISTA_JQ_BIN="$(command -v jq)" \
+  BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
+  CONFIG_DIR="$CONFIG_DIR" \
+  "$SCRIPT" fresh-front-app >/dev/null
+[ ! -s "$HELPER_LOG" ] || {
+  echo "FAIL: explicit Lua-only popup refresh should not reactivate the compiled helper" >&2
+  exit 1
+}
 
 PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   BARISTA_RUNTIME_CONTEXT_HELPER_BIN="$HELPER_BIN" \

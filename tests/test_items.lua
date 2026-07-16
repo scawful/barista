@@ -566,6 +566,8 @@ local function test_items_right_layout()
 
   local added_items = {}
   local compiled_calls = {}
+  local compiled_fallbacks = {}
+  local volume_env_values = nil
   local mock_sbar = {
     add = function(kind, name, props)
       added_items[name] = { kind = kind, props = props }
@@ -589,6 +591,7 @@ local function test_items_right_layout()
     font_string = function(f, s, sz) return string.format("%s:%s:%0.1f", f, s, sz) end,
     PLUGIN_DIR = "/tmp/plugins",
     SCRIPTS_DIR = "/tmp/scripts",
+    CONFIG_DIR = "/tmp/config",
     widget_height = 22,
     popup_background = function() return { drawing = true } end,
     hover_script_cmd = "hover.sh",
@@ -601,7 +604,12 @@ local function test_items_right_layout()
     group_corner_radius = 4,
     icon_for = function(k, d) return d end,
     state_module = { get_icon = function() return "icon" end },
-    env_prefix = function(t) return "" end,
+    env_prefix = function(t)
+      if t.BARISTA_VOLUME_OK ~= nil then
+        volume_env_values = t
+      end
+      return ""
+    end,
     call_script = function(path, ...)
       local parts = { path }
       for _, arg in ipairs({ ... }) do
@@ -611,6 +619,7 @@ local function test_items_right_layout()
     end,
     compiled_script = function(n, p)
       table.insert(compiled_calls, n)
+      compiled_fallbacks[n] = p
       return "/compiled/" .. n
     end,
     widget_daemon_enabled = true,
@@ -642,7 +651,10 @@ local function test_items_right_layout()
   assert_true(added_items.system_info.props.click_script:find("popup.drawing=toggle", 1, true) ~= nil, "system_info click should toggle immediately")
   assert_true(added_items.system_info.props.click_script:find("popup_refresh", 1, true) ~= nil, "system_info click should refresh popup details asynchronously")
   assert_true(added_items.volume.props.click_script:find("popup.drawing=toggle", 1, true) ~= nil, "volume click should toggle immediately")
-  assert_true(added_items.volume.props.click_script:find("volume%.sh") ~= nil, "volume click should refresh details asynchronously")
+  assert_equal(added_items.volume.props.script, "/tmp/plugins/volume.sh", "routine volume events should keep the shell wrapper")
+  assert_true(added_items.volume.props.update_freq == nil, "native click refresh should not add a polling timer")
+  assert_true(added_items.volume.props.click_script:find("/compiled/volume_popup_helper", 1, true) ~= nil, "volume click should prefer the native popup helper")
+  assert_true(added_items.volume.props.click_script:find("popup_refresh || /tmp/plugins/volume.sh popup_refresh", 1, true) ~= nil, "volume click should retain the shell fallback")
   assert_true(added_items.volume.props.click_script:find("volume_click%.sh") == nil, "volume click should not query before toggling through volume_click.sh")
   assert_equal(added_items.battery.props.script, "/tmp/plugins/battery.sh 0xffa6e3a1 0xfff9e2af 0xfff38ba8 0xff89b4fa", "battery should keep the shell event wrapper")
   assert_true(added_items.battery.props.update_freq == nil, "battery timer should be disabled when daemon-managed")
@@ -651,6 +663,13 @@ local function test_items_right_layout()
   local compiled_summary = table.concat(compiled_calls, ",")
   assert_true(compiled_summary:find("system_info_widget", 1, true) ~= nil, "items_right should resolve the compiled system_info helper")
   assert_true(compiled_summary:find("widget_manager", 1, true) ~= nil, "items_right should resolve the compiled battery helper")
+  assert_true(compiled_summary:find("volume_popup_helper", 1, true) ~= nil, "items_right should resolve the compiled volume popup helper")
+  assert_equal(compiled_fallbacks.volume_popup_helper, "", "volume native lookup should use an empty resolver fallback")
+  assert_type(volume_env_values, "table", "volume helper should receive its runtime environment")
+  assert_equal(volume_env_values.BARISTA_CONFIG_DIR, "/tmp/config", "volume helper should receive the config root")
+  assert_equal(volume_env_values.BARISTA_RUNTIME_CONTEXT_DIR, "/tmp/config/cache/runtime_context", "volume helper should receive the runtime cache root")
+  assert_equal(volume_env_values.BARISTA_VOLUME_OUTPUT_IDLE, "0xffffffff", "volume helper should receive the idle output color")
+  assert_equal(volume_env_values.BARISTA_MEDIA_LABEL_MAX, "72", "volume helper should receive the media label cap")
 
   local volume_state = nil
   local volume_output = nil
@@ -687,6 +706,25 @@ local function test_items_right_layout()
   assert_true(volume_mute.props.click_script:find("popup.drawing=off", 1, true) ~= nil, "volume popup actions should close the popup after execution")
   assert_true(battery_settings ~= nil, "battery popup should keep the settings shortcut")
   assert_true(battery_settings.props.click_script:find("popup.drawing=off", 1, true) ~= nil, "battery popup actions should close the popup after execution")
+
+  local missing_helper_items = {}
+  mock_sbar.add = function(kind, name, props)
+    missing_helper_items[name] = { kind = kind, props = props }
+  end
+  mock_ctx.compiled_script = function(name, fallback)
+    if name == "volume_popup_helper" then
+      return fallback
+    end
+    return "/compiled/" .. name
+  end
+  items_right.get_layout(mock_ctx)
+  local portable_volume = missing_helper_items.volume
+  assert_true(portable_volume ~= nil, "volume should remain available without compiled helpers")
+  assert_equal(portable_volume.props.script, "/tmp/plugins/volume.sh", "helper-missing routine events should remain on the shell wrapper")
+  assert_true(portable_volume.props.click_script:find("popup.drawing=toggle", 1, true) ~= nil, "helper-missing click should still toggle immediately")
+  assert_true(portable_volume.props.click_script:find("/tmp/plugins/volume.sh popup_refresh", 1, true) ~= nil, "helper-missing click should refresh through the shell path")
+  assert_true(portable_volume.props.click_script:find("volume_popup_helper", 1, true) == nil, "helper-missing click should not include a broken native command")
+  assert_true(portable_volume.props.click_script:find("||", 1, true) == nil, "helper-missing click should not include an empty fallback chain")
 
   -- Check for bracket
   local found_bracket = false

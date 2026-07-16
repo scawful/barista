@@ -2,6 +2,11 @@
 
 ## July 15, 2026 - Popup Responsiveness
 
+- `helpers/volume_popup_helper.m` now refreshes the ten mutable volume/popup
+  items from CoreAudio plus bounded runtime caches in one acknowledged
+  SketchyBar message, with the existing shell path retained as a portable and
+  failure fallback. A 20-pair live sample improved median refresh latency from
+  281.08 ms to 49.32 ms (82%, 5.70x) and p95 from 298.94 ms to 55.61 ms.
 - `helpers/popup_hover.c` now calls SketchyBar with a bounded argument vector
   instead of invoking `sh -c`; the focused no-op benchmark improved median row
   hover latency from 6.39 ms to 2.87 ms.

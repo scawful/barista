@@ -115,7 +115,8 @@ build_helpers() {
     
     if cmake --build build --target clock_widget system_info_widget space_manager \
         submenu_hover popup_anchor popup_hover popup_manager popup_guard \
-        icon_manager state_manager widget_manager menu_renderer menu_action; then
+        icon_manager state_manager widget_manager menu_renderer menu_action \
+        volume_popup_helper; then
         print_info "✓ Helpers build successful!"
     else
         print_error "Helpers build failed!"

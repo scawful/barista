@@ -4,6 +4,8 @@
 # Common frameworks and libraries for macOS
 if(APPLE)
   find_library(COREFOUNDATION_LIB CoreFoundation)
+  find_library(COREAUDIO_LIB CoreAudio)
+  find_library(AUDIOTOOLBOX_LIB AudioToolbox)
   find_library(IOKIT_LIB IOKit)
   find_library(CARBON_LIB Carbon)
   find_library(SKYLIGHT_LIB SkyLight
@@ -37,6 +39,7 @@ set(HELPER_CXX_SOURCES
 set(HELPER_OBJC_SOURCES
   runtime_context_helper.m
   space_visual_helper.m
+  volume_popup_helper.m
 )
 
 # Build C helpers
@@ -81,10 +84,18 @@ foreach(SOURCE ${HELPER_OBJC_SOURCES})
     find_library(COCOA_LIB Cocoa)
     find_library(FOUNDATION_LIB Foundation)
     target_compile_options(${NAME} PRIVATE -fobjc-arc)
-    target_link_libraries(${NAME} PRIVATE
-      ${COCOA_LIB}
-      ${FOUNDATION_LIB}
-    )
+    if(NAME STREQUAL "volume_popup_helper")
+      target_link_libraries(${NAME} PRIVATE
+        ${FOUNDATION_LIB}
+        ${COREAUDIO_LIB}
+        ${AUDIOTOOLBOX_LIB}
+      )
+    else()
+      target_link_libraries(${NAME} PRIVATE
+        ${COCOA_LIB}
+        ${FOUNDATION_LIB}
+      )
+    endif()
   endif()
 
   set_target_properties(${NAME} PROPERTIES
@@ -119,5 +130,6 @@ install(TARGETS
   menu_action
   runtime_context_helper
   space_visual_helper
+  volume_popup_helper
   RUNTIME DESTINATION bin
 )

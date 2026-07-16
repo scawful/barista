@@ -77,6 +77,7 @@ barista/
 - `widget_manager` - Widget management
 - `menu_renderer` - Menu rendering
 - `menu_action` - Menu actions (C++)
+- `volume_popup_helper` - Objective-C CoreAudio/cache popup refresh with one bounded SketchyBar request
 
 ### Event Providers
 
@@ -208,4 +209,3 @@ The project previously used Makefiles. The CMake build system replaces:
 - `helpers/menus/makefile` → `helpers/menus/CMakeLists.txt`
 
 Old Makefiles are kept for reference but are no longer used by the build system.
-

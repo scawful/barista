@@ -11,6 +11,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCE="$ROOT_DIR/helpers/runtime_context_helper.m"
 TMP_DIR="$(mktemp -d)"
 HELPER="$TMP_DIR/runtime_context_helper"
+EVENT_HELPER="$TMP_DIR/runtime_context_helper_events"
+MONOTONIC_HELPER="$TMP_DIR/monotonic_now"
 STATE_DIR="$TMP_DIR/runtime_context"
 CACHE_FILE="$STATE_DIR/front_app.tsv"
 DAEMON_PID=""
@@ -35,6 +37,102 @@ fi
   -framework Foundation \
   "$SOURCE" \
   -o "$HELPER"
+
+cat > "$TMP_DIR/runtime_context_helper_events.m" <<EOF
+#define main barista_runtime_context_helper_main
+#include "$SOURCE"
+#undef main
+
+static NSUInteger test_query_count(NSString *path) {
+  NSString *queryLog = [NSString stringWithContentsOfFile:path
+                                                  encoding:NSUTF8StringEncoding
+                                                     error:nil];
+  if (queryLog.length == 0) {
+    return 0;
+  }
+  return [queryLog componentsSeparatedByString:@"\n"].count - 1;
+}
+
+int main(void) {
+  @autoreleasepool {
+    NSNotificationCenter *center = [[NSNotificationCenter alloc] init];
+    [NSThread detachNewThreadWithBlock:^{
+      @autoreleasepool {
+        NSString *queryLogPath = NSProcessInfo.processInfo.environment[@"BARISTA_TEST_YABAI_LOG"];
+        NSString *stateDirectory = NSProcessInfo.processInfo.environment[@"BARISTA_RUNTIME_CONTEXT_DIR"];
+        NSString *cachePath = [stateDirectory stringByAppendingPathComponent:@"front_app.tsv"];
+        for (NSUInteger attempt = 0; attempt < 200; attempt++) {
+          if (test_query_count(queryLogPath) >= 2 &&
+              [[NSFileManager defaultManager] fileExistsAtPath:cachePath]) {
+            break;
+          }
+          [NSThread sleepForTimeInterval:0.01];
+        }
+        NSString *timingPath = NSProcessInfo.processInfo.environment[@"BARISTA_TEST_EVENT_TIMING_LOG"];
+        NSString *eventTime = [NSString stringWithFormat:@"%.9f\n", monotonic_seconds()];
+        [eventTime writeToFile:timingPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        NSString *scenario = NSProcessInfo.processInfo.environment[@"BARISTA_TEST_EVENT_SCENARIO"];
+        NSUInteger eventCount = 0;
+        if ([scenario isEqualToString:@"maximum-deferral"]) {
+          for (NSUInteger attempt = 0; attempt < 20; attempt++) {
+            NSString *name = attempt % 2 == 0
+                ? NSWorkspaceDidActivateApplicationNotification
+                : NSWorkspaceActiveSpaceDidChangeNotification;
+            [center postNotificationName:name object:nil];
+            eventCount++;
+            [NSThread sleepForTimeInterval:0.04];
+            if (test_query_count(queryLogPath) >= 3) {
+              break;
+            }
+          }
+        } else {
+          NSString *name = NSWorkspaceDidActivateApplicationNotification;
+          if ([scenario isEqualToString:@"space"]) {
+            name = NSWorkspaceActiveSpaceDidChangeNotification;
+          } else if ([scenario isEqualToString:@"wake"]) {
+            name = NSWorkspaceDidWakeNotification;
+          }
+          [center postNotificationName:name object:nil];
+          eventCount = 1;
+        }
+        NSString *eventCountPath = NSProcessInfo.processInfo.environment[@"BARISTA_TEST_EVENT_COUNT_LOG"];
+        [[NSString stringWithFormat:@"%lu\n", (unsigned long)eventCount]
+            writeToFile:eventCountPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        for (NSUInteger attempt = 0; attempt < 200; attempt++) {
+          if (test_query_count(queryLogPath) >= 4) {
+            break;
+          }
+          [NSThread sleepForTimeInterval:0.01];
+        }
+        kill(getpid(), SIGTERM);
+      }
+    }];
+    return daemon_loop_with_notification_center(center);
+  }
+}
+EOF
+"$CC_BIN" -fobjc-arc -Wall -Wextra -Werror \
+  -framework Cocoa \
+  -framework Foundation \
+  "$TMP_DIR/runtime_context_helper_events.m" \
+  -o "$EVENT_HELPER"
+
+cat > "$TMP_DIR/monotonic_now.c" <<'EOF'
+#include <stdio.h>
+#include <time.h>
+
+int main(void) {
+  struct timespec timestamp = {0};
+  if (clock_gettime(CLOCK_MONOTONIC, &timestamp) != 0) {
+    return 1;
+  }
+  printf("%.9f\n", (double)timestamp.tv_sec + (double)timestamp.tv_nsec / 1000000000.0);
+  return 0;
+}
+EOF
+"$CC_BIN" -Wall -Wextra -Werror \
+  "$TMP_DIR/monotonic_now.c" \
+  -o "$MONOTONIC_HELPER"
 
 mkdir -p "$TMP_DIR/home"
 
@@ -77,6 +175,10 @@ cat > "$QUERY_YABAI" <<'EOF'
 set -euo pipefail
 
 printf '%s\n' "$*" >> "${BARISTA_TEST_YABAI_LOG:?}"
+if [[ -n "${BARISTA_TEST_YABAI_TIME_LOG:-}" ]]; then
+  timestamp="$("${BARISTA_TEST_MONOTONIC_BIN:?}")"
+  printf '%s\t%s\n' "$timestamp" "$*" >> "$BARISTA_TEST_YABAI_TIME_LOG"
+fi
 case "$*" in
   '-m query --spaces')
     printf '%s\n' '[{"index":3,"display":1,"type":"bsp","is-visible":true,"has-focus":true}]'
@@ -102,6 +204,7 @@ run_query_case() {
   local scenario="$1"
   local case_state_dir="$2"
   local app_override="${3:-}"
+  local helper_command="${4:-refresh-front-app}"
   local -a environment=(
     "PATH=/usr/bin:/bin:/usr/sbin:/sbin"
     "HOME=$TMP_DIR/home"
@@ -114,7 +217,7 @@ run_query_case() {
   if [[ -n "$app_override" ]]; then
     environment+=("BARISTA_RUNTIME_CONTEXT_FRONT_APP_NAME=$app_override")
   fi
-  env -i "${environment[@]}" "$HELPER" refresh-front-app
+  env -i "${environment[@]}" "$HELPER" "$helper_command"
 }
 
 assert_query_count() {
@@ -156,6 +259,17 @@ grep -Fxq $'window_available\ttrue' "$TMP_DIR/query-match/front_app.tsv" || {
 }
 
 : > "$QUERY_LOG"
+run_query_case match "$TMP_DIR/query-fresh" "" fresh-front-app > "$TMP_DIR/query-fresh-output.tsv"
+assert_query_total 2
+assert_query_count '-m query --windows --window' 1
+assert_query_count '-m query --spaces' 1
+assert_query_count '-m query --windows' 0
+cmp -s "$TMP_DIR/query-fresh/front_app.tsv" "$TMP_DIR/query-fresh-output.tsv" || {
+  echo "FAIL: fresh-front-app should return the exact snapshot it publishes" >&2
+  exit 1
+}
+
+: > "$QUERY_LOG"
 run_query_case fallback "$TMP_DIR/query-fallback" Finder
 assert_query_total 3
 assert_query_count '-m query --windows --window' 1
@@ -173,6 +287,88 @@ grep -Fxq $'state_label\tFloating · Managed Space' "$TMP_DIR/query-fallback/fro
   echo "FAIL: full-window fallback should publish the selected Finder state" >&2
   exit 1
 }
+
+# Each notification source schedules a serialized refresh, and a sustained
+# sub-debounce stream must still flush once the 250 ms cap is reached.
+run_event_case() {
+  local scenario="$1"
+  local maximum_latency="$2"
+  local minimum_events="$3"
+  local case_dir="$TMP_DIR/query-events-$scenario"
+  local query_log="$case_dir/queries.log"
+  local query_time_log="$case_dir/query-time.log"
+  local event_time_log="$case_dir/event-time.log"
+  local event_count_log="$case_dir/event-count.log"
+  mkdir -p "$case_dir"
+  : > "$query_log"
+  : > "$query_time_log"
+
+  python3 - "$EVENT_HELPER" "$case_dir/state" "$TMP_DIR/home" "$QUERY_YABAI" \
+    "$query_log" "$event_time_log" "$query_time_log" "$event_count_log" \
+    "$scenario" "$MONOTONIC_HELPER" <<'PY'
+import os
+import subprocess
+import sys
+
+(
+    helper,
+    state_dir,
+    home,
+    yabai,
+    query_log,
+    event_log,
+    query_time_log,
+    event_count_log,
+    scenario,
+    monotonic_bin,
+) = sys.argv[1:]
+env = {
+    "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+    "HOME": home,
+    "BARISTA_RUNTIME_CONTEXT_DIR": state_dir,
+    "BARISTA_RUNTIME_CONTEXT_FRONT_APP_NAME": "Cursor",
+    "BARISTA_RUNTIME_CONTEXT_FRONT_APP_SAFETY_INTERVAL": "5",
+    "BARISTA_RUNTIME_CONTEXT_QUERY_TIMEOUT": "0.2",
+    "BARISTA_TEST_YABAI_LOG": query_log,
+    "BARISTA_TEST_YABAI_TIME_LOG": query_time_log,
+    "BARISTA_TEST_MONOTONIC_BIN": monotonic_bin,
+    "BARISTA_TEST_EVENT_TIMING_LOG": event_log,
+    "BARISTA_TEST_EVENT_COUNT_LOG": event_count_log,
+    "BARISTA_TEST_EVENT_SCENARIO": scenario,
+    "BARISTA_TEST_YABAI_SCENARIO": "match",
+    "BARISTA_YABAI_BIN": yabai,
+}
+subprocess.run([helper], env=env, check=True, timeout=4)
+PY
+
+  python3 - "$query_log" "$event_time_log" "$query_time_log" \
+    "$event_count_log" "$maximum_latency" "$minimum_events" <<'PY'
+from pathlib import Path
+import sys
+
+query_log, event_log, query_time_log, event_count_log, maximum, minimum = sys.argv[1:]
+commands = Path(query_log).read_text(encoding="utf-8").splitlines()
+assert commands == [
+    "-m query --windows --window",
+    "-m query --spaces",
+    "-m query --windows --window",
+    "-m query --spaces",
+], commands
+event_time = float(Path(event_log).read_text(encoding="utf-8").strip())
+query_rows = Path(query_time_log).read_text(encoding="utf-8").splitlines()
+assert len(query_rows) == 4, query_rows
+event_query_time = float(query_rows[2].split("\t", 1)[0])
+latency = event_query_time - event_time
+assert 0.0 <= latency < float(maximum), latency
+event_count = int(Path(event_count_log).read_text(encoding="utf-8").strip())
+assert event_count >= int(minimum), event_count
+PY
+}
+
+run_event_case activation 0.40 1
+run_event_case space 0.40 1
+run_event_case wake 0.40 1
+run_event_case maximum-deferral 0.45 5
 
 # A missing target is created with the deterministic eight-row UTF-8 schema.
 run_refresh Finder
@@ -336,6 +532,7 @@ env -i \
   BARISTA_RUNTIME_CONTEXT_DIR="$STATE_DIR" \
   BARISTA_RUNTIME_CONTEXT_FRONT_APP_NAME="Cursor" \
   BARISTA_RUNTIME_CONTEXT_INTERVAL="0.05" \
+  BARISTA_RUNTIME_CONTEXT_FRONT_APP_SAFETY_INTERVAL="0.05" \
   BARISTA_RUNTIME_CONTEXT_QUERY_TIMEOUT="0.2" \
   BARISTA_YABAI_BIN="/usr/bin/false" \
   "$HELPER" daemon >/dev/null 2>&1 &

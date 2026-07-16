@@ -8,6 +8,9 @@ TMP_DIR="$(mktemp -d)"
 BIN_DIR="$TMP_DIR/bin"
 SCRIPTS_DIR="$TMP_DIR/scripts"
 LOG_FILE="$TMP_DIR/sketchybar.log"
+RUNTIME_LOG="$TMP_DIR/runtime-context.log"
+CONTEXT_LOG="$TMP_DIR/front-app-context.log"
+CONTEXT_MODE_FILE="$TMP_DIR/context-mode"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -33,7 +36,14 @@ chmod +x "$SCRIPTS_DIR/app_icon.sh"
 cat > "$SCRIPTS_DIR/front_app_context.sh" <<'EOF'
 #!/bin/bash
 set -euo pipefail
-case "${FRONT_APP_PLUGIN_CONTEXT_MODE:-floating_above}" in
+if [ -n "${BARISTA_TEST_CONTEXT_LOG:-}" ]; then
+  printf '%s\n' "$*" >> "$BARISTA_TEST_CONTEXT_LOG"
+fi
+mode="${FRONT_APP_PLUGIN_CONTEXT_MODE:-floating_above}"
+if [ -s "${BARISTA_TEST_CONTEXT_MODE_FILE:-}" ]; then
+  mode="$(cat "$BARISTA_TEST_CONTEXT_MODE_FILE")"
+fi
+case "$mode" in
   floating_above)
     printf 'app_name\tGhostty\n'
     printf 'window_available\ttrue\n'
@@ -59,6 +69,20 @@ esac
 EOF
 chmod +x "$SCRIPTS_DIR/front_app_context.sh"
 
+cat > "$SCRIPTS_DIR/runtime_context.sh" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${BARISTA_TEST_RUNTIME_LOG:?}"
+if [ "$*" = "fresh-front-app" ]; then
+  printf 'app_name\tGhostty\n'
+  printf 'window_available\ttrue\n'
+  printf 'state_icon\t󰊓\n'
+  printf 'state_label\tFullscreen\n'
+  printf 'location_label\tSpace 1 · Display 1\n'
+fi
+EOF
+chmod +x "$SCRIPTS_DIR/runtime_context.sh"
+
 run_front_app() {
   : > "$LOG_FILE"
   PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
@@ -66,11 +90,36 @@ run_front_app() {
     BARISTA_SCRIPTS_DIR="$SCRIPTS_DIR" \
     BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
     BARISTA_FRONT_APP_CONTEXT_SCRIPT="$SCRIPTS_DIR/front_app_context.sh" \
+    BARISTA_RUNTIME_CONTEXT_SCRIPT="$SCRIPTS_DIR/runtime_context.sh" \
     BARISTA_APP_ICON_SCRIPT="$SCRIPTS_DIR/app_icon.sh" \
+    BARISTA_TEST_RUNTIME_LOG="$RUNTIME_LOG" \
+    BARISTA_TEST_CONTEXT_LOG="$CONTEXT_LOG" \
+    BARISTA_TEST_CONTEXT_MODE_FILE="$CONTEXT_MODE_FILE" \
     NAME=front_app \
     SENDER=routine \
     INFO="" \
     FRONT_APP_PLUGIN_CONTEXT_MODE="$1" \
+    "$SCRIPT"
+}
+
+run_front_app_popup_refresh() {
+  : > "$LOG_FILE"
+  : > "$RUNTIME_LOG"
+  : > "$CONTEXT_LOG"
+  printf 'floating_above\n' > "$CONTEXT_MODE_FILE"
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    BARISTA_CONFIG_DIR="$TMP_DIR/config" \
+    BARISTA_SCRIPTS_DIR="$SCRIPTS_DIR" \
+    BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
+    BARISTA_FRONT_APP_CONTEXT_SCRIPT="$SCRIPTS_DIR/front_app_context.sh" \
+    BARISTA_RUNTIME_CONTEXT_SCRIPT="$SCRIPTS_DIR/runtime_context.sh" \
+    BARISTA_APP_ICON_SCRIPT="$SCRIPTS_DIR/app_icon.sh" \
+    BARISTA_TEST_RUNTIME_LOG="$RUNTIME_LOG" \
+    BARISTA_TEST_CONTEXT_LOG="$CONTEXT_LOG" \
+    BARISTA_TEST_CONTEXT_MODE_FILE="$CONTEXT_MODE_FILE" \
+    NAME=front_app \
+    SENDER=popup_refresh \
+    INFO="Ghostty" \
     "$SCRIPT"
 }
 
@@ -97,5 +146,17 @@ assert_log_contains "--set front_app.window.topmost label=Make Topmost"
 run_front_app none
 assert_log_contains "--set front_app.window.float label=No Window to Float"
 assert_log_contains "--set front_app.preset.tile_here label=No Window to Tile"
+
+run_front_app_popup_refresh
+grep -Fxq 'fresh-front-app' "$RUNTIME_LOG" || {
+  echo "FAIL: popup refresh should force fresh runtime context before rendering" >&2
+  exit 1
+}
+[ ! -s "$CONTEXT_LOG" ] || {
+  echo "FAIL: a successful fresh snapshot should bypass front_app_context fallback" >&2
+  cat "$CONTEXT_LOG" >&2
+  exit 1
+}
+assert_log_contains "--set front_app.window.fullscreen label=Exit Fullscreen"
 
 printf 'test_front_app_plugin.sh: ok\n'

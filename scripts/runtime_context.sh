@@ -19,6 +19,7 @@ FRONT_APP_FILE="$STATE_DIR/front_app.tsv"
 MEDIA_FILE="$STATE_DIR/media.tsv"
 OUTPUTS_FILE="$STATE_DIR/outputs.tsv"
 INTERVAL_SECONDS="${BARISTA_RUNTIME_CONTEXT_INTERVAL:-1}"
+FRONT_APP_SAFETY_INTERVAL_SECONDS="${BARISTA_RUNTIME_CONTEXT_FRONT_APP_SAFETY_INTERVAL:-5}"
 RUNTIME_CONTEXT_HELPER_BIN="${BARISTA_RUNTIME_CONTEXT_HELPER_BIN:-$CONFIG_DIR/bin/runtime_context_helper}"
 OSASCRIPT_TIMEOUT_SECONDS="${BARISTA_RUNTIME_CONTEXT_OSASCRIPT_TIMEOUT:-1}"
 AUDIO_SOURCE_TIMEOUT_SECONDS="${BARISTA_RUNTIME_CONTEXT_AUDIO_SOURCE_TIMEOUT:-1}"
@@ -122,6 +123,7 @@ usage() {
 Usage: runtime_context.sh <command>
   refresh [front-app|media]
   daemon
+  fresh-front-app
   front-app
   focused-space
   media-status
@@ -143,6 +145,7 @@ run_runtime_context_helper() {
   BARISTA_RUNTIME_CONTEXT_DIR="$STATE_DIR" \
     BARISTA_YABAI_BIN="$YABAI_BIN" \
     BARISTA_RUNTIME_CONTEXT_INTERVAL="$INTERVAL_SECONDS" \
+    BARISTA_RUNTIME_CONTEXT_FRONT_APP_SAFETY_INTERVAL="$FRONT_APP_SAFETY_INTERVAL_SECONDS" \
     "$RUNTIME_CONTEXT_HELPER_BIN" "$@"
 }
 
@@ -306,6 +309,7 @@ helper_refreshed_front_app_output() {
   if ! BARISTA_RUNTIME_CONTEXT_DIR="$temp_state_dir" \
       BARISTA_YABAI_BIN="$YABAI_BIN" \
       BARISTA_RUNTIME_CONTEXT_INTERVAL="$INTERVAL_SECONDS" \
+      BARISTA_RUNTIME_CONTEXT_FRONT_APP_SAFETY_INTERVAL="$FRONT_APP_SAFETY_INTERVAL_SECONDS" \
       "$RUNTIME_CONTEXT_HELPER_BIN" refresh-front-app >/dev/null 2>&1; then
     rm -rf "$temp_state_dir"
     return 1
@@ -361,6 +365,20 @@ refresh_front_app_cache() {
     return 0
   fi
   write_front_app_cache
+}
+
+fresh_front_app_output() {
+  local output=""
+  if runtime_context_helper_available; then
+    output="$(run_runtime_context_helper fresh-front-app 2>/dev/null || true)"
+    if [ -n "$output" ]; then
+      printf '%s\n' "$output"
+      return 0
+    fi
+  fi
+
+  write_front_app_cache >/dev/null
+  cat "$FRONT_APP_FILE"
 }
 
 media_osascript_bounded() {
@@ -888,6 +906,7 @@ daemon_loop() {
       BARISTA_RUNTIME_CONTEXT_DIR="$STATE_DIR" \
         BARISTA_YABAI_BIN="$YABAI_BIN" \
         BARISTA_RUNTIME_CONTEXT_INTERVAL="$INTERVAL_SECONDS" \
+        BARISTA_RUNTIME_CONTEXT_FRONT_APP_SAFETY_INTERVAL="$FRONT_APP_SAFETY_INTERVAL_SECONDS" \
         "$RUNTIME_CONTEXT_HELPER_BIN" daemon >/dev/null 2>&1 &
       helper_pid=$!
       trap '
@@ -953,7 +972,7 @@ COMMAND="${1:-}"
 case "$COMMAND" in
   refresh)
     case "${2:-all}" in
-      front-app) write_front_app_cache ;;
+      front-app) refresh_front_app_cache ;;
       media) refresh_media_and_outputs ;;
       all|"") refresh_all ;;
       *) usage; exit 1 ;;
@@ -961,6 +980,9 @@ case "$COMMAND" in
     ;;
   daemon)
     daemon_loop
+    ;;
+  fresh-front-app)
+    fresh_front_app_output
     ;;
   front-app)
     if helper_front_app_output "$COMMAND"; then

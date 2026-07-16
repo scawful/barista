@@ -72,7 +72,7 @@ run_test("runtime_daemon.stop_runtime_context_daemon: stops helper family", func
   assert_equal(#killed, 2, "expected targeted pid stop and stale family cleanup")
   assert_equal(killed[1].reason, "stopped", "first reason")
   assert_equal(killed[2].reason, "killed_stale", "second reason")
-  assert_equal(table.concat(seen_fragments, "|"), "runtime_context.sh daemon|runtime_context_helper daemon|runtime_context_helper refresh-front-app", "family fragments")
+  assert_equal(table.concat(seen_fragments, "|"), "runtime_context.sh daemon|runtime_context.sh refresh front-app|runtime_context.sh fresh-front-app|runtime_context_helper daemon|runtime_context_helper refresh-front-app|runtime_context_helper fresh-front-app", "family fragments")
 end)
 
 run_test("runtime_daemon.ensure_runtime_context_daemon: superseded launcher does not start", function()

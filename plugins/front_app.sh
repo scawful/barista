@@ -18,6 +18,7 @@ fi
 
 APP_NAME="${INFO:-}"
 FRONT_APP_CONTEXT_SCRIPT="${BARISTA_FRONT_APP_CONTEXT_SCRIPT:-$SCRIPTS_DIR/front_app_context.sh}"
+RUNTIME_CONTEXT_SCRIPT="${BARISTA_RUNTIME_CONTEXT_SCRIPT:-$SCRIPTS_DIR/runtime_context.sh}"
 APP_ICON_SCRIPT="${BARISTA_APP_ICON_SCRIPT:-$SCRIPTS_DIR/app_icon.sh}"
 OSASCRIPT_BIN="${BARISTA_OSASCRIPT_BIN:-$(command -v osascript 2>/dev/null || true)}"
 
@@ -60,8 +61,17 @@ STATE_LABEL="No managed window"
 LOCATION_LABEL="Space ? · Display ?"
 APP_ICON="󰣆"
 WINDOW_AVAILABLE="false"
+CONTEXT_OUTPUT=""
 
-if [ -x "$FRONT_APP_CONTEXT_SCRIPT" ]; then
+if [ "${SENDER:-}" = "popup_refresh" ] && [ -x "$RUNTIME_CONTEXT_SCRIPT" ]; then
+  CONTEXT_OUTPUT="$("$RUNTIME_CONTEXT_SCRIPT" fresh-front-app 2>/dev/null || true)"
+fi
+
+if [ -z "$CONTEXT_OUTPUT" ] && [ -x "$FRONT_APP_CONTEXT_SCRIPT" ]; then
+  CONTEXT_OUTPUT="$("$FRONT_APP_CONTEXT_SCRIPT" --app "$APP_NAME" 2>/dev/null || true)"
+fi
+
+if [ -n "$CONTEXT_OUTPUT" ]; then
   while IFS=$'\t' read -r key value; do
     case "$key" in
       app_name) APP_NAME="$value" ;;
@@ -70,7 +80,7 @@ if [ -x "$FRONT_APP_CONTEXT_SCRIPT" ]; then
       location_label) LOCATION_LABEL="$value" ;;
       window_available) WINDOW_AVAILABLE="$value" ;;
     esac
-  done < <("$FRONT_APP_CONTEXT_SCRIPT" --app "$APP_NAME" 2>/dev/null || true)
+  done <<< "$CONTEXT_OUTPUT"
 fi
 
 if [ -z "$APP_NAME" ]; then

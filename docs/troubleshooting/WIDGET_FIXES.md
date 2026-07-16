@@ -266,9 +266,16 @@ are ever removed.
 - Audio probes are timeout-bounded, failed current-output discovery leaves route rows unselected, and only the four routes the popup can display are cached.
 - A runtime launched with `runtime_backend=lua` propagates `BARISTA_LUA_ONLY=1`, preventing a leftover `bin/runtime_context_helper` from being used by the daemon.
 - The shared cache under `cache/runtime_context/` is the current source for front-app state, focused-space fast-path refreshes, media state, and audio output switching.
-- `runtime_daemon.stop_runtime_context_daemon()` now kills the whole runtime-context family on restart, including stale `runtime_context_helper daemon` and `refresh-front-app` children, so reloads do not accumulate orphaned helper/query processes.
+- `runtime_daemon.stop_runtime_context_daemon()` now kills the whole runtime-context family on restart, including stale shell refresh wrappers and `runtime_context_helper daemon`, `refresh-front-app`, or `fresh-front-app` children, so reloads do not accumulate orphaned helper/query processes.
 - `runtime_context.sh daemon` now backgrounds the helper binary directly instead of backgrounding a shell function, so the live runtime settles to one shell supervisor plus one helper daemon instead of leaving a redundant nested shell layer.
 - `runtime_daemon.ensure_runtime_context_daemon()` now writes a per-launch start token and the final launcher shell only `exec`s when its token is still current, so overlapping config passes cannot both spawn the daemon family.
+- The native helper no longer launches its focused-window/spaces pair on every
+  one-second base tick. App activation, active-space, and wake notifications
+  schedule a 50 ms debounced refresh on the helper thread, while a five-second
+  safety refresh covers missed events and external same-app window changes.
+  Front-app clicks still toggle immediately, then consume one fresh returned
+  snapshot in the background; portable/Lua-only setups retain their base-tick
+  producer and cannot reactivate a leftover compiled helper on click.
 
 ### 12. Reload Serialization
 **Current path**: `plugins/reload_sketchybar.sh`

@@ -68,6 +68,112 @@ assert_exact_cache() {
   }
 }
 
+# The common native path shares one focused-window snapshot across app naming
+# and matching; fallback still performs one full-window query when needed.
+QUERY_YABAI="$TMP_DIR/query-yabai"
+QUERY_LOG="$TMP_DIR/query-yabai.log"
+cat > "$QUERY_YABAI" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+printf '%s\n' "$*" >> "${BARISTA_TEST_YABAI_LOG:?}"
+case "$*" in
+  '-m query --spaces')
+    printf '%s\n' '[{"index":3,"display":1,"type":"bsp","is-visible":true,"has-focus":true}]'
+    ;;
+  '-m query --windows --window')
+    printf '%s\n' '{"id":7,"app":"Cursor","space":3,"display":1,"has-focus":true,"is-floating":false,"is-sticky":false,"has-fullscreen-zoom":false,"is-native-fullscreen":false,"layer":"normal","sub-layer":"auto","is-minimized":false}'
+    ;;
+  '-m query --windows')
+    if [[ "${BARISTA_TEST_YABAI_SCENARIO:-match}" == "fallback" ]]; then
+      printf '%s\n' '[{"id":9,"app":"Finder","space":3,"display":1,"has-focus":false,"is-floating":true,"is-sticky":false,"has-fullscreen-zoom":false,"is-native-fullscreen":false,"layer":"normal","sub-layer":"auto","is-minimized":false}]'
+    else
+      printf '%s\n' '[]'
+    fi
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+EOF
+chmod +x "$QUERY_YABAI"
+
+run_query_case() {
+  local scenario="$1"
+  local case_state_dir="$2"
+  local app_override="${3:-}"
+  local -a environment=(
+    "PATH=/usr/bin:/bin:/usr/sbin:/sbin"
+    "HOME=$TMP_DIR/home"
+    "BARISTA_RUNTIME_CONTEXT_DIR=$case_state_dir"
+    "BARISTA_RUNTIME_CONTEXT_QUERY_TIMEOUT=0.2"
+    "BARISTA_TEST_YABAI_LOG=$QUERY_LOG"
+    "BARISTA_TEST_YABAI_SCENARIO=$scenario"
+    "BARISTA_YABAI_BIN=$QUERY_YABAI"
+  )
+  if [[ -n "$app_override" ]]; then
+    environment+=("BARISTA_RUNTIME_CONTEXT_FRONT_APP_NAME=$app_override")
+  fi
+  env -i "${environment[@]}" "$HELPER" refresh-front-app
+}
+
+assert_query_count() {
+  local command="$1"
+  local expected="$2"
+  local actual
+  actual="$(awk -v command="$command" '$0 == command { count++ } END { print count + 0 }' "$QUERY_LOG")"
+  [[ "$actual" == "$expected" ]] || {
+    echo "FAIL: expected $expected '$command' queries, got $actual" >&2
+    cat "$QUERY_LOG" >&2
+    exit 1
+  }
+}
+
+assert_query_total() {
+  local expected="$1"
+  local actual
+  actual="$(awk 'END { print NR + 0 }' "$QUERY_LOG")"
+  [[ "$actual" == "$expected" ]] || {
+    echo "FAIL: expected $expected total yabai queries, got $actual" >&2
+    cat "$QUERY_LOG" >&2
+    exit 1
+  }
+}
+
+: > "$QUERY_LOG"
+run_query_case match "$TMP_DIR/query-match"
+assert_query_total 2
+assert_query_count '-m query --windows --window' 1
+assert_query_count '-m query --spaces' 1
+assert_query_count '-m query --windows' 0
+grep -Fxq $'app_name\tCursor' "$TMP_DIR/query-match/front_app.tsv" || {
+  echo "FAIL: the shared focused-window snapshot should drive the common match" >&2
+  exit 1
+}
+grep -Fxq $'window_available\ttrue' "$TMP_DIR/query-match/front_app.tsv" || {
+  echo "FAIL: the shared focused-window snapshot should remain managed" >&2
+  exit 1
+}
+
+: > "$QUERY_LOG"
+run_query_case fallback "$TMP_DIR/query-fallback" Finder
+assert_query_total 3
+assert_query_count '-m query --windows --window' 1
+assert_query_count '-m query --spaces' 1
+assert_query_count '-m query --windows' 1
+grep -Fxq $'app_name\tFinder' "$TMP_DIR/query-fallback/front_app.tsv" || {
+  echo "FAIL: a focused mismatch should retain full-window fallback selection" >&2
+  exit 1
+}
+grep -Fxq $'window_available\ttrue' "$TMP_DIR/query-fallback/front_app.tsv" || {
+  echo "FAIL: full-window fallback should remain managed" >&2
+  exit 1
+}
+grep -Fxq $'state_label\tFloating · Managed Space' "$TMP_DIR/query-fallback/front_app.tsv" || {
+  echo "FAIL: full-window fallback should publish the selected Finder state" >&2
+  exit 1
+}
+
 # A missing target is created with the deterministic eight-row UTF-8 schema.
 run_refresh Finder
 [[ -f "$CACHE_FILE" && ! -L "$CACHE_FILE" ]] || {

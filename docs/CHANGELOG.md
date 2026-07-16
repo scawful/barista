@@ -1,5 +1,15 @@
 # SketchyBar Configuration Changelog
 
+## July 16, 2026 - Single-Snapshot Front-App Discovery
+
+- The native runtime helper now shares one focused-window yabai snapshot across
+  app naming and window selection instead of launching the same query twice.
+- Normal no-override refreshes drop from three yabai child processes to two;
+  their mismatch/full-list fallback drops from four to three while retaining
+  the same ranking and cache schema.
+- The source-compiled native test records exact query commands for both the
+  focused match and full-window fallback paths.
+
 ## July 16, 2026 - Native Front-App Cache Publication
 
 - `runtime_context_helper` now uses a bounded, no-follow byte comparison before

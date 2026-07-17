@@ -1009,6 +1009,8 @@ local function test_items_right_task_focus_surface()
     end
   end
   assert_equal(actual_row_count, row_count, "Task Pulse popup should contain only its eight static rows")
+  assert_true(find_entry(layout, "task_focus.complete") == nil,
+    "non-syshelp providers should not expose Complete Focus")
 
   local capture = find_entry(layout, "task_focus.capture")
   local open_board = find_entry(layout, "task_focus.open")
@@ -1025,6 +1027,15 @@ local function test_items_right_task_focus_surface()
     "Focus timer should execute its Python shebang instead of passing it to Bash")
   assert_true(timer.props.click_script:find("toggle", 1, true) ~= nil, "Focus timer should toggle one menu-only session")
   assert_true(timer.props.click_script:find("task_state_changed", 1, true) ~= nil, "Focus timer should refresh Task Pulse after changes")
+
+  local syshelp_layout = build_layout({ task_focus = true }, { "/tmp/tasks.md" }, "syshelp")
+  local complete_focus = find_entry(syshelp_layout, "task_focus.complete")
+  assert_true(complete_focus ~= nil, "syshelp Task Pulse should expose Complete Focus")
+  assert_equal(complete_focus.props.label, "Complete Focus…", "Complete Focus should signal confirmation")
+  assert_true(complete_focus.props.click_script:find("/tmp/config/scripts/task_action%.sh") ~= nil,
+    "Complete Focus should use Barista's task_action.sh")
+  assert_true(complete_focus.props.click_script:find("complete%-focus") ~= nil,
+    "Complete Focus should request the provider-gated action")
 
   local subscribed = false
   local popup_autoclose = false

@@ -13,6 +13,9 @@ static const NSTimeInterval kDefaultSafetyRefreshSeconds = 5.0;
 static const NSTimeInterval kEventRefreshDebounceSeconds = 0.05;
 static const NSTimeInterval kEventRefreshMaximumDeferralSeconds = 0.25;
 static const NSTimeInterval kRunLoopMaximumSleepSeconds = 0.25;
+static const NSTimeInterval kTaskFastPollWindowSeconds = 0.02;
+static const NSTimeInterval kTaskFastPollIntervalSeconds = 0.001;
+static const NSTimeInterval kTaskSettledPollIntervalSeconds = 0.01;
 
 static void handle_signal(int signum) {
   (void)signum;
@@ -26,6 +29,12 @@ static NSTimeInterval monotonic_seconds(void) {
         ((NSTimeInterval)timestamp.tv_nsec / 1000000000.0);
   }
   return NSProcessInfo.processInfo.systemUptime;
+}
+
+static NSTimeInterval task_poll_interval_seconds(NSTimeInterval elapsedSeconds) {
+  return elapsedSeconds >= 0.0 && elapsedSeconds < kTaskFastPollWindowSeconds
+      ? kTaskFastPollIntervalSeconds
+      : kTaskSettledPollIntervalSeconds;
 }
 
 static NSString *sanitize_value(NSString *value) {
@@ -118,8 +127,10 @@ static NSString *run_task(NSString *launchPath, NSArray<NSString *> *arguments) 
     errorHandle = nil;
 
     NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:task_timeout_seconds()];
+    NSTimeInterval pollStart = monotonic_seconds();
     while (task.isRunning && deadline.timeIntervalSinceNow > 0.0) {
-      [NSThread sleepForTimeInterval:0.01];
+      [NSThread sleepForTimeInterval:task_poll_interval_seconds(
+          monotonic_seconds() - pollStart)];
     }
     if (task.isRunning) {
       [task terminate];

@@ -265,7 +265,12 @@ The clock popup keeps status-only `Focus`, `Next`, `Waiting`, and `Blocked`
 rows. It refreshes when opened and does not poll while closed. If Task Pulse is
 enabled, its separate popup contains `Summary`, `Focus`, `Next`, `Waiting`, and
 `Blocked` status rows plus `Capture Task`, `Open Board`, and one menu-only
-25-minute focus-session toggle. Focus state is local under ignored
+25-minute focus-session toggle. With the `syshelp` provider, the popup also
+shows `Complete Focus…`; it builds a fresh snapshot, confirms the exact focus
+title, then takes a second snapshot and requires the same unique focus identity
+before passing its title plus section to `syshelp plan tasks done` and emitting
+`task_state_changed`. The action is absent for read-only file providers.
+Focus-session state is local under ignored
 `cache/focus_session/state.json`; it creates no additional bar widget or daemon.
 Successful syshelp capture emits `task_state_changed`, and external task tools
 can trigger the same event so the optional chip can refresh without a timer.

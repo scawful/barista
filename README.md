@@ -147,6 +147,12 @@ In practice, the Triforce popup should stay close to:
 - a session section with `Continue: <current focus>` and `Patch + Launch`
 - an app launcher section with `Oracle Hub`, `Yaze`, `z3ed`, and `Mesen2 OoS`
 
+The Triforce anchor toggles immediately, then refreshes its ROM, focus, Continue,
+and alert fields asynchronously from Oracle's canonical
+`Scripts/Build/oos-triforce.sh status-json --barista` output. The refresh also
+runs after wake and once after configuration; there is no periodic
+Triforce timer. All mutable fields are applied in one SketchyBar request.
+
 For quick workflow access, the generated skhd shortcuts include:
 
 - `⌘⌥T` to open a terminal window (Ghostty when installed, Terminal as fallback)
@@ -375,7 +381,7 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **Opt-in Visual Phase Metrics:** set `BARISTA_SPACE_VISUAL_PHASE_METRICS=1` for detailed `space_visuals.sh` phase attribution in `barista-stats.sh show` without adding timing subprocesses to the normal visual hot path; visible app/glyph lookups are batched when helpers are available, style arguments are cached per run, and unchanged style-state files are not rewritten.
 - **Config Build Metric:** `./bin/barista-stats.sh show` now reports `config_build_time` separately from total reload time, so the `begin_config` to `end_config` window can be tuned independently from spaces follow-up work.
 - **Config Build Breakdown:** the same stats view now splits config build into menu render, left layout, right layout, and popup/submenu registry work, and now further separates left/right layout time into layout-table build vs. SketchyBar apply so reload tuning can target the actual slow phase.
-- **Shared Left-Layout State:** the left-side Oracle and control-center builders now reuse one status/model snapshot per config pass instead of rediscovering the same runtime state twice during reload.
+- **Non-blocking Oracle Model:** the left-side Oracle builder creates one shared static menu model without running the Oracle status command inside config construction; its controller fills dynamic rows asynchronously after configuration, on anchor click, and after wake. Control Center still reuses one status snapshot per config pass.
 - **Left-Layout Section Metrics:** the same stats view now also breaks left-layout build into `front_app`, `triforce`, `spaces`, `control_center`, and group assembly so the next reload fix can target the slow subsection instead of the whole left side.
 - **Cheap Timing Probes:** config-build and left-layout section metrics now use an in-process profiling clock so measuring reload hot paths no longer adds extra timestamp subprocesses; end-to-end `reload_time` still uses wall-clock.
 - **Spaces Discovery Reuse:** `simple_spaces.sh` now derives active display and display count from the already-fetched `yabai query --spaces` payload in the normal path, keeping the separate displays query only as a fallback.

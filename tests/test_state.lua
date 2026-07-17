@@ -109,6 +109,14 @@ if ok and state_module then
     assert_equal(normalized.menus.calendar.meeting_cache_max_age_seconds, 86400, "calendar meeting cache should expire after 24 hours by default")
   end)
 
+  run_test("state.normalize: removes the retired Triforce polling interval", function()
+    local normalized = state_module.normalize({
+      menus = { oracle = { triforce = { update_freq = 45, label = "Oracle" } } },
+    })
+    assert_nil(normalized.menus.oracle.triforce.update_freq, "retired polling key should be removed")
+    assert_equal(normalized.menus.oracle.triforce.label, "Oracle", "unrelated Triforce settings should be preserved")
+  end)
+
   run_test("state.normalize: preserves explicit task configuration", function()
     local normalized = state_module.normalize({
       widgets = { task_focus = true },

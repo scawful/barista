@@ -140,9 +140,13 @@ sketchybar --reload
 ### 7. Triforce Anchor Interaction
 **Current path**: `modules/integrations/oracle.lua` + `plugins/oracle_triforce.sh`
 - The left-bar Triforce anchor uses a direct SketchyBar popup toggle for click-open.
-- `plugins/oracle_triforce.sh` owns hover highlight and status updates, not click-open popup queries.
+- `plugins/oracle_triforce.sh` owns hover highlight and asynchronous status updates, not click-open popup ownership.
 - Hover only highlights the anchor; it does not open the popup.
-- Click toggles the popup open or closed.
+- Click toggles the popup open or closed first, then refreshes dynamic fields in the background from `Scripts/Build/oos-triforce.sh status-json --barista`.
+- Triforce has no periodic timer. Post-config, anchor-click, and `system_woke` refreshes apply the anchor plus ROM/focus/Continue targets in one SketchyBar request; malformed status applies nothing.
+- Status refreshes coalesce to one worker. The canonical producer has a four-second default deadline and TERM/forced-kill cleanup, preventing click bursts or a stuck Oracle subprocess from accumulating runaways.
+- A configured `triforce.label` remains fixed; only `auto`/empty labels follow the live Oracle status line.
+- The machine-local `oos-triforce-widget` is only a fallback when the canonical Oracle producer is unavailable.
 - Normal runtime no longer subscribes the anchor to `mouse.exited.global`; second-click, popup action rows, and global space/display/wake dismissal close it.
 - Popup action rows still close the popup after firing.
 

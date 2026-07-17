@@ -27,7 +27,6 @@ local function build_ctx(overrides)
         oracle = {
           triforce = {
             title = "Zelda Hacking",
-            update_freq = 30,
             show_label = false,
           },
           sections = {
@@ -162,10 +161,42 @@ run_test("oracle integration: triforce widget uses runtime overrides", function(
   assert_true(widget ~= nil, "widget should be created")
   assert_equal(widget.icon.string, "󰯙", "widget should use the current triforce glyph")
   assert_equal(widget.label.drawing, false, "widget should default to icon-only")
-  assert_equal(widget.update_freq, 30, "widget update frequency override should win")
+  assert_nil(widget.update_freq, "triforce should not install a polling timer")
   assert_true(widget.script:match("/tmp/config/plugins/oracle_triforce%.sh") ~= nil, "widget should route anchor behavior through oracle_triforce.sh")
   assert_true(widget.click_script:match("popup%.drawing=toggle") ~= nil, "clicks should use a direct popup toggle")
-  assert_true(widget.click_script:match("BARISTA_TRIFORCE_ACTION=click") == nil, "clicks should not route through the status/hover controller")
+  local toggle_at = widget.click_script:find("popup.drawing=toggle", 1, true)
+  local refresh_at = widget.click_script:find("SENDER=popup_refresh", 1, true)
+  assert_true(toggle_at ~= nil and refresh_at ~= nil and toggle_at < refresh_at, "clicks should toggle before starting async status refresh")
+  assert_true(widget.click_script:find(">/dev/null 2>&1 &", 1, true) ~= nil, "status refresh should run in the background")
+  assert_true(widget.click_script:match("BARISTA_TRIFORCE_ACTION=click") == nil, "clicks should not route toggle ownership through the controller")
+end)
+
+run_test("oracle integration: dynamic rows exist before the first status refresh", function()
+  local items = oracle.create_triforce_popup_items(build_ctx({
+    oracle_status_snapshot = {},
+  }))
+  local by_name = {}
+  for _, item in ipairs(items) do
+    by_name[item.name] = item
+  end
+
+  local focus = by_name["oracle.triforce.focus"]
+  local continue = by_name["oracle.triforce.play.continue"]
+  assert_true(focus ~= nil, "focus row should have a stable refresh target")
+  assert_equal(focus.drawing, false, "unknown focus should start hidden")
+  assert_equal(continue.label, "Continue Session", "unknown focus should use the stable fallback label")
+  assert_true(continue.click_script:find("./Scripts/Build/oos-triforce.sh continue-play", 1, true) ~= nil, "continue action should resolve the current focus at click time")
+end)
+
+run_test("oracle integration: configured anchor label is passed to refresh", function()
+  local ctx = build_ctx()
+  ctx.state.menus.oracle.triforce.label = "Zelda $(echo unsafe)"
+  ctx.state.menus.oracle.triforce.show_label = true
+  local widget = oracle.create_triforce_widget({ ctx = ctx })
+
+  assert_equal(widget.label.string, "Zelda $(echo unsafe)", "configured label should render before refresh")
+  assert_equal(widget.label.drawing, true, "configured label should honor show_label")
+  assert_true(widget.click_script:find("BARISTA_TRIFORCE_LABEL_OVERRIDE='Zelda $(echo unsafe)'", 1, true) ~= nil, "async refresh should preserve and quote the configured label")
 end)
 
 run_test("oracle integration: triforce popup uses apple-style sections and Oracle launchers", function()
@@ -215,6 +246,7 @@ run_test("oracle integration: triforce popup uses apple-style sections and Oracl
   assert_equal(by_name["oracle.triforce.play.continue"].background.height, 23, "action rows should use menu item height")
   assert_true(by_name["oracle.triforce.play.continue"] ~= nil, "continue row should exist")
   assert_equal(by_name["oracle.triforce.play.continue"].label, "Continue: Maku Tree at 0 crystals", "continue row should use the richer focus title")
+  assert_true(by_name["oracle.triforce.play.continue"].click_script:find("./Scripts/Build/oos-triforce.sh continue-play", 1, true) ~= nil, "continue row should not retain a stale reload-time focus command")
   assert_true(by_name["oracle.triforce.play.continue"].hover == true, "popup actions should opt into hover treatment")
   assert_true(by_name["oracle.triforce.play.continue"].click_script:find("popup%.drawing=off", 1, false) ~= nil, "popup actions should close the triforce popup after firing")
   assert_true(by_name["oracle.triforce.play.patch_continue"] ~= nil, "patch + continue row should exist")

@@ -160,7 +160,6 @@ local default_state = {
         icon = "",
         title = "",
         show_label = false,
-        update_freq = 45,
       },
     },
     music = {
@@ -259,6 +258,7 @@ local function sanitize_state(data)
   if type(data.menus.apple.hover) ~= "table" then data.menus.apple.hover = {} end
   if type(data.menus.oracle.sections) ~= "table" then data.menus.oracle.sections = {} end
   if type(data.menus.oracle.triforce) ~= "table" then data.menus.oracle.triforce = {} end
+  data.menus.oracle.triforce.update_freq = nil
   if type(data.menus.music.app_paths) ~= "table" then data.menus.music.app_paths = {} end
   if type(data.menus.music.items) ~= "table" then data.menus.music.items = {} end
   if type(data.menus.calendar.task_sources) ~= "table" and type(data.menus.calendar.task_sources) ~= "string" then

@@ -43,7 +43,6 @@ def usage(msg=None):
     print("  oracle-widget-title <title|auto>", file=sys.stderr)
     print("  oracle-widget-show-label <on|off>", file=sys.stderr)
     print("  oracle-widget-icon <glyph|auto>", file=sys.stderr)
-    print("  oracle-update-freq <seconds>", file=sys.stderr)
     sys.exit(1)
 
 try:
@@ -159,17 +158,6 @@ elif command == "oracle-widget-icon":
     oracle_menu = ensure_child(menus, "oracle")
     triforce = ensure_child(oracle_menu, "triforce")
     triforce["icon"] = "" if value == "auto" else value
-elif command == "oracle-update-freq":
-    if len(args) < 1:
-        usage("oracle-update-freq requires <seconds>")
-    try:
-        seconds = int(args[0])
-    except ValueError:
-        usage("oracle-update-freq requires an integer")
-    menus = ensure_dict("menus")
-    oracle_menu = ensure_child(menus, "oracle")
-    triforce = ensure_child(oracle_menu, "triforce")
-    triforce["update_freq"] = max(5, seconds)
 else:
     usage(f"Unknown command: {command}")
 

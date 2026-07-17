@@ -490,7 +490,6 @@ local function test_items_left_reuses_oracle_and_control_center_status()
               widget_icon = "󰯙",
               widget_label = "Oracle",
               show_label = true,
-              update_freq = 30,
               alerts_level = "ok",
               triforce_widget = "/tmp/oos-triforce-widget",
             },

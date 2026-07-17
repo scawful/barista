@@ -7,8 +7,6 @@ local oracle = {}
 local locator = require("tool_locator")
 local ui = require("ui_builder")
 
-local json_ok, json = pcall(require, "json")
-
 local HOME = os.getenv("HOME")
 local CODE_DIR = os.getenv("BARISTA_CODE_DIR") or (HOME .. "/src")
 local DOTFILES_DIR = CODE_DIR .. "/config/dotfiles"
@@ -17,9 +15,8 @@ local ORACLE_DIR = CODE_DIR .. "/hobby/oracle-of-secrets"
 oracle.config = {
   repo_path = ORACLE_DIR,
   z3dk_repo = CODE_DIR .. "/hobby/z3dk",
-  workbench = DOTFILES_DIR .. "/bin/oos-workbench",
-  legacy_workbench = DOTFILES_DIR .. "/bin/oos-cockpit",
   triforce_widget = DOTFILES_DIR .. "/bin/oos-triforce-widget",
+  status_script = ORACLE_DIR .. "/Scripts/Build/oos-triforce.sh",
   handoff = ORACLE_DIR .. "/.context/scratchpad/agent_handoff.md",
   tracker = ORACLE_DIR .. "/oracle.org",
   workflow_plan = ORACLE_DIR .. "/Docs/Planning/Plans/development_workflow_alignment_2026-03-28.md",
@@ -138,16 +135,6 @@ local function sanitize_id(value, fallback)
   return raw
 end
 
-local function workbench_path()
-  if path_is_executable(oracle.config.workbench) then
-    return oracle.config.workbench
-  end
-  if path_is_executable(oracle.config.legacy_workbench) then
-    return oracle.config.legacy_workbench
-  end
-  return nil
-end
-
 local function repo_action(command)
   if not command or command == "" then
     return ""
@@ -213,46 +200,6 @@ local function finishline_color(level)
   return colors[level] or "0xff89b4fa"
 end
 
-local function read_status_snapshot(ctx)
-  if ctx and type(ctx.oracle_status_snapshot) == "table" then
-    return ctx.oracle_status_snapshot
-  end
-  if not json_ok then
-    return nil
-  end
-
-  local bin = workbench_path()
-  local command
-  if bin then
-    command = string.format("%s status-json --barista 2>/dev/null", shell_quote(bin))
-  elseif path_exists(oracle.config.repo_path, true) then
-    command = string.format(
-      "cd %s && ./Scripts/Build/oos-triforce.sh status-json --barista 2>/dev/null",
-      shell_quote(oracle.config.repo_path)
-    )
-  end
-
-  if not command then
-    return nil
-  end
-
-  local handle = io.popen(command)
-  if not handle then
-    return nil
-  end
-  local payload = handle:read("*a") or ""
-  handle:close()
-  if payload == "" then
-    return nil
-  end
-
-  local ok, decoded = pcall(json.decode, payload)
-  if not ok or type(decoded) ~= "table" then
-    return nil
-  end
-  return decoded
-end
-
 local function current_density(state)
   local appearance = state and state.appearance or {}
   local menu_item_height = normalize_number(appearance.menu_item_height) or 23
@@ -278,7 +225,6 @@ local function ui_config(ctx)
       icon = type(triforce.icon) == "string" and triforce.icon or "",
       title = type(triforce.title) == "string" and triforce.title or "",
       show_label = normalize_bool(triforce.show_label) == true,
-      update_freq = normalize_number(triforce.update_freq) or 45,
     },
     sections = sections,
   }
@@ -325,7 +271,12 @@ end
 
 local function build_state(ctx)
   local repo_ok = path_exists(oracle.config.repo_path, true)
-  local status = read_status_snapshot(ctx) or {}
+  -- Live status belongs to the event/on-open controller. Keeping config-model
+  -- construction in-process avoids blocking a reload on the Oracle Python/git
+  -- snapshot; tests and callers may still inject one deterministic snapshot.
+  local status = ctx and type(ctx.oracle_status_snapshot) == "table"
+    and ctx.oracle_status_snapshot
+    or {}
   local finish_line = get_field(status, "finish_line") or {}
   local focus = get_field(finish_line, "focus") or {}
   local version = parse_version_from_command(get_field(status, "commands.verify"))
@@ -375,7 +326,7 @@ local function build_state(ctx)
     )
     z3ed_action = terminal_action(command, ctx)
   end
-  local continue_action = repo_action(focus.command or "./Scripts/Build/oos-session.sh maku --crystals 0")
+  local continue_action = repo_action("./Scripts/Build/oos-triforce.sh continue-play")
   local patch_and_play_action = repo_action("./Scripts/Build/oos-triforce.sh patch-and-play")
   local density = current_density(ctx and ctx.state or {})
   local widget_icon = ui.triforce.icon
@@ -404,13 +355,14 @@ local function build_state(ctx)
     rom_label = rom_label,
     show_label = ui.triforce.show_label,
     widget_label = widget_label,
+    widget_label_override = ui.triforce.label,
     widget_icon = widget_icon,
-    update_freq = math.max(5, ui.triforce.update_freq),
     alerts_level = finish_line.alerts_level or "warn",
     focus_label = focus.label or "",
     focus_title = focus.title or "",
     density = density,
     triforce_widget = oracle.config.triforce_widget,
+    status_script = oracle.config.status_script,
   }
 end
 
@@ -625,17 +577,16 @@ local function popup_items_from_model(model, ctx)
   local focus_label = model.state.focus_title ~= "" and model.state.focus_title
     or model.state.focus_label
     or ""
-  if focus_label ~= "" then
-    focus_label = tostring(focus_label):gsub("^Play%s+", "")
-    ui.row(items, "triforce", "oracle.triforce.focus", {
-      style = style,
-      icon = { string = "󰐃", color = theme_color(ctx, "GREEN") },
-      label = "Focus: " .. truncate_label(focus_label, 34),
-      font = style.font_small or title_font,
-      label_color = theme_color(ctx, "SUBTEXT1", "WHITE"),
-      hover = false,
-    })
-  end
+  focus_label = tostring(focus_label):gsub("^Play%s+", "")
+  ui.row(items, "triforce", "oracle.triforce.focus", {
+    style = style,
+    icon = { string = "󰐃", color = theme_color(ctx, "GREEN") },
+    label = focus_label ~= "" and ("Focus: " .. truncate_label(focus_label, 34)) or "",
+    font = style.font_small or title_font,
+    label_color = theme_color(ctx, "SUBTEXT1", "WHITE"),
+    hover = false,
+    props = { drawing = focus_label ~= "" },
+  })
 
   local visible_sections = {}
   for _, section in ipairs(model.sections or {}) do
@@ -719,22 +670,43 @@ function oracle.create_triforce_widget(opts)
       align = "left",
       background = popup_background,
     },
-    update_freq = state.update_freq,
   }
 
   if ctx.CONFIG_DIR then
     local controller_script = shell_quote(ctx.CONFIG_DIR .. "/plugins/oracle_triforce.sh")
-    if path_is_executable(state.triforce_widget) then
-      item.script = string.format(
-        "BARISTA_TRIFORCE_WIDGET_BIN=%s %s",
-        shell_quote(state.triforce_widget),
-        controller_script
-      )
-    else
-      item.script = controller_script
+    local controller_env = {}
+    if path_is_executable(state.status_script) then
+      table.insert(controller_env, "BARISTA_ORACLE_REPO_PATH=" .. shell_quote(oracle.config.repo_path))
+      table.insert(controller_env, "BARISTA_ORACLE_STATUS_BIN=" .. shell_quote(state.status_script))
     end
+    if path_is_executable(state.triforce_widget) then
+      table.insert(controller_env, "BARISTA_TRIFORCE_WIDGET_BIN=" .. shell_quote(state.triforce_widget))
+    end
+    if state.widget_label_override ~= "" then
+      table.insert(controller_env, "BARISTA_TRIFORCE_LABEL_OVERRIDE=" .. bash_literal(state.widget_label_override))
+    end
+    if ctx.SKETCHYBAR_BIN then
+      table.insert(controller_env, "BARISTA_SKETCHYBAR_BIN=" .. shell_quote(ctx.SKETCHYBAR_BIN))
+    end
+    table.insert(controller_env, controller_script)
+    item.script = table.concat(controller_env, " ")
   elseif path_is_executable(state.triforce_widget) then
     item.script = state.triforce_widget
+  end
+
+  if item.script and item.script ~= "" then
+    local refresh_script = string.format(
+      "SENDER=popup_refresh NAME=%s %s",
+      shell_quote(item.name),
+      item.script
+    )
+    local toggle_script = opts.popup_toggle_script
+      or ui.toggle(item.name, { sketchybar_bin = ctx.SKETCHYBAR_BIN })
+    item.click_script = string.format(
+      "%s; (%s) >/dev/null 2>&1 &",
+      toggle_script,
+      refresh_script
+    )
   end
 
   return item

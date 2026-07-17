@@ -118,6 +118,18 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - the source-compiled native test checks the wait-policy boundary directly and confirms that a query which ignores `SIGTERM` is gone when the bounded helper call returns
 *   **Result:** a same-session randomized/interleaved 40-run live sample reduced native fresh-snapshot median from 30.439 ms to 17.001 ms (44.1%) and p95 from 31.521 ms to 18.714 ms (40.6%). Through the existing shell wrapper, median dropped from 40.791 ms to 28.009 ms (31.3%) and p95 from 42.986 ms to 30.950 ms (28.0%). The complete batched popup-refresh path dropped from 55.634 ms to 42.042 ms median (24.4%) and from 58.286 ms to 44.979 ms p95 (22.8%), without adding IPC, another daemon, or a native popup renderer.
 
+### 0j. On-Demand Triforce Status (Verified)
+*   **Files:** `modules/integrations/oracle.lua`, `plugins/oracle_triforce.sh`, `tests/test_oracle_triforce.sh`
+*   **Update:**
+    - removed the Triforce anchor's 45-second polling timer; click still toggles the popup first, then starts one background status refresh
+    - live status now comes directly from Oracle's canonical `Scripts/Build/oos-triforce.sh status-json --barista` producer instead of depending on a machine-local workbench wrapper
+    - the dynamic anchor, header accent, ROM, focus visibility/label, and Continue label update through one SketchyBar argument vector; invalid JSON applies nothing
+    - refreshes coalesce behind one stale-aware lock, and the canonical producer runs in a dedicated process group with a four-second default deadline plus TERM/forced-kill cleanup; repeated clicks cannot accumulate status workers
+    - explicit `triforce.label` text remains authoritative while automatic labels continue to follow the live status line
+    - the focus row always exists as a hidden refresh target, and Continue resolves the current Oracle focus at click time rather than retaining a reload-time command
+    - config-model construction performs no Oracle shell/Python/git snapshot; initial post-config, anchor-click, and wake events own refresh work, with the legacy anchor-only widget retained only when the canonical producer is unavailable; the retired `update_freq` state/command is removed
+*   **Result:** the removed timer path measured 33.029 ms median and 35.071 ms p95 across 60 live runs. Removing it eliminates up to 80 useless runs per shown hour (1,920 per day) and keeps the roughly 100 ms canonical status snapshot on explicit event paths rather than making a repaired producer three times more expensive on the old timer.
+
 ### 1. Network & System Info (Mitigated)
 *   **File:** `helpers/system_info_widget.c`
 *   **Update:** Batched 5 separate `system()` calls into a single `sketchybar` invocation.
@@ -242,7 +254,7 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
     - config-build timing is emitted separately for the `begin_config` to `end_config` window
     - config-build timing is now also split into menu render, left layout, right layout, and registry phases
     - left and right layout timing are now further split into layout build vs. SketchyBar apply, so the runtime can distinguish Lua-side layout construction from item registration cost
-    - the left-side Oracle and control-center builders now reuse one shared model/status snapshot per config pass instead of rebuilding the same runtime state twice
+    - the left-side Oracle builder reuses one static model and defers its live status snapshot to the async controller; the control-center builder reuses one status snapshot per config pass
     - left-layout timing is now also broken out by subsection (`front_app`, `triforce`, `spaces`, `control_center`, `group`) so the remaining build-side cost can be targeted precisely
     - config-build and left-layout subsection timing now use an in-process profiling clock instead of spawning a timestamp subprocess for every probe; total `reload_time` remains wall-clock
     - `simple_spaces.sh` now derives active display and display count from the existing spaces payload in the normal path, avoiding a second `yabai --displays` query unless the focused display cannot be inferred

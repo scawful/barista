@@ -1,5 +1,21 @@
 # SketchyBar Configuration Changelog
 
+## July 16, 2026 - On-Demand Triforce Status
+
+- Removed the Triforce anchor's 45-second timer. Popup clicks still toggle
+  immediately, then collect Oracle status asynchronously; post-config and wake
+  are the only other refresh owners.
+- The controller reads the canonical Oracle status producer and batches the
+  anchor, header accent, ROM, focus, and Continue fields into one SketchyBar
+  call. Invalid status fails closed, and the old machine-local widget is only a
+  missing-producer fallback.
+- Refreshes coalesce to one worker and enforce a four-second default deadline
+  with process-group termination/forced-kill cleanup. Explicit anchor labels
+  remain fixed, while the retired polling key and runtime command are removed.
+- Config construction no longer starts the Oracle Python/git snapshot, and the
+  Continue row resolves the current focus when clicked instead of retaining a
+  reload-time command.
+
 ## July 16, 2026 - Confirmation-Backed Task Completion
 
 - Syshelp-backed Task Pulse popups now include one menu-only

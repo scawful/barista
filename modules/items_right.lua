@@ -245,6 +245,7 @@ local function get_layout(ctx)
     local task_pulse_command = task_env .. build_script_action(PLUGIN_DIR .. "/task_pulse.sh")
     local task_capture_command = task_env .. build_script_action(task_scripts_dir .. "/task_capture.sh")
     local task_open_command = task_env .. build_script_action(task_scripts_dir .. "/task_action.sh", "open")
+    local task_complete_command = task_env .. build_script_action(task_scripts_dir .. "/task_action.sh", "complete-focus")
     local focus_session_command = shell_quote(task_scripts_dir .. "/focus_session.py") .. " toggle 25"
       .. " >/dev/null 2>&1 && " .. shell_quote(SKETCHYBAR_BIN) .. " --trigger task_state_changed"
 
@@ -308,19 +309,27 @@ local function get_layout(ctx)
         label = "Capture Task",
         click_script = close_popup_after("task_focus", task_capture_command),
       },
-      {
-        name = "task_focus.open",
-        icon = "󰈙",
-        label = "Open Board",
-        click_script = close_popup_after("task_focus", task_open_command),
-      },
-      {
-        name = "task_focus.timer",
-        icon = "󰔛",
-        label = "Start 25m Focus",
-        click_script = close_popup_after("task_focus", focus_session_command),
-      },
     }
+    if task_provider == "syshelp" then
+      table.insert(task_actions, {
+        name = "task_focus.complete",
+        icon = "󰄬",
+        label = "Complete Focus…",
+        click_script = close_popup_after("task_focus", task_complete_command),
+      })
+    end
+    table.insert(task_actions, {
+      name = "task_focus.open",
+      icon = "󰈙",
+      label = "Open Board",
+      click_script = close_popup_after("task_focus", task_open_command),
+    })
+    table.insert(task_actions, {
+      name = "task_focus.timer",
+      icon = "󰔛",
+      label = "Start 25m Focus",
+      click_script = close_popup_after("task_focus", focus_session_command),
+    })
     for _, entry in ipairs(task_actions) do
       table.insert(layout, add_task(entry.name, {
         icon = entry.icon,

@@ -160,9 +160,14 @@ Task Pulse is an optional right-side chip for a configured local task board. It
 is absent unless both `widgets.task_focus=true` and at least one
 `menus.calendar.task_sources` entry are present. Clicking the chip opens a
 bounded popup with `Summary`, `Focus`, `Next`, `Waiting`, and `Blocked` rows plus
-`Capture Task`, `Open Board`, and a single menu-only focus-session action. The
-focus row starts or stops a 25-minute session without adding another bar widget,
-daemon, or polling timer. The closed chip stays narrow:
+`Capture Task`, `Open Board`, and a single menu-only focus-session action. When
+the provider is `syshelp`, the popup also includes `Complete Focus…`: it takes a
+fresh focus snapshot, asks for confirmation, then revalidates the same unique
+focus identity before marking its exact title and section done and refreshing
+task state. File-only providers stay read-only and never render the completion
+action. The focus-session row starts or stops a
+25-minute session without adding another bar widget, daemon, or polling timer.
+The closed chip stays narrow:
 its task icon is followed only by the open count (or `Clear` / `Tasks !` for the
 empty and source-or-provider-unavailable states). Task titles remain inside
 bounded popup rows.

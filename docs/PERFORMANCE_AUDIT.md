@@ -110,6 +110,14 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - deterministic tests require one successful client invocation, exact target/payload order, intact quoted/Unicode arguments, the configured SketchyBar binary, native-context and portable-context paths, and identical fallback payloads
 *   **Result:** on the enabled-action topology, a same-session sequential 60-run renderer-only sample reduced median apply latency from 27.173 ms to 3.563 ms (86.9%) and p95 from 29.133 ms to 3.773 ms (87.0%). A same-session sequential 25-run live popup-refresh sample reduced end-to-end median from 79.948 ms to 54.832 ms (31.4%) and p95 from 86.069 ms to 58.181 ms (32.4%). Both observed profiles ran the old path first against the same settled Ghostty/Tiled context. Fresh native context discovery remains the dominant roughly 40 ms portion, so a new UI helper would add coupling for comparatively little remaining benefit.
 
+### 0i. Adaptive Native Query Wait (Verified)
+*   **Files:** `helpers/runtime_context_helper.m`, `tests/test_runtime_context_helper_publication.sh`
+*   **Update:**
+    - native yabai tasks now poll for completion every 1 ms during their first 20 ms, then return to the previous 10 ms cadence for slower work
+    - the existing query deadline, `NSTask` termination, 50 ms grace period, forced-kill fallback, TSV schema, daemon topology, and portable path are unchanged
+    - the source-compiled native test checks the wait-policy boundary directly and confirms that a query which ignores `SIGTERM` is gone when the bounded helper call returns
+*   **Result:** a same-session randomized/interleaved 40-run live sample reduced native fresh-snapshot median from 30.439 ms to 17.001 ms (44.1%) and p95 from 31.521 ms to 18.714 ms (40.6%). Through the existing shell wrapper, median dropped from 40.791 ms to 28.009 ms (31.3%) and p95 from 42.986 ms to 30.950 ms (28.0%). The complete batched popup-refresh path dropped from 55.634 ms to 42.042 ms median (24.4%) and from 58.286 ms to 44.979 ms p95 (22.8%), without adding IPC, another daemon, or a native popup renderer.
+
 ### 1. Network & System Info (Mitigated)
 *   **File:** `helpers/system_info_widget.c`
 *   **Update:** Batched 5 separate `system()` calls into a single `sketchybar` invocation.

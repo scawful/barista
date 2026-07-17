@@ -12,6 +12,7 @@ SOURCE="$ROOT_DIR/helpers/runtime_context_helper.m"
 TMP_DIR="$(mktemp -d)"
 HELPER="$TMP_DIR/runtime_context_helper"
 EVENT_HELPER="$TMP_DIR/runtime_context_helper_events"
+WAIT_POLICY_HELPER="$TMP_DIR/runtime_context_helper_wait_policy"
 MONOTONIC_HELPER="$TMP_DIR/monotonic_now"
 STATE_DIR="$TMP_DIR/runtime_context"
 CACHE_FILE="$STATE_DIR/front_app.tsv"
@@ -117,6 +118,30 @@ EOF
   "$TMP_DIR/runtime_context_helper_events.m" \
   -o "$EVENT_HELPER"
 
+cat > "$TMP_DIR/runtime_context_helper_wait_policy.m" <<EOF
+#define main barista_runtime_context_helper_main
+#include "$SOURCE"
+#undef main
+
+int main(void) {
+  @autoreleasepool {
+    if (task_poll_interval_seconds(0.0) != kTaskFastPollIntervalSeconds ||
+        task_poll_interval_seconds(kTaskFastPollWindowSeconds / 2.0) != kTaskFastPollIntervalSeconds ||
+        task_poll_interval_seconds(kTaskFastPollWindowSeconds) != kTaskSettledPollIntervalSeconds ||
+        task_poll_interval_seconds(kTaskFastPollWindowSeconds * 2.0) != kTaskSettledPollIntervalSeconds) {
+      return 1;
+    }
+    return 0;
+  }
+}
+EOF
+"$CC_BIN" -fobjc-arc -Wall -Wextra -Werror \
+  -framework Cocoa \
+  -framework Foundation \
+  "$TMP_DIR/runtime_context_helper_wait_policy.m" \
+  -o "$WAIT_POLICY_HELPER"
+"$WAIT_POLICY_HELPER"
+
 cat > "$TMP_DIR/monotonic_now.c" <<'EOF'
 #include <stdio.h>
 #include <time.h>
@@ -135,6 +160,66 @@ EOF
   -o "$MONOTONIC_HELPER"
 
 mkdir -p "$TMP_DIR/home"
+
+# A query that ignores TERM must still be killed after the existing timeout
+# grace period. This keeps the adaptive early polling change isolated from the
+# established timeout/termination contract.
+TIMEOUT_YABAI="$TMP_DIR/timeout-yabai"
+TIMEOUT_PID_LOG="$TMP_DIR/timeout-yabai.pids"
+cat > "$TMP_DIR/timeout-yabai.c" <<'EOF'
+#include <fcntl.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+int main(void) {
+  const char *path = getenv("BARISTA_TEST_TIMEOUT_PID_LOG");
+  if (path == NULL) {
+    return 1;
+  }
+  signal(SIGTERM, SIG_IGN);
+  int descriptor = open(path, O_WRONLY | O_APPEND);
+  if (descriptor < 0) {
+    return 1;
+  }
+  dprintf(descriptor, "%d\n", getpid());
+  close(descriptor);
+  while (1) {
+    pause();
+  }
+}
+EOF
+"$CC_BIN" -Wall -Wextra -Werror \
+  "$TMP_DIR/timeout-yabai.c" \
+  -o "$TIMEOUT_YABAI"
+
+: > "$TIMEOUT_PID_LOG"
+env -i \
+  PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+  HOME="$TMP_DIR/home" \
+  BARISTA_RUNTIME_CONTEXT_DIR="$TMP_DIR/timeout-state" \
+  BARISTA_RUNTIME_CONTEXT_FRONT_APP_NAME="Finder" \
+  BARISTA_RUNTIME_CONTEXT_QUERY_TIMEOUT="0.02" \
+  BARISTA_TEST_TIMEOUT_PID_LOG="$TIMEOUT_PID_LOG" \
+  BARISTA_YABAI_BIN="$TIMEOUT_YABAI" \
+  "$HELPER" refresh-front-app
+python3 - "$TIMEOUT_PID_LOG" <<'PY'
+import os
+from pathlib import Path
+import sys
+
+pids = [int(value) for value in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()]
+assert pids, pids
+survivors = []
+for pid in pids:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        continue
+    survivors.append(pid)
+assert not survivors, survivors
+PY
 
 run_refresh() {
   local app_name="${1:-Finder}"

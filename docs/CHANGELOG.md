@@ -1,5 +1,27 @@
 # SketchyBar Configuration Changelog
 
+## July 16, 2026 - Confirmation-Backed Task Completion
+
+- Syshelp-backed Task Pulse popups now include one menu-only
+  `Complete Focus…` action; file-backed task surfaces remain read-only.
+- The action confirms the freshly selected focus, then takes a second snapshot
+  and requires the same unique ID, title, and section immediately before asking
+  syshelp to complete it. Cancellation, ambiguity, or focus drift fails closed
+  without changing the board or emitting `task_state_changed`.
+- No widget, daemon, polling timer, or global shortcut was added.
+
+## July 16, 2026 - Adaptive Native Query Wait
+
+- `runtime_context_helper` now checks newly launched yabai queries at 1 ms
+  intervals for their first 20 ms, then returns to the previous 10 ms cadence
+  for slower work.
+- Query deadlines, termination plus forced-kill handling, cache schemas, daemon
+  ownership, and portable fallbacks are unchanged. The source-compiled test
+  covers the exact wait-policy boundary and stubborn-child cleanup.
+- In a same-session randomized/interleaved 40-run live sample, the complete
+  batched front-app popup refresh improved from 55.634 ms to 42.042 ms median
+  (24.4%) and from 58.286 ms to 44.979 ms p95 (22.8%).
+
 ## July 16, 2026 - Batched Front-App Popup Rendering
 
 - `front_app.sh` now applies the anchor, header, state, location, and four

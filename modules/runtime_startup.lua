@@ -90,7 +90,7 @@ function runtime_startup.new_post_config_queue()
         if type(delay) == "function" and delay_seconds then
           local callback_command = delayed_command
           local scheduled, schedule_error = pcall(delay, delay_seconds, function()
-            exec(callback_command)
+            runner(callback_command)
           end)
           if not scheduled then
             delay = nil
@@ -98,10 +98,10 @@ function runtime_startup.new_post_config_queue()
             if type(on_delay_error) == "function" then
               on_delay_error(schedule_error)
             end
-            exec(delayed_command)
+            runner(delayed_command)
           end
         elseif delay_failed and delay_seconds then
-          exec(delayed_command)
+          runner(delayed_command)
         else
           runner(action.command)
         end

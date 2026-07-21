@@ -55,6 +55,9 @@ run_test("runtime_startup post-config queue: schedules leading sleeps with the n
     exec = function(command)
       table.insert(timeline, "exec:" .. command)
     end,
+    exec_background = function(command)
+      table.insert(timeline, "background:" .. command)
+    end,
     delay = function(seconds, callback)
       scheduled_seconds = seconds
       scheduled_callback = callback
@@ -67,20 +70,23 @@ run_test("runtime_startup post-config queue: schedules leading sleeps with the n
   assert_equal(#timeline, 0, "the command should not launch a shell sleeper")
 
   scheduled_callback()
-  assert_equal(table.concat(timeline, "|"), "exec:refresh-spaces",
-    "the delayed callback should execute only the command after sleep")
+  assert_equal(table.concat(timeline, "|"), "background:refresh-spaces",
+    "the delayed callback should preserve background execution without the shell sleep")
 end)
 
 run_test("runtime_startup post-config queue: falls back when native delay rejects scheduling", function()
   local queue = runtime_startup.new_post_config_queue()
   local commands = {}
   local errors = {}
-  queue:enqueue_command("sleep 1.0; subscribe")
+  queue:enqueue_command("sleep 1.0; subscribe", { background = true })
   queue:enqueue_command("sleep 1.0; move")
 
   queue:flush({
     exec = function(command)
       table.insert(commands, command)
+    end,
+    exec_background = function(command)
+      table.insert(commands, "background:" .. command)
     end,
     delay = function()
       error("delay unavailable")
@@ -90,8 +96,8 @@ run_test("runtime_startup post-config queue: falls back when native delay reject
     end,
   })
 
-  assert_equal(table.concat(commands, "|"), "subscribe|move",
-    "failed native scheduling should run delayed commands immediately without shell sleepers")
+  assert_equal(table.concat(commands, "|"), "background:subscribe|move",
+    "failed native scheduling should preserve execution mode without shell sleepers")
   assert_equal(#errors, 1, "native delay failures should be reported once per flush")
 end)
 

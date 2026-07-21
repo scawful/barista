@@ -44,6 +44,29 @@ run_test("runtime_startup post-config queue: defers and flushes actions in order
   assert_equal(queue:flush({}), 0, "a second flush should be a no-op")
 end)
 
+run_test("runtime_startup post-config queue: deduplicates keyed pending commands", function()
+  local queue = runtime_startup.new_post_config_queue()
+  local commands = {}
+
+  assert_true(queue:enqueue_command("subscribe anchor", { dedupe_key = "hover:anchor" }),
+    "the first keyed command should enqueue")
+  assert_equal(queue:enqueue_command("subscribe anchor again", { dedupe_key = "hover:anchor" }), false,
+    "a duplicate pending key should be skipped")
+  assert_true(queue:enqueue_command("subscribe row", { dedupe_key = "hover:row" }),
+    "a distinct key should enqueue")
+  assert_equal(queue:size(), 2, "only distinct keyed commands should remain pending")
+
+  queue:flush({
+    exec = function(command)
+      table.insert(commands, command)
+    end,
+  })
+  assert_equal(table.concat(commands, "|"), "subscribe anchor|subscribe row",
+    "deduplication should preserve the first command and FIFO order")
+  assert_true(queue:enqueue_command("subscribe anchor later", { dedupe_key = "hover:anchor" }),
+    "a completed flush should release deduplication keys for the next batch")
+end)
+
 run_test("runtime_startup post-config queue: schedules leading sleeps with the native delay", function()
   local queue = runtime_startup.new_post_config_queue()
   local timeline = {}

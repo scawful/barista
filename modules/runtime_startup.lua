@@ -37,6 +37,7 @@ end
 
 function runtime_startup.new_post_config_queue()
   local pending = {}
+  local pending_keys = {}
   local queue = {}
 
   local function split_leading_delay(command)
@@ -51,6 +52,14 @@ function runtime_startup.new_post_config_queue()
   function queue:enqueue_command(command, opts)
     if type(command) ~= "string" or command == "" then
       return false
+    end
+    local dedupe_key = type(opts) == "table" and opts.dedupe_key or nil
+    if dedupe_key ~= nil then
+      dedupe_key = tostring(dedupe_key)
+      if pending_keys[dedupe_key] then
+        return false
+      end
+      pending_keys[dedupe_key] = true
     end
     table.insert(pending, {
       kind = "command",
@@ -82,6 +91,7 @@ function runtime_startup.new_post_config_queue()
     local on_action_error = opts.on_action_error
     local actions = pending
     pending = {}
+    pending_keys = {}
 
     for _, action in ipairs(actions) do
       if action.kind == "command" then

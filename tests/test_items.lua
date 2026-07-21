@@ -76,9 +76,11 @@ local function test_items_left_layout()
     }
   )
 
-  local layout = items_left.get_layout(mock_ctx)
+  local layout, _, metadata = items_left.get_layout(mock_ctx)
   assert(type(layout) == "table", "layout should be a table")
   assert(#layout > 0, "layout should not be empty")
+  assert_type(metadata, "table", "left layout should return runtime metadata")
+  assert_equal(#metadata.popup_parents, 0, "disabled optional integrations should not enter the popup registry")
 
   -- Check for front_app
   local found_front_app = false
@@ -169,13 +171,17 @@ local function test_items_left_layout()
 
   -- Check for effects
   local found_refresh_spaces = false
+  local found_deferred_watch = false
   for _, entry in ipairs(layout) do
     if entry.action == "exec" and type(entry.cmd) == "string" and entry.cmd:find("refresh_spaces%.sh") then
       found_refresh_spaces = true
       assert_true(entry.cmd:find("sleep 0%.0;", 1) ~= nil, "refresh_spaces should use the dedicated spaces startup delay")
+    elseif entry.action == "post_config_call" and entry.fn == mock_ctx.watch_spaces then
+      found_deferred_watch = true
     end
   end
   assert(found_refresh_spaces, "refresh_spaces startup command not found in layout")
+  assert(found_deferred_watch, "yabai signal registration should wait until after config commit")
 
   print("  items_left layout test passed!")
 end
@@ -371,7 +377,7 @@ local function test_items_left_control_center_custom_name()
     }
   )
 
-  local layout = items_left.get_layout(mock_ctx)
+  local layout, _, metadata = items_left.get_layout(mock_ctx)
   local found_custom_item = false
   local found_custom_subscribe = false
   local found_custom_bracket = false
@@ -404,6 +410,7 @@ local function test_items_left_control_center_custom_name()
   assert_true(found_custom_subscribe, "custom control_center item should be subscribed by name")
   assert_true(found_custom_bracket, "left_group should include custom control_center item name")
   assert_true(found_custom_popup_action, "custom control_center popup action should exist")
+  assert_equal(metadata.popup_parents[1], "status_hub", "popup registry should use the created custom control_center name")
   assert_type(received_popup_opts, "table", "popup items should receive opts")
   assert_equal(received_popup_opts.item_name, "status_hub", "popup items should inherit the resolved item name")
   assert_equal(received_popup_opts.config_dir, "/tmp/config", "popup items should receive CONFIG_DIR")
@@ -411,8 +418,8 @@ local function test_items_left_control_center_custom_name()
   print("  items_left custom control_center name test passed!")
 end
 
-local function test_items_left_reuses_oracle_and_control_center_status()
-  print("Testing items_left layout reuses oracle and control_center model state...")
+local function test_items_left_integration_models_and_anchor_order()
+  print("Testing items_left integration models and anchor order...")
 
   local oracle_model_calls = 0
   local control_center_status_calls = 0
@@ -520,6 +527,20 @@ local function test_items_left_reuses_oracle_and_control_center_status()
           }
         end,
       },
+      music = {
+        build_menu_model = function()
+          return { ui = { item_name = "music_studio" } }
+        end,
+        create_widget = function()
+          return {
+            name = "music_studio",
+            popup = { align = "left", background = { drawing = true } },
+          }
+        end,
+        create_popup_items = function()
+          return {}
+        end,
+      },
     },
     control_center_item_name = "control_center",
     control_center_module = {
@@ -564,7 +585,7 @@ local function test_items_left_reuses_oracle_and_control_center_status()
     }
   )
 
-  local layout = items_left.get_layout(mock_ctx)
+  local layout, _, metadata = items_left.get_layout(mock_ctx)
   assert_type(layout, "table", "layout should be a table")
   assert_equal(oracle_model_calls, 1, "oracle model should be built once per layout pass")
   assert_type(received_widget_model, "table", "oracle widget should receive the shared model")
@@ -573,8 +594,12 @@ local function test_items_left_reuses_oracle_and_control_center_status()
   assert_type(received_control_center_widget_status, "table", "control_center widget should receive shared status")
   assert_type(received_control_center_popup_flags, "table", "control_center popup should receive shared flags")
   assert_equal(received_control_center_popup_flags.mode, "required", "control_center popup should reuse window manager flags")
+  assert_equal(table.concat(metadata.popup_parents, "|"), "triforce|music_studio|control_center",
+    "popup registry should include created optional parents")
   local found_triforce_subscription = false
   local found_control_center_subscription = false
+  local anchor_order_command = nil
+  local anchor_order_count = 0
   for _, entry in ipairs(layout) do
     if entry.action == "exec" and type(entry.cmd) == "string" then
       if entry.cmd:find("--subscribe triforce system_woke", 1, true) ~= nil then
@@ -586,11 +611,34 @@ local function test_items_left_reuses_oracle_and_control_center_status()
         assert_true(entry.cmd:find("space_active_refresh", 1, true) ~= nil, "control_center should subscribe to the dedicated active-space event")
         assert_true(entry.cmd:find(" space_change", 1, true) == nil, "control_center should not subscribe to the legacy space_change event")
       end
+      if entry.cmd:find("--move", 1, true)
+        and entry.cmd:find("music_studio", 1, true)
+        and entry.cmd:find("control_center", 1, true)
+        and entry.cmd:find("front_app", 1, true) then
+        anchor_order_count = anchor_order_count + 1
+        anchor_order_command = entry.cmd
+      end
     end
   end
   assert_true(found_triforce_subscription, "triforce subscription should be present")
   assert_true(found_control_center_subscription, "control_center subscription should be present")
-  print("  items_left shared model/state test passed!")
+  assert_equal(anchor_order_count, 1, "left anchors should use one deterministic post-config reorder command")
+  assert_true(anchor_order_command:find('--move "control_center" before "front_app"', 1, true) ~= nil,
+    "control_center should be placed directly before front_app")
+  assert_true(anchor_order_command:find('--move "music_studio" before "control_center"', 1, true) ~= nil,
+    "music should be placed before control_center")
+  assert_true(anchor_order_command:find('--move "triforce" before "music_studio"', 1, true) ~= nil,
+    "triforce should be placed before music")
+  assert_true(anchor_order_command:match("^sleep%s") == nil,
+    "anchor ordering should dispatch immediately after the config commit")
+
+  mock_ctx.integrations.oracle.create_triforce_widget = function()
+    return nil
+  end
+  local _, _, missing_metadata = items_left.get_layout(mock_ctx)
+  assert_equal(table.concat(missing_metadata.popup_parents, "|"), "music_studio|control_center",
+    "popup registry should omit an enabled integration that did not create a widget")
+  print("  items_left integration model/order test passed!")
 end
 
 local function test_items_right_layout()
@@ -1083,7 +1131,7 @@ end
 test_items_left_layout()
 test_items_left_without_yabai()
 test_items_left_control_center_custom_name()
-test_items_left_reuses_oracle_and_control_center_status()
+test_items_left_integration_models_and_anchor_order()
 test_items_right_layout()
 test_items_right_lmstudio_extension_rows()
 test_items_right_task_focus_surface()

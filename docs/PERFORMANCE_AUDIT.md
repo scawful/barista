@@ -151,7 +151,7 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - when topology changes but the `space.*` item set stays the same, `simple_spaces.sh` now reorders and updates the existing space items in place instead of doing a full remove/re-add cycle
     - when topology changes add or remove specific spaces, `simple_spaces.sh` now removes stale `space.*` items and adds missing ones directly instead of resetting the whole space stack
     - creator-only topology changes now rebuild only `space_creator*` items instead of tearing down all `space.*` items
-    - creator items no longer query and bind themselves to the current visible space, so the add-space affordance remains display-visible and avoids extra topology churn
+    - per-display creator items bind to the known spaces on their target display with associations enabled, so the add-space affordance stays visible without duplicating every creator across every monitor
     - startup no longer blocks waiting for `front_app`; the full rebuild path now falls back to the next available anchor immediately and lets the existing async reorder path repair final placement later
     - the initial spaces rebuild and `space_runtime` subscription now use a dedicated shorter post-config delay instead of inheriting the broader 1.0s bar delay, so the spaces stack settles earlier after reload
     - the enhanced Apple-menu model is now prepared before `begin_config`, so tool discovery and menu section sorting no longer happen inside the cleared-bar window
@@ -201,7 +201,9 @@ collection, task snapshots, and space visuals run on explicit event paths.
 *   **Update:**
     - removed service-health, workspace dirtiness, and utility rows from the popup
     - stopped the live updater from computing dirty-repo and service-row state that no longer has a visible consumer
-*   **Result:** the control-center runtime now matches the simplified popup and avoids unnecessary work on each refresh.
+    - removed the synchronous config-time Yabai layout query; the widget seeds a `---` placeholder and the existing timeout-bounded post-config updater publishes the live layout
+    - complete window-manager flags are reused while constructing popup rows instead of repeating capability and service probes
+*   **Result:** the removed live layout query measured 11.20 ms median across 40 reads. In a same-session five-pair isolated sample, 20 popup-model builds dropped from 815.59 ms median to 7.93 ms (99.0%) after complete flags stopped repeating external probes; normal config still performs one shared health/capability snapshot before the bounded updater takes over.
 
 ### 3. Popup & Submenu Execution (Resolved)
 *   **Files:** `helpers/popup_hover.c`, `helpers/popup_anchor.c`, `main.lua`, `modules/menu.lua`, `modules/ui_builder.lua`
@@ -214,8 +216,8 @@ collection, task snapshots, and space visuals run on explicit event paths.
 
 ### 3a. Anchor Chip Styling (Verified)
 *   **Files:** `modules/ui_builder.lua`, `modules/items_left.lua`, `modules/apple_menu_enhanced.lua`, `helpers/popup_anchor.c`, `plugins/lib/common.sh`, `plugins/popup_anchor.sh`
-*   **Update:** Left-side popup anchors share one filled idle chip and `BARISTA_ANCHOR_*` hover-restore contract. The native anchor helper and shell fallbacks both restore configured idle background/border props instead of always clearing the background to transparent.
-*   **Result:** Apple, Triforce, Music, Control Center, and Front App can keep a consistent visual language without adding query-before-toggle click controllers.
+*   **Update:** Left-side popup anchors share one filled idle chip and `BARISTA_ANCHOR_*` hover-restore contract. The native anchor helper and shell fallbacks both restore configured idle background/border props instead of always clearing the background to transparent. One immediate post-config move batch now enforces Triforce → Music → Control Center → Front App before the delayed spaces topology pass.
+*   **Result:** Apple, Triforce, Music, Control Center, and Front App keep a consistent visual language and deterministic order without adding query-before-toggle click controllers or racing independent move timers.
 
 ### 3b. SketchyBar Binary Resolution + Plugin Runaway Guard (Resolved)
 *   **Files:** `plugins/lib/common.sh`, `plugins/space.sh`, `plugins/space_visuals.sh`, `plugins/refresh_spaces.sh`, `scripts/process_manager.sh`
@@ -234,6 +236,16 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - style-state files are only rewritten when the saved state/properties differ, while hover restore still reads the same persisted state
     - focused/visible/idle style argument arrays are cached once per run, so full visual passes no longer re-render and re-split identical style properties for every space chip
 *   **Result:** detailed attribution is available for targeted tuning without adding timing subprocesses to every routine visual refresh.
+
+### 3d. Post-Config Startup Ordering (Verified)
+*   **Files:** `main.lua`, `modules/items_left.lua`, `modules/menu_renderer.lua`, `modules/runtime_startup.lua`, `plugins/reload_sketchybar.sh`
+*   **Update:**
+    - layout effects, hover/submenu subscriptions, and Yabai signal registration enter one FIFO dispatch queue instead of running against an uncommitted item registry
+    - the queue flushes after `sbar.end_config()` and converts generated leading `sleep N; ...` commands into native `sbar.delay` callbacks; if the installed Lua module rejects native delay scheduling, commands run immediately after commit rather than leaving detached sleeper processes
+    - delayed callbacks use asynchronous `sbar.exec` without adding another detached shell layer
+    - the supported reload helper no longer launches a redundant one-second detached spaces repair; it still waits for `space.1` and runs the same repair synchronously when startup did not create it
+    - `items_left.lua` reports the optional popup parents actually created, so popup dismissal honors custom names and omits absent integrations
+*   **Result:** item registration commits before external startup effects run, the normal delayed path no longer creates shell sleeper processes that can survive a process-replacing reload, and missing optional widgets cannot leave phantom popup-manager targets. A supported live restart on 2026-07-20 dispatched 111 initial plus two late post-config actions, sampled no `sleep 0.2`, `sleep 0.8`, or `sleep 1.0` processes, produced no new stdout/stderr item errors, and restored all queried core items plus both runtime sidecars; that run recorded 297 ms config wall time and 933 ms total reload time.
 
 ### 4. Yabai Query merging (Resolved)
 *   **File:** `plugins/refresh_spaces.sh`
@@ -254,7 +266,7 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
     - config-build timing is emitted separately for the `begin_config` to `end_config` window
     - config-build timing is now also split into menu render, left layout, right layout, and registry phases
     - left and right layout timing are now further split into layout build vs. SketchyBar apply, so the runtime can distinguish Lua-side layout construction from item registration cost
-    - the left-side Oracle builder reuses one static model and defers its live status snapshot to the async controller; the control-center builder reuses one status snapshot per config pass
+    - the left-side Oracle builder reuses one static model and defers its live status snapshot to the async controller; the control-center builder defers live layout discovery to its bounded post-config updater and reuses complete flags while composing popup rows
     - left-layout timing is now also broken out by subsection (`front_app`, `triforce`, `spaces`, `control_center`, `group`) so the remaining build-side cost can be targeted precisely
     - config-build and left-layout subsection timing now use an in-process profiling clock instead of spawning a timestamp subprocess for every probe; total `reload_time` remains wall-clock
     - `simple_spaces.sh` now derives active display and display count from the existing spaces payload in the normal path, avoiding a second `yabai --displays` query unless the focused display cannot be inferred

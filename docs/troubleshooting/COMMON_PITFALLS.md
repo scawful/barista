@@ -9,7 +9,7 @@ When using `sbar.exec` or `os.execute` to run `sketchybar --subscribe` commands 
 
 ### Guidance
 - **Always use `sbar.add` or `sbar.default` within the `sbar.begin_config()` / `sbar.end_config()` block** for item creation.
-- **Delay subscription commands**: If using `shell_exec` (outside the Lua API) to subscribe to events, add a small delay (e.g., `sleep 0.1`) or, preferably, move these calls to *after* the configuration block has finished.
+- **Use Barista's post-config queue**: Represent external startup work as layout `exec` or `post_config_call` actions. `main.lua` flushes them after `sbar.end_config()` and converts generated leading sleeps to native `sbar.delay` callbacks.
 - **Prefer Lua API**: Use the native Lua `subscribe` methods when available instead of calling the binary directly.
 
 ## 2. AWK Reserved Word Collisions
@@ -45,5 +45,5 @@ Using Lua's `require` to load user overrides (`barista_config.lua`) means the fi
 Sometimes SketchyBar fails to appear even if `brew services` says it is running. This is often due to a "zombie" or dangling `sketchybar` process holding a lock or a display connection.
 
 ### Guidance
-- **Force Kill**: Use `pkill -9 sketchybar` before restarting to ensure a clean slate.
+- **Use Barista recovery first**: Run `./bin/recover_sketchybar.sh`; inspect the process family with `./scripts/process_manager.sh barista` or `runaways`, and reserve forced termination for a confirmed unrecoverable process.
 - **Verify with Query**: Always run `sketchybar --query bar` to check if the bar has successfully rendered and is visible.

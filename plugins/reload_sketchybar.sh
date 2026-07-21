@@ -8,7 +8,6 @@ AGENT="homebrew.mxcl.sketchybar"
 HELPER="${CONFIG_DIR}/helpers/launch_agent_manager.sh"
 LABEL="gui/$(id -u)/${AGENT}"
 PLIST="${HOME}/Library/LaunchAgents/${AGENT}.plist"
-SPACE_REPAIR_DELAY="${BARISTA_SPACE_REPAIR_DELAY:-1.0}"
 SKETCHYBAR_BIN="${SKETCHYBAR_BIN:-$(command -v sketchybar || true)}"
 CORE_ITEM="${BARISTA_CORE_ITEM:-front_app}"
 RELOAD_LOCK_DIR="${BARISTA_RELOAD_LOCK_DIR:-${TMPDIR:-/tmp}/barista-sketchybar-reload.lock}"
@@ -89,13 +88,6 @@ wait_for_item() {
   return 1
 }
 
-schedule_space_repair() {
-  local refresh_script="${CONFIG_DIR}/plugins/refresh_spaces.sh"
-  [ -f "$refresh_script" ] || return 0
-  nohup env CONFIG_DIR="$CONFIG_DIR" BARISTA_CONFIG_DIR="$CONFIG_DIR" bash -lc \
-    "sleep ${SPACE_REPAIR_DELAY}; \"${refresh_script}\" >/dev/null 2>&1 || true" >/dev/null 2>&1 &
-}
-
 ensure_live_config() {
   if wait_for_item "$CORE_ITEM"; then
     return 0
@@ -116,7 +108,6 @@ if wait_for_recent_reload; then
 fi
 
 finish_reload() {
-  schedule_space_repair
   if ! ensure_live_config; then
     echo "SketchyBar restarted, but core item '$CORE_ITEM' did not load." >&2
     return 1

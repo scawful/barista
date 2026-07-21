@@ -157,6 +157,63 @@ local function enabled_window_manager_flags()
   }
 end
 
+local function with_popen_recorder(fn)
+  local original_popen = io.popen
+  local commands = {}
+  io.popen = function(command)
+    table.insert(commands, tostring(command))
+    return {
+      read = function() return "1\n" end,
+      close = function() return true end,
+    }
+  end
+
+  local ok_run, err = xpcall(function()
+    fn(commands)
+  end, debug.traceback)
+  io.popen = original_popen
+  if not ok_run then
+    error(err, 0)
+  end
+end
+
+run_test("get_status: defers enabled layout discovery to runtime refresh", function()
+  with_popen_recorder(function(commands)
+    local status = control_center.get_status({
+      window_manager_flags = enabled_window_manager_flags(),
+    })
+    assert_equal(status.layout, "unknown", "config-time layout should be a placeholder")
+    for _, command in ipairs(commands) do
+      assert_true(command:find("query --spaces --space", 1, true) == nil, "config must not query the current layout")
+    end
+  end)
+end)
+
+run_test("get_status: explicit and disabled layouts remain deterministic", function()
+  local explicit = control_center.get_status({
+    layout = "stack",
+    window_manager_flags = enabled_window_manager_flags(),
+  })
+  assert_equal(explicit.layout, "stack", "explicit layout should win")
+
+  local disabled_flags = enabled_window_manager_flags()
+  disabled_flags.mode = "disabled"
+  disabled_flags.enabled = false
+  disabled_flags.required = false
+  local disabled = control_center.get_status({ window_manager_flags = disabled_flags })
+  assert_equal(disabled.layout, "disabled", "disabled mode should retain its label state")
+end)
+
+run_test("create_popup_items: complete flags skip duplicate capability probes", function()
+  with_popen_recorder(function(commands)
+    local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
+      window_manager_flags = enabled_window_manager_flags(),
+    })
+    assert_true(#items > 0, "popup items should still be created")
+    assert_equal(#commands, 0, "complete shared flags should avoid external probes")
+  end)
+end)
+
 run_test("create_popup_items: disabled mode shows notice", function()
   local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
     window_manager_flags = {

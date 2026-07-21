@@ -283,11 +283,15 @@ local function popup_toggle_action(item_name, _opts)
 end
 
 -- Hover helpers
-local function attach_hover(name)
-  post_config_queue:enqueue_command(
+local function enqueue_hover_subscription(name)
+  return post_config_queue:enqueue_command(
     string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name),
-    { background = true }
+    { background = true, dedupe_key = "hover:" .. tostring(name) }
   )
+end
+
+local function attach_hover(name)
+  enqueue_hover_subscription(name)
 end
 
 local function subscribe_popup_autoclose(name)
@@ -297,10 +301,7 @@ local function subscribe_popup_autoclose(name)
   -- makes the popup appear to ignore clicks by opening and immediately closing.
   -- Keep hover enter/exit for visual feedback and let explicit second-click,
   -- popup actions, and space/display/wake events dismiss popups.
-  post_config_queue:enqueue_command(
-    string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name),
-    { background = true }
-  )
+  enqueue_hover_subscription(name)
 end
 
 -- Spaces module

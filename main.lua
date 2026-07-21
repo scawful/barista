@@ -56,6 +56,19 @@ local binary_resolver  = require("binary_resolver")
 local runtime_daemon   = require("runtime_daemon")
 local runtime_startup  = require("runtime_startup")
 local ui_builder       = require("ui_builder")
+local post_config_queue = runtime_startup.new_post_config_queue()
+
+local function enqueue_post_config_command(command, opts)
+  return post_config_queue:enqueue_command(command, opts)
+end
+
+local function report_native_delay_error(err)
+  print("Barista: native startup delay unavailable; running queued actions immediately: " .. tostring(err))
+end
+
+local function report_post_config_action_error(kind, err)
+  print("Barista: post-config " .. tostring(kind) .. " failed; continuing startup: " .. tostring(err))
+end
 
 -- Initialize component switcher for C/Lua hybrid architecture
 local component_switcher = require("component_switcher")
@@ -256,16 +269,6 @@ if control_center_module and type(control_center_module.get_item_name) == "funct
 elseif control_center_module then
   control_center_item_name = "control_center"
 end
-local music_item_name = nil
-if music_enabled then
-  if type(music_module.get_item_name) == "function" then
-    music_item_name = music_module.get_item_name({ state = state })
-  end
-  if type(music_item_name) ~= "string" or music_item_name == "" then
-    music_item_name = "music_studio"
-  end
-end
-
 local widget_daemon_enabled = runtime_daemon.should_enable_widget_daemon(state, {
   binary_path = WIDGET_MANAGER_BIN,
   lua_only = LUA_ONLY,
@@ -281,7 +284,10 @@ end
 
 -- Hover helpers
 local function attach_hover(name)
-  shell_utils.shell_exec_background(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name))
+  post_config_queue:enqueue_command(
+    string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name),
+    { background = true }
+  )
 end
 
 local function subscribe_popup_autoclose(name)
@@ -291,7 +297,10 @@ local function subscribe_popup_autoclose(name)
   -- makes the popup appear to ignore clicks by opening and immediately closing.
   -- Keep hover enter/exit for visual feedback and let explicit second-click,
   -- popup actions, and space/display/wake events dismiss popups.
-  shell_utils.shell_exec_background(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name))
+  post_config_queue:enqueue_command(
+    string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", POST_CONFIG_DELAY, SKETCHYBAR_BIN, name),
+    { background = true }
+  )
 end
 
 -- Spaces module
@@ -384,6 +393,7 @@ local barista_context = {
   -- Helpers & shell
   shell_exec               = shell_utils.shell_exec,
   shell_exec_background    = shell_utils.shell_exec_background,
+  post_config_exec         = enqueue_post_config_command,
   call_script              = shell_utils.call_script,
   shell_quote              = shell_utils.shell_quote,
   open_path                = shell_utils.open_path,
@@ -529,11 +539,11 @@ local function process_layout(layout, ctx)
     elseif entry.type == "set" then
       sbar.set(entry.name, entry.props)
     elseif entry.action == "exec" then
-      if type(entry.cmd) == "string" and entry.cmd:match("^sleep%s") and type(ctx.shell_exec_background) == "function" then
-        ctx.shell_exec_background(entry.cmd)
-      else
-        ctx.shell_exec(entry.cmd)
-      end
+      post_config_queue:enqueue_command(entry.cmd, {
+        background = type(entry.cmd) == "string"
+          and entry.cmd:match("^sleep%s") ~= nil
+          and type(ctx.shell_exec_background) == "function",
+      })
     elseif entry.action == "call" then
       if type(entry.fn) == "function" then
         entry.fn()
@@ -543,6 +553,8 @@ local function process_layout(layout, ctx)
           tostring(entry.name or "(unnamed)")
         ))
       end
+    elseif entry.action == "post_config_call" then
+      post_config_queue:enqueue_call(entry.fn)
     elseif entry.action == "subscribe_popup_autoclose" then
       ctx.subscribe_popup_autoclose(entry.name)
     elseif entry.action == "attach_hover" then
@@ -556,7 +568,8 @@ local items_right = require("items_right")
 
 local left_layout_build_start_ms = runtime_startup.current_time_ms()
 local left_layout
-left_layout, left_layout_metrics = items_left.get_layout(barista_context)
+local left_layout_metadata
+left_layout, left_layout_metrics, left_layout_metadata = items_left.get_layout(barista_context)
 left_layout_build_duration_ms = runtime_startup.current_time_ms() - left_layout_build_start_ms
 local left_layout_apply_start_ms = runtime_startup.current_time_ms()
 process_layout(left_layout, barista_context)
@@ -598,14 +611,8 @@ end
 if type(state.widgets) == "table" and state.widgets.task_focus == true and task_focus_has_source then
   table.insert(popup_manager_items, "task_focus")
 end
-if control_center_item_name then
-  table.insert(popup_manager_items, control_center_item_name)
-end
-if oracle_enabled then
-  table.insert(popup_manager_items, "triforce")
-end
-if music_item_name then
-  table.insert(popup_manager_items, music_item_name)
+for _, item_name in ipairs((left_layout_metadata and left_layout_metadata.popup_parents) or {}) do
+  table.insert(popup_manager_items, item_name)
 end
 local registry_start_ms = runtime_startup.current_time_ms()
 submenu_registry.register(
@@ -616,7 +623,7 @@ submenu_registry.register(
 )
 registry_duration_ms = runtime_startup.current_time_ms() - registry_start_ms
 
-shell_utils.shell_exec(string.format(
+post_config_queue:enqueue_command(string.format(
   "sleep %.1f; %s --subscribe popup_manager space_change display_changed display_added display_removed system_woke",
   POST_CONFIG_DELAY,
   SKETCHYBAR_BIN
@@ -627,6 +634,16 @@ sbar.end_config()
 trace_startup("main:end_config")
 local config_build_duration_ms = runtime_startup.current_time_ms() - config_build_start_ms
 local config_build_wall_duration_ms = runtime_startup.wall_time_ms() - config_build_start_wall_ms
+local post_config_action_count = post_config_queue:flush({
+  exec = shell_utils.shell_exec,
+  exec_background = shell_utils.shell_exec_background,
+  delay = function(seconds, callback)
+    sbar.delay(seconds, callback)
+  end,
+  on_delay_error = report_native_delay_error,
+  on_action_error = report_post_config_action_error,
+})
+trace_startup("main:post_config_actions " .. tostring(post_config_action_count))
 local stats_flush_start_wall_ms = runtime_startup.wall_time_ms()
 runtime_startup.record_duration_events(STATS_BIN, {
   { name = "reload_prep_time", duration_ms = math.max(0, reload_prep_end_wall_ms - (RELOAD_START_MS or reload_prep_end_wall_ms)), trace_label = "main:reload_prep_ms" },
@@ -675,13 +692,23 @@ else
   runtime_daemon.stop_runtime_context_daemon({ trace = trace_startup })
 end
 
-shell_utils.shell_exec(runtime_startup.build_space_runtime_subscription(SPACE_POST_CONFIG_DELAY, SKETCHYBAR_BIN))
-shell_utils.shell_exec(runtime_startup.build_space_visual_refresh(
+post_config_queue:enqueue_command(runtime_startup.build_space_runtime_subscription(SPACE_POST_CONFIG_DELAY, SKETCHYBAR_BIN))
+post_config_queue:enqueue_command(runtime_startup.build_space_visual_refresh(
   SPACE_STARTUP_SYNC_DELAY,
   SPACE_VISUALS_SCRIPT,
   CONFIG_DIR,
   SCRIPTS_DIR
 ))
+local late_post_config_action_count = post_config_queue:flush({
+  exec = shell_utils.shell_exec,
+  exec_background = shell_utils.shell_exec_background,
+  delay = function(seconds, callback)
+    sbar.delay(seconds, callback)
+  end,
+  on_delay_error = report_native_delay_error,
+  on_action_error = report_post_config_action_error,
+})
+trace_startup("main:late_post_config_actions " .. tostring(late_post_config_action_count))
 
 print("main.lua finished loading!")
 trace_startup("main:event_loop")

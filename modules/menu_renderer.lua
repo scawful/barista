@@ -17,6 +17,7 @@ function menu_renderer.create(ctx)
   local widget_height = ctx.widget_height
   local attach_hover = ctx.attach_hover
   local shell_exec = ctx.shell_exec
+  local post_config_exec = ctx.post_config_exec or shell_exec
   local sketchybar_bin = ctx.sketchybar_bin or "sketchybar"
   local post_config_delay = ctx.post_config_delay or 1.0
   local config_dir = ctx.paths and ctx.paths.config_dir or nil
@@ -341,7 +342,7 @@ function menu_renderer.create(ctx)
     sbar.add("item", parent, item_config)
     remember(metadata.submenu_parents, parent)
     if hover_enabled then
-      shell_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", post_config_delay, sketchybar_bin, parent))
+      post_config_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", post_config_delay, sketchybar_bin, parent))
     end
     renderer(parent, entry.items or {})
   end

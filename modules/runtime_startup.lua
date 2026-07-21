@@ -35,6 +35,94 @@ function runtime_startup.current_time_ms()
   return math.floor(os.clock() * 1000)
 end
 
+function runtime_startup.new_post_config_queue()
+  local pending = {}
+  local queue = {}
+
+  local function split_leading_delay(command)
+    local raw_delay, delayed_command = command:match("^%s*sleep%s+(%d+%.?%d*)%s*;%s*(.-)%s*$")
+    local delay_seconds = tonumber(raw_delay)
+    if not delay_seconds or delay_seconds < 0 or delayed_command == "" then
+      return nil, nil
+    end
+    return delay_seconds, delayed_command
+  end
+
+  function queue:enqueue_command(command, opts)
+    if type(command) ~= "string" or command == "" then
+      return false
+    end
+    table.insert(pending, {
+      kind = "command",
+      command = command,
+      background = type(opts) == "table" and opts.background == true,
+    })
+    return true
+  end
+
+  function queue:enqueue_call(fn)
+    if type(fn) ~= "function" then
+      return false
+    end
+    table.insert(pending, { kind = "call", fn = fn })
+    return true
+  end
+
+  function queue:size()
+    return #pending
+  end
+
+  function queue:flush(opts)
+    opts = opts or {}
+    local exec = opts.exec or function() end
+    local exec_background = opts.exec_background or exec
+    local delay = opts.delay
+    local delay_failed = false
+    local on_delay_error = opts.on_delay_error
+    local on_action_error = opts.on_action_error
+    local actions = pending
+    pending = {}
+
+    for _, action in ipairs(actions) do
+      if action.kind == "command" then
+        local runner = action.background and exec_background or exec
+        local delay_seconds, delayed_command = split_leading_delay(action.command)
+        if type(delay) == "function" and delay_seconds then
+          local callback_command = delayed_command
+          local scheduled, schedule_error = pcall(delay, delay_seconds, function()
+            runner(callback_command)
+          end)
+          if not scheduled then
+            delay = nil
+            delay_failed = true
+            if type(on_delay_error) == "function" then
+              on_delay_error(schedule_error)
+            end
+            runner(delayed_command)
+          end
+        elseif delay_failed and delay_seconds then
+          runner(delayed_command)
+        else
+          runner(action.command)
+        end
+      elseif action.kind == "call" then
+        local called, call_error = pcall(action.fn)
+        if not called then
+          if type(on_action_error) == "function" then
+            on_action_error("call", call_error)
+          else
+            error(call_error, 0)
+          end
+        end
+      end
+    end
+
+    return #actions
+  end
+
+  return queue
+end
+
 local function file_exists(path)
   local file = io.open(path, "r")
   if not file then

@@ -131,3 +131,47 @@ run_test("menu_renderer: popup rows only attach hover when explicitly enabled", 
   assert_equal(#hover_attached, 1, "only the hover-enabled row should attach hover")
   assert_equal(hover_attached[1], "menu.hovered", "hover attachment should target the explicit row")
 end)
+
+run_test("menu_renderer: defers hover-enabled submenu subscriptions", function()
+  local immediate_commands = {}
+  local deferred_commands = {}
+  local renderer = menu_renderer.create({
+    sbar = { add = function() end },
+    settings = {
+      font = {
+        text = "Source Code Pro",
+        style_map = { Regular = "Regular", Semibold = "Semibold", Bold = "Bold" },
+        sizes = { small = 12 },
+      },
+    },
+    theme = {
+      WHITE = "0xffffffff",
+      DARK_WHITE = "0xffcccccc",
+      bar = { bg = "0xff111111" },
+    },
+    appearance = {},
+    attach_hover = function() end,
+    shell_exec = function(command)
+      table.insert(immediate_commands, command)
+    end,
+    post_config_exec = function(command)
+      table.insert(deferred_commands, command)
+    end,
+    SUBMENU_HOVER_SCRIPT = "submenu_hover.sh",
+  })
+
+  renderer.render("apple_menu", {
+    {
+      type = "submenu",
+      name = "menu.hovered_submenu",
+      label = "Hovered",
+      hover = true,
+      items = {},
+    },
+  })
+
+  assert_equal(#immediate_commands, 0, "submenu subscription should not execute during config")
+  assert_equal(#deferred_commands, 1, "submenu subscription should enter the post-config queue")
+  assert_true(deferred_commands[1]:find("sleep 1.0;", 1, true) ~= nil,
+    "deferred submenu subscription should retain its configured delay")
+end)

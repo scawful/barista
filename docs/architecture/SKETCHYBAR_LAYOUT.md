@@ -20,7 +20,7 @@ Quick reference: which file defines each bar item, which plugin script runs for 
 | `music.studio.*` (popup) | (hover script) | — | Popup rows use the shared menu-style sizing and hover treatment: app launchers (`yams`, `Logic Pro`, `Roland Cloud Manager`, `SP-404MKII App`, and other installed music tools), workflow shortcuts (`Studio Start`, `Plugged In`, `SongForge Board`, PDF guides), and shallow kit/folder launchers (`Samples`, OP-XY/SP-404 starter packs). Action rows close the popup after firing. |
 | `front_app.*` (popup) | (hover script) | — | Popup items: state, location, app actions, state-aware window actions, conservative presets, and move actions. Persistent app defaults stay in the adjacent Control Center popup so this menu fits smaller displays. When yabai controls are disabled or unavailable, the Window section is replaced by Desk/interface-extension rows. Action rows close the popup after firing. |
 | `space.1` … `space.N` | `plugins/space.sh` | `mouse.entered`, `mouse.exited` | Dynamic; created by `plugins/refresh_spaces.sh` → `plugins/simple_spaces.sh`. With yabai unavailable, Barista falls back to `spaces.count` / macOS Spaces preferences / a 5-space default so non-yabai profiles still show a space strip. |
-| `space_creator*` | `plugins/space_creator.sh` | `mouse.entered`, `mouse.exited` | Dynamic add-space affordance. Creator items stay display-visible and no longer bind themselves to one associated space. |
+| `space_creator*` | `plugins/space_creator.sh` | `mouse.entered`, `mouse.exited` | Dynamic add-space affordance. Per-display creators use their target display plus that display's current space-index list with `ignore_association=off`, producing one visible `+` on each monitor rather than duplicating every creator across every bar. |
 
 Legacy note: the standalone `yabai_status` widget path was removed. Window-manager controls now belong to `control_center` and `front_app` popup rows.
 
@@ -47,7 +47,7 @@ Legacy note: the standalone `yabai_status` widget path was removed. Window-manag
 
 ## Brackets (visual grouping)
 
-- `control_center` + `front_app` (left group)
+- Optional `triforce` → optional `music_studio` → optional/custom-named `control_center` → `front_app`; only successfully created items enter the left group, and one post-config batch enforces that order before spaces are rebuilt
 - `lmstudio` + `clock` + optional `task_focus` + `system_info` (right group when LM Studio is enabled)
 - `clock` + optional `task_focus` + `system_info` (right group when LM Studio is disabled)
 - `volume` + `battery` (right group)
@@ -59,7 +59,7 @@ Default runtime path:
 1. [main.lua](../../main.lua) resolves the active control-center item name once.
 2. [modules/items_left.lua](../../modules/items_left.lua) creates the left-bar item and passes the resolved name into popup creation.
 3. [modules/integrations/control_center.lua](../../modules/integrations/control_center.lua) renders the widget and all popup rows against `popup.<item_name>`.
-4. `popup_manager` registers the same item name for dismissal behavior.
+4. `items_left.lua` reports all successfully created optional left-side popup parents; `main.lua` registers those exact names with `popup_manager` rather than inferring them from enabled-feature flags.
 5. [modules/shortcuts.lua](../../modules/shortcuts.lua) generates `toggle_control_center` against that same resolved target.
 6. [modules/popup_action.lua](../../modules/popup_action.lua) attaches helper popups to the resolved control-center popup parent instead of assuming `popup.control_center`.
 
@@ -104,6 +104,7 @@ SketchyBar update directly without a nested `sh -c`.
 - **space_visual_refresh**: Added as a dedicated post-topology and on-demand visual refresh event; handled by `space_runtime`.
 - **task_state_changed**: Added as the local task refresh event; successful syshelp capture and explicit external refresh actions can trigger it, and optional `task_focus` consumes it. No task widget is created when the machine has no configured source.
 - **Yabai signals** (space_changed, space_created, space_destroyed, display_*) are wired in main.lua `watch_spaces()` and all point at `refresh_spaces.sh` so cache/lock handling stays in one place.
+  Signal registration is emitted as a `post_config_call`, so it runs only after the SketchyBar configuration commits.
   If a signal arrives while `refresh_spaces.sh` already owns the topology lock,
   the script writes the pending reason and schedules one delayed follow-up after
   the lock clears, coalescing event bursts into a single final refresh.

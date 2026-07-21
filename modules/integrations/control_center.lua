@@ -144,9 +144,44 @@ local function compute_window_manager_flags(opts)
   }
 end
 
+local WINDOW_MANAGER_FLAG_KEYS = {
+  "mode",
+  "enabled",
+  "required",
+  "has_yabai",
+  "has_skhd",
+  "yabai_running",
+  "skhd_running",
+}
+
+local function complete_window_manager_flags(override)
+  if type(override) ~= "table" then
+    return false
+  end
+  for _, key in ipairs(WINDOW_MANAGER_FLAG_KEYS) do
+    if override[key] == nil then
+      return false
+    end
+  end
+  return true
+end
+
+local function copy_window_manager_flags(source)
+  local flags = {}
+  for key, value in pairs(source) do
+    flags[key] = value
+  end
+  flags.mode = normalize_mode(flags.mode)
+  return flags
+end
+
 local function resolve_window_manager_flags(opts)
-  local flags = compute_window_manager_flags(opts)
   local override = opts and opts.window_manager_flags
+  if complete_window_manager_flags(override) then
+    return copy_window_manager_flags(override)
+  end
+
+  local flags = compute_window_manager_flags(opts)
   if type(override) == "table" then
     for key, value in pairs(override) do
       flags[key] = value
@@ -156,7 +191,9 @@ local function resolve_window_manager_flags(opts)
   return flags
 end
 
--- Get yabai layout for current space
+-- Dynamic layout discovery belongs to the bounded post-config plugin refresh.
+-- Config construction only consumes an explicit cached/seeded value so a
+-- stalled yabai socket cannot block the entire bar from loading.
 local function get_current_layout(wm_flags, opts)
   local override = opts and opts.layout
   if type(override) == "string" and override ~= "" then
@@ -165,11 +202,7 @@ local function get_current_layout(wm_flags, opts)
   if wm_flags and not wm_flags.enabled then
     return "disabled"
   end
-  local handle = io.popen("yabai -m query --spaces --space 2>/dev/null | jq -r '.type // \"unknown\"'")
-  if not handle then return "unknown" end
-  local result = handle:read("*a"):gsub("%s+$", "")
-  handle:close()
-  return result
+  return "unknown"
 end
 
 -- Status indicators

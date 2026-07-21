@@ -1,5 +1,128 @@
 local runtime_startup = require("runtime_startup")
 
+run_test("main startup wiring: commits and captures config timing before queue flush", function()
+  local file = assert(io.open("main.lua", "r"))
+  local source = file:read("*a")
+  file:close()
+
+  local end_config_pos = assert(source:find("sbar.end_config()", 1, true))
+  local timing_pos = assert(source:find("local config_build_duration_ms", end_config_pos, true))
+  local flush_pos = assert(source:find("post_config_queue:flush", end_config_pos, true))
+  assert_true(end_config_pos < timing_pos and timing_pos < flush_pos,
+    "main should commit config and stop config timing before dispatching post-config work")
+end)
+
+run_test("runtime_startup post-config queue: defers and flushes actions in order", function()
+  local timeline = { "config" }
+  local queue = runtime_startup.new_post_config_queue()
+
+  assert_true(queue:enqueue_command("first", { background = true }), "background command should enqueue")
+  assert_true(queue:enqueue_call(function()
+    table.insert(timeline, "call:second")
+  end), "callback should enqueue")
+  assert_true(queue:enqueue_command("third"), "foreground command should enqueue")
+  assert_equal(queue:size(), 3, "all actions should remain pending before config commit")
+  assert_equal(table.concat(timeline, "|"), "config", "nothing should execute before the queue is flushed")
+
+  table.insert(timeline, "end_config")
+  local flushed = queue:flush({
+    exec = function(command)
+      table.insert(timeline, "exec:" .. command)
+    end,
+    exec_background = function(command)
+      table.insert(timeline, "background:" .. command)
+    end,
+  })
+
+  assert_equal(flushed, 3, "flush should report the executed action count")
+  assert_equal(queue:size(), 0, "flush should drain the queue")
+  assert_equal(
+    table.concat(timeline, "|"),
+    "config|end_config|background:first|call:second|exec:third",
+    "post-config actions should preserve FIFO order"
+  )
+  assert_equal(queue:flush({}), 0, "a second flush should be a no-op")
+end)
+
+run_test("runtime_startup post-config queue: schedules leading sleeps with the native delay", function()
+  local queue = runtime_startup.new_post_config_queue()
+  local timeline = {}
+  local scheduled_seconds = nil
+  local scheduled_callback = nil
+
+  queue:enqueue_command("sleep 0.2; refresh-spaces", { background = true })
+  local flushed = queue:flush({
+    exec = function(command)
+      table.insert(timeline, "exec:" .. command)
+    end,
+    exec_background = function(command)
+      table.insert(timeline, "background:" .. command)
+    end,
+    delay = function(seconds, callback)
+      scheduled_seconds = seconds
+      scheduled_callback = callback
+    end,
+  })
+
+  assert_equal(flushed, 1, "scheduled commands should count as flushed actions")
+  assert_equal(scheduled_seconds, 0.2, "native delay should receive the parsed sleep duration")
+  assert_type(scheduled_callback, "function", "native delay should receive a callback")
+  assert_equal(#timeline, 0, "the command should not launch a shell sleeper")
+
+  scheduled_callback()
+  assert_equal(table.concat(timeline, "|"), "background:refresh-spaces",
+    "the delayed callback should preserve background execution without the shell sleep")
+end)
+
+run_test("runtime_startup post-config queue: falls back when native delay rejects scheduling", function()
+  local queue = runtime_startup.new_post_config_queue()
+  local commands = {}
+  local errors = {}
+  queue:enqueue_command("sleep 1.0; subscribe", { background = true })
+  queue:enqueue_command("sleep 1.0; move")
+
+  queue:flush({
+    exec = function(command)
+      table.insert(commands, command)
+    end,
+    exec_background = function(command)
+      table.insert(commands, "background:" .. command)
+    end,
+    delay = function()
+      error("delay unavailable")
+    end,
+    on_delay_error = function(err)
+      table.insert(errors, tostring(err))
+    end,
+  })
+
+  assert_equal(table.concat(commands, "|"), "background:subscribe|move",
+    "failed native scheduling should preserve execution mode without shell sleepers")
+  assert_equal(#errors, 1, "native delay failures should be reported once per flush")
+end)
+
+run_test("runtime_startup post-config queue: reports a failed callback and continues", function()
+  local queue = runtime_startup.new_post_config_queue()
+  local timeline = {}
+  queue:enqueue_call(function()
+    error("watch failed")
+  end)
+  queue:enqueue_command("subscribe")
+
+  local flushed = queue:flush({
+    exec = function(command)
+      table.insert(timeline, "exec:" .. command)
+    end,
+    on_action_error = function(kind, err)
+      table.insert(timeline, kind .. ":" .. tostring(err):match("watch failed"))
+    end,
+  })
+
+  assert_equal(flushed, 2, "callback failures should not change the dispatched action count")
+  assert_equal(table.concat(timeline, "|"), "call:watch failed|exec:subscribe",
+    "a failed callback should be reported without dropping later startup actions")
+end)
+
 run_test("runtime_startup.wall_time_ms: prefers fast helper and falls back", function()
   local commands = {}
   local responses = {

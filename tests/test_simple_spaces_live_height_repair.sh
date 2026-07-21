@@ -34,7 +34,7 @@ visible=1 1
 visible_by_display=1:1
 active_display=1
 space_props=1|1|30|$CONFIG_DIR/plugins/focus_space.sh 1|7|0x18313a46|10,2|1|30|$CONFIG_DIR/plugins/focus_space.sh 2|7|0x18313a46|10
-creator_props=space_creator|1|30|yabai -m space --create|on|
+creator_props=space_creator|1|30|yabai -m space --create|on||
 EOF
 
 cat > "$BIN_DIR/yabai" <<'YABAI'

@@ -31,7 +31,7 @@ cat > "$BIN_DIR/yabai" <<'YABAI'
 #!/bin/bash
 set -euo pipefail
 if [ "${1:-}" = "-m" ] && [ "${2:-}" = "query" ] && [ "${3:-}" = "--spaces" ]; then
-  printf '[{"display":1,"index":1,"is-visible":true,"has-focus":true},{"display":2,"index":2,"is-visible":true,"has-focus":false}]\n'
+  printf '[{"display":1,"index":1,"is-visible":true,"has-focus":true},{"display":1,"index":2,"is-visible":false,"has-focus":false},{"display":2,"index":3,"is-visible":true,"has-focus":false}]\n'
   exit 0
 fi
 if [ "${1:-}" = "-m" ] && [ "${2:-}" = "query" ] && [ "${3:-}" = "--displays" ] && [ "${4:-}" = "--display" ]; then
@@ -80,23 +80,23 @@ if ! grep -Fq -- '--add item space_creator.2 left' "$LOG_FILE"; then
   exit 1
 fi
 
-if ! grep -Fq -- 'space_creator.1 display=1 ignore_association=on' "$LOG_FILE"; then
-  echo "FAIL: display 1 creator should stay space-agnostic while targeting display 1" >&2
+if ! grep -Fq -- 'space_creator.1 display=1 ignore_association=off' "$LOG_FILE"; then
+  echo "FAIL: display 1 creator should honor its display association" >&2
   exit 1
 fi
 
-if ! grep -Eq -- 'space_creator\.1.*associated_display=1 --subscribe space_creator\.1' "$LOG_FILE"; then
-  echo "FAIL: display 1 creator should bind to display 1" >&2
+if ! grep -Eq -- 'space_creator\.1.*associated_display=1 associated_space=1,2 --subscribe space_creator\.1' "$LOG_FILE"; then
+  echo "FAIL: display 1 creator should bind to every space on display 1" >&2
   exit 1
 fi
 
-if ! grep -Fq -- 'space_creator.2 display=2 ignore_association=on' "$LOG_FILE"; then
-  echo "FAIL: display 2 creator should stay space-agnostic while targeting display 2" >&2
+if ! grep -Fq -- 'space_creator.2 display=2 ignore_association=off' "$LOG_FILE"; then
+  echo "FAIL: display 2 creator should honor its display association" >&2
   exit 1
 fi
 
-if ! grep -Eq -- 'space_creator\.2.*associated_display=2 --subscribe space_creator\.2' "$LOG_FILE"; then
-  echo "FAIL: display 2 creator should bind to display 2" >&2
+if ! grep -Eq -- 'space_creator\.2.*associated_display=2 associated_space=3 --subscribe space_creator\.2' "$LOG_FILE"; then
+  echo "FAIL: display 2 creator should bind to every space on display 2" >&2
   exit 1
 fi
 

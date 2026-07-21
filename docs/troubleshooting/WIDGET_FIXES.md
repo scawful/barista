@@ -89,8 +89,10 @@ style_map = {
 - The `control_center` popup is intentionally slim now: layout mode changes, layout operations, and shortcut state remain; service-health, dirty-repo, and utility rows were removed from the live path.
 - `control_center` follows the click-open popup-anchor contract; pointer hover only highlights, and dismissal is via second-click, popup actions, or global space/display/wake dismissal.
 - The active item name is resolved once and reused by `main.lua`, `items_left.lua`,
-  `popup_manager`, `shortcuts.lua`, and `popup_action.lua`.
+  `shortcuts.lua`, and `popup_action.lua`; `items_left.lua` reports the actually
+  created anchor name for `popup_manager` registration.
 - The popup starts with lightweight mode rows (`Yabai On`, `Auto If Running`, `Manual Bar`) that update `modes.window_manager` through `yabai_control.sh wm-mode ...` and reload through Barista's serialized reload path.
+- Config construction never waits on a Yabai layout query. The anchor can briefly show `---` after reload until the existing timeout-bounded post-config refresh publishes `BSP`, `Stack`, or `Float`.
 - Default item name: `control_center`.
 - Optional override: `integrations.control_center.item_name` in `state.json`.
 
@@ -101,7 +103,7 @@ Legacy note: the old `plugins/yabai_status.sh` widget path is retired from the l
 - Space topology presence checks now read one bar snapshot instead of calling `sketchybar --query` once per space item.
 - Topology add/remove changes now update `space.*` incrementally instead of dropping and recreating the full spaces stack.
 - `refresh_spaces.sh` now records explicit topology strategy counters (`full_rebuild`, `creator_only`, `incremental_reorder`, `incremental_add_remove`) into `barista-stats.sh`.
-- `space_creator*` buttons stay display-visible now; they no longer disappear because they were bound to a single associated visible space.
+- `space_creator.<display>` buttons carry the current space-index list for their concrete `associated_display` and keep `ignore_association=off`; each stays visible across its target display's spaces without duplicating onto every monitor.
 - Visible-space app glyphs are cached under `~/.config/sketchybar/cache/app_glyphs`.
 - The glyph cache is versioned; when Barista changes built-in app aliases it automatically clears stale app and space icon cache entries on the next visual refresh.
 - `space_visuals.sh` now parses `space_icons` and `space_modes` with a non-whitespace field separator so layout modes like `bsp` cannot leak into the rendered space glyphs when a space has no explicit icon override.
@@ -292,6 +294,7 @@ are ever removed.
 - `reload_sketchybar.sh` now uses a short-lived lock directory under `TMPDIR` to serialize overlapping reload requests.
 - Callers that arrive while another reload is already in flight now wait for that reload to finish and exit early if `front_app` is already live, instead of issuing a second LaunchAgent stop/bootstrap cycle.
 - Reload completion now also waits for `space.1`; if spaces are missing after the core item is live, it runs `plugins/refresh_spaces.sh` before returning.
+- The reload helper does not schedule a second detached spaces repair; normal startup owns the native delayed refresh, while the synchronous missing-space check remains the recovery path.
 - This prevents rapid repeat invocations from leaving SketchyBar running without its runtime daemons after competing launchctl restarts.
 - skhd reload shortcuts now route through `plugins/reload_sketchybar.sh` instead of raw `sketchybar --reload`.
 

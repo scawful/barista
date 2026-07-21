@@ -217,7 +217,6 @@ local function get_layout(ctx)
         associated_display = associated_displays,
         associated_space = "all",
       })
-      table.insert(layout, { action = "exec", cmd = string.format("sleep %.1f; %s --move %s before front_app 2>/dev/null || true", POST_CONFIG_DELAY, SKETCHYBAR_BIN, triforce_name) })
       if triforce_widget.script and triforce_widget.script ~= "" then
         table.insert(layout, {
           action = "exec",
@@ -292,20 +291,6 @@ local function get_layout(ctx)
         events = {},
         associated_display = associated_displays,
         associated_space = "all",
-      })
-      table.insert(layout, {
-        action = "exec",
-        cmd = string.format(
-          "sleep %.1f; if %s --query %s >/dev/null 2>&1; then %s --move %s after %s 2>/dev/null || true; else %s --move %s before front_app 2>/dev/null || true; fi",
-          POST_CONFIG_DELAY + 0.2,
-          SKETCHYBAR_BIN,
-          triforce_name,
-          SKETCHYBAR_BIN,
-          music_name,
-          triforce_name,
-          SKETCHYBAR_BIN,
-          music_name
-        ),
       })
       if type(music_module.create_popup_items) == "function" then
         local popup_ctx = ctx
@@ -520,7 +505,7 @@ local function get_layout(ctx)
     cmd = string.format("sleep %.1f; CONFIG_DIR=%q %q", SPACE_POST_CONFIG_DELAY, CONFIG_DIR, PLUGIN_DIR .. "/refresh_spaces.sh"),
   })
   if ctx.yabai_available() then
-    table.insert(layout, { action = "call", fn = ctx.watch_spaces })
+    table.insert(layout, { action = "post_config_call", fn = ctx.watch_spaces })
   end
   metrics.spaces_ms = current_time_ms() - spaces_start_ms
 
@@ -566,12 +551,6 @@ local function get_layout(ctx)
       associated_space = "all",
     })
 
-    table.insert(layout, {
-      action = "exec",
-      cmd = string.format("sleep %.1f; %s --move %s before front_app 2>/dev/null || true",
-                          POST_CONFIG_DELAY, SKETCHYBAR_BIN, control_center_item_name)
-    })
-
     local cc_popup_items = control_center_module.create_popup_items(nil, theme, font_string, settings, {
       item_name = control_center_item_name,
       config_dir = CONFIG_DIR,
@@ -605,16 +584,34 @@ local function get_layout(ctx)
 
   local group_start_ms = current_time_ms()
   local left_group_children = {}
+  local popup_parents = {}
   if triforce_present then
     table.insert(left_group_children, triforce_name)
+    table.insert(popup_parents, triforce_name)
   end
   if music_present then
     table.insert(left_group_children, music_name)
+    table.insert(popup_parents, music_name)
   end
   if control_center_item_name then
     table.insert(left_group_children, control_center_item_name)
+    table.insert(popup_parents, control_center_item_name)
   end
   table.insert(left_group_children, "front_app")
+
+  if #left_group_children > 1 then
+    local anchor_moves = {}
+    local next_anchor = left_group_children[#left_group_children]
+    for index = #left_group_children - 1, 1, -1 do
+      local item_name = left_group_children[index]
+      table.insert(anchor_moves, string.format("--move %q before %q", item_name, next_anchor))
+      next_anchor = item_name
+    end
+    table.insert(layout, {
+      action = "exec",
+      cmd = string.format("%q %s >/dev/null 2>&1 || true", SKETCHYBAR_BIN, table.concat(anchor_moves, " ")),
+    })
+  end
 
   if #left_group_children > 1 then
     table.insert(layout, factory.create_bracket("left_group", left_group_children, {
@@ -629,7 +626,7 @@ local function get_layout(ctx)
   end
   metrics.group_ms = current_time_ms() - group_start_ms
 
-  return layout, metrics
+  return layout, metrics, { popup_parents = popup_parents }
 end
 
 return { get_layout = get_layout }

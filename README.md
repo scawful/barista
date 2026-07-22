@@ -81,12 +81,14 @@ target space is actually `float`. Cross-display window moves now adopt the
 visible destination space mode in both directions, so a floating window dropped
 onto a managed (`bsp` / `stack`) display is re-tiled and a tiled window dropped
 onto a float display is floated.
-The root `front_app` popup keeps `Adopt Current Space Mode` beside the frequent
-raw window toggles. Its click-only `More Window Actions` child holds `Send to
-Float Space`, display/space moves, and the conservative `Utility`, `Focus`,
-`Presentation`, and `Tile Here` presets. Opening or closing the root resets the
-child, and a child action closes both popup levels after it runs. App-default
-rows can persist
+The Yabai-enabled `front_app` popup now trims its previous 18-row root to 13
+rows. `Quit App`, `Float Window`, `Adopt Current Space Mode`, and `Fullscreen`
+stay direct; the existing click-only `front_app.more` child is labeled `More
+Actions` and grows from 12 rows to 17 by adding `Hide App`, `Force Quit`,
+`Sticky`, `Topmost`, and `Center` beside the presets and display/space moves.
+Opening or closing the root still resets the child, and a child action still
+closes both popup levels after it runs. Disabled and no-Yabai paths keep the app
+actions on the root and omit the child. App-default rows can persist
 "this app floats" / "this app tiles" rules through `scripts/yabai_control.sh
 app-default-current <float|tile|unset>`. The Yabai-enabled Control Center keeps
 its mode, space-layout, and shortcut rows on a 12-row root; its click-only
@@ -378,7 +380,7 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **Per-Display Space Creator:** each `space_creator.<display>` is associated with the known spaces on only its target display, so multi-monitor setups show one `+` per monitor instead of every creator on every bar.
 - **Precomputed Apple Menu Model:** the enhanced Apple-menu model is now prepared before `begin_config`, so menu path discovery and section building happen while the old bar is still visible instead of inside the blank reload window.
 - **Shared Popup UI Builder:** repeated popup toggles and menu-style rows now go through `modules/ui_builder.lua`, keeping click-open anchors direct while detail refreshes happen asynchronously. Front App and Control Center popup rows use the same row/header/separator helpers as Triforce and Music.
-- **Progressive Popup Disclosure:** on the fully populated Personal/Yabai models, Music's initial surface drops from 24 rows to 13 by moving secondary launchers into `More Apps` and `Kits + Folders` children, Front App drops from 29 rows to 18 by moving presets and move commands into `More Window Actions`, and Control Center drops from 23 rows to 12 by moving its 11 Layout Ops/App Defaults rows into `More Layout Controls`. These children open only on click, Music keeps only one sibling child open, root toggles reset them first, and their actions close both popup levels. Control Center omits its child when Yabai controls are disabled or unavailable. Randomized live samples reduced the direct layout-open median by 28% for Music and Front App and 33.8% for Control Center; see the performance audit for measurement details and load caveats.
+- **Progressive Popup Disclosure:** on the fully populated Personal/Yabai models, Music's initial surface drops from 24 rows to 13 by moving secondary launchers into `More Apps` and `Kits + Folders` children, Front App's enabled root drops again from 18 rows to 13 while its renamed `More Actions` child grows from 12 rows to 17, and Control Center drops from 23 rows to 12 by moving its 11 Layout Ops/App Defaults rows into `More Layout Controls`. Front App keeps Quit, Float, Adopt Space Mode, and Fullscreen direct while Hide, Force Quit, Sticky, Topmost, and Center join the existing presets and moves in the child. These children open only on click, Music keeps only one sibling child open, root toggles reset them first, and their actions close both popup levels. Disabled/no-Yabai Front App keeps app actions direct and omits its child; Control Center likewise omits its child when controls are disabled or unavailable. A same-daemon A/B cut the direct Front App layout median another 23.9%; see the performance audit for full results and configured-click variance.
 - **Direct Popup Execution:** Popup-row hover passes bounded arguments directly from `popup_hover` to SketchyBar, and native-helper setups use compiled `popup_anchor` for the Apple anchor; portable fallbacks remain available.
 - **Native Volume State + Detail Refresh:** Compiled setups use `volume_popup_helper` for initial state, `volume_change`, and click-time detail refreshes (CoreAudio + bounded runtime-cache reads + one SketchyBar request/reply). Stable hardware-controlled outputs stay native, show `HW` / `Volume: Hardware controlled`, and hide unavailable mute until a software-controllable output restores it. Lua-only/helper-missing, explicitly disabled, transient CoreAudio/device-read, and IPC-failure paths retain `plugins/volume.sh`; missing `SwitchAudioSource` keeps unusable route rows hidden without adding another widget.
 - **Modular Load:** Configuration logic is split across focused modules (`shell_utils`, `paths`, `binary_resolver`) to ensure fast initialization.

@@ -90,7 +90,14 @@ local function test_items_left_layout()
   local found_front_app_state = false
   local found_front_app_location = false
   local front_app_hide = nil
-  local found_adopt_space_mode = false
+  local front_app_force_quit = nil
+  local front_app_sticky = nil
+  local front_app_topmost = nil
+  local front_app_center = nil
+  local front_app_quit = nil
+  local front_app_float = nil
+  local front_app_fullscreen = nil
+  local front_app_adopt_space_mode = nil
   local found_send_float_space = false
   local found_utility_preset = false
   local found_focus_preset = false
@@ -102,11 +109,15 @@ local function test_items_left_layout()
   local front_app_more = nil
   local front_app_root_rows = 0
   local front_app_more_rows = 0
+  local front_app_root_names = {}
+  local front_app_more_names = {}
   for _, entry in ipairs(layout) do
     if entry.type == "item" and entry.props.position == "popup.front_app" then
       front_app_root_rows = front_app_root_rows + 1
+      table.insert(front_app_root_names, entry.name)
     elseif entry.type == "item" and entry.props.position == "popup.front_app.more" then
       front_app_more_rows = front_app_more_rows + 1
+      table.insert(front_app_more_names, entry.name)
     end
     if entry.type == "item" and entry.name == "front_app" then
       found_front_app = true
@@ -140,8 +151,22 @@ local function test_items_left_layout()
       found_front_app_location = true
     elseif entry.type == "item" and entry.name == "front_app.hide" then
       front_app_hide = entry
+    elseif entry.type == "item" and entry.name == "front_app.force_quit" then
+      front_app_force_quit = entry
+    elseif entry.type == "item" and entry.name == "front_app.quit" then
+      front_app_quit = entry
+    elseif entry.type == "item" and entry.name == "front_app.window.float" then
+      front_app_float = entry
+    elseif entry.type == "item" and entry.name == "front_app.window.fullscreen" then
+      front_app_fullscreen = entry
+    elseif entry.type == "item" and entry.name == "front_app.window.sticky" then
+      front_app_sticky = entry
+    elseif entry.type == "item" and entry.name == "front_app.window.topmost" then
+      front_app_topmost = entry
+    elseif entry.type == "item" and entry.name == "front_app.window.center" then
+      front_app_center = entry
     elseif entry.type == "item" and entry.name == "front_app.window.adopt_space_mode" then
-      found_adopt_space_mode = true
+      front_app_adopt_space_mode = entry
     elseif entry.type == "item" and entry.name == "front_app.move.float_space" then
       found_send_float_space = true
     elseif entry.type == "item" and entry.name == "front_app.preset.utility" then
@@ -171,7 +196,7 @@ local function test_items_left_layout()
   assert(found_front_app_state, "front_app state row not found in popup layout")
   assert(found_front_app_location, "front_app location row not found in popup layout")
   assert(front_app_hide ~= nil, "front_app hide action not found in popup layout")
-  assert(found_adopt_space_mode, "front_app adopt-space-mode action not found in popup layout")
+  assert(front_app_adopt_space_mode ~= nil, "front_app adopt-space-mode action not found in popup layout")
   assert(found_send_float_space, "front_app send-to-float-space action not found in popup layout")
   assert(found_utility_preset, "front_app utility preset not found in popup layout")
   assert(found_focus_preset, "front_app focus preset not found in popup layout")
@@ -180,14 +205,42 @@ local function test_items_left_layout()
   assert_true(not found_front_app_default_row, "front_app should leave persistent app defaults to Control Center")
   assert(front_app_move_prev ~= nil, "front_app move-to-prev-display action not found in popup layout")
   assert(front_app_move_next ~= nil, "front_app move-to-next-display action not found in popup layout")
-  assert_equal(front_app_root_rows, 18, "front_app should render only its frequent actions initially")
-  assert_equal(front_app_more_rows, 12, "front_app nested popup should retain every preset and move row")
-  assert_true(front_app_more ~= nil, "front_app should expose a click-open More Window Actions row")
+  assert_equal(front_app_root_rows, 13, "front_app should render only its frequent actions initially")
+  assert_equal(front_app_more_rows, 17, "front_app nested popup should retain every secondary action")
+  assert_equal(table.concat(front_app_root_names, "|"), table.concat({
+    "front_app.header", "front_app.state", "front_app.location", "front_app.sep0",
+    "front_app.app_header", "front_app.quit", "front_app.sep1", "front_app.window_header",
+    "front_app.window.float", "front_app.window.adopt_space_mode", "front_app.window.fullscreen",
+    "front_app.sep_presets", "front_app.more",
+  }, "|"), "front_app root ordering should keep frequent actions direct")
+  assert_equal(table.concat(front_app_more_names, "|"), table.concat({
+    "front_app.more_header", "front_app.hide", "front_app.force_quit", "front_app.window.sticky",
+    "front_app.window.topmost", "front_app.window.center", "front_app.preset.utility",
+    "front_app.preset.focus", "front_app.preset.presentation", "front_app.preset.tile_here",
+    "front_app.sep2", "front_app.move_header", "front_app.move.float_space",
+    "front_app.move.display_prev", "front_app.move.display_next", "front_app.move.space_prev",
+    "front_app.move.space_next",
+  }, "|"), "front_app child ordering should preserve every secondary action")
+  assert_true(front_app_more ~= nil, "front_app should expose a click-open More Actions row")
   assert_equal(front_app_more.props.position, "popup.front_app", "front_app submenu anchor should stay on the root popup")
   assert_equal(front_app_more.props.popup.align, "right", "front_app submenu should open to the right")
+  assert_true(front_app_more.props.label:find("More Actions", 1, true) ~= nil,
+    "front_app submenu should use the compact More Actions label")
   assert_true(front_app_more.props.click_script:find("front_app.more popup.drawing=toggle", 1, true) ~= nil,
     "front_app submenu should use a direct popup toggle")
-  assert(front_app_hide.props.click_script:find("popup.drawing=off", 1, true) ~= nil, "front_app actions should close the popup after execution")
+  for _, root_action in ipairs({ front_app_quit, front_app_float, front_app_adopt_space_mode, front_app_fullscreen }) do
+    assert_true(root_action ~= nil, "front_app frequent action should exist")
+    assert_equal(root_action.props.position, "popup.front_app", "front_app frequent actions should stay on the root")
+  end
+  for _, secondary_action in ipairs({ front_app_hide, front_app_force_quit, front_app_sticky, front_app_topmost, front_app_center }) do
+    assert_true(secondary_action ~= nil, "front_app secondary action should exist")
+    assert_equal(secondary_action.props.position, "popup.front_app.more", "front_app secondary actions should move into More Actions")
+    assert_true(secondary_action.props.click_script:find(
+      "--set front_app.more popup.drawing=off --set front_app popup.drawing=off",
+      1,
+      true
+    ) ~= nil, "front_app secondary actions should close both popup levels")
+  end
   assert(front_app_move_prev.props.click_script:find("yabai_control%.sh window%-display%-prev") ~= nil, "front_app prev-display action should route through yabai_control.sh")
   assert(front_app_move_next.props.click_script:find("yabai_control%.sh window%-display%-next") ~= nil, "front_app next-display action should route through yabai_control.sh")
   assert_true(front_app_move_prev.props.click_script:find("--set front_app.more popup.drawing=off --set front_app popup.drawing=off", 1, true) ~= nil,
@@ -281,6 +334,8 @@ local function test_items_left_without_yabai()
   local foundLuaOnlyRefresh = false
   local foundPortableActionRows = false
   local foundFrontAppMore = false
+  local foundPortableHide = false
+  local foundPortableForceQuit = false
   for _, entry in ipairs(layout) do
     if entry.type == "item" and entry.name == "front_app.window.unavailable" then
       foundUnavailable = true
@@ -297,6 +352,14 @@ local function test_items_left_without_yabai()
     if entry.type == "item" and entry.name == "front_app.more" then
       foundFrontAppMore = true
     end
+    if entry.type == "item" and entry.name == "front_app.hide"
+        and entry.props.position == "popup.front_app" then
+      foundPortableHide = true
+    end
+    if entry.type == "item" and entry.name == "front_app.force_quit"
+        and entry.props.position == "popup.front_app" then
+      foundPortableForceQuit = true
+    end
     if entry.type == "item" and entry.name == "front_app"
         and entry.props.click_script:find("/usr/bin/env BARISTA_LUA_ONLY=1", 1, true) ~= nil then
       foundLuaOnlyRefresh = true
@@ -312,6 +375,8 @@ local function test_items_left_without_yabai()
   assert_true(foundExtensionGuide, "disabled yabai path should link the extension guide")
   assert_true(not foundMoveAction, "move-window yabai actions should be hidden when yabai is unavailable")
   assert_true(not foundFrontAppMore, "portable front_app should not expose an empty nested popup")
+  assert_true(foundPortableHide, "portable front_app should keep Hide App on the root")
+  assert_true(foundPortableForceQuit, "portable front_app should keep Force Quit on the root")
   assert_equal(#metadata.submenu_parents, 0, "portable front_app should not register a missing submenu")
   assert_true(foundLuaOnlyRefresh, "Lua-only front_app popup refresh should keep compiled helpers disabled")
   assert_true(foundPortableActionRows, "portable front_app refresh should omit unavailable yabai action rows")

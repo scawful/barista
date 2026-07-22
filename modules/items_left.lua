@@ -473,13 +473,18 @@ local function get_layout(ctx)
   add_front_separator("front_app.sep0")
   add_front_header("front_app.app_header", "App", tc("PEACH"))
 
+  local front_app_more_actions = {}
   local app_actions = {
-    { name = "front_app.hide", icon = "󰘔", icon_color = tc("PEACH"), label = "Hide App", action = call_script(FRONT_APP_ACTION_SCRIPT, "hide"), shortcut = "⌘H" },
+    { name = "front_app.hide", icon = "󰘔", icon_color = tc("PEACH"), label = "Hide App", action = call_script(FRONT_APP_ACTION_SCRIPT, "hide"), shortcut = "⌘H", more = true },
     { name = "front_app.quit", icon = "󰅘", icon_color = tc("RED"), label = "Quit App", action = call_script(FRONT_APP_ACTION_SCRIPT, "quit"), shortcut = "⌘Q" },
-    { name = "front_app.force_quit", icon = "󰜏", icon_color = tc("MAROON", "RED"), label = "Force Quit", action = call_script(FRONT_APP_ACTION_SCRIPT, "force-quit") },
+    { name = "front_app.force_quit", icon = "󰜏", icon_color = tc("MAROON", "RED"), label = "Force Quit", action = call_script(FRONT_APP_ACTION_SCRIPT, "force-quit"), more = true },
   }
   for _, entry in ipairs(app_actions) do
-    add_front_row(entry.name, entry)
+    if entry.more and yabai_controls_enabled then
+      table.insert(front_app_more_actions, entry)
+    else
+      add_front_row(entry.name, entry)
+    end
   end
 
   add_front_separator("front_app.sep1")
@@ -490,17 +495,25 @@ local function get_layout(ctx)
       { name = "front_app.window.float", icon = "󰒄", icon_color = tc("SAPPHIRE"), label = "Float Window", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-float") },
       { name = "front_app.window.adopt_space_mode", icon = "󰆾", icon_color = tc("TEAL"), label = "Adopt Current Space Mode", action = call_script(YABAI_CONTROL_SCRIPT, "window-adopt-space-mode") },
       { name = "front_app.window.fullscreen", icon = "󰊓", icon_color = tc("GREEN"), label = "Enter Fullscreen", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-fullscreen") },
-      { name = "front_app.window.sticky", icon = "󰐊", icon_color = tc("YELLOW"), label = "Toggle Sticky", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-sticky") },
-      { name = "front_app.window.topmost", icon = "󰁜", icon_color = tc("MAUVE", "LAVENDER"), label = "Make Topmost", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-topmost") },
-      { name = "front_app.window.center", icon = "󰘞", icon_color = tc("BLUE"), label = "Center Window", action = call_script(YABAI_CONTROL_SCRIPT, "window-center") },
+      { name = "front_app.window.sticky", icon = "󰐊", icon_color = tc("YELLOW"), label = "Toggle Sticky", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-sticky"), more = true },
+      { name = "front_app.window.topmost", icon = "󰁜", icon_color = tc("MAUVE", "LAVENDER"), label = "Make Topmost", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-topmost"), more = true },
+      { name = "front_app.window.center", icon = "󰘞", icon_color = tc("BLUE"), label = "Center Window", action = call_script(YABAI_CONTROL_SCRIPT, "window-center"), more = true },
     }
     for _, entry in ipairs(window_actions) do
-      add_front_row(entry.name, entry)
+      if entry.more then
+        table.insert(front_app_more_actions, entry)
+      else
+        add_front_row(entry.name, entry)
+      end
     end
 
     add_front_separator("front_app.sep_presets")
-    add_front_submenu(front_app_more_name, "More Window Actions", "󰘞", tc("YELLOW"))
-    add_front_header("front_app.presets_header", "Presets", tc("YELLOW"), front_app_more_name)
+    add_front_submenu(front_app_more_name, "More Actions", "󰘞", tc("YELLOW"))
+    add_front_header("front_app.more_header", "App + Window", tc("YELLOW"), front_app_more_name)
+
+    for _, entry in ipairs(front_app_more_actions) do
+      add_front_row(entry.name, entry, front_app_more_name)
+    end
 
     local preset_actions = {
       { name = "front_app.preset.utility", icon = "󰉼", icon_color = tc("SAPPHIRE"), label = "Utility", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-utility") },

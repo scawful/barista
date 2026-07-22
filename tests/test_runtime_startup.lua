@@ -10,6 +10,10 @@ run_test("main startup wiring: commits and captures config timing before queue f
   local flush_pos = assert(source:find("post_config_queue:flush", end_config_pos, true))
   assert_true(end_config_pos < timing_pos and timing_pos < flush_pos,
     "main should commit config and stop config timing before dispatching post-config work")
+  assert_true(source:find("left_layout_metadata.submenu_parents", 1, true) ~= nil,
+    "main should merge left-side nested popups into the submenu registry")
+  assert_true(source:find("submenu_manager_items", 1, true) ~= nil,
+    "main should register the merged submenu list")
 end)
 
 run_test("runtime_startup post-config queue: defers and flushes actions in order", function()

@@ -13,12 +13,12 @@ Quick reference: which file defines each bar item, which plugin script runs for 
 | `popup_manager` | `plugins/popup_manager.sh` | `space_change`, `display_changed`, `display_added`, `display_removed`, `system_woke` | Invisible; handles popup dismissal. It intentionally ignores `front_app_switched` during normal runtime so clicks that cause focus churn do not immediately close the popup that just opened. |
 | `space_runtime` | `plugins/space_visuals.sh` | `space_visual_refresh`, `front_app_switched`, `system_woke` | Invisible; single batch visual updater for all spaces. `front_app_switched` runs are coalesced after topology refresh, the focused-space fast path goes through `scripts/front_app_context.sh`, and full visual passes prefer `bin/space_visual_helper` plus `app_icon.sh --batch` for visible app/glyph lookup before one SketchyBar apply. |
 | `triforce` | `plugins/oracle_triforce.sh` | `mouse.entered`, `mouse.exited`, `system_woke`; async click refresh | Hover only highlights the anchor. Click toggles immediately, then the controller takes one canonical Oracle status snapshot and batches the mutable anchor/popup fields. No periodic timer is installed; the legacy anchor-only widget is only a missing-producer fallback. |
-| `music_studio` | `plugins/music_studio.sh` | `mouse.entered`, `mouse.exited` | Music launcher beside Triforce. Active name comes from `menus.music.item_name`; popup rows are app/workflow/kits launchers from `modules/integrations/music.lua`. Routine updates are disabled; click opening is a direct popup toggle while the plugin only owns hover/status work. |
+| `music_studio` | `plugins/music_studio.sh` | `mouse.entered`, `mouse.exited` | Music launcher beside Triforce. Active name comes from `menus.music.item_name`; popup rows are app/workflow/kits launchers from `modules/integrations/music.lua`. Routine updates are disabled; its root toggle resets the click-only child popups while the plugin only owns hover/status work. |
 | `control_center` | `plugins/control_center.sh` | `mouse.entered`, `mouse.exited`, `space_active_refresh`, `space_mode_refresh`, `system_woke` | Default item name. Active name is runtime-resolved; popup focuses on layout actions when yabai is available and Desk/interface-extension rows when yabai is disabled. |
 | `front_app` | `plugins/front_app.sh` | `front_app_switched` | Click opens popup (app/window controls). Widget state/location come from `scripts/front_app_context.sh`, which prefers the shared `runtime_context` cache and falls back to current space/display when yabai has no matching managed window. |
 | `triforce.*` (popup) | (hover script) | on-open/wake status apply | Popup rows use the shared menu-style sizing and hover treatment: title + dynamic ROM/focus context, a session section (`Continue`, `Patch + Launch`), and an apps section (`Oracle Hub`, `Yaze`, `z3ed`, `Mesen2 OoS`) with Apple-style headers, separators, and per-app icon colors. The focus row is a stable hidden target when no focus exists, Continue resolves current focus when clicked, and `z3ed` launches a Ghostty-backed terminal session when installed. |
-| `music.studio.*` (popup) | (hover script) | — | Popup rows use the shared menu-style sizing and hover treatment: app launchers (`yams`, `Logic Pro`, `Roland Cloud Manager`, `SP-404MKII App`, and other installed music tools), workflow shortcuts (`Studio Start`, `Plugged In`, `SongForge Board`, PDF guides), and shallow kit/folder launchers (`Samples`, OP-XY/SP-404 starter packs). Action rows close the popup after firing. |
-| `front_app.*` (popup) | (hover script) | — | Popup items: state, location, app actions, state-aware window actions, conservative presets, and move actions. Persistent app defaults stay in the adjacent Control Center popup so this menu fits smaller displays. When yabai controls are disabled or unavailable, the Window section is replaced by Desk/interface-extension rows. Action rows close the popup after firing. |
+| `music.studio.*` (popup) | (hover script) | — | The fully populated root is 13 rows instead of 24: `yams`, Logic Pro, and workflow shortcuts stay direct, while `music.studio.more_apps` and `music.studio.kits` open the secondary apps and Kits/Folders on click. Nested launcher actions close the child and `music_studio` together. |
+| `front_app.*` (popup) | (hover script) | — | The Yabai-enabled root is 18 rows instead of 29: state, location, app actions, and frequent window actions stay direct; `front_app.more` opens the Presets and Move sections as the click-only `More Window Actions` child. Nested actions close both levels. When yabai controls are disabled or unavailable, the Window section is replaced by Desk/interface-extension rows and the child is omitted. |
 | `space.1` … `space.N` | `plugins/space.sh` | `mouse.entered`, `mouse.exited` | Dynamic; created by `plugins/refresh_spaces.sh` → `plugins/simple_spaces.sh`. With yabai unavailable, Barista falls back to `spaces.count` / macOS Spaces preferences / a 5-space default so non-yabai profiles still show a space strip. |
 | `space_creator*` | `plugins/space_creator.sh` | `mouse.entered`, `mouse.exited` | Dynamic add-space affordance. Per-display creators use their target display plus that display's current space-index list with `ignore_association=off`, producing one visible `+` on each monitor rather than duplicating every creator across every bar. |
 
@@ -59,7 +59,7 @@ Default runtime path:
 1. [main.lua](../../main.lua) resolves the active control-center item name once.
 2. [modules/items_left.lua](../../modules/items_left.lua) creates the left-bar item and passes the resolved name into popup creation.
 3. [modules/integrations/control_center.lua](../../modules/integrations/control_center.lua) renders the widget and all popup rows against `popup.<item_name>`.
-4. `items_left.lua` reports all successfully created optional left-side popup parents; `main.lua` registers those exact names with `popup_manager` rather than inferring them from enabled-feature flags.
+4. `items_left.lua` reports all successfully created optional left-side popup and submenu parents; `main.lua` merges those submenu names with menu metadata before registering the exact runtime lists with `popup_manager`.
 5. [modules/shortcuts.lua](../../modules/shortcuts.lua) generates `toggle_control_center` against that same resolved target.
 6. [modules/popup_action.lua](../../modules/popup_action.lua) attaches helper popups to the resolved control-center popup parent instead of assuming `popup.control_center`.
 
@@ -77,8 +77,12 @@ controllers in the generic click path; those can make real mouse clicks look
 dropped even when script-only tests pass. Use explicit yabai repair/actions for
 display focus instead.
 `front_app`, `control_center`, Triforce, Music, and right-side refresh popups
-are intentionally direct-toggle anchors even though their plugin scripts still
-own status updates, hover events, or async detail refresh.
+are intentionally direct client-call anchors even though their plugin scripts
+still own status updates, hover events, or async detail refresh. Music and Front
+App first close their click-only child popups in that same root-toggle request;
+actions inside a child close both levels after running. Left-layout child names
+join the menu submenu metadata in the runtime registry, so global dismissal also
+clears them.
 The global popup manager should not subscribe to `front_app_switched`; app focus
 can churn while SketchyBar handles a click, which makes menus appear to ignore
 the click by opening and immediately closing.

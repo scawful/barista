@@ -36,13 +36,29 @@ esac
 FRONT_APP_IDLE_PROPS="$(anchor_idle_props) icon.color=$FRONT_APP_ICON_COLOR"
 FRONT_APP_HOVER_PROPS="$(anchor_hover_props) icon.color=$FRONT_APP_ICON_COLOR"
 
+toggle_front_app_popup() {
+  if [ "$FRONT_APP_ACTION_ROWS" = "1" ]; then
+    sketchybar --set front_app.more popup.drawing=off --set "$NAME" popup.drawing=toggle
+  else
+    sketchybar --set "$NAME" popup.drawing=toggle
+  fi
+}
+
+close_front_app_popup() {
+  if [ "$FRONT_APP_ACTION_ROWS" = "1" ]; then
+    sketchybar --set front_app.more popup.drawing=off --set "$NAME" popup.drawing=off
+  else
+    sketchybar --set "$NAME" popup.drawing=off
+  fi
+}
+
 case "${SENDER:-}" in
   mouse.clicked)
-    sketchybar --set "$NAME" popup.drawing=toggle
+    toggle_front_app_popup
     exit 0
     ;;
   mouse.exited.global)
-    sketchybar --set "$NAME" popup.drawing=off
+    close_front_app_popup
     clear_highlight "$NAME" "$FRONT_APP_IDLE_PROPS"
     exit 0
     ;;
@@ -57,7 +73,7 @@ case "${SENDER:-}" in
 esac
 
 if [ "${BARISTA_FRONT_APP_ACTION:-}" = "click" ]; then
-  sketchybar --set "$NAME" popup.drawing=toggle
+  toggle_front_app_popup
   exit 0
 fi
 

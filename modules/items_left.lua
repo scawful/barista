@@ -56,6 +56,7 @@ local function get_layout(ctx)
     and YABAI_CONTROL_SCRIPT and YABAI_CONTROL_SCRIPT ~= ""
   local oracle_menu_model = nil
   local music_menu_model = nil
+  local submenu_parents = {}
   local control_center_status = nil
   local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
   local font_bold = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small)
@@ -149,6 +150,7 @@ local function get_layout(ctx)
     anchor_script(PLUGIN_DIR .. "/front_app.sh")
   )
   local front_app_refresh_prefix = ctx.lua_only and "/usr/bin/env BARISTA_LUA_ONLY=1 " or ""
+  local front_app_more_name = "front_app.more"
   local front_app_popup_refresh = string.format(
     "%sSENDER=popup_refresh NAME=front_app CONFIG_DIR=%q %s",
     front_app_refresh_prefix,
@@ -165,6 +167,7 @@ local function get_layout(ctx)
     script = front_app_script,
     click_script = ui.toggle_then_refresh_async("front_app", front_app_popup_refresh, {
       sketchybar_bin = SKETCHYBAR_BIN,
+      close_popups = yabai_controls_enabled and { front_app_more_name } or nil,
     }),
     background = anchor_chip(),
     popup = {
@@ -270,11 +273,29 @@ local function get_layout(ctx)
         music_name = music_menu_model.ui.item_name
       end
     end
+    local music_popup_items = {}
+    local music_popup_metadata = {}
+    if type(music_module.create_popup_items) == "function" then
+      local popup_ctx = ctx
+      if music_menu_model then
+        popup_ctx = setmetatable({ music_menu_model = music_menu_model }, { __index = ctx })
+      end
+      music_popup_items, music_popup_metadata = music_module.create_popup_items(popup_ctx)
+      for _, submenu_name in ipairs((music_popup_metadata and music_popup_metadata.submenu_parents) or {}) do
+        table.insert(submenu_parents, submenu_name)
+      end
+    end
+    local music_toggle_script = popup_toggle_action(music_name)
+    if music_popup_metadata and #(music_popup_metadata.submenu_parents or {}) > 0 then
+      music_toggle_script = ui.toggle_after_closing(music_name, music_popup_metadata.submenu_parents, {
+        sketchybar_bin = SKETCHYBAR_BIN,
+      })
+    end
     local music_widget = music_module.create_widget({
       ctx = ctx,
       model = music_menu_model,
       position = "left",
-      popup_toggle_script = popup_toggle_action(music_name),
+      popup_toggle_script = music_toggle_script,
       popup_background = popup_background(),
       background = anchor_chip(),
       icon_font = { family = settings.font.icon, size = settings.font.sizes.icon },
@@ -292,12 +313,7 @@ local function get_layout(ctx)
         associated_display = associated_displays,
         associated_space = "all",
       })
-      if type(music_module.create_popup_items) == "function" then
-        local popup_ctx = ctx
-        if music_menu_model then
-          popup_ctx = setmetatable({ music_menu_model = music_menu_model }, { __index = ctx })
-        end
-        local music_popup_items = music_module.create_popup_items(popup_ctx)
+      if #music_popup_items > 0 then
         table.insert(layout, {
           action = "call",
           fn = function()
@@ -314,7 +330,7 @@ local function get_layout(ctx)
             end
           end,
         })
-        for _, popup_item in ipairs(music_popup_items or {}) do
+        for _, popup_item in ipairs(music_popup_items) do
           local item_name = popup_item.name
           popup_item.name = nil
           local should_hover = popup_item.hover == true
@@ -351,13 +367,18 @@ local function get_layout(ctx)
     table.insert(layout, { type = "item", name = item_name, props = item, attach_hover = should_hover })
   end
 
-  local function close_front_app_after(command)
+  local function close_front_app_after(command, child_popup)
+    if child_popup and child_popup ~= "" then
+      return ui.close_after_all({ child_popup, "front_app" }, command, {
+        sketchybar_bin = SKETCHYBAR_BIN,
+      })
+    end
     return ui.close_after("front_app", command, { sketchybar_bin = SKETCHYBAR_BIN })
   end
 
-  local function add_front_header(name, label, color)
+  local function add_front_header(name, label, color, parent)
     local items = {}
-    ui.header(items, "front_app", name, label, {
+    ui.header(items, parent or "front_app", name, label, {
       style = front_app_style,
       color = color,
       font = font_bold,
@@ -366,9 +387,9 @@ local function get_layout(ctx)
     add_front_popup_item(items[1])
   end
 
-  local function add_front_separator(name)
+  local function add_front_separator(name, parent)
     local items = {}
-    ui.separator(items, "front_app", name, {
+    ui.separator(items, parent or "front_app", name, {
       style = front_app_style,
       font = font_small,
       color = "0x40cdd6f4",
@@ -376,15 +397,22 @@ local function get_layout(ctx)
     add_front_popup_item(items[1])
   end
 
-  local function add_front_row(name, entry)
+  local function add_front_row(name, entry, parent)
     entry = entry or {}
+    parent = parent or "front_app"
+    local action = entry.action
+    local click_script = entry.click_script
+    if parent ~= "front_app" and not click_script and action and action ~= "" then
+      click_script = close_front_app_after(action, parent)
+      action = nil
+    end
     local items = {}
-    ui.row(items, "front_app", name, {
+    ui.row(items, parent, name, {
       style = front_app_style,
       icon = { string = entry.icon or "", color = entry.icon_color },
       label = entry.label or "",
-      action = entry.action,
-      click_script = entry.click_script,
+      action = action,
+      click_script = click_script,
       font = font_small,
       label_color = entry.label_color,
       hover = entry.hover,
@@ -392,6 +420,20 @@ local function get_layout(ctx)
       props = entry.props,
     })
     add_front_popup_item(items[1])
+  end
+
+  local function add_front_submenu(name, label, icon, color)
+    local items = {}
+    ui.submenu(items, "front_app", name, {
+      style = front_app_style,
+      icon = { string = icon, color = color },
+      label = label,
+      font = font_small,
+      label_color = front_app_style.label_color,
+      sketchybar_bin = SKETCHYBAR_BIN,
+    })
+    add_front_popup_item(items[1])
+    table.insert(submenu_parents, name)
   end
 
   local function add_front_app_extension_rows(rows)
@@ -457,7 +499,8 @@ local function get_layout(ctx)
     end
 
     add_front_separator("front_app.sep_presets")
-    add_front_header("front_app.presets_header", "Presets", tc("YELLOW"))
+    add_front_submenu(front_app_more_name, "More Window Actions", "󰘞", tc("YELLOW"))
+    add_front_header("front_app.presets_header", "Presets", tc("YELLOW"), front_app_more_name)
 
     local preset_actions = {
       { name = "front_app.preset.utility", icon = "󰉼", icon_color = tc("SAPPHIRE"), label = "Utility", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-utility") },
@@ -466,11 +509,11 @@ local function get_layout(ctx)
       { name = "front_app.preset.tile_here", icon = "󰆾", icon_color = tc("TEAL"), label = "Tile Here", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-tile-here") },
     }
     for _, entry in ipairs(preset_actions) do
-      add_front_row(entry.name, entry)
+      add_front_row(entry.name, entry, front_app_more_name)
     end
 
-    add_front_separator("front_app.sep2")
-    add_front_header("front_app.move_header", "Move", tc("MAUVE", "LAVENDER"))
+    add_front_separator("front_app.sep2", front_app_more_name)
+    add_front_header("front_app.move_header", "Move", tc("MAUVE", "LAVENDER"), front_app_more_name)
 
     local move_actions = {
       { name = "front_app.move.float_space", icon = "󰒄", icon_color = tc("TEAL"), label = "Send to Float Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-float") },
@@ -480,7 +523,7 @@ local function get_layout(ctx)
       { name = "front_app.move.space_next", icon = "󱂬", icon_color = tc("PEACH"), label = "Move to Next Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-next-wrap") },
     }
     for _, entry in ipairs(move_actions) do
-      add_front_row(entry.name, entry)
+      add_front_row(entry.name, entry, front_app_more_name)
     end
   else
     local unavailable_label = WINDOW_MANAGER_MODE == "disabled"
@@ -626,7 +669,10 @@ local function get_layout(ctx)
   end
   metrics.group_ms = current_time_ms() - group_start_ms
 
-  return layout, metrics, { popup_parents = popup_parents }
+  return layout, metrics, {
+    popup_parents = popup_parents,
+    submenu_parents = submenu_parents,
+  }
 end
 
 return { get_layout = get_layout }

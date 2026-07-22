@@ -7,7 +7,7 @@ CXXFLAGS = -O2 -std=c++17 -Wall -Wextra
 INSTALL_DIR = $(HOME)/.config/sketchybar/bin
 
 # Original targets
-ORIGINAL_TARGETS = clock_widget system_info_widget space_manager submenu_hover \
+ORIGINAL_TARGETS = clock_widget system_info_widget system_info_popup_helper space_manager submenu_hover \
                    popup_anchor popup_hover popup_manager popup_guard menu_action
 
 # New enhanced targets
@@ -22,7 +22,10 @@ clock_widget: clock_widget.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 system_info_widget: system_info_widget.c
-	$(CC) $(CFLAGS) -o $@ $<
+	$(CC) $(CFLAGS) -lpthread -o $@ $<
+
+system_info_popup_helper: system_info_widget.c
+	$(CC) $(CFLAGS) -lpthread -o $@ $<
 
 space_manager: space_manager.c
 	$(CC) $(CFLAGS) -o $@ $<
@@ -69,6 +72,7 @@ install: $(TARGETS)
 	@echo "Installing original components..."
 	install -m 755 clock_widget $(INSTALL_DIR)/
 	install -m 755 system_info_widget $(INSTALL_DIR)/
+	install -m 755 system_info_popup_helper $(INSTALL_DIR)/
 	install -m 755 space_manager $(INSTALL_DIR)/
 	install -m 755 submenu_hover $(INSTALL_DIR)/
 	install -m 755 popup_anchor $(INSTALL_DIR)/

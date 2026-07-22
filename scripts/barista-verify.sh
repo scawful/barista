@@ -67,6 +67,7 @@ BINARIES=(
   "volume_popup_helper"
   "clock_widget"
   "system_info_widget"
+  "system_info_popup_helper"
 )
 for bin in "${BINARIES[@]}"; do
   if [ -f "$CONFIG_DIR/build/bin/$bin" ] || [ -f "$CONFIG_DIR/bin/$bin" ]; then

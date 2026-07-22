@@ -143,6 +143,13 @@ bash tests/test_runtime_context_media_efficiency.sh >/dev/null
 bash tests/test_runtime_context_helper_publication.sh >/dev/null
 bash tests/test_volume_plugin.sh >/dev/null
 bash tests/test_volume_popup_helper.sh >/dev/null
+bash tests/test_system_info_memory.sh >/dev/null
+if [ "$(uname -s)" = "Darwin" ] \
+  && [ -f tests/test_system_info_widget.sh ] \
+  && [ -f helpers/system_info_widget.c ] \
+  && command -v clang >/dev/null 2>&1; then
+  bash tests/test_system_info_widget.sh >/dev/null
+fi
 bash tests/test_restricted_config.sh >/dev/null
 bash tests/test_setup_machine_shortcuts.sh >/dev/null
 bash tests/test_state_migration.sh >/dev/null

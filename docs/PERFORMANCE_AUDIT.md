@@ -133,10 +133,17 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - config-model construction performs no Oracle shell/Python/git snapshot; initial post-config, anchor-click, and wake events own refresh work, with the legacy anchor-only widget retained only when the canonical producer is unavailable; the retired `update_freq` state/command is removed
 *   **Result:** the removed timer path measured 33.029 ms median and 35.071 ms p95 across 60 live runs. Removing it eliminates up to 80 useless runs per shown hour (1,920 per day) and keeps the roughly 100 ms canonical status snapshot on explicit event paths rather than making a repaired producer three times more expensive on the old timer.
 
-### 1. Network & System Info (Mitigated)
-*   **File:** `helpers/system_info_widget.c`
-*   **Update:** Batched 5 separate `system()` calls into a single `sketchybar` invocation.
-*   **Result:** Reduced 5 fork+exec cycles to 1 per update interval. Perl-based timeouts remain as safety.
+### 1. Network & System Info (Verified Native Detail Path)
+*   **Files:** `modules/items_right.lua`, `helpers/system_info_widget.c`, `plugins/system_info.sh`, `tests/test_items.lua`, `tests/test_system_info_memory.sh`, `tests/test_system_info_widget.c`
+*   **Update:**
+    - routine updates retain the `system_info_widget` entrypoint and update only the compact `system_info` anchor; the click-only `system_info_popup_helper` alias is built from the same source under a new name so a pre-upgrade routine binary cannot accidentally receive the new action
+    - clicks toggle the popup before dispatching `popup_refresh` asynchronously, keeping detail collection out of the visible click path
+    - `modules/items_right.lua` passes the exact enabled subset of `cpu,mem,disk,net,swap,uptime,procs` (or `none`), and both the native and shell parsers reject unknown, duplicate, or malformed row lists before issuing partial updates
+    - the native path gathers only enabled detail rows and sends one batched, bounded SketchyBar Mach payload instead of issuing one client call per row
+    - direct APIs cover CPU, memory fallback, interface addresses, swap, and uptime; remaining data comes from bounded absolute-path probes: `/usr/bin/memory_pressure`, `/bin/df` against `/System/Volumes/Data` when present, `/sbin/route` plus `/usr/sbin/networksetup` for default-route/Wi-Fi context, and `/bin/ps` for the top process
+    - native invocation, payload, or transport failure falls through to `plugins/system_info.sh popup_refresh`; the shell path gates detail probes and updates by the same allowlist, individual probe failures remain bounded and render safe placeholders, and the explicit popup action never re-enters the routine helper
+    - Lua-only layouts and layouts without a resolved routine helper set the native-disable boundary so an executable left on disk is ignored for routine work as well as popup selection
+*   **Result:** in 20 randomized adjacent pairs on one live daemon, with two warmups per path and the exact same `mem,disk,net,swap,uptime,procs` environment, native detail refresh measured 36.418 ms median / 37.010 ms p95 versus 127.795 / 129.427 ms for the shell fallback. That is 3.509x faster by medians and saves 91.490 ms in the median pair. Twenty configured first-open samples replaced a sentinel detail label in 106.320 ms median / 118.314 ms p95; all 20 completed, all 240 direct row queries were valid on the first attempt, the SketchyBar PID stayed stable, and its stdout/stderr logs grew by zero bytes. The popup was restored closed after measurement.
 
 ### 2. Space Management (Verified Active Path)
 *   **Files:** `plugins/refresh_spaces.sh`, `plugins/simple_spaces.sh`, `plugins/space.sh`, `plugins/space_visuals.sh`, `scripts/app_icon.sh`, `helpers/space_visual_helper.m`, `main.lua`

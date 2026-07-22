@@ -754,6 +754,7 @@ local function test_items_right_layout()
   local added_items = {}
   local compiled_calls = {}
   local compiled_fallbacks = {}
+  local system_info_env_values = nil
   local volume_env_values = nil
   local mock_sbar = {
     add = function(kind, name, props)
@@ -773,7 +774,7 @@ local function test_items_right_layout()
         sizes = { small = 12, text = 14, icon = 16, numbers = 14 }
       }
     },
-    theme = { WHITE = "0xffffffff", GREEN = "0xffa6e3a1", YELLOW = "0xfff9e2af", RED = "0xfff38ba8", BLUE = "0xff89b4fa", LAVENDER = "0xffb4befe", bar = { bg = "0xff1e1e2e" } },
+    theme = { WHITE = "0xffffffff", GREEN = "0xffa6e3a1", YELLOW = "0xfff9e2af", RED = "0xfff38ba8", BLUE = "0xff89b4fa", TEAL = "0xff94e2d5", LAVENDER = "0xffb4befe", bar = { bg = "0xff1e1e2e" } },
     state = { appearance = { widget_scale = 1.0, bar_height = 28, corner_radius = 6 }, widgets = {} },
     font_string = function(f, s, sz) return string.format("%s:%s:%0.1f", f, s, sz) end,
     PLUGIN_DIR = "/tmp/plugins",
@@ -792,6 +793,10 @@ local function test_items_right_layout()
     icon_for = function(k, d) return d end,
     state_module = { get_icon = function() return "icon" end },
     env_prefix = function(t)
+      if t.SYSTEM_INFO_BIN ~= nil then
+        system_info_env_values = t
+        return shell_utils.env_prefix(t)
+      end
       if t.BARISTA_VOLUME_OK ~= nil then
         volume_env_values = t
       end
@@ -834,9 +839,23 @@ local function test_items_right_layout()
   assert_equal(added_items.clock.props.script, "/compiled/clock_widget", "clock should prefer compiled helper")
   assert_true(added_items.clock.props.update_freq == nil, "clock timer should be disabled when daemon-managed")
   assert_true(added_items.system_info.props.script:find("/tmp/plugins/system_info%.sh") ~= nil, "system_info should keep the shell event wrapper")
+  assert_true(added_items.system_info.props.script:find("SYSTEM_INFO_BIN='/compiled/system_info_widget'", 1, true) ~= nil,
+    "routine system_info events should keep the existing compiled helper")
+  assert_true(added_items.system_info.props.script:find("system_info_popup_helper", 1, true) == nil,
+    "routine system_info events should not invoke the click-only popup helper")
   assert_true(added_items.system_info.props.update_freq == nil, "system_info timer should be disabled when daemon-managed")
-  assert_true(added_items.system_info.props.click_script:find("popup.drawing=toggle", 1, true) ~= nil, "system_info click should toggle immediately")
-  assert_true(added_items.system_info.props.click_script:find("popup_refresh", 1, true) ~= nil, "system_info click should refresh popup details asynchronously")
+  local system_info_env = shell_utils.env_prefix(system_info_env_values)
+  assert_equal(
+    added_items.system_info.props.click_script,
+    "sketchybar -m --set system_info popup.drawing=toggle; (" .. system_info_env
+      .. "'/compiled/system_info_popup_helper' popup_refresh || " .. system_info_env
+      .. "'/tmp/plugins/system_info.sh' popup_refresh) >/dev/null 2>&1 &",
+    "system_info click should toggle first, then prefer the native popup helper with the shell fallback"
+  )
+  local system_info_toggle_at = added_items.system_info.props.click_script:find("popup.drawing=toggle", 1, true)
+  local system_info_refresh_at = added_items.system_info.props.click_script:find("/compiled/system_info_popup_helper", 1, true)
+  assert_true(system_info_toggle_at ~= nil and system_info_refresh_at ~= nil and system_info_toggle_at < system_info_refresh_at,
+    "system_info click should toggle before starting popup refresh")
   assert_true(added_items.volume.props.click_script:find("popup.drawing=toggle", 1, true) ~= nil, "volume click should toggle immediately")
   assert_equal(added_items.volume.props.script, "/tmp/plugins/volume.sh", "routine volume events should keep the shell wrapper")
   assert_true(added_items.volume.props.update_freq == nil, "native click refresh should not add a polling timer")
@@ -849,9 +868,24 @@ local function test_items_right_layout()
   assert_true(added_items.battery.props.click_script:find("popup_refresh", 1, true) ~= nil, "battery click should refresh popup details asynchronously")
   local compiled_summary = table.concat(compiled_calls, ",")
   assert_true(compiled_summary:find("system_info_widget", 1, true) ~= nil, "items_right should resolve the compiled system_info helper")
+  assert_true(compiled_summary:find("system_info_popup_helper", 1, true) ~= nil, "items_right should resolve the native system_info popup helper")
   assert_true(compiled_summary:find("widget_manager", 1, true) ~= nil, "items_right should resolve the compiled battery helper")
   assert_true(compiled_summary:find("volume_popup_helper", 1, true) ~= nil, "items_right should resolve the compiled volume popup helper")
   assert_equal(compiled_fallbacks.volume_popup_helper, "", "volume native lookup should use an empty resolver fallback")
+  assert_equal(compiled_fallbacks.system_info_popup_helper, "", "system_info native popup lookup should use an empty resolver fallback")
+  assert_type(system_info_env_values, "table", "system_info helpers should receive their runtime environment")
+  assert_equal(system_info_env_values.SYSTEM_INFO_BIN, "/compiled/system_info_widget", "routine system_info events should retain the existing compiled helper")
+  assert_equal(system_info_env_values.BARISTA_SYSTEM_INFO_NATIVE_DISABLE, "0", "resolved routine helper should keep native system info enabled")
+  assert_equal(system_info_env_values.BARISTA_SYSTEM_INFO_ROWS, "cpu,mem,disk,net,swap,uptime,procs", "system_info helper should receive popup rows in topology order")
+  assert_equal(system_info_env_values.BARISTA_SYSTEM_INFO_RED, "0xfff38ba8", "system_info helper should receive the red theme color")
+  assert_equal(system_info_env_values.BARISTA_SYSTEM_INFO_YELLOW, "0xfff9e2af", "system_info helper should receive the yellow theme color")
+  assert_equal(system_info_env_values.BARISTA_SYSTEM_INFO_GREEN, "0xffa6e3a1", "system_info helper should receive the green theme color")
+  assert_equal(system_info_env_values.BARISTA_SYSTEM_INFO_BLUE, "0xff89b4fa", "system_info helper should receive the blue theme color")
+  assert_equal(system_info_env_values.BARISTA_SYSTEM_INFO_TEAL, "0xff94e2d5", "system_info helper should receive the teal theme color")
+  for _, key in ipairs({ "CPU", "MEM", "DISK", "WIFI", "WIFI_OFF", "SWAP", "UPTIME" }) do
+    assert_equal(system_info_env_values["BARISTA_ICON_" .. key], "icon",
+      "system_info helper should retain the configured " .. key:lower() .. " icon")
+  end
   assert_type(volume_env_values, "table", "volume helper should receive its runtime environment")
   assert_equal(volume_env_values.BARISTA_CONFIG_DIR, "/tmp/config", "volume helper should receive the config root")
   assert_equal(volume_env_values.BARISTA_RUNTIME_CONTEXT_DIR, "/tmp/config/cache/runtime_context", "volume helper should receive the runtime cache root")
@@ -907,12 +941,36 @@ local function test_items_right_layout()
     missing_helper_items[name] = { kind = kind, props = props }
   end
   mock_ctx.compiled_script = function(name, fallback)
-    if name == "volume_popup_helper" then
+    if name == "system_info_popup_helper" or name == "volume_popup_helper" then
       return fallback
     end
     return "/compiled/" .. name
   end
   items_right.get_layout(mock_ctx)
+  local portable_system_info = missing_helper_items.system_info
+  assert_true(portable_system_info ~= nil, "system_info should remain available without its native popup helper")
+  assert_true(portable_system_info.props.click_script:find("'/tmp/plugins/system_info.sh' popup_refresh", 1, true) ~= nil,
+    "helper-missing system_info click should refresh through the shell path")
+  assert_true(portable_system_info.props.click_script:find("system_info_popup_helper", 1, true) == nil,
+    "helper-missing system_info click should not include a broken native command")
+  assert_true(portable_system_info.props.click_script:find("||", 1, true) == nil,
+    "helper-missing system_info click should not include an empty fallback chain")
+
+  local lua_only_items = {}
+  mock_sbar.add = function(kind, name, props)
+    lua_only_items[name] = { kind = kind, props = props }
+  end
+  mock_ctx.compiled_script = function(name, fallback)
+    if name == "system_info_widget" or name == "system_info_popup_helper" then
+      return fallback
+    end
+    return "/compiled/" .. name
+  end
+  items_right.get_layout(mock_ctx)
+  assert_true(lua_only_items.system_info.props.script:find("BARISTA_SYSTEM_INFO_NATIVE_DISABLE='1'", 1, true) ~= nil,
+    "Lua-only system_info routine events should explicitly disable stale installed helpers")
+  assert_true(lua_only_items.system_info.props.script:find("SYSTEM_INFO_BIN=", 1, true) == nil,
+    "Lua-only system_info routine events should not advertise a compiled helper path")
   local portable_volume = missing_helper_items.volume
   assert_true(portable_volume ~= nil, "volume should remain available without compiled helpers")
   assert_equal(portable_volume.props.script, "/tmp/plugins/volume.sh", "helper-missing routine events should remain on the shell wrapper")
@@ -920,6 +978,33 @@ local function test_items_right_layout()
   assert_true(portable_volume.props.click_script:find("/tmp/plugins/volume.sh popup_refresh", 1, true) ~= nil, "helper-missing click should refresh through the shell path")
   assert_true(portable_volume.props.click_script:find("volume_popup_helper", 1, true) == nil, "helper-missing click should not include a broken native command")
   assert_true(portable_volume.props.click_script:find("||", 1, true) == nil, "helper-missing click should not include an empty fallback chain")
+
+  mock_ctx.state.system_info_items = {
+    cpu = false,
+    mem = true,
+    disk = false,
+    net = true,
+    swap = false,
+    uptime = true,
+    procs = false,
+  }
+  items_right.get_layout(mock_ctx)
+  assert_equal(system_info_env_values.BARISTA_SYSTEM_INFO_ROWS, "mem,net,uptime",
+    "system_info topology env should preserve canonical order while omitting disabled rows")
+
+  mock_ctx.state.system_info_items = {
+    cpu = false,
+    mem = false,
+    disk = false,
+    net = false,
+    swap = false,
+    uptime = false,
+    procs = false,
+  }
+  items_right.get_layout(mock_ctx)
+  assert_equal(system_info_env_values.BARISTA_SYSTEM_INFO_ROWS, "none",
+    "system_info topology env should explicitly represent an empty native popup")
+  mock_ctx.state.system_info_items = nil
 
   -- Check for bracket
   local found_bracket = false

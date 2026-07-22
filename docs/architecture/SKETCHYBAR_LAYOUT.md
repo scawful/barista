@@ -38,7 +38,7 @@ Legacy note: the standalone `yabai_status` widget path was removed. Window-manag
 | `task_focus.*` (popup) | `plugins/task_pulse.sh` | — | Capped rows: summary, focus, next, waiting, blocked, Capture Task, Open Board, and one menu-only 25-minute focus-session toggle. The `syshelp` provider adds confirmation-backed `Complete Focus…`, which resolves a fresh exact title and section through `scripts/task_action.sh complete-focus` and revalidates the same unique focus after confirmation; file providers omit it and remain read-only. Capture routes through `scripts/task_capture.sh`; open routes through `scripts/task_action.sh open`; focus-session state lives in ignored `cache/focus_session/state.json` with no daemon or polling timer. |
 | `ai_resource` | `plugins/ai_resource_toggle.sh` | `ai_resource_update` | AI resource indicator |
 | `system_info` | `plugins/system_info.sh` + `system_info_widget` | — | The shell wrapper retains hover/events and portable behavior. Routine updates prefer the compact native helper or `widget_manager daemon`; they do not refresh popup rows. |
-| `system_info.*` (popup) | `system_info_popup_helper` with `plugins/system_info.sh popup_refresh` fallback | — | Click toggles immediately, then refreshes the exact enabled dynamic-row subset asynchronously. Static Activity Monitor and System Settings actions are not metric targets. |
+| `system_info.*` (popup) | `system_info_popup_helper` with `plugins/system_info.sh popup_refresh` fallback | — | Click toggles immediately, then refreshes the exact enabled dynamic-row subset asynchronously. Top CPU opens Activity Monitor itself, so the standalone Activity Monitor row appears only when Top CPU is disabled; System Settings remains direct. A measured nested-details prototype did not improve root-open latency, so this bounded popup intentionally remains flat. Static actions are not metric targets. |
 | `volume` | `plugins/volume.sh` | `volume_change` | The shell wrapper retains hover and portable behavior, while compiled initial/`volume_change` updates delegate to `bin/volume_popup_helper`. Click toggles immediately and refreshes asynchronously. Stable hardware-controlled outputs remain native; Lua-only/helper-missing, disabled, transient CoreAudio/device, and IPC failures use `plugins/volume.sh`. `plugins/volume_click.sh` remains a compatibility wrapper. |
 | `volume.*` (popup) | `bin/volume_popup_helper` (state + click detail) | — | Popup items for prefixed `Volume`, `Output`, and `Now Playing` state, output routes, transport controls, mute, and settings. The native path reads CoreAudio plus bounded shared `runtime_context` caches and applies the ten mutable items in one request/reply. Hardware-controlled outputs show `HW` and hide unavailable mute; software-controllable outputs explicitly restore it. `scripts/media_control.sh` owns playback/output actions, and action rows close the popup after firing. |
 | `battery` | `plugins/battery.sh` | `system_woke`, `power_source_change` | Shell wrapper for hover/events; routine main-label updates prefer `widget_manager` or the widget daemon; popup detail refresh happens on click |
@@ -59,7 +59,9 @@ Legacy note: the standalone `yabai_status` widget path was removed. Window-manag
    enabled dynamic rows in canonical order:
    `cpu,mem,disk,net,swap,uptime,procs`. It exports that exact comma-separated
    allowlist to both native and shell refreshers; an empty dynamic model is
-   represented as `none`.
+   represented as `none`. The actionable Top CPU row also replaces the duplicate
+   Activity Monitor action while present; disabling Top CPU restores that static
+   action without changing the helper allowlist.
 2. On default compiled setups, `widget_manager daemon` owns the periodic compact
    anchor update. Daemon-disabled and portable setups retain
    `plugins/system_info.sh`, which delegates to the routine `system_info_widget`

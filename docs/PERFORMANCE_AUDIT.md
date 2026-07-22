@@ -51,17 +51,20 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - shell smoke tests now cover the helper delegation path, front-app fallback behavior, daemon cache warming, and cached output switching
 *   **Result:** the hottest front-app / spaces path no longer depends on the shell implementation of `runtime_context.sh`, while audio continues to share the same cache surface.
 
-### 0c. Native Volume Popup Detail Path (Verified)
-*   **Files:** `helpers/volume_popup_helper.m`, `modules/items_right.lua`, `plugins/volume.sh`, `tests/test_volume_popup_helper.sh`, `tests/test_items.lua`
+### 0c. Native Volume State and Popup Detail Path (Verified)
+*   **Files:** `helpers/volume_popup_helper.m`, `modules/items_right.lua`, `plugins/volume.sh`, `tests/test_volume_popup_helper.sh`, `tests/test_volume_plugin.sh`, `tests/test_items.lua`
 *   **Update:**
-    - the anchor still toggles immediately; compiled setups then refresh the ten mutable volume/popup items through one click-only Objective-C helper
+    - the anchor still toggles immediately; compiled setups refresh the ten mutable volume/popup items through one Objective-C helper used by startup, volume-change, and click-detail paths
     - volume and mute state come from CoreAudio, including virtual-main, main-element, preferred-stereo, and bounded discovered-channel fallbacks; the real CoreAudio output-device name is used when no cached route name exists
+    - a stable, live default device with absent software volume or mute properties is distinct from a property read error: hardware-controlled outputs stay native, render `HW` / `Volume: Hardware controlled`, and hide unavailable mute; a later controllable device explicitly restores the mute row with `drawing=on`
+    - device-alive and unchanged-default checks fence disconnect races, while property-present read failures and malformed channel topology retry once and then fail closed instead of publishing partial channel state
     - media and output rows reuse the existing runtime TSV caches through bounded regular-file reads (64 KiB file / 4 KiB line caps, strict UTF-8, no symlinks or FIFOs); invalid media data becomes an empty media snapshot, invalid output data hides route rows, and neither falls through to an unbounded shell read
     - all ten item updates use one bounded NUL-delimited Mach request and wait for SketchyBar's bounded reply, so transport failures and `[!]` semantic errors select the shell fallback
     - cache labels remain individual protocol arguments, preserving quotes and composed Unicode without shell evaluation; payload, token, argument, and label lengths are capped
     - `SwitchAudioSource` capability detection checks an explicit override, inherited `PATH`, and standard Homebrew prefixes; absent capability keeps all four route actions hidden
-    - Lua-only/helper-missing, unsupported CoreAudio, `BARISTA_VOLUME_NATIVE_DISABLE=1`, and IPC-failure paths retain `plugins/volume.sh`
-*   **Result:** a 20-pair alternating live sample reduced median detail-refresh latency from 281.08 ms to 49.32 ms (82%, 5.70x) and p95 from 298.94 ms to 55.61 ms (81%, 5.38x), with no additional widget or polling timer.
+    - initial and `volume_change` events delegate through the same helper when available; the post-config subscription performs one ordered refresh instead of racing a separate synthetic event
+    - Lua-only/helper-missing, `BARISTA_VOLUME_NATIVE_DISABLE=1`, transient CoreAudio/device instability, and IPC-failure paths retain `plugins/volume.sh`; absent controls on a stable device no longer force that fallback
+*   **Result:** the original 20-pair alternating live sample reduced median detail-refresh latency from 281.08 ms to 49.32 ms (82%, 5.70x) and p95 from 298.94 ms to 55.61 ms (81%, 5.38x). On the current hardware-controlled M4 output, 20 randomized before/after pairs changed helper exit `3` plus shell fallback into native exit `0`, reducing median refresh latency from 429.62 ms to 103.83 ms (75.8%, 4.14x) and p95 from 1131.56 ms to 247.49 ms (78.1%). System load averaged above 70 during the latter run, so exit behavior and direction are stronger evidence than the absolute latency. No widget or polling timer was added.
 
 ### 0d. Adaptive Media Cache Producer (Verified)
 *   **Files:** `scripts/runtime_context.sh`, `modules/runtime_daemon.lua`, `main.lua`

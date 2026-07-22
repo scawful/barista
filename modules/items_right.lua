@@ -460,10 +460,12 @@ local function get_layout(ctx)
   end
 
   -- Volume
+  local volume_popup_helper = compiled_script("volume_popup_helper", "")
   local volume_env = env_prefix({
     BARISTA_CONFIG_DIR = CONFIG_DIR,
     BARISTA_RUNTIME_CONTEXT_DIR = CONFIG_DIR .. "/cache/runtime_context",
     BARISTA_SKETCHYBAR_BIN = SKETCHYBAR_BIN,
+    BARISTA_VOLUME_POPUP_HELPER = volume_popup_helper,
     BARISTA_ICON_VOLUME = state_module.get_icon(state, "volume", ""),
     BARISTA_VOLUME_OK = tc("GREEN"),
     BARISTA_VOLUME_WARN = tc("YELLOW"),
@@ -476,7 +478,6 @@ local function get_layout(ctx)
     BARISTA_HOVER_ANIMATION_DURATION = tostring(hover_animation_duration),
   })
   local volume_script = volume_env .. PLUGIN_DIR .. "/volume.sh"
-  local volume_popup_helper = compiled_script("volume_popup_helper", "")
   local volume_popup_refresh = volume_script .. " popup_refresh"
   if type(volume_popup_helper) == "string" and volume_popup_helper ~= "" then
     volume_popup_refresh = volume_env .. shell_quote(volume_popup_helper)
@@ -487,7 +488,15 @@ local function get_layout(ctx)
     click_script = ui.toggle_then_refresh_async("volume", volume_popup_refresh, { sketchybar_bin = SKETCHYBAR_BIN }),
     popup = { align = "right", background = popup_background() }
   }))
-  table.insert(layout, { action = "exec", cmd = string.format("sleep %.1f; %s --subscribe volume volume_change", POST_CONFIG_DELAY, SKETCHYBAR_BIN) })
+  table.insert(layout, {
+    action = "exec",
+    cmd = string.format(
+      "sleep %.1f; %s --subscribe volume volume_change; NAME=volume SENDER=routine %s",
+      POST_CONFIG_DELAY,
+      SKETCHYBAR_BIN,
+      volume_script
+    ),
+  })
   table.insert(layout, { action = "subscribe_popup_autoclose", name = "volume" })
   table.insert(layout, { action = "attach_hover", name = "volume" })
 
@@ -607,7 +616,7 @@ local function get_layout(ctx)
 
   table.insert(layout, {
     action = "exec",
-    cmd = string.format("sleep %.1f; %s --trigger volume_change && NAME=battery SENDER=routine %s", POST_CONFIG_DELAY, SKETCHYBAR_BIN, battery_script),
+    cmd = string.format("sleep %.1f; NAME=battery SENDER=routine %s", POST_CONFIG_DELAY, battery_script),
   })
 
   return layout

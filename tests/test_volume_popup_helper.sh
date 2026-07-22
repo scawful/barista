@@ -158,8 +158,38 @@ assert "Don't Stop; $(touch should-not-exist) \"go\" 👩‍💻 é — Koji Ko
 assert "Duplicate Must Lose" not in label
 assert "icon=󰎈" in media
 assert sets["volume.transport.toggle"] == ["icon=󰏤", "label=Pause"]
-assert sets["volume.mute"] == ["icon=󰕾", "label=Mute"]
+assert sets["volume.mute"] == ["drawing=on", "icon=󰕾", "label=Mute"]
 assert not Path(sys.argv[2]).exists()
+PY
+
+# Hardware-controlled outputs stay on the native path without exposing dead controls.
+dump_payload "$CACHE_DIR" "$TMP_DIR/hardware-controlled.bin" \
+  BARISTA_VOLUME_CONTROL_AVAILABLE=false \
+  BARISTA_MUTE_CONTROL_AVAILABLE=false \
+  BARISTA_VOLUME_OUTPUT_NAME="TR-1000"
+python3 - "$TMP_DIR/hardware-controlled.bin" <<'PY'
+from pathlib import Path
+import sys
+
+tokens = [part.decode("utf-8") for part in Path(sys.argv[1]).read_bytes()[:-2].split(b"\0")]
+sets = {}
+index = 0
+while index < len(tokens):
+    assert tokens[index] == "--set", tokens[index:]
+    item = tokens[index + 1]
+    index += 2
+    props = []
+    while index < len(tokens) and tokens[index] != "--set":
+        props.append(tokens[index])
+        index += 1
+    sets[item] = props
+
+assert sets["volume"] == [
+    "icon=VOL", "label=HW", "icon.color=0xffcccccc", "label.color=0xffcccccc"
+]
+assert "label=Volume: Hardware controlled" in sets["volume.state"]
+assert "label=Output: TR-1000" in sets["volume.output"]
+assert sets["volume.mute"] == ["drawing=off", "label="]
 PY
 
 # Zero volume without a mute flag keeps the shell path's intentional label distinction.

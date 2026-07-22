@@ -26,6 +26,12 @@ static const mach_msg_timeout_t kMachReceiveTimeoutMilliseconds = 150;
 
 enum { kMaxAudioChannels = 32 };
 
+typedef NS_ENUM(NSInteger, AudioControlStatus) {
+  AudioControlStatusAvailable,
+  AudioControlStatusUnsupported,
+  AudioControlStatusError,
+};
+
 struct barista_mach_message {
   mach_msg_header_t header;
   mach_msg_size_t descriptorCount;
@@ -376,7 +382,8 @@ static BOOL read_float_property(AudioDeviceID device,
                                 AudioObjectPropertySelector selector,
                                 AudioObjectPropertyElement element,
                                 Float32 *value,
-                                BOOL *badDevice) {
+                                BOOL *badDevice,
+                                BOOL *readError) {
   AudioObjectPropertyAddress address = {
     selector,
     kAudioDevicePropertyScopeOutput,
@@ -390,12 +397,15 @@ static BOOL read_float_property(AudioDeviceID device,
   if (result == kAudioHardwareBadDeviceError && badDevice) {
     *badDevice = YES;
   }
-  return result == noErr && size == sizeof(*value) && isfinite(*value);
+  BOOL valid = result == noErr && size == sizeof(*value) && isfinite(*value);
+  if (!valid && readError) *readError = YES;
+  return valid;
 }
 
 static BOOL read_virtual_main_volume(AudioDeviceID device,
                                      Float32 *value,
-                                     BOOL *badDevice) {
+                                     BOOL *badDevice,
+                                     BOOL *readError) {
   AudioObjectPropertyAddress address = {
     kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
     kAudioDevicePropertyScopeOutput,
@@ -410,14 +420,17 @@ static BOOL read_virtual_main_volume(AudioDeviceID device,
   if (result == kAudioHardwareBadDeviceError && badDevice) {
     *badDevice = YES;
   }
-  return result == noErr && size == sizeof(*value) && isfinite(*value);
+  BOOL valid = result == noErr && size == sizeof(*value) && isfinite(*value);
+  if (!valid && readError) *readError = YES;
+  return valid;
 }
 
 static BOOL read_uint32_property(AudioDeviceID device,
                                  AudioObjectPropertySelector selector,
                                  AudioObjectPropertyElement element,
                                  UInt32 *value,
-                                 BOOL *badDevice) {
+                                 BOOL *badDevice,
+                                 BOOL *readError) {
   AudioObjectPropertyAddress address = {
     selector,
     kAudioDevicePropertyScopeOutput,
@@ -431,7 +444,9 @@ static BOOL read_uint32_property(AudioDeviceID device,
   if (result == kAudioHardwareBadDeviceError && badDevice) {
     *badDevice = YES;
   }
-  return result == noErr && size == sizeof(*value);
+  BOOL valid = result == noErr && size == sizeof(*value);
+  if (!valid && readError) *readError = YES;
+  return valid;
 }
 
 static BOOL read_default_output_device(AudioDeviceID *device, BOOL *badDevice) {
@@ -449,9 +464,29 @@ static BOOL read_default_output_device(AudioDeviceID *device, BOOL *badDevice) {
   return result == noErr && size == sizeof(*device) && *device != kAudioObjectUnknown;
 }
 
+static BOOL read_device_alive(AudioDeviceID device, BOOL *badDevice) {
+  AudioObjectPropertyAddress address = {
+    kAudioDevicePropertyDeviceIsAlive,
+    kAudioObjectPropertyScopeGlobal,
+    kAudioObjectPropertyElementMain,
+  };
+  if (!AudioObjectHasProperty(device, &address)) {
+    return NO;
+  }
+  UInt32 alive = 0;
+  UInt32 size = sizeof(alive);
+  OSStatus result = AudioObjectGetPropertyData(
+    device, &address, 0, NULL, &size, &alive);
+  if (result == kAudioHardwareBadDeviceError && badDevice) {
+    *badDevice = YES;
+  }
+  return result == noErr && size == sizeof(alive) && alive != 0;
+}
+
 static NSUInteger preferred_output_channels(AudioDeviceID device,
                                             AudioObjectPropertyElement channels[2],
-                                            BOOL *badDevice) {
+                                            BOOL *badDevice,
+                                            BOOL *readError) {
   AudioObjectPropertyAddress address = {
     kAudioDevicePropertyPreferredChannelsForStereo,
     kAudioDevicePropertyScopeOutput,
@@ -468,6 +503,7 @@ static NSUInteger preferred_output_channels(AudioDeviceID device,
     *badDevice = YES;
   }
   if (result != noErr || size != sizeof(rawChannels)) {
+    if (readError) *readError = YES;
     return 0;
   }
   NSUInteger count = 0;
@@ -480,7 +516,9 @@ static NSUInteger preferred_output_channels(AudioDeviceID device,
   return count;
 }
 
-static NSUInteger output_channel_count(AudioDeviceID device, BOOL *badDevice) {
+static NSUInteger output_channel_count(AudioDeviceID device,
+                                       BOOL *badDevice,
+                                       BOOL *readError) {
   AudioObjectPropertyAddress address = {
     kAudioDevicePropertyStreamConfiguration,
     kAudioDevicePropertyScopeOutput,
@@ -497,26 +535,34 @@ static NSUInteger output_channel_count(AudioDeviceID device, BOOL *badDevice) {
   }
   if (result != noErr || size < offsetof(AudioBufferList, mBuffers)
       || size > kMaxCacheBytes) {
+    if (readError) *readError = YES;
     return 0;
   }
 
-  AudioBufferList *buffers = calloc(1, size);
+  UInt32 allocatedSize = size;
+  AudioBufferList *buffers = calloc(1, allocatedSize);
   if (!buffers) {
+    if (readError) *readError = YES;
     return 0;
   }
-  result = AudioObjectGetPropertyData(device, &address, 0, NULL, &size, buffers);
+  UInt32 dataSize = allocatedSize;
+  result = AudioObjectGetPropertyData(
+    device, &address, 0, NULL, &dataSize, buffers);
   if (result == kAudioHardwareBadDeviceError && badDevice) {
     *badDevice = YES;
   }
-  if (result != noErr) {
+  if (result != noErr || dataSize < offsetof(AudioBufferList, mBuffers)
+      || dataSize > allocatedSize) {
     free(buffers);
+    if (readError) *readError = YES;
     return 0;
   }
 
-  NSUInteger maximumBuffers = (size - offsetof(AudioBufferList, mBuffers))
+  NSUInteger maximumBuffers = (dataSize - offsetof(AudioBufferList, mBuffers))
     / sizeof(AudioBuffer);
   if (buffers->mNumberBuffers > maximumBuffers) {
     free(buffers);
+    if (readError) *readError = YES;
     return 0;
   }
 
@@ -543,30 +589,36 @@ static BOOL channel_was_read(AudioObjectPropertyElement channel,
   return NO;
 }
 
-static BOOL read_output_volume(AudioDeviceID device, NSInteger *volume, BOOL *badDevice) {
+static AudioControlStatus read_output_volume(AudioDeviceID device,
+                                             NSInteger *volume,
+                                             BOOL *badDevice) {
   Float32 scalar = 0.0f;
-  if (read_virtual_main_volume(device, &scalar, badDevice)
+  BOOL readError = NO;
+  if (read_virtual_main_volume(device, &scalar, badDevice, &readError)
       || read_float_property(device,
                              kAudioDevicePropertyVolumeScalar,
                              kAudioObjectPropertyElementMain,
                              &scalar,
-                             badDevice)) {
+                             badDevice,
+                             &readError)) {
     scalar = fmaxf(0.0f, fminf(1.0f, scalar));
     *volume = (NSInteger)llroundf(scalar * 100.0f);
-    return YES;
+    return AudioControlStatusAvailable;
   }
 
   Float32 total = 0.0f;
   NSUInteger count = 0;
   AudioObjectPropertyElement readChannels[kMaxAudioChannels] = {0};
   AudioObjectPropertyElement preferredChannels[2] = {0, 0};
-  NSUInteger preferredCount = preferred_output_channels(device, preferredChannels, badDevice);
+  NSUInteger preferredCount = preferred_output_channels(
+    device, preferredChannels, badDevice, &readError);
   for (NSUInteger index = 0; index < preferredCount; index++) {
     if (read_float_property(device,
                             kAudioDevicePropertyVolumeScalar,
                             preferredChannels[index],
                             &scalar,
-                            badDevice)) {
+                            badDevice,
+                            &readError)) {
       total += fmaxf(0.0f, fminf(1.0f, scalar));
       if (count < kMaxAudioChannels) {
         readChannels[count++] = preferredChannels[index];
@@ -574,11 +626,12 @@ static BOOL read_output_volume(AudioDeviceID device, NSInteger *volume, BOOL *ba
     }
   }
   if (count > 0) {
+    if (readError) return AudioControlStatusError;
     *volume = (NSInteger)llroundf((total / (Float32)count) * 100.0f);
-    return YES;
+    return AudioControlStatusAvailable;
   }
 
-  NSUInteger channelCount = output_channel_count(device, badDevice);
+  NSUInteger channelCount = output_channel_count(device, badDevice, &readError);
   for (AudioObjectPropertyElement channel = 1; channel <= channelCount; channel++) {
     if (count >= kMaxAudioChannels) {
       break;
@@ -590,27 +643,33 @@ static BOOL read_output_volume(AudioDeviceID device, NSInteger *volume, BOOL *ba
                             kAudioDevicePropertyVolumeScalar,
                             channel,
                             &scalar,
-                            badDevice)) {
+                            badDevice,
+                            &readError)) {
       total += fmaxf(0.0f, fminf(1.0f, scalar));
       readChannels[count++] = channel;
     }
   }
   if (count == 0) {
-    return NO;
+    return readError ? AudioControlStatusError : AudioControlStatusUnsupported;
   }
+  if (readError) return AudioControlStatusError;
   *volume = (NSInteger)llroundf((total / (Float32)count) * 100.0f);
-  return YES;
+  return AudioControlStatusAvailable;
 }
 
-static BOOL read_output_muted(AudioDeviceID device, BOOL *muted, BOOL *badDevice) {
+static AudioControlStatus read_output_muted(AudioDeviceID device,
+                                            BOOL *muted,
+                                            BOOL *badDevice) {
   UInt32 value = 0;
+  BOOL readError = NO;
   if (read_uint32_property(device,
                            kAudioDevicePropertyMute,
                            kAudioObjectPropertyElementMain,
                            &value,
-                           badDevice)) {
+                           badDevice,
+                           &readError)) {
     *muted = value != 0;
-    return YES;
+    return AudioControlStatusAvailable;
   }
 
   BOOL found = NO;
@@ -618,10 +677,12 @@ static BOOL read_output_muted(AudioDeviceID device, BOOL *muted, BOOL *badDevice
   AudioObjectPropertyElement readChannels[kMaxAudioChannels] = {0};
   NSUInteger readCount = 0;
   AudioObjectPropertyElement preferredChannels[2] = {0, 0};
-  NSUInteger preferredCount = preferred_output_channels(device, preferredChannels, badDevice);
+  NSUInteger preferredCount = preferred_output_channels(
+    device, preferredChannels, badDevice, &readError);
   for (NSUInteger index = 0; index < preferredCount; index++) {
     if (read_uint32_property(
-          device, kAudioDevicePropertyMute, preferredChannels[index], &value, badDevice)) {
+          device, kAudioDevicePropertyMute, preferredChannels[index], &value,
+          badDevice, &readError)) {
       found = YES;
       allMuted = allMuted && value != 0;
       if (readCount < kMaxAudioChannels) {
@@ -630,11 +691,12 @@ static BOOL read_output_muted(AudioDeviceID device, BOOL *muted, BOOL *badDevice
     }
   }
   if (found) {
+    if (readError) return AudioControlStatusError;
     *muted = allMuted;
-    return YES;
+    return AudioControlStatusAvailable;
   }
 
-  NSUInteger channelCount = output_channel_count(device, badDevice);
+  NSUInteger channelCount = output_channel_count(device, badDevice, &readError);
   for (AudioObjectPropertyElement channel = 1; channel <= channelCount; channel++) {
     if (readCount >= kMaxAudioChannels) {
       break;
@@ -643,16 +705,18 @@ static BOOL read_output_muted(AudioDeviceID device, BOOL *muted, BOOL *badDevice
       continue;
     }
     if (read_uint32_property(
-          device, kAudioDevicePropertyMute, channel, &value, badDevice)) {
+          device, kAudioDevicePropertyMute, channel, &value, badDevice, &readError)) {
       found = YES;
       allMuted = allMuted && value != 0;
       readChannels[readCount++] = channel;
     }
   }
   if (found) {
+    if (readError) return AudioControlStatusError;
     *muted = allMuted;
+    return AudioControlStatusAvailable;
   }
-  return found;
+  return readError ? AudioControlStatusError : AudioControlStatusUnsupported;
 }
 
 static NSString *read_output_name(AudioDeviceID device, BOOL *badDevice) {
@@ -679,7 +743,13 @@ static NSString *read_output_name(AudioDeviceID device, BOOL *badDevice) {
   return copied;
 }
 
-static BOOL read_audio_state(NSInteger *volume, BOOL *muted, NSString **outputName) {
+static BOOL read_audio_state(BOOL needsVolume,
+                             BOOL needsMute,
+                             NSInteger *volume,
+                             BOOL *muted,
+                             BOOL *volumeAvailable,
+                             BOOL *muteAvailable,
+                             NSString **outputName) {
   for (NSUInteger attempt = 0; attempt < 2; attempt++) {
     BOOL badDevice = NO;
     AudioDeviceID device = kAudioObjectUnknown;
@@ -687,24 +757,38 @@ static BOOL read_audio_state(NSInteger *volume, BOOL *muted, NSString **outputNa
       if (attempt == 0) continue;
       return NO;
     }
+    BOOL initiallyAlive = read_device_alive(device, &badDevice);
     NSInteger currentVolume = 0;
     BOOL currentMuted = NO;
-    BOOL hasVolume = read_output_volume(device, &currentVolume, &badDevice);
-    BOOL hasMute = read_output_muted(device, &currentMuted, &badDevice);
+    AudioControlStatus volumeStatus = needsVolume
+      ? read_output_volume(device, &currentVolume, &badDevice)
+      : AudioControlStatusUnsupported;
+    AudioControlStatus muteStatus = needsMute
+      ? read_output_muted(device, &currentMuted, &badDevice)
+      : AudioControlStatusUnsupported;
     NSString *name = read_output_name(device, &badDevice);
     AudioDeviceID confirmedDevice = kAudioObjectUnknown;
     BOOL confirmedBadDevice = NO;
     BOOL stableDevice = read_default_output_device(&confirmedDevice, &confirmedBadDevice)
-      && confirmedDevice == device;
-    if ((badDevice || confirmedBadDevice || !stableDevice || !hasVolume || !hasMute)
+      && confirmedDevice == device
+      && read_device_alive(device, &confirmedBadDevice);
+    BOOL controlError = volumeStatus == AudioControlStatusError
+      || muteStatus == AudioControlStatusError;
+    if ((!initiallyAlive || badDevice || confirmedBadDevice || !stableDevice || controlError)
         && attempt == 0) {
       continue;
     }
-    if (badDevice || confirmedBadDevice || !stableDevice || !hasVolume || !hasMute) {
+    if (!initiallyAlive || badDevice || confirmedBadDevice || !stableDevice || controlError) {
       return NO;
     }
-    *volume = currentVolume;
-    *muted = currentMuted;
+    if (needsVolume && volumeStatus == AudioControlStatusAvailable) {
+      *volume = currentVolume;
+      *volumeAvailable = YES;
+    }
+    if (needsMute && muteStatus == AudioControlStatusAvailable) {
+      *muted = currentMuted;
+      *muteAvailable = YES;
+    }
     if (outputName) *outputName = name;
     return YES;
   }
@@ -764,21 +848,54 @@ static NSArray<NSString *> *build_tokens(void) {
   BOOL muted = NO;
   NSInteger overrideVolume = 0;
   BOOL overrideMuted = NO;
+  BOOL volumeControlAvailable = YES;
+  BOOL muteControlAvailable = YES;
   BOOL hasVolumeOverride = parse_integer_strict(
     first_environment_value(@[@"BARISTA_VOLUME_VALUE", @"BARISTA_VOLUME_OVERRIDE"]),
     0, 100, &overrideVolume);
   BOOL hasMuteOverride = parse_bool_strict(
     first_environment_value(@[@"BARISTA_VOLUME_MUTED", @"BARISTA_MUTE_OVERRIDE"]),
     &overrideMuted);
+  BOOL hasVolumeCapabilityOverride = parse_bool_strict(
+    environment_value(@"BARISTA_VOLUME_CONTROL_AVAILABLE"),
+    &volumeControlAvailable);
+  BOOL hasMuteCapabilityOverride = parse_bool_strict(
+    environment_value(@"BARISTA_MUTE_CONTROL_AVAILABLE"),
+    &muteControlAvailable);
+
+  BOOL volumeAvailable = hasVolumeOverride;
+  BOOL muteAvailable = hasMuteOverride;
+  if (hasVolumeCapabilityOverride && !volumeControlAvailable) {
+    volumeAvailable = NO;
+  }
+  if (hasMuteCapabilityOverride && !muteControlAvailable) {
+    muteAvailable = NO;
+  }
+  BOOL needsVolume = !volumeAvailable
+    && !(hasVolumeCapabilityOverride && !volumeControlAvailable);
+  BOOL needsMute = !muteAvailable
+    && !(hasMuteCapabilityOverride && !muteControlAvailable);
 
   NSString *coreAudioOutput = nil;
-  if (!hasVolumeOverride || !hasMuteOverride) {
-    if (!read_audio_state(&volume, &muted, &coreAudioOutput)) {
+  if (needsVolume || needsMute) {
+    if (!read_audio_state(needsVolume,
+                          needsMute,
+                          &volume,
+                          &muted,
+                          &volumeAvailable,
+                          &muteAvailable,
+                          &coreAudioOutput)) {
       return nil;
     }
   }
-  if (hasVolumeOverride) volume = overrideVolume;
-  if (hasMuteOverride) muted = overrideMuted;
+  if (hasVolumeOverride && !(hasVolumeCapabilityOverride && !volumeControlAvailable)) {
+    volume = overrideVolume;
+    volumeAvailable = YES;
+  }
+  if (hasMuteOverride && !(hasMuteCapabilityOverride && !muteControlAvailable)) {
+    muted = overrideMuted;
+    muteAvailable = YES;
+  }
 
   NSString *cacheDir = runtime_cache_dir();
   NSString *mediaPath = environment_value(@"BARISTA_MEDIA_CACHE_FILE")
@@ -817,16 +934,25 @@ static NSArray<NSString *> *build_tokens(void) {
     environment_value(@"BARISTA_VOLUME_MUTE") ?: @"0xff89b4fa", 32, 64);
   NSString *idleOutputColor = sanitize_value(
     environment_value(@"BARISTA_VOLUME_OUTPUT_IDLE") ?: @"0xffcdd6f4", 32, 64);
-  NSString *icon = volume_icon(volume, muted);
-  NSString *mainLabel = muted || volume == 0
-    ? @"Muted"
-    : [NSString stringWithFormat:@"%ld%%", (long)volume];
-  NSString *stateLabel = muted
-    ? @"Volume: Muted"
-    : [NSString stringWithFormat:@"Volume: %ld%%", (long)volume];
-  NSString *color = muted || volume == 0
-    ? muteColor
-    : (volume > 70 ? okColor : (volume > 30 ? warnColor : lowColor));
+  BOOL hardwareControlled = !volumeAvailable;
+  NSString *icon = hardwareControlled
+    ? (environment_value(@"BARISTA_ICON_VOLUME") ?: @"󰓃")
+    : volume_icon(volume, muted);
+  NSString *mainLabel = hardwareControlled
+    ? @"HW"
+    : (muted || volume == 0
+       ? @"Muted"
+       : [NSString stringWithFormat:@"%ld%%", (long)volume]);
+  NSString *stateLabel = hardwareControlled
+    ? @"Volume: Hardware controlled"
+    : (muted
+       ? @"Volume: Muted"
+       : [NSString stringWithFormat:@"Volume: %ld%%", (long)volume]);
+  NSString *color = hardwareControlled
+    ? idleOutputColor
+    : (muted || volume == 0
+       ? muteColor
+       : (volume > 70 ? okColor : (volume > 30 ? warnColor : lowColor)));
   NSInteger configuredMediaLimit = 72;
   parse_integer_strict(environment_value(@"BARISTA_MEDIA_LABEL_MAX"),
                        2, 256, &configuredMediaLimit);
@@ -880,13 +1006,19 @@ static NSArray<NSString *> *build_tokens(void) {
     property(@"icon", media[@"toggle_icon"] ?: @"󰐊", 32, 128),
     property(@"label", media[@"toggle_label"] ?: @"Play", 48, 128),
   ]);
-  append_set(tokens, @"volume.mute", muted ? @[
-    property(@"icon", @"󰖁", 32, 128),
-    property(@"label", @"Unmute", 32, 96),
-  ] : @[
-    property(@"icon", @"󰕾", 32, 128),
-    property(@"label", @"Mute", 32, 96),
-  ]);
+  if (!muteAvailable) {
+    append_set(tokens, @"volume.mute", @[@"drawing=off", @"label="]);
+  } else {
+    append_set(tokens, @"volume.mute", muted ? @[
+      @"drawing=on",
+      property(@"icon", @"󰖁", 32, 128),
+      property(@"label", @"Unmute", 32, 96),
+    ] : @[
+      @"drawing=on",
+      property(@"icon", @"󰕾", 32, 128),
+      property(@"label", @"Mute", 32, 96),
+    ]);
+  }
   return tokens;
 }
 

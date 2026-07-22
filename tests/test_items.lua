@@ -383,7 +383,7 @@ local function test_items_left_control_center_custom_name()
         received_popup_opts = opts
         return {
           { name = "status_hub.action", position = "popup.status_hub", label = { string = "Action" }, hover = true },
-        }
+        }, { submenu_parents = { "cc.more" } }
       end,
     },
     WINDOW_MANAGER_MODE = "optional",
@@ -412,10 +412,12 @@ local function test_items_left_control_center_custom_name()
   local found_custom_subscribe = false
   local found_custom_bracket = false
   local found_custom_popup_action = false
+  local custom_anchor = nil
 
   for _, entry in ipairs(layout) do
     if entry.type == "item" and entry.name == "status_hub" then
       found_custom_item = true
+      custom_anchor = entry
     end
     if entry.action == "subscribe_popup_autoclose" and entry.name == "status_hub" then
       found_custom_subscribe = true
@@ -440,11 +442,19 @@ local function test_items_left_control_center_custom_name()
   assert_true(found_custom_subscribe, "custom control_center item should be subscribed by name")
   assert_true(found_custom_bracket, "left_group should include custom control_center item name")
   assert_true(found_custom_popup_action, "custom control_center popup action should exist")
+  assert_true(custom_anchor.props.click_script:find(
+    "sketchybar -m --set cc.more popup.drawing=off --set status_hub popup.drawing=toggle",
+    1,
+    true
+  ) ~= nil, "custom control_center root should reset its child before toggling")
   assert_equal(metadata.popup_parents[1], "status_hub", "popup registry should use the created custom control_center name")
+  assert_equal(table.concat(metadata.submenu_parents, "|"), "front_app.more|cc.more",
+    "left popup registry should include the control_center child")
   assert_type(received_popup_opts, "table", "popup items should receive opts")
   assert_equal(received_popup_opts.item_name, "status_hub", "popup items should inherit the resolved item name")
   assert_equal(received_popup_opts.config_dir, "/tmp/config", "popup items should receive CONFIG_DIR")
   assert_equal(received_popup_opts.scripts_dir, "/tmp/scripts", "popup items should receive SCRIPTS_DIR")
+  assert_equal(received_popup_opts.popup_background.drawing, true, "popup items should inherit the root popup background")
   print("  items_left custom control_center name test passed!")
 end
 
@@ -600,7 +610,7 @@ local function test_items_left_integration_models_and_anchor_order()
         received_control_center_popup_flags = opts.window_manager_flags
         return {
           { name = "control_center.header", position = "popup.control_center", label = { string = "Control Center" } },
-        }
+        }, { submenu_parents = { "cc.more" } }
       end,
     },
   }
@@ -626,8 +636,8 @@ local function test_items_left_integration_models_and_anchor_order()
   assert_equal(received_control_center_popup_flags.mode, "required", "control_center popup should reuse window manager flags")
   assert_equal(table.concat(metadata.popup_parents, "|"), "triforce|music_studio|control_center",
     "popup registry should include created optional parents")
-  assert_equal(table.concat(metadata.submenu_parents, "|"), "music.studio.more_apps|front_app.more",
-    "left layout metadata should expose Music and Front App nested popups")
+  assert_equal(table.concat(metadata.submenu_parents, "|"), "music.studio.more_apps|front_app.more|cc.more",
+    "left layout metadata should expose Music, Front App, and Control Center nested popups")
   local found_triforce_subscription = false
   local found_control_center_subscription = false
   local anchor_order_command = nil

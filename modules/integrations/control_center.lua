@@ -1,8 +1,8 @@
 -- Control Center Module for Barista
--- A comprehensive control panel for sketchybar, yabai, and workspace
+-- A compact control panel for SketchyBar and yabai behavior.
 --
--- Combines space layout controls, window operations, service health,
--- and workspace status into a single unified widget on the left side
+-- Keeps window-manager modes, space layouts, window operations, and app
+-- defaults reachable from one left-side widget.
 
 local control_center = {}
 
@@ -303,11 +303,13 @@ end
 function control_center.create_popup_items(sbar, theme, font_string, settings, opts)
   opts = opts or {}
   local items = {}
+  local submenu_parents = {}
   local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
   local font_bold = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small)
   local config_dir = resolve_config_dir(opts)
   local scripts_dir = resolve_scripts_dir(opts)
   local item_name = resolve_item_name(opts)
+  local more_name = "cc.more"
   local YABAI_CONTROL = scripts_dir .. "/yabai_control.sh"
   local wm = resolve_window_manager_flags(opts)
   local style = {
@@ -328,10 +330,22 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     end
     return shell_quote(path)
   end
-  local popup_close = sketchybar_cmd(string.format("--set %s popup.drawing=off", shell_quote(item_name)))
   local trigger_space_mode_refresh = sketchybar_cmd("--trigger space_mode_refresh")
-  local function close_after(command)
+  local function close_after(command, parent)
+    if parent and parent ~= item_name then
+      return ui.close_after_all({ parent, item_name }, command, {
+        sketchybar_bin = SKETCHYBAR_BIN,
+      })
+    end
     return ui.close_after(item_name, command, { sketchybar_bin = SKETCHYBAR_BIN })
+  end
+  local function close_root_after(command)
+    if wm.enabled then
+      return ui.close_after_all({ more_name, item_name }, command, {
+        sketchybar_bin = SKETCHYBAR_BIN,
+      })
+    end
+    return close_after(command)
   end
 
   local function normalize_label(item, label, font, color)
@@ -348,9 +362,9 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     return item
   end
 
-  local function add_header(name, label, color, icon, icon_color)
+  local function add_header(name, label, color, icon, icon_color, parent)
     local built = {}
-    ui.header(built, item_name, name, label, {
+    ui.header(built, parent or item_name, name, label, {
       style = style,
       font = font_bold,
       color = color,
@@ -368,9 +382,9 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     table.insert(items, item)
   end
 
-  local function add_separator(name)
+  local function add_separator(name, parent)
     local built = {}
-    ui.separator(built, item_name, name, {
+    ui.separator(built, parent or item_name, name, {
       style = style,
       font = font_small,
       color = "0x40cdd6f4",
@@ -383,10 +397,10 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     table.insert(items, item)
   end
 
-  local function add_row(name, row)
+  local function add_row(name, row, parent)
     row = row or {}
     local built = {}
-    ui.row(built, item_name, name, {
+    ui.row(built, parent or item_name, name, {
       style = style,
       icon = { string = row.icon or "", color = row.color },
       label = row.label or row.name or "",
@@ -405,6 +419,29 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     item["label.padding_right"] = 8
     item.background = row.background or { drawing = false }
     table.insert(items, item)
+  end
+
+  local function add_submenu(name, label, icon, color)
+    local built = {}
+    ui.submenu(built, item_name, name, {
+      style = style,
+      icon = { string = icon, color = color },
+      label = label,
+      font = font_small,
+      label_color = style.label_color,
+      popup_background = opts.popup_background,
+      sketchybar_bin = SKETCHYBAR_BIN,
+    })
+    local item = built[1]
+    normalize_icon(item, icon, color, true)
+    normalize_label(item, item.label or label, font_small, style.label_color)
+    item["icon.padding_left"] = 8
+    item["icon.padding_right"] = 6
+    item["label.padding_left"] = 4
+    item["label.padding_right"] = 8
+    item.background = { drawing = false }
+    table.insert(items, item)
+    table.insert(submenu_parents, name)
   end
 
   local function add_extension_rows(prefix, rows)
@@ -443,7 +480,7 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
       icon = row.icon,
       color = row.color,
       label = mode_label(row.id, row.label),
-      click_script = close_after(row.cmd),
+      click_script = close_root_after(row.cmd),
     })
   end
 
@@ -481,12 +518,13 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
         icon = layout.icon,
         color = tc("SAPPHIRE"),
         label = layout.name,
-        click_script = string.format("%s; %s; %s", layout.cmd, trigger_space_mode_refresh, popup_close),
+        click_script = close_root_after(string.format("%s; %s", layout.cmd, trigger_space_mode_refresh)),
       })
     end
 
     add_separator("cc.sep1")
-    add_header("cc.layout_ops_header", "Layout Ops", tc("GREEN"))
+    add_submenu(more_name, "More Layout Controls", "󰒓", tc("YELLOW"))
+    add_header("cc.layout_ops_header", "Layout Ops", tc("GREEN"), nil, nil, more_name)
 
     local layout_ops = {
       { id = "balance", name = "Balance Windows", icon = "󰓅", cmd = shell_command(YABAI_CONTROL, "balance") },
@@ -500,12 +538,12 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
         icon = op.icon,
         color = theme.TEAL,
         label = op.name,
-        click_script = close_after(op.cmd),
-      })
+        click_script = close_after(op.cmd, more_name),
+      }, more_name)
     end
 
-    add_separator("cc.sep2")
-    add_header("cc.defaults_header", "Current App Defaults", tc("PEACH"))
+    add_separator("cc.sep2", more_name)
+    add_header("cc.defaults_header", "Current App Defaults", tc("PEACH"), nil, nil, more_name)
 
     local default_ops = {
       { id = "float", name = "Default App: Float", icon = "󰒄", cmd = shell_command(YABAI_CONTROL, "app-default-current float") },
@@ -517,11 +555,9 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
         icon = op.icon,
         color = op.id == "unset" and tc("RED") or tc("PEACH"),
         label = op.name,
-        click_script = close_after(op.cmd),
-      })
+        click_script = close_after(op.cmd, more_name),
+      }, more_name)
     end
-
-    add_separator("cc.sep3")
 
     local shortcuts_running = wm.skhd_running
     local shortcuts_on_label = "Shortcuts: On"
@@ -547,11 +583,11 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
       icon = "󰌌",
       color = shortcuts_color,
       label = shortcuts_label,
-      click_script = string.format("%s; %s; %s", toggle_action, update_action, popup_close),
+      click_script = close_root_after(string.format("%s; %s", toggle_action, update_action)),
     })
   end
 
-  return items
+  return items, { submenu_parents = submenu_parents }
 end
 
 return control_center

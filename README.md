@@ -88,8 +88,11 @@ Float Space`, display/space moves, and the conservative `Utility`, `Focus`,
 child, and a child action closes both popup levels after it runs. App-default
 rows can persist
 "this app floats" / "this app tiles" rules through `scripts/yabai_control.sh
-app-default-current <float|tile|unset>`, and the Control Center popup exposes
-quick `Yabai On` / `Auto If Running` / `Manual Bar` mode switches.
+app-default-current <float|tile|unset>`. The Yabai-enabled Control Center keeps
+its mode, space-layout, and shortcut rows on a 12-row root; its click-only
+`More Layout Controls` child holds the 11 Layout Ops and App Defaults rows.
+Opening or closing the root resets that child, and a child action closes both
+levels. Disabled and no-Yabai paths omit the child entirely.
 
 Reload shortcuts should use `plugins/reload_sketchybar.sh`; avoid raw
 `sketchybar --reload` for normal use so overlapping reload requests stay
@@ -375,7 +378,7 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **Per-Display Space Creator:** each `space_creator.<display>` is associated with the known spaces on only its target display, so multi-monitor setups show one `+` per monitor instead of every creator on every bar.
 - **Precomputed Apple Menu Model:** the enhanced Apple-menu model is now prepared before `begin_config`, so menu path discovery and section building happen while the old bar is still visible instead of inside the blank reload window.
 - **Shared Popup UI Builder:** repeated popup toggles and menu-style rows now go through `modules/ui_builder.lua`, keeping click-open anchors direct while detail refreshes happen asynchronously. Front App and Control Center popup rows use the same row/header/separator helpers as Triforce and Music.
-- **Progressive Popup Disclosure:** on the fully populated Personal/Yabai models, Music's initial surface drops from 24 rows to 13 by moving secondary launchers into `More Apps` and `Kits + Folders` children, while Front App drops from 29 rows to 18 by moving presets and move commands into `More Window Actions`. These children open only on click, Music keeps only one sibling child open, root toggles reset them first, and their actions close both popup levels. Randomized live samples reduced the direct layout-open median by 28% for both roots; see the performance audit for load caveats.
+- **Progressive Popup Disclosure:** on the fully populated Personal/Yabai models, Music's initial surface drops from 24 rows to 13 by moving secondary launchers into `More Apps` and `Kits + Folders` children, Front App drops from 29 rows to 18 by moving presets and move commands into `More Window Actions`, and Control Center drops from 23 rows to 12 by moving its 11 Layout Ops/App Defaults rows into `More Layout Controls`. These children open only on click, Music keeps only one sibling child open, root toggles reset them first, and their actions close both popup levels. Control Center omits its child when Yabai controls are disabled or unavailable. Randomized live samples reduced the direct layout-open median by 28% for Music and Front App and 33.8% for Control Center; see the performance audit for measurement details and load caveats.
 - **Direct Popup Execution:** Popup-row hover passes bounded arguments directly from `popup_hover` to SketchyBar, and native-helper setups use compiled `popup_anchor` for the Apple anchor; portable fallbacks remain available.
 - **Native Volume State + Detail Refresh:** Compiled setups use `volume_popup_helper` for initial state, `volume_change`, and click-time detail refreshes (CoreAudio + bounded runtime-cache reads + one SketchyBar request/reply). Stable hardware-controlled outputs stay native, show `HW` / `Volume: Hardware controlled`, and hide unavailable mute until a software-controllable output restores it. Lua-only/helper-missing, explicitly disabled, transient CoreAudio/device-read, and IPC-failure paths retain `plugins/volume.sh`; missing `SwitchAudioSource` keeps unusable route rows hidden without adding another widget.
 - **Modular Load:** Configuration logic is split across focused modules (`shell_utils`, `paths`, `binary_resolver`) to ensure fast initialization.

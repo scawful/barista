@@ -3,6 +3,7 @@
 CC = clang
 CXX = clang++
 CFLAGS = -O2 -Wall -Wextra -framework CoreFoundation -framework IOKit
+SYSTEM_INFO_LIBS = -framework SystemConfiguration
 CXXFLAGS = -O2 -std=c++17 -Wall -Wextra
 INSTALL_DIR = $(HOME)/.config/sketchybar/bin
 
@@ -22,10 +23,10 @@ clock_widget: clock_widget.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 system_info_widget: system_info_widget.c
-	$(CC) $(CFLAGS) -lpthread -o $@ $<
+	$(CC) $(CFLAGS) $(SYSTEM_INFO_LIBS) -lpthread -o $@ $<
 
 system_info_popup_helper: system_info_widget.c
-	$(CC) $(CFLAGS) -lpthread -o $@ $<
+	$(CC) $(CFLAGS) $(SYSTEM_INFO_LIBS) -lpthread -o $@ $<
 
 space_manager: space_manager.c
 	$(CC) $(CFLAGS) -o $@ $<

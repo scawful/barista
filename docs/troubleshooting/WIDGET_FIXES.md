@@ -39,8 +39,9 @@ Popup: CPU Usage: 12% (Load: 1.50)  ✅ Clean
 Current compact main-label path:
 - The `system_info` bar label is intentionally compact again: `CPU% used/totalG`.
 - Verbose details remain in popup rows; the bar label should stay glanceable.
-- The compiled `system_info_widget` routine entrypoint only updates the main
-  `system_info` item.
+- Default compiled setups let `widget_manager daemon` update the main
+  `system_info` item. Daemon-disabled compiled setups retain the routine
+  `system_info_widget`; neither path targets popup rows.
 - A click toggles the popup immediately, then prefers
   `system_info_popup_helper popup_refresh` asynchronously. The native alias
   updates only the enabled dynamic rows in one bounded Mach payload;
@@ -349,8 +350,9 @@ or helper-missing setups retain `plugins/clock.sh` without configuration edits.
 
 `helpers/system_info_widget.c` builds two independently addressable binaries:
 
-- `system_info_widget` is the established routine entrypoint. It gathers the
-  compact CPU/memory state and updates only the `system_info` anchor.
+- `system_info_widget` is the established daemon-disabled routine entrypoint. It
+  gathers compact CPU/memory state and updates only the `system_info` anchor;
+  `widget_manager daemon` owns that cadence on default compiled setups.
 - `system_info_popup_helper` is the click-only `popup_refresh` entrypoint. Its
   separate name is an upgrade guard: an older routine-only binary is never
   treated as if it implements the new popup action.
@@ -383,19 +385,18 @@ same exact popup-row subset.
 The native helper combines direct APIs with a small set of deliberately bounded
 child probes; it is not subprocess-free:
 
-- CPU, swap, uptime, VM-statistics fallback, and interface addresses use native
-  APIs such as `getloadavg`, `sysctlbyname`, Mach host statistics, and
-  `getifaddrs`.
-- Memory pressure uses the absolute `/usr/bin/memory_pressure` probe before the
-  Mach VM fallback.
+- CPU, swap, uptime, active+wired+compressed memory, Wi-Fi-interface discovery,
+  and interface addresses use native APIs such as `getloadavg`,
+  `sysctlbyname`, Mach host statistics, SystemConfiguration, and `getifaddrs`.
 - Disk uses bounded `/bin/df -h` against `/System/Volumes/Data`, falling back to
   `/` only when the Data volume is unavailable.
 - Network selects the configured or default-route interface through bounded
-  `/sbin/route` and `/usr/sbin/networksetup` probes, then reads addresses with
-  `getifaddrs`.
-- The optional top-process row reads only the first bounded line from
-  `/bin/ps` and displays the executable basename rather than a popup-widening
-  full application path.
+  `/sbin/route`, reads addresses with `getifaddrs`, and invokes
+  `/usr/sbin/networksetup` only for an optional SSID on the selected Wi-Fi path.
+- The optional top-process row reads only the first bounded line from the
+  system-wide `/bin/ps -Ar -o pcpu=,pid=,ucomm=` ranking. Native PID lookup
+  restores the executable basename where allowed; the dependable accounting
+  name remains the permission/race fallback without widening the popup.
 
 Every child uses an absolute executable path, capped output, a deadline, and
 TERM/forced-kill cleanup. Concurrent probes use close-on-exec-default spawn
@@ -421,8 +422,11 @@ bash tests/test_system_info_widget.sh   # Darwin native contract
 ```
 
 For a supported live restart after verification, use
-`./plugins/reload_sketchybar.sh`, not a raw reload command. A 20-pair
-same-daemon profile measured the native detail path at 36.418 ms median /
-37.010 ms p95 and the shell fallback at 127.795 / 129.427 ms (3.51x by
-medians). Treat those figures as one-machine evidence, not a hardware-wide
-guarantee.
+`./plugins/reload_sketchybar.sh`, not a raw reload command. The final discovery
+profile measured the full helper at 25.376 ms median / 25.978 ms p95 and 20
+exact live updates at 25.463 / 26.533 ms. Configured click-to-visible samples
+were 123.728 / 125.491 ms; the shell launch itself was 43.657 / 49.583 ms and
+the observer includes repeated query latency after the popup has already toggled;
+probe-level methodology and the initial native-vs-shell comparison are kept in
+`docs/PERFORMANCE_AUDIT.md`. Treat all figures as one-machine evidence, not a
+hardware-wide guarantee.

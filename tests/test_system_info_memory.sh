@@ -11,6 +11,7 @@ NATIVE_BIN="$TMP_DIR/system_info_widget"
 NATIVE_LOG="$TMP_DIR/system_info_widget.log"
 JQ_LOG="$TMP_DIR/jq.log"
 DETAIL_LOG="$TMP_DIR/detail_probes.log"
+MEMORY_PRESSURE_LOG="$TMP_DIR/memory_pressure.log"
 STATE_FILE="$TMP_DIR/state.json"
 REAL_JQ="$(command -v jq 2>/dev/null || true)"
 
@@ -21,6 +22,7 @@ trap cleanup EXIT
 
 mkdir -p "$BIN_DIR" "$TMP_DIR/home"
 printf '{"system_info_items":{}}\n' > "$STATE_FILE"
+: > "$MEMORY_PRESSURE_LOG"
 
 cat > "$BIN_DIR/sketchybar" <<'EOF'
 #!/bin/bash
@@ -104,6 +106,7 @@ chmod +x "$BIN_DIR/vm_stat"
 cat > "$BIN_DIR/memory_pressure" <<'EOF'
 #!/bin/bash
 set -euo pipefail
+printf 'memory_pressure\n' >> "${BARISTA_TEST_MEMORY_PRESSURE_LOG:?}"
 cat <<'PRESSURE'
 The system has 34359738368 (2097152 pages with a page size of 16384).
 System-wide memory free percentage: 66%
@@ -153,6 +156,15 @@ printf 'interface: en0\n'
 EOF
 chmod +x "$BIN_DIR/route"
 
+cat > "$BIN_DIR/ps" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+printf 'ps %s\n' "$*" >> "${BARISTA_TEST_DETAIL_LOG:?}"
+[ "${BARISTA_TEST_PS_FAIL:-0}" != "1" ] || exit 1
+printf ' 88.2 /Applications/Very Long Process Name.app/Contents/MacOS/Very Long Process Name\n'
+EOF
+chmod +x "$BIN_DIR/ps"
+
 run_system_info() {
   env \
     PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
@@ -163,6 +175,7 @@ run_system_info() {
     BARISTA_TEST_NATIVE_LOG="$NATIVE_LOG" \
     BARISTA_TEST_JQ_LOG="$JQ_LOG" \
     BARISTA_TEST_DETAIL_LOG="$DETAIL_LOG" \
+    BARISTA_TEST_MEMORY_PRESSURE_LOG="$MEMORY_PRESSURE_LOG" \
     BARISTA_TEST_REAL_JQ="$REAL_JQ" \
     STATE_FILE="$STATE_FILE" \
     NAME=system_info \
@@ -209,6 +222,10 @@ if [ -s "$NATIVE_LOG" ]; then
 fi
 grep -Fq -- '--set system_info ' "$LOG_FILE" || {
   echo "FAIL: native-disabled routine updates should retain the shell main update" >&2
+  exit 1
+}
+grep -Fq 'label=15% 19/32G' "$LOG_FILE" || {
+  echo "FAIL: routine fallback should floor active+wired+compressor GiB labels" >&2
   exit 1
 }
 if grep -Fq -- '--set system_info.' "$LOG_FILE" || [ -s "$DETAIL_LOG" ]; then
@@ -319,6 +336,38 @@ if [ -s "$LOG_FILE" ]; then
   exit 1
 fi
 
+# The portable process row keeps the global CPU ranking and preserves the full
+# executable basename even when the native PID hydrator is unavailable.
+: > "$LOG_FILE"
+: > "$DETAIL_LOG"
+run_system_info \
+  SYSTEM_INFO_BIN="$TMP_DIR/missing-system-info-widget" \
+  BARISTA_SYSTEM_INFO_ROWS=procs \
+  "$SCRIPT" popup_refresh
+grep -Fq -- '--set system_info.procs ' "$LOG_FILE" || {
+  echo "FAIL: explicit process-row refresh should update the process item" >&2
+  exit 1
+}
+grep -Fq 'label=Top CPU: Very Long Process Name 88.2%' "$LOG_FILE" || {
+  echo "FAIL: portable process-row refresh should preserve a long executable basename" >&2
+  exit 1
+}
+grep -Fq 'ps -Ar -o pcpu=,comm=' "$DETAIL_LOG" || {
+  echo "FAIL: portable process-row refresh should use the system-wide full-name ps probe" >&2
+  exit 1
+}
+
+: > "$LOG_FILE"
+run_system_info \
+  SYSTEM_INFO_BIN="$TMP_DIR/missing-system-info-widget" \
+  BARISTA_SYSTEM_INFO_ROWS=procs \
+  BARISTA_TEST_PS_FAIL=1 \
+  "$SCRIPT" popup_refresh
+grep -Fq 'label=Top CPU: --' "$LOG_FILE" || {
+  echo "FAIL: a failed portable process probe should render the safe placeholder" >&2
+  exit 1
+}
+
 # Without an environment allowlist, state is read once and missing flags keep
 # the compatibility defaults: CPU/procs off, the other five dynamic rows on.
 : > "$LOG_FILE"
@@ -343,9 +392,13 @@ for default_off_row in cpu procs; do
   fi
 done
 
-grep -Fq 'label=Memory: 11/32G (34%)' "$LOG_FILE" || {
-  echo "FAIL: memory popup should use anonymous plus compressed memory instead of active+wired totals" >&2
+grep -Fq 'label=Memory: 19/32G (60%)' "$LOG_FILE" || {
+  echo "FAIL: memory popup should use floored active+wired+compressor memory" >&2
   exit 1
 }
+if [ -s "$MEMORY_PRESSURE_LOG" ]; then
+  echo "FAIL: portable system info should not invoke memory_pressure" >&2
+  exit 1
+fi
 
 printf 'test_system_info_memory.sh: ok\n'

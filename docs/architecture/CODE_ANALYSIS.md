@@ -184,8 +184,9 @@ sbar.add("item", "apple_menu", {
    - Daemon cadence: 10 seconds for the compact CPU/memory anchor
    - Popup details: click-only `system_info_popup_helper`, exact enabled-row
      allowlist, bounded probes, and one SketchyBar Mach update
-   - Live detail result: 36.418 ms native median versus 127.795 ms for the
-     shell fallback in 20 randomized same-daemon pairs
+   - Current live-detail result: 25.463 ms median / 26.533 ms p95 across 20
+     exact live updates; methodology and fallback comparisons live in
+     `docs/PERFORMANCE_AUDIT.md`
 
 4. **Network Widget**
    - Current right-side layout exposes network state inside the System Info
@@ -202,7 +203,7 @@ void daemon_mode() {
     for each widget:
       if (now - last_update >= interval):
         update_widget()
-    usleep(100000); // 100ms sleep
+    sleep(1); // one-second due-check cadence
   }
 }
 ```

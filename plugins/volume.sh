@@ -19,6 +19,18 @@ APP_ICON_SCRIPT="${BARISTA_APP_ICON_SCRIPT:-$SCRIPTS_DIR/app_icon.sh}"
 OSASCRIPT_BIN="${BARISTA_OSASCRIPT_BIN:-$(command -v osascript 2>/dev/null || true)}"
 SWITCH_AUDIO_SOURCE_BIN="${BARISTA_SWITCH_AUDIO_SOURCE_BIN:-$(command -v SwitchAudioSource 2>/dev/null || true)}"
 MEDIA_LABEL_MAX="${BARISTA_MEDIA_LABEL_MAX:-72}"
+VOLUME_POPUP_HELPER="${BARISTA_VOLUME_POPUP_HELPER:-}"
+
+# Keep initial and volume-change state on the same CoreAudio path as popup
+# refreshes. A click fallback passes popup_refresh explicitly so a failed native
+# request cannot recurse back into the helper.
+case "${SENDER:-}" in
+  ""|"routine"|"volume_change")
+    if [ "${1:-}" != "popup_refresh" ] && [ -x "$VOLUME_POPUP_HELPER" ]; then
+      "$VOLUME_POPUP_HELPER" popup_refresh && exit 0
+    fi
+    ;;
+esac
 
 osascript_safe() {
   [ -n "$OSASCRIPT_BIN" ] || return 0
@@ -210,9 +222,9 @@ sketchybar --set volume.transport.toggle \
   label="$MEDIA_TOGGLE_LABEL" >/dev/null 2>&1 || true
 
 if [ "$MUTED" = "true" ]; then
-  sketchybar --set volume.mute icon="󰖁" label="Unmute" >/dev/null 2>&1 || true
+  sketchybar --set volume.mute drawing=on icon="󰖁" label="Unmute" >/dev/null 2>&1 || true
 else
-  sketchybar --set volume.mute icon="󰕾" label="Mute" >/dev/null 2>&1 || true
+  sketchybar --set volume.mute drawing=on icon="󰕾" label="Mute" >/dev/null 2>&1 || true
 fi
 
 # Update widget

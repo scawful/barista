@@ -780,6 +780,7 @@ local function test_items_right_layout()
   assert_type(volume_env_values, "table", "volume helper should receive its runtime environment")
   assert_equal(volume_env_values.BARISTA_CONFIG_DIR, "/tmp/config", "volume helper should receive the config root")
   assert_equal(volume_env_values.BARISTA_RUNTIME_CONTEXT_DIR, "/tmp/config/cache/runtime_context", "volume helper should receive the runtime cache root")
+  assert_equal(volume_env_values.BARISTA_VOLUME_POPUP_HELPER, "/compiled/volume_popup_helper", "routine volume updates should share the resolved native helper")
   assert_equal(volume_env_values.BARISTA_VOLUME_OUTPUT_IDLE, "0xffffffff", "volume helper should receive the idle output color")
   assert_equal(volume_env_values.BARISTA_MEDIA_LABEL_MAX, "72", "volume helper should receive the media label cap")
 
@@ -789,6 +790,7 @@ local function test_items_right_layout()
   local volume_media = nil
   local volume_toggle = nil
   local volume_mute = nil
+  local volume_startup_refresh = nil
   local battery_settings = nil
   for _, entry in ipairs(layout) do
     if entry.type == "item" and entry.name == "volume.state" then
@@ -803,6 +805,9 @@ local function test_items_right_layout()
       volume_toggle = entry
     elseif entry.type == "item" and entry.name == "volume.mute" then
       volume_mute = entry
+    elseif entry.action == "exec" and type(entry.cmd) == "string"
+        and entry.cmd:find("--subscribe volume volume_change", 1, true) ~= nil then
+      volume_startup_refresh = entry.cmd
     elseif entry.type == "item" and entry.name == "battery.settings" then
       battery_settings = entry
     end
@@ -816,6 +821,9 @@ local function test_items_right_layout()
   assert_true(volume_toggle.props.click_script:find("media_control%.sh playpause") ~= nil, "volume transport toggle should use the media helper")
   assert_true(volume_mute ~= nil, "volume popup should keep a mute toggle")
   assert_true(volume_mute.props.click_script:find("popup.drawing=off", 1, true) ~= nil, "volume popup actions should close the popup after execution")
+  assert_true(volume_startup_refresh ~= nil, "volume should subscribe after configuration")
+  assert_true(volume_startup_refresh:find("NAME=volume SENDER=routine", 1, true) ~= nil, "volume subscription should perform one ordered native-capable startup refresh")
+  assert_true(volume_startup_refresh:find("--trigger volume_change", 1, true) == nil, "volume startup should not race a separate synthetic event")
   assert_true(battery_settings ~= nil, "battery popup should keep the settings shortcut")
   assert_true(battery_settings.props.click_script:find("popup.drawing=off", 1, true) ~= nil, "battery popup actions should close the popup after execution")
 

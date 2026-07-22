@@ -218,9 +218,17 @@ are ever removed.
 - Compiled setups read volume/mute/output state through CoreAudio, reuse bounded
   `cache/runtime_context/{media,outputs}.tsv` snapshots, and update the ten
   mutable items in one bounded SketchyBar request/reply.
-- The native helper waits for SketchyBar's reply; transport, timeout, and
-  semantic `[!]` failures run the shell refresh instead. From the repo, test
-  that fallback once with
+- Stable USB or hardware-controlled outputs with no software volume/mute
+  properties show `HW` and `Volume: Hardware controlled`, keep output/media
+  rows available, and hide mute. Switching back to a controllable output
+  explicitly redraws the mute action.
+- Initial state and `volume_change` events prefer the same helper. The delayed
+  startup refresh runs after subscription so reload does not leave a
+  hardware-controlled output labeled `Muted`.
+- The native helper waits for SketchyBar's reply; transport, timeout, semantic
+  `[!]`, transient CoreAudio read, and unstable-device failures run the shell
+  refresh instead. Mere property absence on a stable, live device does not.
+  From the repo, test that fallback once with
   `BARISTA_VOLUME_NATIVE_DISABLE=1 build/bin/volume_popup_helper popup_refresh || plugins/volume.sh popup_refresh`.
   To force live clicks onto the shell path, run
   `launchctl setenv BARISTA_VOLUME_NATIVE_DISABLE 1` and reload Barista; undo

@@ -54,7 +54,8 @@ foreach(SOURCE ${HELPER_SOURCES})
     )
     
     # Special handling for specific binaries
-    if(NAME STREQUAL "state_manager" OR NAME STREQUAL "widget_manager")
+    if(NAME STREQUAL "state_manager" OR NAME STREQUAL "widget_manager"
+        OR NAME STREQUAL "system_info_widget")
       target_link_libraries(${NAME} PRIVATE pthread)
     endif()
   endif()
@@ -64,6 +65,20 @@ foreach(SOURCE ${HELPER_SOURCES})
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
   )
 endforeach()
+
+# Keep the scheduled widget and on-demand popup entrypoints independently
+# addressable while sharing the same implementation.
+add_executable(system_info_popup_helper system_info_widget.c)
+if(APPLE)
+  target_link_libraries(system_info_popup_helper PRIVATE
+    ${COREFOUNDATION_LIB}
+    ${IOKIT_LIB}
+    pthread
+  )
+endif()
+set_target_properties(system_info_popup_helper PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
 
 # Build C++ helper
 foreach(SOURCE ${HELPER_CXX_SOURCES})
@@ -117,6 +132,7 @@ endif()
 install(TARGETS
   clock_widget
   system_info_widget
+  system_info_popup_helper
   space_manager
   submenu_hover
   popup_anchor

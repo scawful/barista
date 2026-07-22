@@ -4,6 +4,12 @@
 **Version:** 2.0 (Post-Refactor)
 **Analyzer:** Claude Code
 
+> **Historical snapshot:** this analysis records the November 2025 refactor
+> and is not the source of truth for current runtime timing or ownership. See
+> [SKETCHYBAR_LAYOUT.md](SKETCHYBAR_LAYOUT.md) and
+> [../PERFORMANCE_AUDIT.md](../PERFORMANCE_AUDIT.md) for the verified active
+> paths.
+
 ## Executive Summary
 
 This document provides a comprehensive analysis of the SketchyBar configuration codebase after the major C/Lua hybrid refactor. The analysis identifies architectural patterns, performance characteristics, code quality metrics, and critical issues that need resolution.
@@ -167,27 +173,25 @@ sbar.add("item", "apple_menu", {
 **Widget Types:**
 
 1. **Clock Widget**
-   - Update frequency: 1 second
-   - Data source: `date` command or C `time()`
-   - Performance: Shell ~50ms, C ~5ms
+   - Daemon cadence: minute boundaries
+   - Data source: native time APIs, with `plugins/clock.sh` as the portable path
 
 2. **Battery Widget**
-   - Update frequency: 10 seconds
-   - Data source: IOPowerSources API
-   - Performance: C implementation 10x faster
+   - Daemon cadence: 120 seconds plus power/wake events
+   - Data source: compiled widget path with a shell popup fallback
 
 3. **System Info Widget**
-   - Update frequency: 2 seconds
-   - Data sources:
-     - CPU: `host_statistics()` (mach kernel)
-     - Memory: `vm_statistics64()`
-     - Disk: `statfs()`
-   - Performance: Native calls vs shell parsing
+   - Daemon cadence: 10 seconds for the compact CPU/memory anchor
+   - Popup details: click-only `system_info_popup_helper`, exact enabled-row
+     allowlist, bounded probes, and one SketchyBar Mach update
+   - Live detail result: 36.418 ms native median versus 127.795 ms for the
+     shell fallback in 20 randomized same-daemon pairs
 
 4. **Network Widget**
-   - Update frequency: 5 seconds
-   - Data source: Network interfaces
-   - Status: Shell-based (candidate for C migration)
+   - Current right-side layout exposes network state inside the System Info
+     popup rather than as another default bar item
+   - The native detail path resolves the default-route interface and reads its
+     address with `getifaddrs`; the shell path remains available as fallback
 
 **Widget Daemon Mode:**
 

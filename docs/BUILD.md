@@ -66,6 +66,7 @@ barista/
 
 - `clock_widget` - Clock widget
 - `system_info_widget` - System information widget
+- `system_info_popup_helper` - On-demand system-detail entrypoint built from the same source as `system_info_widget`
 - `space_manager` - Space management
 - `submenu_hover` - Submenu hover handling
 - `popup_anchor` - Popup anchoring

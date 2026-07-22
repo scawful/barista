@@ -37,8 +37,8 @@ Legacy note: the standalone `yabai_status` widget path was removed. Window-manag
 | `task_focus` | `plugins/task_pulse.sh` | `task_state_changed`, `system_woke` | Optional compact Task Pulse anchor. It exists only when `widgets.task_focus=true` and a local task source is configured. Its closed label is only the open count, `Clear`, or `Tasks !`; full task titles stay in the popup. Click toggles its own popup immediately and refreshes asynchronously. |
 | `task_focus.*` (popup) | `plugins/task_pulse.sh` | — | Capped rows: summary, focus, next, waiting, blocked, Capture Task, Open Board, and one menu-only 25-minute focus-session toggle. The `syshelp` provider adds confirmation-backed `Complete Focus…`, which resolves a fresh exact title and section through `scripts/task_action.sh complete-focus` and revalidates the same unique focus after confirmation; file providers omit it and remain read-only. Capture routes through `scripts/task_capture.sh`; open routes through `scripts/task_action.sh open`; focus-session state lives in ignored `cache/focus_session/state.json` with no daemon or polling timer. |
 | `ai_resource` | `plugins/ai_resource_toggle.sh` | `ai_resource_update` | AI resource indicator |
-| `system_info` | `plugins/system_info.sh` | — | Shell wrapper for hover/events; routine updates prefer compiled helpers or the widget daemon; full popup detail refresh happens on click |
-| `system_info.*` (popup) | (hover script) | — | Popup items for system info |
+| `system_info` | `plugins/system_info.sh` + `system_info_widget` | — | The shell wrapper retains hover/events and portable behavior. Routine updates prefer the compact native helper or `widget_manager daemon`; they do not refresh popup rows. |
+| `system_info.*` (popup) | `system_info_popup_helper` with `plugins/system_info.sh popup_refresh` fallback | — | Click toggles immediately, then refreshes the exact enabled dynamic-row subset asynchronously. Static Activity Monitor and System Settings actions are not metric targets. |
 | `volume` | `plugins/volume.sh` | `volume_change` | The shell wrapper retains hover and portable behavior, while compiled initial/`volume_change` updates delegate to `bin/volume_popup_helper`. Click toggles immediately and refreshes asynchronously. Stable hardware-controlled outputs remain native; Lua-only/helper-missing, disabled, transient CoreAudio/device, and IPC failures use `plugins/volume.sh`. `plugins/volume_click.sh` remains a compatibility wrapper. |
 | `volume.*` (popup) | `bin/volume_popup_helper` (state + click detail) | — | Popup items for prefixed `Volume`, `Output`, and `Now Playing` state, output routes, transport controls, mute, and settings. The native path reads CoreAudio plus bounded shared `runtime_context` caches and applies the ten mutable items in one request/reply. Hardware-controlled outputs show `HW` and hide unavailable mute; software-controllable outputs explicitly restore it. `scripts/media_control.sh` owns playback/output actions, and action rows close the popup after firing. |
 | `battery` | `plugins/battery.sh` | `system_woke`, `power_source_change` | Shell wrapper for hover/events; routine main-label updates prefer `widget_manager` or the widget daemon; popup detail refresh happens on click |
@@ -52,6 +52,36 @@ Legacy note: the standalone `yabai_status` widget path was removed. Window-manag
 - `lmstudio` + `clock` + optional `task_focus` + `system_info` (right group when LM Studio is enabled)
 - `clock` + optional `task_focus` + `system_info` (right group when LM Studio is disabled)
 - `volume` + `battery` (right group)
+
+## System Info Path
+
+1. [modules/items_right.lua](../../modules/items_right.lua) creates only the
+   enabled dynamic rows in canonical order:
+   `cpu,mem,disk,net,swap,uptime,procs`. It exports that exact comma-separated
+   allowlist to both native and shell refreshers; an empty dynamic model is
+   represented as `none`.
+2. Routine events stay on `plugins/system_info.sh`, which delegates the compact
+   anchor update to `system_info_widget` when the compiled runtime is allowed.
+   Popup rows are never part of that routine payload.
+3. A click toggles `popup.system_info` first, then launches
+   `system_info_popup_helper popup_refresh` asynchronously. The alias is built
+   from `helpers/system_info_widget.c`, but its separate filename prevents an
+   older routine-only `system_info_widget` from being selected as the new popup
+   entrypoint during an upgrade.
+4. The native helper collects only the enabled rows and submits one batched,
+   bounded SketchyBar Mach payload. CPU, swap, uptime, memory fallback, and
+   interface-address work use direct APIs. Bounded absolute-path probes cover
+   memory pressure, `/System/Volumes/Data` disk usage (falling back to `/` only
+   when that mount is absent), default-route/Wi-Fi metadata, and the top
+   process through `/usr/bin/memory_pressure`, `/bin/df`, `/sbin/route`,
+   `/usr/sbin/networksetup`, and `/bin/ps`.
+5. Missing popup helpers and native invocation/IPC failures run the strictly
+   parsed `plugins/system_info.sh popup_refresh` fallback. That action cannot
+   recurse into `system_info_widget`. Lua-only layouts and layouts without a
+   resolved routine helper also set `BARISTA_SYSTEM_INFO_NATIVE_DISABLE=1`, so
+   a stale executable left in `bin/` is ignored for routine work. Both parsers
+   reject unknown, duplicate, or malformed row lists before targeting any
+   popup row.
 
 ## Control Center Path
 
@@ -123,7 +153,7 @@ SketchyBar update directly without a nested `sh -c`.
 - **`scripts/runtime_context.sh daemon`** owns shared runtime caches under `cache/runtime_context/`. The portable front-app producer stays on the base tick; media uses one bounded versioned snapshot at playing/running/idle cadences of 1/2/3 ticks, output topology stays on the base tick, and unchanged media/output snapshots are not republished. When the compiled helper is active, the supervisor passes it a separate five-second front-app safety interval without changing the shell cadence.
 - **`bin/runtime_context_helper`** owns the hot front-app / focused-space cache path when the compiled helper is present. It refreshes on application activation, active-space changes, and wake, coalesces related notifications before doing serialized query work, and keeps a five-second safety refresh for missed/external state changes. Each refresh shares one focused-window snapshot across app naming and selection, then compares bounded regular-file bytes before atomic publication so unchanged front-app state keeps a stable cache identity.
 - **`plugins/front_app.sh`** owns the mutable front-app anchor and popup labels. It derives all labels from one context snapshot and applies every available target in one animated SketchyBar request, with one identical non-animated retry when that request fails. `items_left.lua` suppresses the four yabai-only update groups on disabled-yabai or unavailable-yabai layouts so expected missing rows do not force the retry.
-- **Lua-only ownership:** `main.lua` launches the runtime-context daemon with `BARISTA_LUA_ONLY=1` when `runtime_backend=lua`, so an executable helper left on disk is ignored.
+- **Lua-only ownership:** `main.lua` launches the runtime-context daemon with `BARISTA_LUA_ONLY=1` when `runtime_backend=lua`, so an executable helper left on disk is ignored. System Info independently carries `BARISTA_SYSTEM_INFO_NATIVE_DISABLE=1` into its shell wrapper, preventing a stale `system_info_widget` from bypassing that boundary.
 - **`scripts/front_app_context.sh`** reads that cache first, then falls back to direct yabai/System Events discovery.
 - **`scripts/media_control.sh`** reads cached player/output state first, but still dispatches playback and output-switch actions directly.
 - **`scripts/process_manager.sh barista|runaways`** inspects the live process family and flags duplicated/hot Barista plugin scripts without cleanup by default.
@@ -135,7 +165,7 @@ SketchyBar update directly without a nested `sh -c`.
 - **Bar appearance** (height, padding, colors, fonts): main.lua → appearance/state values and `sbar.bar()` / `sbar.default()`.
 - **Add/remove a left-side item:** main.lua (search for `sbar.add("item",` and `position = "left"`) or items_left module after refactor.
 - **Add/remove a right-side item:** main.lua (search for `position = "right"`) or items_right module after refactor.
-- **Change what a widget does:** Edit the corresponding script in `plugins/`; volume click-detail behavior is split between `helpers/volume_popup_helper.m` and its `plugins/volume.sh` fallback.
+- **Change what a widget does:** Edit the corresponding script in `plugins/`; System Info native routine/popup behavior is shared by `helpers/system_info_widget.c` with `plugins/system_info.sh` as the event/portable fallback, while volume click-detail behavior is split between `helpers/volume_popup_helper.m` and `plugins/volume.sh`.
 - **Change popup contents:** `modules/items_left.lua` for front-app and Desk extension rows, `modules/integrations/control_center.lua` for Control Center rows, and `modules/items_right.lua` for LM Studio/calendar/Task Pulse/system-info rows.
 - **Change task snapshot semantics:** `scripts/task_snapshot.py`; keep source/provider paths machine-local.
 - **Change control-center popup rows:** `modules/integrations/control_center.lua`.

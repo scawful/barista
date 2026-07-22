@@ -18,10 +18,11 @@
 **Problem**: CPU widget showed two CPU icons - one in main widget, one in popup label
 
 **Solution**:
-- Removed icons from all popup item labels
-- Popup items now show clean text: "CPU 12%    Load 1.5"
-- Icons are only shown in popup item's icon field (configured in main.lua)
-- Consistent spacing across all popup items
+- Metric labels contain text only; glyphs stay in the SketchyBar item `icon`
+  property.
+- `modules/items_right.lua` passes configured icon overrides to the native and
+  shell refreshers, so the two paths keep the same presentation.
+- The current CPU detail format is `CPU Usage: 12% (Load: 1.50)`.
 
 **Before**:
 ```
@@ -31,15 +32,21 @@ Popup: 󰍛 CPU 12%    󰓅 Load 1.5  ❌ Double icon
 
 **After**:
 ```
-Main: 󰍛 12%
-Popup: CPU 12%    Load 1.5  ✅ Clean
+Main: 󰍛 12% 11/32G
+Popup: CPU Usage: 12% (Load: 1.50)  ✅ Clean
 ```
 
 Current compact main-label path:
 - The `system_info` bar label is intentionally compact again: `CPU% used/totalG`.
 - Verbose details remain in popup rows; the bar label should stay glanceable.
-- The compiled routine helper now only updates the main `system_info` item.
-- Popup rows are refreshed on click through `plugins/system_info.sh popup_refresh`, so routine updates should not target optional popup rows like `system_info.cpu`.
+- The compiled `system_info_widget` routine entrypoint only updates the main
+  `system_info` item.
+- A click toggles the popup immediately, then prefers
+  `system_info_popup_helper popup_refresh` asynchronously. The native alias
+  updates only the enabled dynamic rows in one bounded Mach payload;
+  `plugins/system_info.sh popup_refresh` is the strict portable/failure
+  fallback. Routine updates must not target optional popup rows such as
+  `system_info.cpu`.
 
 ### 3. Clock Icon Missing (plugins/clock.sh)
 **Problem**: Clock icon wasn't displaying
@@ -327,141 +334,95 @@ are ever removed.
 - `process_manager.sh runaways` flags high-CPU or duplicated Barista space plugin scripts.
 - `process_manager.sh cleanup-runaways` is a dry run unless `--yes` is passed, so diagnostics stay non-destructive by default.
 
-## C Performance Widgets
+## Native Widget Paths
 
-### Why C?
-- **10-50x faster** than shell scripts
-- No subprocess overhead (awk, grep, sed, etc.)
-- Direct system calls for metrics
-- Minimal memory footprint
-- Instant updates
+Barista resolves compiled helpers automatically from `build/bin/` and then
+`bin/`. Do not replace widget scripts manually in `main.lua`; the shell wrappers
+remain the event, hover, and portable fallback boundary.
 
-### Performance Comparison
+### Clock
 
-| Widget        | Shell Script | C Widget | Improvement |
-|---------------|--------------|----------|-------------|
-| clock.sh      | ~15ms        | ~0.5ms   | **30x faster** |
-| system_info.sh| ~80ms        | ~5ms     | **16x faster** |
+`clock_widget` uses the native time APIs for the routine clock label. Lua-only
+or helper-missing setups retain `plugins/clock.sh` without configuration edits.
 
-### C Widgets Created
+### System Info: Routine vs. Popup
 
-#### 1. clock_widget.c
-**Location**: `~/.config/sketchybar/bin/clock_widget`
+`helpers/system_info_widget.c` builds two independently addressable binaries:
 
-**Features**:
-- Direct `time()` and `localtime()` calls
-- No date subprocess
-- Same format as original: "Day MM/DD HH:MM AM/PM"
-- Handles `mouse.exited.global` event
+- `system_info_widget` is the established routine entrypoint. It gathers the
+  compact CPU/memory state and updates only the `system_info` anchor.
+- `system_info_popup_helper` is the click-only `popup_refresh` entrypoint. Its
+  separate name is an upgrade guard: an older routine-only binary is never
+  treated as if it implements the new popup action.
 
-**Usage**:
-```lua
--- In main.lua, replace:
-script = PLUGIN_DIR .. "/clock.sh"
+`modules/items_right.lua` derives the dynamic popup topology once and passes the
+exact enabled subset of `cpu,mem,disk,net,swap,uptime,procs`, or `none` when no
+dynamic row exists. The native and shell parsers both reject malformed,
+duplicate, or unknown row names before issuing partial updates. Activity Monitor
+and System Settings remain static action rows outside that metric allowlist.
 
--- With:
-script = os.getenv("HOME") .. "/.config/sketchybar/bin/clock_widget"
-```
+Click behavior is deliberately split:
 
-#### 2. system_info_widget.c
-**Location**: `~/.config/sketchybar/bin/system_info_widget`
+1. SketchyBar toggles `popup.system_info` immediately.
+2. The click script starts `system_info_popup_helper popup_refresh` in the
+   background.
+3. The helper collects only the enabled rows, sanitizes bounded label/icon
+   tokens, and submits one batched, bounded SketchyBar Mach payload.
+4. If the popup helper is absent or its invocation/IPC fails, the command runs
+   `plugins/system_info.sh popup_refresh`. The explicit popup action does not
+   retry `system_info_widget`, so the fallback cannot recurse.
 
-**Features**:
-- Direct sysctl calls for system metrics
-- No top/df/ifconfig subprocesses
-- Color-coded CPU indicator
-- Memory, disk, network info
-- All popup items updated in one execution
+Lua-only layouts and layouts without a resolved routine helper pass
+`BARISTA_SYSTEM_INFO_NATIVE_DISABLE=1` to the wrapper. This prevents a stale
+`bin/system_info_widget` left by an earlier compiled setup from crossing the
+script-only boundary; the shell path still updates the compact anchor and the
+same exact popup-row subset.
 
-**System Calls Used**:
-- `getloadavg()` - CPU load average
-- `sysctlbyname("hw.memsize")` - Memory
-- `statfs("/")` - Disk usage
-- `ifconfig` pipe (only for IP) - Network
+### System Info Probe Model
 
-**Usage**:
-```lua
--- In main.lua, replace:
-script = PLUGIN_DIR .. "/system_info.sh"
+The native helper combines direct APIs with a small set of deliberately bounded
+child probes; it is not subprocess-free:
 
--- With:
-script = os.getenv("HOME") .. "/.config/sketchybar/bin/system_info_widget"
-```
+- CPU, swap, uptime, VM-statistics fallback, and interface addresses use native
+  APIs such as `getloadavg`, `sysctlbyname`, Mach host statistics, and
+  `getifaddrs`.
+- Memory pressure uses the absolute `/usr/bin/memory_pressure` probe before the
+  Mach VM fallback.
+- Disk uses bounded `/bin/df -h` against `/System/Volumes/Data`, falling back to
+  `/` only when the Data volume is unavailable.
+- Network selects the configured or default-route interface through bounded
+  `/sbin/route` and `/usr/sbin/networksetup` probes, then reads addresses with
+  `getifaddrs`.
+- The optional top-process row reads only the first bounded line from
+  `/bin/ps` and displays the executable basename rather than a popup-widening
+  full application path.
 
-### Building C Widgets
+Every child uses an absolute executable path, capped output, a deadline, and
+TERM/forced-kill cleanup. Concurrent probes use close-on-exec-default spawn
+isolation so one child cannot keep another probe pipe alive. Probe failure
+yields a safe placeholder for that row; payload, parser, native-disable, or
+Mach IPC failure returns nonzero so the shell fallback can take over where
+applicable.
+
+### Build and Verify
+
+Use the repository CMake wiring rather than hand-installing or editing widget
+scripts:
 
 ```bash
-cd ~/src/sketchybar/helpers
-make clean
-make
-make install
+cmake -B build -S .
+cmake --build build --target \
+  system_info_widget system_info_popup_helper sync_binaries
+
+lua tests/run_tests.lua tests/test_items.lua
+bash tests/test_system_info_memory.sh
+bash tests/test_system_info_widget.sh   # Darwin native contract
+./scripts/barista-verify.sh
 ```
 
-**Output**:
-```
-clang -O2 -Wall -Wextra -o clock_widget clock_widget.c
-clang -O2 -Wall -Wextra -o system_info_widget system_info_widget.c
-C widgets installed to ~/.config/sketchybar/bin
-```
-
-### Switching to C Widgets
-
-**Optional** - Shell scripts work fine, C widgets are for performance enthusiasts
-
-1. Compile and install (see above)
-2. Edit `main.lua`:
-   ```lua
-   local C_WIDGETS_DIR = os.getenv("HOME") .. "/.config/sketchybar/bin"
-
-   -- Clock widget
-   widget_factory.create_clock({
-     script = C_WIDGETS_DIR .. "/clock_widget",  -- Changed
-     update_freq = 10,
-     -- ... rest of config
-   })
-
-   -- System Info widget (in create() call)
-   script = C_WIDGETS_DIR .. "/system_info_widget",  -- Changed
-   ```
-3. Reload: `sketchybar --reload`
-
-### Fallback
-
-Keep shell scripts as fallback:
-```lua
-local USE_C_WIDGETS = true  -- Set to false to use shell scripts
-
-local clock_script = USE_C_WIDGETS
-  and os.getenv("HOME") .. "/.config/sketchybar/bin/clock_widget"
-  or PLUGIN_DIR .. "/clock.sh"
-
-widget_factory.create_clock({ script = clock_script, ... })
-```
-
-## Testing
-
-Reload SketchyBar:
-```bash
-sketchybar --reload
-```
-
-Check widget performance:
-```bash
-# Shell script
-time ~/.config/sketchybar/plugins/clock.sh
-
-# C widget
-time ~/.config/sketchybar/bin/clock_widget
-```
-
-## Summary
-
-All widget issues fixed:
-- ✅ Submenu hover behavior - no more accidental dismissal
-- ✅ CPU icons - no more duplicates
-- ✅ Clock icon - displaying properly
-- ✅ Clock font - Medium weight supported
-- ✅ Yabai widget - already correct
-- ✅ C widgets - optional performance boost
-
-**Recommendation**: Use shell scripts by default, switch to C widgets if you want maximum performance or are running on older hardware.
+For a supported live restart after verification, use
+`./plugins/reload_sketchybar.sh`, not a raw reload command. A 20-pair
+same-daemon profile measured the native detail path at 36.418 ms median /
+37.010 ms p95 and the shell fallback at 127.795 / 129.427 ms (3.51x by
+medians). Treat those figures as one-machine evidence, not a hardware-wide
+guarantee.

@@ -387,9 +387,30 @@ local function get_layout(ctx)
 
 
   -- System Info
+  local info_flags = state.system_info_items or {}
+  local function info_enabled(key)
+    local v = info_flags[key]
+    if v == nil then return true end
+    return v
+  end
+  local enabled_system_info_rows = {}
+  for _, key in ipairs({ "cpu", "mem", "disk", "net", "swap", "uptime", "procs" }) do
+    if info_enabled(key) then
+      table.insert(enabled_system_info_rows, key)
+    end
+  end
+
   local system_info_fast_bin = compiled_script("system_info_widget", "")
+  local system_info_popup_helper = compiled_script("system_info_popup_helper", "")
   local system_info_env = env_prefix({
     BARISTA_SKETCHYBAR_BIN = SKETCHYBAR_BIN,
+    BARISTA_SYSTEM_INFO_NATIVE_DISABLE = system_info_fast_bin ~= "" and "0" or "1",
+    BARISTA_SYSTEM_INFO_ROWS = #enabled_system_info_rows > 0 and table.concat(enabled_system_info_rows, ",") or "none",
+    BARISTA_SYSTEM_INFO_RED = tc("RED"),
+    BARISTA_SYSTEM_INFO_YELLOW = tc("YELLOW"),
+    BARISTA_SYSTEM_INFO_GREEN = tc("GREEN"),
+    BARISTA_SYSTEM_INFO_BLUE = tc("BLUE"),
+    BARISTA_SYSTEM_INFO_TEAL = tc("TEAL"),
     BARISTA_ICON_CPU = state_module.get_icon(state, "cpu", ""),
     BARISTA_ICON_MEM = state_module.get_icon(state, "memory", ""),
     BARISTA_ICON_DISK = state_module.get_icon(state, "disk", ""),
@@ -402,23 +423,21 @@ local function get_layout(ctx)
     BARISTA_HOVER_ANIMATION_DURATION = tostring(hover_animation_duration),
     SYSTEM_INFO_BIN = system_info_fast_bin,
   })
-  local system_info_script = system_info_env .. PLUGIN_DIR .. "/system_info.sh"
+  local system_info_script = system_info_env .. shell_quote(PLUGIN_DIR .. "/system_info.sh")
+  local system_info_popup_refresh = system_info_script .. " popup_refresh"
+  if type(system_info_popup_helper) == "string" and system_info_popup_helper ~= "" then
+    system_info_popup_refresh = system_info_env .. shell_quote(system_info_popup_helper)
+      .. " popup_refresh || " .. system_info_script .. " popup_refresh"
+  end
   table.insert(layout, factory.create_system_info({
     script = system_info_script,
     update_freq = widget_daemon_enabled and false or 45,
     daemon_managed = widget_daemon_enabled,
-    click_script = ui.toggle_then_refresh_async("system_info", system_info_script .. " popup_refresh", { sketchybar_bin = SKETCHYBAR_BIN }),
+    click_script = ui.toggle_then_refresh_async("system_info", system_info_popup_refresh, { sketchybar_bin = SKETCHYBAR_BIN }),
   }))
   table.insert(right_group_children, "system_info")
   table.insert(layout, { action = "subscribe_popup_autoclose", name = "system_info" })
   table.insert(layout, { action = "attach_hover", name = "system_info" })
-
-  local info_flags = state.system_info_items or {}
-  local function info_enabled(key)
-    local v = info_flags[key]
-    if v == nil then return true end
-    return v
-  end
 
   local system_info_items = {}
   if info_enabled("cpu") then table.insert(system_info_items, { name = "system_info.cpu", icon = "", label = "CPU …" }) end

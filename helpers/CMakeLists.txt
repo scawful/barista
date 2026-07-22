@@ -8,6 +8,7 @@ if(APPLE)
   find_library(AUDIOTOOLBOX_LIB AudioToolbox)
   find_library(IOKIT_LIB IOKit)
   find_library(CARBON_LIB Carbon)
+  find_library(SYSTEMCONFIGURATION_LIB SystemConfiguration)
   find_library(SKYLIGHT_LIB SkyLight
     PATHS /System/Library/PrivateFrameworks
     NO_DEFAULT_PATH
@@ -58,6 +59,9 @@ foreach(SOURCE ${HELPER_SOURCES})
         OR NAME STREQUAL "system_info_widget")
       target_link_libraries(${NAME} PRIVATE pthread)
     endif()
+    if(NAME STREQUAL "system_info_widget")
+      target_link_libraries(${NAME} PRIVATE ${SYSTEMCONFIGURATION_LIB})
+    endif()
   endif()
   
   # Set output to bin directory
@@ -73,6 +77,7 @@ if(APPLE)
   target_link_libraries(system_info_popup_helper PRIVATE
     ${COREFOUNDATION_LIB}
     ${IOKIT_LIB}
+    ${SYSTEMCONFIGURATION_LIB}
     pthread
   )
 endif()

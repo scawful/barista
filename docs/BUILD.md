@@ -8,6 +8,9 @@ Barista uses CMake for building all components. This document describes the buil
 - Clang/LLVM (comes with Xcode Command Line Tools)
 - macOS 13.0 or later
 
+The System Info helpers link Apple's built-in SystemConfiguration framework for
+native Wi-Fi-interface discovery; no extra package is required.
+
 ## Quick Start
 
 ```bash

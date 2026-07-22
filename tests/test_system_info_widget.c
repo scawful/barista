@@ -212,6 +212,89 @@ static void test_response_parser(void) {
     assert(!response_is_success(success, MAX_PAYLOAD_BYTES + 1));
 }
 
+static void test_memory_vm_stats_and_floor_labels(void) {
+    const uint64_t gib = 1024ULL * 1024ULL * 1024ULL;
+    vm_statistics64_data_t statistics = {0};
+    statistics.active_count = 5;
+    statistics.wire_count = 3;
+    statistics.compressor_page_count = 2;
+    SystemInfo info = {0};
+    assert(memory_info_from_vm_stats(32 * gib, 1024 * 1024, &statistics, &info));
+    assert(info.memory_available);
+    assert(info.memory_total_bytes == 32 * gib);
+    assert(info.memory_used_bytes == 10ULL * 1024ULL * 1024ULL);
+
+    statistics.active_count = UINT32_MAX;
+    statistics.wire_count = UINT32_MAX;
+    statistics.compressor_page_count = UINT32_MAX;
+    memset(&info, 0, sizeof(info));
+    assert(memory_info_from_vm_stats(32 * gib, 16384, &statistics, &info));
+    assert(info.memory_used_bytes == 32 * gib);
+    assert(!memory_info_from_vm_stats(0, 16384, &statistics, &info));
+    assert(!memory_info_from_vm_stats(32 * gib, 0, &statistics, &info));
+
+    info = fixture_info();
+    info.memory_used_bytes = 11 * gib + gib - 1;
+    PopupRows rows = {.mask = ROW_MEM};
+    Payload payload;
+    payload_init(&payload);
+    assert(build_popup_payload(&rows, &info, &payload));
+    assert(payload_finish(&payload));
+    assert(payload_has_token(&payload, "label=Memory: 11/32G (37%)"));
+    assert(floor_gibibytes(gib - 1) == 0);
+    assert(floor_gibibytes(gib) == 1);
+}
+
+static void test_wifi_interface_candidates(void) {
+    char output[IFNAMSIZ] = "sentinel";
+    assert(wifi_interface_candidate(CFSTR("en7"),
+                                    kSCNetworkInterfaceTypeIEEE80211,
+                                    output,
+                                    sizeof(output)));
+    assert(strcmp(output, "en7") == 0);
+
+    snprintf(output, sizeof(output), "sentinel");
+    assert(!wifi_interface_candidate(CFSTR("en7"),
+                                     kSCNetworkInterfaceTypeEthernet,
+                                     output,
+                                     sizeof(output)));
+    assert(output[0] == '\0');
+
+    int number_value = 7;
+    CFNumberRef number = CFNumberCreate(NULL, kCFNumberIntType, &number_value);
+    assert(number);
+    assert(!wifi_interface_candidate(number,
+                                     kSCNetworkInterfaceTypeIEEE80211,
+                                     output,
+                                     sizeof(output)));
+    assert(!wifi_interface_candidate(CFSTR("en7"), number, output, sizeof(output)));
+    CFRelease(number);
+
+    assert(!wifi_interface_candidate(CFSTR("../../bad"),
+                                     kSCNetworkInterfaceTypeIEEE80211,
+                                     output,
+                                     sizeof(output)));
+    assert(!wifi_interface_candidate(CFSTR("en7"),
+                                     kSCNetworkInterfaceTypeIEEE80211,
+                                     output,
+                                     3));
+    assert(!wifi_interface_candidate(
+        CFSTR("interface-name-that-exceeds-the-system-bound"),
+        kSCNetworkInterfaceTypeIEEE80211,
+        output,
+        sizeof(output)));
+
+    const UniChar embedded_nul[] = {'e', 'n', '0', 0, 'x'};
+    CFStringRef malformed = CFStringCreateWithCharacters(
+        NULL, embedded_nul, (CFIndex)(sizeof(embedded_nul) / sizeof(embedded_nul[0])));
+    assert(malformed);
+    assert(!wifi_interface_candidate(malformed,
+                                     kSCNetworkInterfaceTypeIEEE80211,
+                                     output,
+                                     sizeof(output)));
+    CFRelease(malformed);
+}
+
 static void test_probe_parsers_and_bounds(void) {
     char disk_fixture[] =
         "Filesystem Size Used Avail Capacity Mounted on\n"
@@ -235,12 +318,41 @@ static void test_probe_parsers_and_bounds(void) {
     assert(strcmp(interface, "en7") == 0);
     assert(!parse_route_interface("interface: ../../bad\n", interface, sizeof(interface)));
 
-    char process_fixture[] = "  87.4 /Applications/Test App.app/Contents/MacOS/Test App\n";
+    char process_fixture[] = "  87.4 123 Test App   \n";
+    ProcessSample sample = {0};
+    assert(parse_process_line(process_fixture, &sample));
+    assert(sample.pid == 123);
+    assert(sample.cpu > 87.3 && sample.cpu < 87.5);
+    assert(strcmp(sample.fallback_name, "Test App") == 0);
+
+    char localized_process_fixture[] = "  87,4 123 Test App\n";
+    assert(parse_process_line(localized_process_fixture, &sample));
+    assert(sample.cpu > 87.3 && sample.cpu < 87.5);
+
     SystemInfo process = {0};
-    assert(parse_process_line(process_fixture, &process));
+    assert(process_info_from_sample(&sample,
+                                    "/Applications/Test App.app/Contents/MacOS/Test App",
+                                    "ignored-name",
+                                    &process));
     assert(process.process_available);
     assert(process.process_cpu > 87.3 && process.process_cpu < 87.5);
     assert(strcmp(process.process_name, "Test App") == 0);
+
+    memset(&process, 0, sizeof(process));
+    assert(process_info_from_sample(&sample, NULL, "Long Process Name", &process));
+    assert(strcmp(process.process_name, "Long Process Name") == 0);
+    memset(&process, 0, sizeof(process));
+    assert(process_info_from_sample(&sample, NULL, NULL, &process));
+    assert(strcmp(process.process_name, "Test App") == 0);
+
+    char invalid_pid[] = "10.0 0 invalid\n";
+    char missing_name[] = "10.0 123   \n";
+    char missing_pid[] = "10.0 process\n";
+    char nonfinite_cpu[] = "nan 123 process\n";
+    assert(!parse_process_line(invalid_pid, &sample));
+    assert(!parse_process_line(missing_name, &sample));
+    assert(!parse_process_line(missing_pid, &sample));
+    assert(!parse_process_line(nonfinite_cpu, &sample));
 
     char output[64];
     char *const echo_arguments[] = {"/bin/echo", "hello", NULL};
@@ -352,6 +464,8 @@ int main(void) {
     test_placeholders_and_routine();
     test_sanitizer_and_bounds();
     test_response_parser();
+    test_memory_vm_stats_and_floor_labels();
+    test_wifi_interface_candidates();
     test_probe_parsers_and_bounds();
     test_concurrent_capture_descriptor_isolation();
     puts("test_system_info_widget.c: ok");

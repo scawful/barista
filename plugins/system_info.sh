@@ -229,8 +229,9 @@ if [ "$UPDATE_MAIN" -eq 1 ] || [ "$CPU_ENABLED" -eq 1 ] || [ "$PROCS_ENABLED" -e
   cpu_usage=$(awk -v l="$cpu_load" -v cores="$core_count" 'BEGIN {printf "%.0f", (l / cores) * 100}')
 fi
 
-# Memory: prefer the kernel's memory-pressure view so the widget tracks the
-# amount of RAM that is actually unavailable, not every cached/kernel page.
+# Memory: match the daemon-managed widget's active + wired + compressor model.
+# Keep the displayed GiB values floored so portable routine and popup labels
+# agree with the compiled widget manager.
 mem_usage=0
 used_mem=0
 total_mem=0
@@ -238,33 +239,42 @@ mem_label="--/--"
 if [ "$UPDATE_MAIN" -eq 1 ] || [ "$MEM_ENABLED" -eq 1 ]; then
   page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo 16384)
   total_mem=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
-  memory_pressure_stats=$(memory_pressure 2>/dev/null || true)
-  memory_free_pct=$(printf '%s\n' "$memory_pressure_stats" | awk '/System-wide memory free percentage/ {print $NF; exit}')
-  memory_free_pct="${memory_free_pct%%%}"
-  if [ -n "$memory_free_pct" ] && [ "$total_mem" -gt 0 ] 2>/dev/null; then
-    mem_usage=$(( 100 - memory_free_pct ))
-    if [ "$mem_usage" -lt 0 ]; then
-      mem_usage=0
-    fi
-    used_mem=$(( total_mem * mem_usage / 100 ))
-  else
-    vm_stats=$(vm_stat 2>/dev/null)
-    pages_anonymous=$(echo "$vm_stats" | awk '/Anonymous pages/ {gsub(/\./,"",$3); print $3}')
-    pages_compressed=$(echo "$vm_stats" | awk '/Pages occupied by compressor/ {gsub(/\./,"",$5); print $5}')
-    pages_purgeable=$(echo "$vm_stats" | awk '/Pages purgeable/ {gsub(/\./,"",$3); print $3}')
-    used_pages=$(( ${pages_anonymous:-0} + ${pages_compressed:-0} - ${pages_purgeable:-0} ))
-    if [ "$used_pages" -lt 0 ]; then
-      used_pages=0
-    fi
+  vm_stats=$(vm_stat 2>/dev/null || true)
+  read -r memory_stats_valid pages_active pages_wired pages_compressed < <(
+    printf '%s\n' "$vm_stats" | awk '
+      /^Pages active:/ {
+        gsub(/\./, "", $NF)
+        active = $NF
+        active_found = 1
+      }
+      /^Pages wired down:/ {
+        gsub(/\./, "", $NF)
+        wired = $NF
+        wired_found = 1
+      }
+      /^Pages occupied by compressor:/ {
+        gsub(/\./, "", $NF)
+        compressed = $NF
+        compressed_found = 1
+      }
+      END {
+        valid = active_found && wired_found && compressed_found
+        printf "%d %.0f %.0f %.0f\n", valid, active + 0, wired + 0, compressed + 0
+      }
+    '
+  )
+  if [ "$memory_stats_valid" -eq 1 ] \
+    && [ "$page_size" -gt 0 ] \
+    && [ "$total_mem" -gt 0 ] 2>/dev/null; then
+    used_pages=$(( pages_active + pages_wired + pages_compressed ))
     used_mem=$(( used_pages * page_size ))
-    if [ "$total_mem" -gt 0 ]; then
-      mem_usage=$(awk -v used="$used_mem" -v total="$total_mem" 'BEGIN {printf "%.0f", (used / total) * 100}')
+    if [ "$used_mem" -gt "$total_mem" ]; then
+      used_mem="$total_mem"
     fi
-  fi
-
-  if [ "$total_mem" -gt 0 ]; then
-    mem_used_gb=$(awk -v used="$used_mem" 'BEGIN {printf "%.0f", used / 1024 / 1024 / 1024}')
-    mem_total_gb=$(awk -v total="$total_mem" 'BEGIN {printf "%.0f", total / 1024 / 1024 / 1024}')
+    mem_usage=$(( (used_mem * 100 + total_mem / 2) / total_mem ))
+    gibibyte=$(( 1024 * 1024 * 1024 ))
+    mem_used_gb=$(( used_mem / gibibyte ))
+    mem_total_gb=$(( total_mem / gibibyte ))
     mem_label="${mem_used_gb}/${mem_total_gb}G"
   fi
 fi
@@ -477,9 +487,13 @@ if [ "$UPTIME_ENABLED" -eq 1 ]; then
 fi
 
 if [ "$PROCS_ENABLED" -eq 1 ]; then
-  top_line=$(ps -axo pid,pcpu,pmem,comm -r | awk 'NR==2 {print $1, $2, $3, $4}')
+  top_line=""
+  if ! IFS= read -r top_line < <(ps -Ar -o pcpu=,comm= 2>/dev/null); then
+    top_line=""
+  fi
   if [ -n "$top_line" ]; then
-    read -r _ top_cpu _ top_name <<<"$top_line"
+    read -r top_cpu top_path <<<"$top_line"
+    top_name="${top_path##*/}"
     procs_label="Top CPU: ${top_name} ${top_cpu}%"
   else
     procs_label="Top CPU: --"

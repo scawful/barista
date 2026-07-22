@@ -60,21 +60,24 @@ Legacy note: the standalone `yabai_status` widget path was removed. Window-manag
    `cpu,mem,disk,net,swap,uptime,procs`. It exports that exact comma-separated
    allowlist to both native and shell refreshers; an empty dynamic model is
    represented as `none`.
-2. Routine events stay on `plugins/system_info.sh`, which delegates the compact
-   anchor update to `system_info_widget` when the compiled runtime is allowed.
-   Popup rows are never part of that routine payload.
+2. On default compiled setups, `widget_manager daemon` owns the periodic compact
+   anchor update. Daemon-disabled and portable setups retain
+   `plugins/system_info.sh`, which delegates to the routine `system_info_widget`
+   when allowed. Popup rows are never part of any routine payload.
 3. A click toggles `popup.system_info` first, then launches
    `system_info_popup_helper popup_refresh` asynchronously. The alias is built
    from `helpers/system_info_widget.c`, but its separate filename prevents an
    older routine-only `system_info_widget` from being selected as the new popup
    entrypoint during an upgrade.
 4. The native helper collects only the enabled rows and submits one batched,
-   bounded SketchyBar Mach payload. CPU, swap, uptime, memory fallback, and
-   interface-address work use direct APIs. Bounded absolute-path probes cover
-   memory pressure, `/System/Volumes/Data` disk usage (falling back to `/` only
-   when that mount is absent), default-route/Wi-Fi metadata, and the top
-   process through `/usr/bin/memory_pressure`, `/bin/df`, `/sbin/route`,
-   `/usr/sbin/networksetup`, and `/bin/ps`.
+   bounded SketchyBar Mach payload. CPU, active+wired+compressed memory, swap,
+   uptime, SystemConfiguration Wi-Fi discovery, and interface-address work use
+   direct APIs. Bounded absolute-path probes cover `/System/Volumes/Data` disk
+   usage (falling back to `/` only when that mount is absent), the default route,
+   an optional SSID lookup, and the system-wide top process through `/bin/df`,
+   `/sbin/route`, `/usr/sbin/networksetup -getairportnetwork`, and compact
+   `/bin/ps` output. The selected process PID is hydrated in-process when
+   permissions allow, with the dependable accounting name as fallback.
 5. Missing popup helpers and native invocation/IPC failures run the strictly
    parsed `plugins/system_info.sh popup_refresh` fallback. That action cannot
    recurse into `system_info_widget`. Lua-only layouts and layouts without a

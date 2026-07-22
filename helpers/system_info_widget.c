@@ -9,6 +9,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <ifaddrs.h>
+#include <libproc.h>
+#include <math.h>
 #include <mach/mach.h>
 #include <mach/mach_host.h>
 #include <mach/message.h>
@@ -30,6 +32,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <SystemConfiguration/SystemConfiguration.h>
 
 extern char **environ;
 
@@ -93,6 +96,12 @@ typedef struct {
     double process_cpu;
     char process_name[256];
 } SystemInfo;
+
+typedef struct {
+    pid_t pid;
+    double cpu;
+    char fallback_name[256];
+} ProcessSample;
 
 typedef struct {
     uint8_t bytes[MAX_PAYLOAD_BYTES];
@@ -400,6 +409,24 @@ static void get_cpu_info(SystemInfo *info) {
     info->cpu_available = true;
 }
 
+static bool memory_info_from_vm_stats(uint64_t memory_size,
+                                      vm_size_t page_size,
+                                      const vm_statistics64_data_t *statistics,
+                                      SystemInfo *info) {
+    if (memory_size == 0 || page_size == 0 || !statistics || !info) return false;
+    uint64_t used_pages = (uint64_t)statistics->active_count
+        + (uint64_t)statistics->wire_count
+        + (uint64_t)statistics->compressor_page_count;
+    uint64_t used_bytes = used_pages > memory_size / (uint64_t)page_size
+        ? memory_size
+        : used_pages * (uint64_t)page_size;
+
+    info->memory_total_bytes = memory_size;
+    info->memory_used_bytes = used_bytes;
+    info->memory_available = true;
+    return true;
+}
+
 static void get_memory_info(SystemInfo *info) {
     if (!info) return;
     uint64_t memory_size = 0;
@@ -407,24 +434,6 @@ static void get_memory_info(SystemInfo *info) {
     if (sysctlbyname("hw.memsize", &memory_size, &memory_size_length, NULL, 0) != 0
         || memory_size == 0) {
         return;
-    }
-
-    char *const arguments[] = {"/usr/bin/memory_pressure", NULL};
-    char pressure_output[4096];
-    if (capture_process("/usr/bin/memory_pressure", arguments, pressure_output,
-                        sizeof(pressure_output), DEFAULT_PROBE_TIMEOUT_MS)) {
-        const char *prefix = "System-wide memory free percentage: ";
-        char *match = strstr(pressure_output, prefix);
-        if (match) {
-            char *end = NULL;
-            long free_percent = strtol(match + strlen(prefix), &end, 10);
-            if (end != match + strlen(prefix) && free_percent >= 0 && free_percent <= 100) {
-                info->memory_total_bytes = memory_size;
-                info->memory_used_bytes = (memory_size * (uint64_t)(100 - free_percent)) / 100ULL;
-                info->memory_available = true;
-                return;
-            }
-        }
     }
 
     mach_port_t host = mach_host_self();
@@ -438,17 +447,7 @@ static void get_memory_info(SystemInfo *info) {
     if (stats_result != KERN_SUCCESS || page_result != KERN_SUCCESS || page_size == 0) {
         return;
     }
-
-    uint64_t used_pages = (uint64_t)statistics.internal_page_count
-        + (uint64_t)statistics.compressor_page_count;
-    uint64_t purgeable = (uint64_t)statistics.purgeable_count;
-    used_pages = used_pages > purgeable ? used_pages - purgeable : 0;
-    uint64_t used_bytes = used_pages * (uint64_t)page_size;
-    if (used_bytes > memory_size) used_bytes = memory_size;
-
-    info->memory_total_bytes = memory_size;
-    info->memory_used_bytes = used_bytes;
-    info->memory_available = true;
+    memory_info_from_vm_stats(memory_size, page_size, &statistics, info);
 }
 
 static const char *disk_mount_path(void) {
@@ -578,33 +577,55 @@ static bool first_active_ipv4(char *interface,
     return found;
 }
 
-static bool wifi_interface(char *output, size_t output_size) {
-    char *const arguments[] = {"/usr/sbin/networksetup", "-listallhardwareports", NULL};
-    char command_output[8192];
-    if (!capture_process("/usr/sbin/networksetup", arguments, command_output,
-                         sizeof(command_output), DEFAULT_PROBE_TIMEOUT_MS)) {
+static bool wifi_interface_candidate(CFTypeRef bsd_name,
+                                     CFTypeRef interface_type,
+                                     char *output,
+                                     size_t output_size) {
+    if (!output || output_size == 0) return false;
+    output[0] = '\0';
+    if (!bsd_name || !interface_type
+        || CFGetTypeID(bsd_name) != CFStringGetTypeID()
+        || CFGetTypeID(interface_type) != CFStringGetTypeID()
+        || !CFEqual(interface_type, kSCNetworkInterfaceTypeIEEE80211)) {
         return false;
     }
 
-    bool found_wifi = false;
-    char *save = NULL;
-    for (char *line = strtok_r(command_output, "\n", &save);
-         line;
-         line = strtok_r(NULL, "\n", &save)) {
-        if (strncmp(line, "Hardware Port: Wi-Fi", 20) == 0
-            || strncmp(line, "Hardware Port: AirPort", 22) == 0) {
-            found_wifi = true;
-            continue;
-        }
-        if (found_wifi && strncmp(line, "Device: ", 8) == 0) {
-            const char *candidate = line + 8;
-            if (!valid_interface_name(candidate)) return false;
-            snprintf(output, output_size, "%s", candidate);
-            return true;
-        }
-        if (strncmp(line, "Hardware Port: ", 15) == 0) found_wifi = false;
+    char candidate[IFNAMSIZ] = "";
+    if (!CFStringGetCString((CFStringRef)bsd_name,
+                            candidate,
+                            sizeof(candidate),
+                            kCFStringEncodingUTF8)
+        || (CFIndex)strlen(candidate) != CFStringGetLength((CFStringRef)bsd_name)
+        || !valid_interface_name(candidate)
+        || strlen(candidate) + 1 > output_size) {
+        return false;
     }
-    return false;
+    memcpy(output, candidate, strlen(candidate) + 1);
+    return true;
+}
+
+static bool wifi_interface(char *output, size_t output_size) {
+    if (!output || output_size == 0) return false;
+    output[0] = '\0';
+    CFArrayRef interfaces = SCNetworkInterfaceCopyAll();
+    if (!interfaces) return false;
+
+    bool found = false;
+    CFIndex count = CFArrayGetCount(interfaces);
+    for (CFIndex index = 0; index < count; index++) {
+        CFTypeRef candidate = CFArrayGetValueAtIndex(interfaces, index);
+        if (!candidate || CFGetTypeID(candidate) != SCNetworkInterfaceGetTypeID()) continue;
+        SCNetworkInterfaceRef interface = (SCNetworkInterfaceRef)candidate;
+        if (wifi_interface_candidate(SCNetworkInterfaceGetBSDName(interface),
+                                     SCNetworkInterfaceGetInterfaceType(interface),
+                                     output,
+                                     output_size)) {
+            found = true;
+            break;
+        }
+    }
+    CFRelease(interfaces);
+    return found;
 }
 
 static void wifi_network_name(const char *interface, char *output, size_t output_size) {
@@ -683,19 +704,65 @@ static void get_uptime_info(SystemInfo *info) {
     info->uptime_available = true;
 }
 
-static bool parse_process_line(char *output, SystemInfo *info) {
-    if (!output || !info) return false;
+static bool parse_process_line(char *output, ProcessSample *sample) {
+    if (!output || !sample) return false;
     char *line = output;
     while (*line == ' ' || *line == '\t' || *line == '\r' || *line == '\n') line++;
-    char *end = NULL;
-    double cpu = strtod(line, &end);
-    if (end == line) return false;
+
+    size_t cpu_length = strcspn(line, " \t\r\n");
+    if (cpu_length == 0 || cpu_length >= 64) return false;
+    char cpu_token[64];
+    memcpy(cpu_token, line, cpu_length);
+    cpu_token[cpu_length] = '\0';
+    for (size_t index = 0; index < cpu_length; index++) {
+        if (cpu_token[index] == ',') cpu_token[index] = '.';
+    }
+    char *cpu_end = NULL;
+    double cpu = strtod(cpu_token, &cpu_end);
+    if (cpu_end != cpu_token + cpu_length || !isfinite(cpu)) return false;
+
+    char *end = line + cpu_length;
     while (*end == ' ' || *end == '\t') end++;
-    end[strcspn(end, "\r\n")] = '\0';
-    if (end[0] == '\0') return false;
-    const char *display_name = strrchr(end, '/');
-    display_name = display_name && display_name[1] != '\0' ? display_name + 1 : end;
-    info->process_cpu = cpu < 0.0 ? 0.0 : cpu;
+
+    char *pid_end = NULL;
+    long parsed_pid = strtol(end, &pid_end, 10);
+    if (pid_end == end || parsed_pid <= 0 || parsed_pid > INT32_MAX) return false;
+    if (*pid_end != ' ' && *pid_end != '\t') return false;
+    while (*pid_end == ' ' || *pid_end == '\t') pid_end++;
+    pid_end[strcspn(pid_end, "\r\n")] = '\0';
+    size_t name_length = strlen(pid_end);
+    while (name_length > 0 && (pid_end[name_length - 1] == ' '
+                               || pid_end[name_length - 1] == '\t')) {
+        pid_end[--name_length] = '\0';
+    }
+    if (pid_end[0] == '\0') return false;
+
+    sample->pid = (pid_t)parsed_pid;
+    sample->cpu = cpu < 0.0 ? 0.0 : cpu;
+    snprintf(sample->fallback_name, sizeof(sample->fallback_name), "%s", pid_end);
+    return true;
+}
+
+static bool process_info_from_sample(const ProcessSample *sample,
+                                     const char *process_path,
+                                     const char *process_name,
+                                     SystemInfo *info) {
+    if (!sample || !info || sample->pid <= 0 || sample->fallback_name[0] == '\0') {
+        return false;
+    }
+
+    const char *display_name = NULL;
+    if (process_path && process_path[0] != '\0') {
+        const char *basename = strrchr(process_path, '/');
+        display_name = basename && basename[1] != '\0' ? basename + 1 : process_path;
+    }
+    if ((!display_name || display_name[0] == '\0')
+        && process_name && process_name[0] != '\0') {
+        display_name = process_name;
+    }
+    if (!display_name || display_name[0] == '\0') display_name = sample->fallback_name;
+
+    info->process_cpu = sample->cpu;
     snprintf(info->process_name, sizeof(info->process_name), "%s", display_name);
     info->process_available = true;
     return true;
@@ -703,11 +770,25 @@ static bool parse_process_line(char *output, SystemInfo *info) {
 
 static void get_process_info(SystemInfo *info) {
     if (!info) return;
-    char *const arguments[] = {"/bin/ps", "-axo", "pcpu=,comm=", "-r", NULL};
+    char *const arguments[] = {"/bin/ps", "-Ar", "-o", "pcpu=,pid=,ucomm=", NULL};
     char output[4096];
     if (!capture_first_line("/bin/ps", arguments, output,
                             sizeof(output), DEFAULT_PROBE_TIMEOUT_MS)) return;
-    parse_process_line(output, info);
+
+    ProcessSample sample = {0};
+    if (!parse_process_line(output, &sample)) return;
+
+    char process_path[PROC_PIDPATHINFO_MAXSIZE] = "";
+    char process_name[PROC_PIDPATHINFO_MAXSIZE] = "";
+    const char *resolved_path = proc_pidpath(sample.pid, process_path,
+                                             sizeof(process_path)) > 0
+        ? process_path
+        : NULL;
+    const char *resolved_name = proc_name(sample.pid, process_name,
+                                          sizeof(process_name)) > 0
+        ? process_name
+        : NULL;
+    process_info_from_sample(&sample, resolved_path, resolved_name, info);
 }
 
 static bool valid_utf8_sequence(const unsigned char *bytes, size_t remaining, size_t *length) {
@@ -851,9 +932,9 @@ static bool payload_finish(Payload *payload) {
         && payload->bytes[payload->length - 2] == 0;
 }
 
-static uint64_t rounded_gibibytes(uint64_t bytes) {
+static uint64_t floor_gibibytes(uint64_t bytes) {
     const uint64_t gib = 1024ULL * 1024ULL * 1024ULL;
-    return (bytes + gib / 2ULL) / gib;
+    return bytes / gib;
 }
 
 static const char *cpu_color(const SystemInfo *info) {
@@ -883,8 +964,8 @@ static bool build_routine_payload(const SystemInfo *info, Payload *payload) {
     if (info->cpu_available && info->memory_available) {
         snprintf(label, sizeof(label), "%d%% %llu/%lluG",
                  info->cpu_percent,
-                 (unsigned long long)rounded_gibibytes(info->memory_used_bytes),
-                 (unsigned long long)rounded_gibibytes(info->memory_total_bytes));
+                 (unsigned long long)floor_gibibytes(info->memory_used_bytes),
+                 (unsigned long long)floor_gibibytes(info->memory_total_bytes));
     } else {
         snprintf(label, sizeof(label), "--%% --/--");
     }
@@ -921,8 +1002,8 @@ static bool build_popup_payload(const PopupRows *rows,
             int percent = clamp_percent((int)((info->memory_used_bytes * 100ULL
                 + info->memory_total_bytes / 2ULL) / info->memory_total_bytes));
             snprintf(label, sizeof(label), "Memory: %llu/%lluG (%d%%)",
-                     (unsigned long long)rounded_gibibytes(info->memory_used_bytes),
-                     (unsigned long long)rounded_gibibytes(info->memory_total_bytes),
+                     (unsigned long long)floor_gibibytes(info->memory_used_bytes),
+                     (unsigned long long)floor_gibibytes(info->memory_total_bytes),
                      percent);
         } else {
             snprintf(label, sizeof(label), "Memory: --/--");

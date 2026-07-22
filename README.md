@@ -81,12 +81,12 @@ target space is actually `float`. Cross-display window moves now adopt the
 visible destination space mode in both directions, so a floating window dropped
 onto a managed (`bsp` / `stack`) display is re-tiled and a tiled window dropped
 onto a float display is floated.
-The `front_app` popup now exposes two explicit rule-aware window actions on top
-of the raw toggles: `Adopt Current Space Mode` and `Send to Float Space`.
-It also includes conservative presets: `Utility` floats and centers the current
-window without making it topmost, `Focus` tiles/adopts the current space mode and
-balances the layout, `Presentation` enters fullscreen, and `Tile Here` clears
-topmost state while adopting the current space mode. App-default rows can persist
+The root `front_app` popup keeps `Adopt Current Space Mode` beside the frequent
+raw window toggles. Its click-only `More Window Actions` child holds `Send to
+Float Space`, display/space moves, and the conservative `Utility`, `Focus`,
+`Presentation`, and `Tile Here` presets. Opening or closing the root resets the
+child, and a child action closes both popup levels after it runs. App-default
+rows can persist
 "this app floats" / "this app tiles" rules through `scripts/yabai_control.sh
 app-default-current <float|tile|unset>`, and the Control Center popup exposes
 quick `Yabai On` / `Auto If Running` / `Manual Bar` mode switches.
@@ -375,6 +375,7 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **Per-Display Space Creator:** each `space_creator.<display>` is associated with the known spaces on only its target display, so multi-monitor setups show one `+` per monitor instead of every creator on every bar.
 - **Precomputed Apple Menu Model:** the enhanced Apple-menu model is now prepared before `begin_config`, so menu path discovery and section building happen while the old bar is still visible instead of inside the blank reload window.
 - **Shared Popup UI Builder:** repeated popup toggles and menu-style rows now go through `modules/ui_builder.lua`, keeping click-open anchors direct while detail refreshes happen asynchronously. Front App and Control Center popup rows use the same row/header/separator helpers as Triforce and Music.
+- **Progressive Popup Disclosure:** on the fully populated Personal/Yabai models, Music's initial surface drops from 24 rows to 13 by moving secondary launchers into `More Apps` and `Kits + Folders` children, while Front App drops from 29 rows to 18 by moving presets and move commands into `More Window Actions`. These children open only on click, Music keeps only one sibling child open, root toggles reset them first, and their actions close both popup levels. Randomized live samples reduced the direct layout-open median by 28% for both roots; see the performance audit for load caveats.
 - **Direct Popup Execution:** Popup-row hover passes bounded arguments directly from `popup_hover` to SketchyBar, and native-helper setups use compiled `popup_anchor` for the Apple anchor; portable fallbacks remain available.
 - **Native Volume Detail Refresh:** Compiled setups refresh the volume popup through `volume_popup_helper` (CoreAudio + bounded runtime-cache reads + one SketchyBar request/reply); Lua-only, unsupported-device, disabled-native, and IPC-failure paths retain `plugins/volume.sh`. When `SwitchAudioSource` is absent, unusable route rows stay hidden without adding another widget.
 - **Modular Load:** Configuration logic is split across focused modules (`shell_utils`, `paths`, `binary_resolver`) to ensure fast initialization.
@@ -384,7 +385,7 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **Config Build Metric:** `./bin/barista-stats.sh show` now reports `config_build_time` separately from total reload time, so the `begin_config` to `end_config` window can be tuned independently from spaces follow-up work.
 - **Config Build Breakdown:** the same stats view now splits config build into menu render, left layout, right layout, and popup/submenu registry work, and now further separates left/right layout time into layout-table build vs. SketchyBar apply so reload tuning can target the actual slow phase.
 - **Non-blocking Integration Models:** the left-side Oracle builder creates one shared static menu model without running the Oracle status command inside config construction. Control Center likewise defers its live Yabai layout query to the bounded post-config updater and reuses complete window-manager flags instead of probing them again while building popup rows.
-- **Post-config Commit Queue:** layout effects, hover/submenu subscriptions, and Yabai signal registration are collected during construction and flushed only after `sbar.end_config()`. Configuration-time delays use native `sbar.delay` callbacks instead of detached sleeper shells, duplicate hover/dismissal subscription intents collapse to one client call per item, the supported reload path relies on its existing synchronous missing-space fallback instead of scheduling a redundant repair sleeper, and popup dismissal registers only optional left-side anchors that were actually created.
+- **Post-config Commit Queue:** layout effects, hover/submenu subscriptions, and Yabai signal registration are collected during construction and flushed only after `sbar.end_config()`. Configuration-time delays use native `sbar.delay` callbacks instead of detached sleeper shells, duplicate hover/dismissal subscription intents collapse to one client call per item, the supported reload path relies on its existing synchronous missing-space fallback instead of scheduling a redundant repair sleeper, and popup dismissal registers optional left-side anchors and nested popup parents only when they were actually created.
 - **Left-Layout Section Metrics:** the same stats view now also breaks left-layout build into `front_app`, `triforce`, `spaces`, `control_center`, and group assembly so the next reload fix can target the slow subsection instead of the whole left side.
 - **Cheap Timing Probes:** config-build and left-layout section metrics now use an in-process profiling clock so measuring reload hot paths no longer adds extra timestamp subprocesses; end-to-end `reload_time` still uses wall-clock.
 - **Spaces Discovery Reuse:** `simple_spaces.sh` now derives active display and display count from the already-fetched `yabai query --spaces` payload in the normal path, keeping the separate displays query only as a fallback.

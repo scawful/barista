@@ -135,8 +135,24 @@ function ui.toggle(item_name, opts)
   return string.format([[USER="${USER:-$(id -un)}" %s -m --set "$NAME" popup.drawing=toggle]], bin)
 end
 
+function ui.toggle_after_closing(item_name, close_items, opts)
+  local bin = shell_quote(sketchybar_bin(opts))
+  local args = {}
+  local seen = {}
+  for _, name in ipairs(type(close_items) == "table" and close_items or {}) do
+    if type(name) == "string" and name ~= "" and name ~= item_name and not seen[name] then
+      seen[name] = true
+      table.insert(args, string.format("--set %s popup.drawing=off", shell_quote(name)))
+    end
+  end
+  table.insert(args, string.format("--set %s popup.drawing=toggle", shell_quote(item_name)))
+  return string.format("%s -m %s", bin, table.concat(args, " "))
+end
+
 function ui.toggle_then_refresh_async(item_name, refresh_cmd, opts)
-  local toggle_cmd = ui.toggle(item_name, opts)
+  local toggle_cmd = type(opts) == "table" and type(opts.close_popups) == "table"
+    and ui.toggle_after_closing(item_name, opts.close_popups, opts)
+    or ui.toggle(item_name, opts)
   if type(refresh_cmd) ~= "string" or refresh_cmd == "" then
     return toggle_cmd
   end
@@ -147,6 +163,27 @@ function ui.close_after(parent, command, opts)
   local bin = shell_quote(sketchybar_bin(opts))
   local target = parent and parent ~= "" and shell_quote(parent) or [["$NAME"]]
   local close_cmd = string.format("%s -m --set %s popup.drawing=off", bin, target)
+  if type(command) ~= "string" or command == "" then
+    return close_cmd
+  end
+  return string.format("%s; %s", command, close_cmd)
+end
+
+function ui.close_after_all(parents, command, opts)
+  local bin = shell_quote(sketchybar_bin(opts))
+  local targets = type(parents) == "table" and parents or { parents }
+  local seen = {}
+  local close_args = {}
+  for _, parent in ipairs(targets) do
+    if type(parent) == "string" and parent ~= "" and not seen[parent] then
+      seen[parent] = true
+      table.insert(close_args, string.format("--set %s popup.drawing=off", shell_quote(parent)))
+    end
+  end
+  if #close_args == 0 then
+    return ui.close_after(nil, command, opts)
+  end
+  local close_cmd = string.format("%s -m %s", bin, table.concat(close_args, " "))
   if type(command) ~= "string" or command == "" then
     return close_cmd
   end
@@ -317,6 +354,37 @@ function ui.row(layout, parent, name, spec)
   }, { style = style })
   merge(item, spec.props)
   return append(layout, spec.layout_entry and { type = "item", name = name, props = item, attach_hover = hover == true } or item)
+end
+
+function ui.submenu(layout, parent, name, spec)
+  spec = spec or {}
+  local style = spec.style or ui.popup_style(spec.ctx)
+  local props = copy_table(spec.props or {})
+  local popup = copy_table(props.popup or {})
+  local raw_style = style.raw or {}
+  local popup_background = spec.popup_background
+  if popup_background == nil and type(raw_style.popup_background) == "function" then
+    popup_background = raw_style.popup_background()
+  end
+  popup.align = popup.align or spec.align or "right"
+  popup.background = popup.background or popup_background or {}
+  props.popup = popup
+
+  local click_script = type(spec.close_popups) == "table"
+    and ui.toggle_after_closing(name, spec.close_popups, spec)
+    or ui.toggle(name, spec)
+
+  return ui.row(layout, parent, name, {
+    style = style,
+    icon = spec.icon or "",
+    label = string.format("%s  %s", spec.label or "More", spec.arrow_icon or "󰅂"),
+    click_script = click_script,
+    font = spec.font,
+    label_color = spec.label_color,
+    prominent = spec.prominent,
+    hover = spec.hover ~= false,
+    props = props,
+  })
 end
 
 function ui.section(layout, parent, prefix, section, opts)

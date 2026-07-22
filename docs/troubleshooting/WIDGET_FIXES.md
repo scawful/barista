@@ -256,8 +256,8 @@ are ever removed.
 - Cross-display window moves now adopt the visible destination space mode in both directions. A floating window moved onto a managed display is re-tiled, and a tiled window moved onto a float display is floated.
 - The `Toggle Topmost` action now maps to yabai's current window `sub-layer` control (`above` / `auto`) instead of the removed `--toggle topmost` flag, so the popup and skhd shortcut no longer emit runtime errors on yabai 7.x.
 - The `front_app` popup now updates its float/fullscreen/topmost row labels from the current window state, so the row explains the next action instead of always saying `Toggle`.
-- Conservative presets live in the same popup: `Utility`, `Focus`, `Presentation`, and `Tile Here`. They do not move windows across spaces or displays and they clear topmost state where a preset returns a window to normal tiling.
-- The `front_app` popup now exposes the same policy directly through `Adopt Current Space Mode` and `Send to Float Space`, so recovery does not require remembering a lower-level yabai command.
+- The fully enabled `front_app` root now shows 18 rows instead of 29. Its click-only `More Window Actions` child holds the `Utility`, `Focus`, `Presentation`, and `Tile Here` presets plus display/space move actions; the presets keep their conservative window-state behavior.
+- `Adopt Current Space Mode` stays on the root, while `Send to Float Space` lives in the child. Root toggles reset the child first, and child actions close both popup levels after running.
 - The Control Center popup keeps persistent app-default controls out of the smaller `front_app` popup. Its rows are `Default App: Float`, `Default App: Tile`, and `Unset App Default`; they call `scripts/yabai_control.sh app-default-current ...`, persist the choice in `state.json` under `window_defaults.apps`, and install/remove a labeled live yabai rule (`barista-default-*`) when yabai is running.
 - `app-default-current` uses the same front-app context fallback when yabai has
   no focused managed window, so unmanaged/frontmost utility apps can still be

@@ -161,6 +161,20 @@ run_front_app_popup_refresh() {
     "$SCRIPT"
 }
 
+run_front_app_event() {
+  : > "$LOG_FILE"
+  : > "$ARGV_LOG"
+  PATH="$POISON_BIN_DIR:$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    BARISTA_CONFIG_DIR="$TMP_DIR/config" \
+    BARISTA_SCRIPTS_DIR="$SCRIPTS_DIR" \
+    BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
+    BARISTA_FRONT_APP_ACTION_ROWS="${2:-1}" \
+    NAME=front_app \
+    SENDER="$1" \
+    INFO="" \
+    "$SCRIPT"
+}
+
 assert_log_contains() {
   local expected="$1"
   grep -Fq -- "$expected" "$LOG_FILE" || {
@@ -295,6 +309,16 @@ assert calls[0][:3] == ["--animate", "sin", "12"], calls[0]
 assert calls[0][3:] == calls[1], calls
 PY
 }
+
+run_front_app_event mouse.clicked 1
+assert_call_count 1
+assert_set_count 2
+assert_log_contains "--set front_app.more popup.drawing=off --set front_app popup.drawing=toggle"
+
+run_front_app_event mouse.clicked 0
+assert_call_count 1
+assert_set_count 1
+assert_log_contains "--set front_app popup.drawing=toggle"
 
 run_front_app floating_above
 assert_call_count 1

@@ -173,6 +173,7 @@ local function make_entry(id, label, icon, action, opts)
     label_color = opts.label_color,
     action = action or "",
     prominent = opts.prominent == true,
+    primary = opts.primary == true,
   }
 end
 
@@ -182,6 +183,7 @@ local app_specs = {
     label = "yams",
     icon = "󰆼",
     color_key = "MAUVE",
+    primary = true,
     candidates = {
       HOME .. "/Applications/yams.app",
       "/Applications/yams.app",
@@ -192,6 +194,7 @@ local app_specs = {
     label = "Logic Pro",
     icon = "󰎈",
     color_key = "PEACH",
+    primary = true,
     candidates = {
       "/Applications/Logic Pro.app",
       HOME .. "/Applications/Logic Pro.app",
@@ -310,6 +313,7 @@ function music.build_menu_model(ctx)
     if path then
       table.insert(app_entries, make_entry(spec.id, spec.label, spec.icon, open_path_action(path), {
         icon_color = theme_color(ctx, spec.color_key, "WHITE"),
+        primary = spec.primary,
       }))
     end
   end
@@ -493,6 +497,57 @@ function music.create_popup_items(ctx)
   local title_font = style.font_header or popup_font(ctx, "Bold", ctx and ctx.settings and ctx.settings.font and ctx.settings.font.sizes and ctx.settings.font.sizes.small or 11)
   local row_font = style.font_small or popup_font(ctx, "Semibold", ctx and ctx.settings and ctx.settings.font and ctx.settings.font.sizes and ctx.settings.font.sizes.small or 11)
   local parent_popup = (model.ui and model.ui.item_name) or DEFAULT_ITEM_NAME
+  local submenu_parents = {}
+
+  local sections = {}
+  for _, section in ipairs(model.sections or {}) do
+    sections[section.id] = section
+  end
+
+  local function add_entry(parent, section, entry)
+    local click_script = nil
+    local action = entry.action
+    if parent ~= parent_popup then
+      click_script = ui.close_after_all({ parent, parent_popup }, action, {
+        sketchybar_bin = ctx and (ctx.SKETCHYBAR_BIN or ctx.sketchybar_bin) or nil,
+      })
+      action = nil
+    end
+    ui.row(items, parent, "music.studio." .. section.id .. "." .. entry.id, {
+      style = style,
+      icon = { string = entry.icon, color = entry.icon_color or section.color },
+      label = truncate_label(entry.label, 42),
+      font = row_font,
+      label_color = entry.label_color or style.label_color,
+      action = action,
+      click_script = click_script,
+      prominent = entry.prominent,
+    })
+  end
+
+  local function add_submenu(name, label, icon, section, entries, header_name, close_popups)
+    if type(entries) ~= "table" or #entries == 0 then
+      return
+    end
+    ui.submenu(items, parent_popup, name, {
+      style = style,
+      icon = { string = icon, color = section.color },
+      label = label,
+      font = row_font,
+      label_color = style.label_color,
+      sketchybar_bin = ctx and (ctx.SKETCHYBAR_BIN or ctx.sketchybar_bin) or nil,
+      close_popups = close_popups,
+    })
+    table.insert(submenu_parents, name)
+    ui.header(items, name, header_name, label, {
+      style = style,
+      font = title_font,
+      color = section.color,
+    })
+    for _, entry in ipairs(entries) do
+      add_entry(name, section, entry)
+    end
+  end
 
   ui.header(items, parent_popup, "music.studio.header", model.title or "Music Studio", {
     style = style,
@@ -501,34 +556,70 @@ function music.create_popup_items(ctx)
     color = theme_color(ctx, "WHITE"),
   })
 
-  for section_index, section in ipairs(model.sections or {}) do
-    if section_index > 1 then
-      ui.separator(items, parent_popup, "music.studio.sep." .. section.id, {
-        style = style,
-        font = row_font,
-      })
+  local apps = sections.apps
+  local kits = sections.kits
+  local has_kits_submenu = kits and #(kits.entries or {}) > 0 or false
+  local has_more_apps_submenu = false
+  local has_root_section = false
+  if apps and #(apps.entries or {}) > 0 then
+    local primary_apps = {}
+    local secondary_apps = {}
+    for _, entry in ipairs(apps.entries or {}) do
+      table.insert(entry.primary and primary_apps or secondary_apps, entry)
     end
-
-    ui.header(items, parent_popup, "music.studio." .. section.id .. ".header", section.label, {
+    has_more_apps_submenu = #secondary_apps > 0
+    ui.header(items, parent_popup, "music.studio.apps.header", apps.label, {
       style = style,
       font = title_font,
-      color = section.color,
+      color = apps.color,
     })
-
-    for _, entry in ipairs(section.entries or {}) do
-      ui.row(items, parent_popup, "music.studio." .. section.id .. "." .. entry.id, {
-        style = style,
-        icon = { string = entry.icon, color = entry.icon_color or section.color },
-        label = truncate_label(entry.label, 42),
-        font = row_font,
-        label_color = entry.label_color or style.label_color,
-        action = entry.action,
-        prominent = entry.prominent,
-      })
+    for _, entry in ipairs(primary_apps) do
+      add_entry(parent_popup, apps, entry)
     end
+    add_submenu(
+      "music.studio.more_apps",
+      "More Apps",
+      "󰀻",
+      apps,
+      secondary_apps,
+      "music.studio.more_apps.header",
+      has_kits_submenu and { "music.studio.kits" } or nil
+    )
+    has_root_section = true
   end
 
-  return items
+  local workflow = sections.workflow
+  if workflow and #(workflow.entries or {}) > 0 then
+    if has_root_section then
+      ui.separator(items, parent_popup, "music.studio.sep.workflow", {
+        style = style,
+        font = row_font,
+      })
+    end
+    ui.header(items, parent_popup, "music.studio.workflow.header", workflow.label, {
+      style = style,
+      font = title_font,
+      color = workflow.color,
+    })
+    for _, entry in ipairs(workflow.entries or {}) do
+      add_entry(parent_popup, workflow, entry)
+    end
+    has_root_section = true
+  end
+
+  if kits then
+    add_submenu(
+      "music.studio.kits",
+      kits.label,
+      "󰉋",
+      kits,
+      kits.entries or {},
+      "music.studio.kits.header",
+      has_more_apps_submenu and { "music.studio.more_apps" } or nil
+    )
+  end
+
+  return items, { submenu_parents = submenu_parents }
 end
 
 return music

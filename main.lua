@@ -615,12 +615,16 @@ end
 for _, item_name in ipairs((left_layout_metadata and left_layout_metadata.popup_parents) or {}) do
   table.insert(popup_manager_items, item_name)
 end
+local submenu_manager_items = { unpack(menu_metadata.submenu_parents or {}) }
+for _, item_name in ipairs((left_layout_metadata and left_layout_metadata.submenu_parents) or {}) do
+  table.insert(submenu_manager_items, item_name)
+end
 local registry_start_ms = runtime_startup.current_time_ms()
 submenu_registry.register(
   -- Popup parents (items with popup.drawing=toggle)
   popup_manager_items,
   -- Submenu sections (items inside menu popups that have their own popups)
-  menu_metadata.submenu_parents or {}
+  submenu_manager_items
 )
 registry_duration_ms = runtime_startup.current_time_ms() - registry_start_ms
 

@@ -143,7 +143,7 @@ run_test("music integration: widget and popup mirror Triforce-style behavior", f
   assert_true(widget.click_script:match("BARISTA_MUSIC_ACTION=click") == nil, "clicks should not route through the status/hover controller")
   assert_equal(widget.updates, false, "music menu should not wake on forced routine updates")
 
-  local popup_items = music.create_popup_items(ctx)
+  local popup_items, popup_metadata = music.create_popup_items(ctx)
   local by_name = {}
   for _, item in ipairs(popup_items) do
     by_name[item.name] = item
@@ -155,8 +155,159 @@ run_test("music integration: widget and popup mirror Triforce-style behavior", f
   assert_true(by_name["music.studio.apps.roland_cloud_manager"] ~= nil, "Roland Cloud Manager row should exist")
   assert_true(by_name["music.studio.apps.sp404_mkii"] ~= nil, "SP-404MKII row should exist")
   assert_true(by_name["music.studio.workflow.crate"] ~= nil, "custom workflow row should exist")
+  assert_equal(by_name["music.studio.apps.logic_pro"].position, "popup.music_studio",
+    "primary app rows should remain immediately available")
+  assert_equal(by_name["music.studio.apps.roland_cloud_manager"].position, "popup.music.studio.more_apps",
+    "secondary app rows should move under More Apps")
   assert_true(by_name["music.studio.apps.logic_pro"].hover == true, "popup actions should opt into hover treatment")
   assert_true(by_name["music.studio.apps.logic_pro"].click_script:find("popup.drawing=off", 1, true) ~= nil, "launcher rows should close the popup after firing")
+  assert_true(by_name["music.studio.apps.roland_cloud_manager"].click_script:find(
+    "--set music.studio.more_apps popup.drawing=off --set music_studio popup.drawing=off",
+    1,
+    true
+  ) ~= nil, "nested app launchers should close both popup levels")
+  assert_true(#popup_metadata.submenu_parents >= 1, "secondary apps should register a nested popup")
+end)
+
+run_test("music integration: progressive disclosure preserves every launcher", function()
+  local root = make_fixture_root()
+  local ctx = build_ctx(root, { SKETCHYBAR_BIN = "/custom/sketchybar" })
+  local function entry(id, primary)
+    return {
+      id = id,
+      label = id,
+      icon = "󰐕",
+      icon_color = "0xffffffff",
+      action = "open-" .. id,
+      primary = primary == true,
+    }
+  end
+  local model = {
+    title = "Studio",
+    ui = { item_name = "music_studio", icon = "󰝚" },
+    sections = {
+      {
+        id = "apps",
+        label = "Apps",
+        color = "0xff74c7ec",
+        entries = {
+          entry("yams", true), entry("logic_pro", true), entry("roland_cloud_manager"),
+          entry("sp404_mkii"), entry("ableton_live"), entry("garageband"),
+          entry("serato_dj_pro"), entry("mpc_beats"), entry("audio_midi_setup"),
+        },
+      },
+      {
+        id = "workflow",
+        label = "Workflow",
+        color = "0xffa6e3a1",
+        entries = {
+          entry("studio_start"), entry("studio_devices"), entry("songforge_tui"),
+          entry("music_guides"), entry("muzak_bounces"),
+        },
+      },
+      {
+        id = "kits",
+        label = "Kits + Folders",
+        color = "0xffcba6f7",
+        entries = {
+          entry("samples"), entry("opxy_wavetables"), entry("sp404_wavetables"), entry("song_pdfs"),
+        },
+      },
+    },
+  }
+
+  local items, metadata = music.create_popup_items(setmetatable({ music_menu_model = model }, { __index = ctx }))
+  local by_name = {}
+  local root_rows = 0
+  local more_apps_rows = 0
+  local kits_rows = 0
+  local action_rows = 0
+  for _, item in ipairs(items) do
+    by_name[item.name] = item
+    if item.position == "popup.music_studio" then root_rows = root_rows + 1 end
+    if item.position == "popup.music.studio.more_apps" then more_apps_rows = more_apps_rows + 1 end
+    if item.position == "popup.music.studio.kits" then kits_rows = kits_rows + 1 end
+    if type(item.click_script) == "string" and item.click_script:find("open%-", 1, false) then
+      action_rows = action_rows + 1
+    end
+  end
+
+  assert_equal(root_rows, 13, "Music should render only primary actions and nested entry points initially")
+  assert_equal(more_apps_rows, 8, "More Apps should contain one header and seven launchers")
+  assert_equal(kits_rows, 5, "Kits should contain one header and four launchers")
+  assert_equal(action_rows, 18, "progressive disclosure should preserve all launcher actions")
+  assert_equal(table.concat(metadata.submenu_parents, "|"), "music.studio.more_apps|music.studio.kits",
+    "Music should register both click-open nested popups")
+  assert_equal(by_name["music.studio.more_apps"].position, "popup.music_studio",
+    "More Apps entry point should remain on the root popup")
+  assert_equal(by_name["music.studio.kits"].position, "popup.music_studio",
+    "Kits entry point should remain on the root popup")
+  assert_equal(by_name["music.studio.more_apps"].click_script,
+    "/custom/sketchybar -m --set music.studio.kits popup.drawing=off --set music.studio.more_apps popup.drawing=toggle",
+    "More Apps should close its sibling and toggle directly")
+  assert_equal(by_name["music.studio.kits"].click_script,
+    "/custom/sketchybar -m --set music.studio.more_apps popup.drawing=off --set music.studio.kits popup.drawing=toggle",
+    "Kits should close its sibling and toggle directly")
+  assert_true(by_name["music.studio.apps.roland_cloud_manager"].click_script:find(
+    "open%-roland_cloud_manager; /custom/sketchybar %-m %-%-set music%.studio%.more_apps popup%.drawing=off %-%-set music_studio popup%.drawing=off"
+  ) ~= nil, "nested launcher should retain its action and close both popup levels")
+
+  local sparse_model = {
+    title = "Studio",
+    ui = { item_name = "music_studio", icon = "󰝚" },
+    sections = {
+      { id = "apps", label = "Apps", color = "0xff74c7ec", entries = { entry("logic_pro", true) } },
+    },
+  }
+  local sparse_items, sparse_metadata = music.create_popup_items(
+    setmetatable({ music_menu_model = sparse_model }, { __index = ctx })
+  )
+  local sparse_by_name = {}
+  for _, item in ipairs(sparse_items) do sparse_by_name[item.name] = item end
+  assert_equal(#sparse_metadata.submenu_parents, 0, "empty secondary groups should not register nested popups")
+  assert_nil(sparse_by_name["music.studio.more_apps"], "empty More Apps should stay hidden")
+  assert_nil(sparse_by_name["music.studio.kits"], "empty Kits should stay hidden")
+
+  local one_child_model = {
+    title = "Studio",
+    ui = { item_name = "music_studio", icon = "󰝚" },
+    sections = {
+      {
+        id = "apps",
+        label = "Apps",
+        color = "0xff74c7ec",
+        entries = { entry("logic_pro", true), entry("garageband") },
+      },
+    },
+  }
+  local one_child_items = music.create_popup_items(
+    setmetatable({ music_menu_model = one_child_model }, { __index = ctx })
+  )
+  local one_child_by_name = {}
+  for _, item in ipairs(one_child_items) do one_child_by_name[item.name] = item end
+  assert_equal(one_child_by_name["music.studio.more_apps"].click_script,
+    "/custom/sketchybar -m --set music.studio.more_apps popup.drawing=toggle",
+    "a lone Music child should not target a missing sibling")
+
+  local kits_only_items = music.create_popup_items(setmetatable({
+    music_menu_model = {
+      title = "Studio",
+      ui = { item_name = "music_studio", icon = "󰝚" },
+      sections = {
+        {
+          id = "kits",
+          label = "Kits + Folders",
+          color = "0xffcba6f7",
+          entries = { entry("samples") },
+        },
+      },
+    },
+  }, { __index = ctx }))
+  local kits_only_by_name = {}
+  for _, item in ipairs(kits_only_items) do kits_only_by_name[item.name] = item end
+  assert_equal(kits_only_by_name["music.studio.kits"].click_script,
+    "/custom/sketchybar -m --set music.studio.kits popup.drawing=toggle",
+    "a lone Kits child should not target a missing More Apps sibling")
 end)
 
 run_test("music integration: exposes configured popup parent name", function()

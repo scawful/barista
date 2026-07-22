@@ -191,10 +191,10 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - the `space_visual_refresh` event can be triggered independently for focused visual updates.
 
 ### 2a. Music Menu Routine Path (Verified)
-*   **Files:** `modules/integrations/music.lua`, `plugins/music_studio.sh`
-*   **Update:** The music launcher now stays click/hover driven only (`updates=false`), and its popup model points at the current `Studio/` songforge/studio CLI paths plus shallow kit folders.
-    Anchor clicks are direct popup toggles from `modules/ui_builder.lua`; the shell plugin only owns hover/status behavior.
-*   **Result:** the Music menu no longer wakes on a periodic forced update just to do no-op hover logic; the only work is popup construction at reload and click/hover handling at interaction time.
+*   **Files:** `modules/integrations/music.lua`, `modules/items_left.lua`, `modules/ui_builder.lua`, `plugins/music_studio.sh`
+*   **Update:** The music launcher stays click/hover driven only (`updates=false`), and its popup model points at the current `Studio/` songforge/studio CLI paths plus shallow kit folders. On the fully populated model, the initial surface is 13 rows instead of 24; secondary apps and kit/folder launchers remain available through the click-only `More Apps` and `Kits + Folders` children.
+    The root toggle resets both children before opening or closing, nested actions close the child and root together, and the shell plugin only owns hover/status behavior.
+*   **Result:** the Music menu keeps every launcher without periodic forced updates or presenting all 24 rows at once. The live first-open measurement is recorded in section 3e.
 
 ### 2b. Control-Center Popup Cleanup (Verified Active Path)
 *   **Files:** `modules/integrations/control_center.lua`, `plugins/control_center.sh`
@@ -247,6 +247,12 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - the supported reload helper no longer launches a redundant one-second detached spaces repair; it still waits for `space.1` and runs the same repair synchronously when startup did not create it
     - `items_left.lua` reports the optional popup parents actually created, so popup dismissal honors custom names and omits absent integrations
 *   **Result:** item registration commits before external startup effects run, the normal delayed path no longer creates shell sleeper processes that can survive a process-replacing reload, and missing optional widgets cannot leave phantom popup-manager targets. A supported live restart on 2026-07-20 dispatched 111 initial plus two late post-config actions, sampled no `sleep 0.2`, `sleep 0.8`, or `sleep 1.0` processes, produced no new stdout/stderr item errors, and restored all queried core items plus both runtime sidecars; that run recorded 297 ms config wall time and 933 ms total reload time.
+
+### 3e. Progressive Popup Disclosure (Implemented)
+*   **Files:** `main.lua`, `modules/ui_builder.lua`, `modules/items_left.lua`, `modules/integrations/music.lua`, `plugins/front_app.sh`
+*   **Update:** shared click-only child popups keep the frequently used root rows shallow. The fully populated Music root moves from 24 rows to 13 through `More Apps` and `Kits + Folders`; the Yabai-enabled Front App root moves from 29 rows to 18 through `More Window Actions`.
+    Root toggles close their children before changing root state, and nested actions close both levels in one SketchyBar request after the original action runs. `items_left.lua` reports its child popup names and `main.lua` merges them with menu submenu metadata before writing the runtime registry.
+*   **Result:** every launcher/window action remains reachable while the first popup surface is shorter. In 20 randomized live samples per root/path, the layout-only Music median fell from 92.43 ms to 66.54 ms (28.0%) with p95 108.56 ms to 79.48 ms; Front App fell from 107.54 ms to 77.30 ms (28.1%) with p95 115.09 ms to 94.72 ms. Configured-click medians also fell from 117.82 ms to 96.20 ms for Music and 127.59 ms to 115.10 ms for Front App. The Roland TR-1000 process remained near 100% CPU and after-state system load was higher; Front App's configured-click p95 was correspondingly noisy (136.64 ms to 156.32 ms), so the direct layout path is the primary acceptance signal.
 
 ### 4. Yabai Query merging (Resolved)
 *   **File:** `plugins/refresh_spaces.sh`

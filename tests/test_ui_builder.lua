@@ -29,6 +29,20 @@ run_test("ui_builder: close-after actions", function()
     "sketchybar -m --set triforce popup.drawing=off",
     "empty close_after should only close the parent popup"
   )
+  assert_equal(
+    ui.close_after_all({ "front_app.more", "front_app", "front_app" }, "window-action", {
+      sketchybar_bin = "/custom/sketchybar",
+    }),
+    "window-action; /custom/sketchybar -m --set front_app.more popup.drawing=off --set front_app popup.drawing=off",
+    "nested actions should close the child and root popups in one client call"
+  )
+  assert_equal(
+    ui.toggle_after_closing("front_app", { "front_app.more" }, {
+      sketchybar_bin = "/custom/sketchybar",
+    }),
+    "/custom/sketchybar -m --set front_app.more popup.drawing=off --set front_app popup.drawing=toggle",
+    "root toggles should reset nested popup state first"
+  )
 end)
 
 run_test("ui_builder: anchor layout entries", function()
@@ -137,4 +151,25 @@ run_test("ui_builder: popup headers rows separators and sections", function()
   }, { style = style })
   assert_equal(section_layout[1].name, "triforce.apps.header", "section should add a header")
   assert_equal(section_layout[2].name, "triforce.apps.yaze", "section should add row entries")
+end)
+
+run_test("ui_builder: click-open submenu rows", function()
+  local layout = {}
+  local style = ui.popup_style(test_ctx())
+  ui.submenu(layout, "music_studio", "music.studio.more_apps", {
+    style = style,
+    icon = { string = "󰀻", color = "0xffcba6f7" },
+    label = "More Apps",
+    sketchybar_bin = "/custom/sketchybar",
+    close_popups = { "music.studio.kits" },
+  })
+
+  assert_equal(#layout, 1, "submenu should add one root row")
+  assert_equal(layout[1].position, "popup.music_studio", "submenu row should attach to the root popup")
+  assert_equal(layout[1].click_script,
+    "/custom/sketchybar -m --set music.studio.kits popup.drawing=off --set music.studio.more_apps popup.drawing=toggle",
+    "submenu row should close its sibling and toggle itself in one request")
+  assert_equal(layout[1].popup.align, "right", "submenu should open to the right")
+  assert_true(layout[1].label:find("More Apps", 1, true) ~= nil, "submenu row should keep its label")
+  assert_equal(layout[1].hover, true, "submenu row should use normal row hover feedback")
 end)

@@ -81,6 +81,8 @@ local function test_items_left_layout()
   assert(#layout > 0, "layout should not be empty")
   assert_type(metadata, "table", "left layout should return runtime metadata")
   assert_equal(#metadata.popup_parents, 0, "disabled optional integrations should not enter the popup registry")
+  assert_equal(table.concat(metadata.submenu_parents, "|"), "front_app.more",
+    "front-app progressive disclosure should register its nested popup")
 
   -- Check for front_app
   local found_front_app = false
@@ -97,15 +99,26 @@ local function test_items_left_layout()
   local found_front_app_default_row = false
   local front_app_move_prev = nil
   local front_app_move_next = nil
+  local front_app_more = nil
+  local front_app_root_rows = 0
+  local front_app_more_rows = 0
   for _, entry in ipairs(layout) do
+    if entry.type == "item" and entry.props.position == "popup.front_app" then
+      front_app_root_rows = front_app_root_rows + 1
+    elseif entry.type == "item" and entry.props.position == "popup.front_app.more" then
+      front_app_more_rows = front_app_more_rows + 1
+    end
     if entry.type == "item" and entry.name == "front_app" then
       found_front_app = true
       assert(entry.props.position == "left", "front_app should be on the left")
       assert_equal(entry.props.label.drawing, false, "front_app should default to icon-only label state")
       assert_equal(entry.props.background.drawing, true, "front_app should render as a visible chip")
       assert_equal(entry.props.background.color, "0x18313a46", "front_app should use the shared idle chip background")
-      assert_true(entry.props.click_script:find("/custom/sketchybar -m --set front_app popup.drawing=toggle", 1, true) ~= nil,
-        "front_app should toggle immediately")
+      assert_true(entry.props.click_script:find(
+        "/custom/sketchybar -m --set front_app.more popup.drawing=off --set front_app popup.drawing=toggle",
+        1,
+        true
+      ) ~= nil, "front_app should reset its child and toggle immediately")
       assert_true(entry.props.click_script:find("SENDER=popup_refresh NAME=front_app", 1, true) ~= nil,
         "front_app should refresh popup state asynchronously")
       assert_true(entry.props.click_script:find("/tmp/plugins/front_app.sh", 1, true) ~= nil,
@@ -149,6 +162,8 @@ local function test_items_left_layout()
       front_app_move_prev = entry
     elseif entry.type == "item" and entry.name == "front_app.move.display_next" then
       front_app_move_next = entry
+    elseif entry.type == "item" and entry.name == "front_app.more" then
+      front_app_more = entry
     end
   end
   assert(found_front_app, "front_app item not found in layout")
@@ -165,9 +180,18 @@ local function test_items_left_layout()
   assert_true(not found_front_app_default_row, "front_app should leave persistent app defaults to Control Center")
   assert(front_app_move_prev ~= nil, "front_app move-to-prev-display action not found in popup layout")
   assert(front_app_move_next ~= nil, "front_app move-to-next-display action not found in popup layout")
+  assert_equal(front_app_root_rows, 18, "front_app should render only its frequent actions initially")
+  assert_equal(front_app_more_rows, 12, "front_app nested popup should retain every preset and move row")
+  assert_true(front_app_more ~= nil, "front_app should expose a click-open More Window Actions row")
+  assert_equal(front_app_more.props.position, "popup.front_app", "front_app submenu anchor should stay on the root popup")
+  assert_equal(front_app_more.props.popup.align, "right", "front_app submenu should open to the right")
+  assert_true(front_app_more.props.click_script:find("front_app.more popup.drawing=toggle", 1, true) ~= nil,
+    "front_app submenu should use a direct popup toggle")
   assert(front_app_hide.props.click_script:find("popup.drawing=off", 1, true) ~= nil, "front_app actions should close the popup after execution")
   assert(front_app_move_prev.props.click_script:find("yabai_control%.sh window%-display%-prev") ~= nil, "front_app prev-display action should route through yabai_control.sh")
   assert(front_app_move_next.props.click_script:find("yabai_control%.sh window%-display%-next") ~= nil, "front_app next-display action should route through yabai_control.sh")
+  assert_true(front_app_move_prev.props.click_script:find("--set front_app.more popup.drawing=off --set front_app popup.drawing=off", 1, true) ~= nil,
+    "front_app nested actions should close both popup levels")
 
   -- Check for effects
   local found_refresh_spaces = false
@@ -249,13 +273,14 @@ local function test_items_left_without_yabai()
     ),
   }
 
-  local layout = items_left.get_layout(mock_ctx)
+  local layout, _, metadata = items_left.get_layout(mock_ctx)
   local foundUnavailable = false
   local foundDeskHeader = false
   local foundExtensionGuide = false
   local foundMoveAction = false
   local foundLuaOnlyRefresh = false
   local foundPortableActionRows = false
+  local foundFrontAppMore = false
   for _, entry in ipairs(layout) do
     if entry.type == "item" and entry.name == "front_app.window.unavailable" then
       foundUnavailable = true
@@ -268,6 +293,9 @@ local function test_items_left_without_yabai()
     end
     if entry.type == "item" and entry.name == "front_app.move.display_next" then
       foundMoveAction = true
+    end
+    if entry.type == "item" and entry.name == "front_app.more" then
+      foundFrontAppMore = true
     end
     if entry.type == "item" and entry.name == "front_app"
         and entry.props.click_script:find("/usr/bin/env BARISTA_LUA_ONLY=1", 1, true) ~= nil then
@@ -283,6 +311,8 @@ local function test_items_left_without_yabai()
   assert_true(foundDeskHeader, "disabled yabai path should expose Desk replacement rows")
   assert_true(foundExtensionGuide, "disabled yabai path should link the extension guide")
   assert_true(not foundMoveAction, "move-window yabai actions should be hidden when yabai is unavailable")
+  assert_true(not foundFrontAppMore, "portable front_app should not expose an empty nested popup")
+  assert_equal(#metadata.submenu_parents, 0, "portable front_app should not register a missing submenu")
   assert_true(foundLuaOnlyRefresh, "Lua-only front_app popup refresh should keep compiled helpers disabled")
   assert_true(foundPortableActionRows, "portable front_app refresh should omit unavailable yabai action rows")
   print("  items_left no-yabai test passed!")
@@ -538,7 +568,7 @@ local function test_items_left_integration_models_and_anchor_order()
           }
         end,
         create_popup_items = function()
-          return {}
+          return {}, { submenu_parents = { "music.studio.more_apps" } }
         end,
       },
     },
@@ -596,6 +626,8 @@ local function test_items_left_integration_models_and_anchor_order()
   assert_equal(received_control_center_popup_flags.mode, "required", "control_center popup should reuse window manager flags")
   assert_equal(table.concat(metadata.popup_parents, "|"), "triforce|music_studio|control_center",
     "popup registry should include created optional parents")
+  assert_equal(table.concat(metadata.submenu_parents, "|"), "music.studio.more_apps|front_app.more",
+    "left layout metadata should expose Music and Front App nested popups")
   local found_triforce_subscription = false
   local found_control_center_subscription = false
   local anchor_order_command = nil

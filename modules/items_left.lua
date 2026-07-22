@@ -582,6 +582,27 @@ local function get_layout(ctx)
     -- In declarative mode, control_center_module.create_widget should return a table
     local cc_widget = control_center_module.create_widget(cc_config)
     control_center_item_name = cc_widget.name or "control_center"
+
+    local cc_popup_items, cc_popup_metadata = control_center_module.create_popup_items(nil, theme, font_string, settings, {
+      item_name = control_center_item_name,
+      config_dir = CONFIG_DIR,
+      scripts_dir = ctx.SCRIPTS_DIR,
+      state = state,
+      window_manager_mode = WINDOW_MANAGER_MODE,
+      window_manager_flags = control_center_status and control_center_status.window_manager or nil,
+      extension_items = control_center_extension_items,
+      popup_background = cc_config.popup_background,
+    })
+    local cc_submenu_parents = (cc_popup_metadata and cc_popup_metadata.submenu_parents) or {}
+    for _, submenu_name in ipairs(cc_submenu_parents) do
+      table.insert(submenu_parents, submenu_name)
+    end
+    if #cc_submenu_parents > 0 then
+      cc_widget.click_script = ui.toggle_after_closing(control_center_item_name, cc_submenu_parents, {
+        sketchybar_bin = SKETCHYBAR_BIN,
+      })
+    end
+
     cc_widget.name = nil
     cc_widget.background = anchor_chip()
     cc_widget.script = anchor_script(cc_widget.script)
@@ -594,15 +615,6 @@ local function get_layout(ctx)
       associated_space = "all",
     })
 
-    local cc_popup_items = control_center_module.create_popup_items(nil, theme, font_string, settings, {
-      item_name = control_center_item_name,
-      config_dir = CONFIG_DIR,
-      scripts_dir = ctx.SCRIPTS_DIR,
-      state = state,
-      window_manager_mode = WINDOW_MANAGER_MODE,
-      window_manager_flags = control_center_status and control_center_status.window_manager or nil,
-      extension_items = control_center_extension_items,
-    })
     for _, popup_item in ipairs(cc_popup_items) do
       local item_name = popup_item.name
       popup_item.name = nil

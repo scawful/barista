@@ -145,6 +145,16 @@ local function find_item(items, name)
   return nil
 end
 
+local function count_position(items, position)
+  local count = 0
+  for _, item in ipairs(items) do
+    if item.position == position then
+      count = count + 1
+    end
+  end
+  return count
+end
+
 local function enabled_window_manager_flags()
   return {
     mode = "required",
@@ -214,8 +224,8 @@ run_test("create_popup_items: complete flags skip duplicate capability probes", 
   end)
 end)
 
-run_test("create_popup_items: disabled mode shows notice", function()
-  local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
+run_test("create_popup_items: disabled mode shows notice without nested controls", function()
+  local items, metadata = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
     window_manager_flags = {
       mode = "disabled",
       enabled = false,
@@ -230,23 +240,68 @@ run_test("create_popup_items: disabled mode shows notice", function()
   assert_type(notice, "table", "notice item exists")
   assert_equal(notice.label.string, "Window manager disabled", "notice label")
   assert_nil(find_item(items, "cc.layout.float"), "layout controls hidden")
+  assert_nil(find_item(items, "cc.more"), "nested layout controls hidden")
+  assert_true(find_item(items, "cc.mode.required").click_script:find("cc.more", 1, true) == nil,
+    "disabled mode actions should not target a missing child")
+  assert_equal(#metadata.submenu_parents, 0, "disabled mode should not register a nested popup")
 end)
 
-run_test("create_popup_items: simplified popup omits legacy service and workspace rows", function()
-  local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
+run_test("create_popup_items: progressive layout keeps frequent controls on the root", function()
+  local popup_background = { drawing = true, color = "0xff101010" }
+  local items, metadata = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
     window_manager_flags = enabled_window_manager_flags(),
+    popup_background = popup_background,
   })
   local float = find_item(items, "cc.layout.float")
+  local mode_required = find_item(items, "cc.mode.required")
+  local more = find_item(items, "cc.more")
+  local balance = find_item(items, "cc.layout_ops.balance")
+  local shortcuts = find_item(items, "cc.yabai.shortcuts")
   assert_type(float, "table", "float layout item")
   assert_equal(float.label.string, "Float / Manual", "float layout label should match the front-app/manual-space language")
-  assert_type(find_item(items, "cc.mode.required"), "table", "mode switch row exists")
+  assert_type(mode_required, "table", "mode switch row exists")
+  assert_equal(mode_required.position, "popup.control_center", "mode controls should stay on the root")
+  assert_equal(float.position, "popup.control_center", "layout controls should stay on the root")
+  assert_equal(shortcuts.position, "popup.control_center", "shortcut toggle should stay on the root")
+  for _, root_action in ipairs({ mode_required, float, shortcuts }) do
+    assert_true(root_action.click_script:find("--set cc.more popup.drawing=off --set control_center popup.drawing=off", 1, true) ~= nil,
+      "enabled root actions should close the child and root in one batch")
+  end
+  assert_equal(count_position(items, "popup.control_center"), 12, "root should render only frequent controls")
+  assert_equal(count_position(items, "popup.cc.more"), 11, "nested popup should retain layout operations and defaults")
+  assert_type(more, "table", "more controls submenu exists")
+  assert_equal(more.position, "popup.control_center", "submenu anchor should stay on the root")
+  assert_equal(more.popup.align, "right", "submenu should open to the right")
+  assert_equal(more.popup.background.color, popup_background.color, "submenu should share the root popup background")
+  assert_true(more.click_script:find("--set cc.more popup.drawing=toggle", 1, true) ~= nil, "submenu should use a direct click toggle")
+  assert_type(balance, "table", "layout operation exists")
+  assert_equal(balance.position, "popup.cc.more", "layout operations should move into the nested popup")
+  assert_true(balance.click_script:find("--set cc.more popup.drawing=off --set control_center popup.drawing=off", 1, true) ~= nil,
+    "nested actions should close both popup levels in one batch")
   assert_type(find_item(items, "cc.defaults.float"), "table", "app default float row exists")
   assert_type(find_item(items, "cc.defaults.tile"), "table", "app default tile row exists")
   assert_type(find_item(items, "cc.defaults.unset"), "table", "app default unset row exists")
+  assert_equal(find_item(items, "cc.defaults.float").position, "popup.cc.more", "app defaults should move into the nested popup")
+  assert_equal(table.concat(metadata.submenu_parents, "|"), "cc.more", "nested popup should be registered")
   assert_nil(find_item(items, "cc.svc.yabai"), "yabai service row removed")
   assert_nil(find_item(items, "cc.svc.skhd"), "skhd service row removed")
   assert_nil(find_item(items, "cc.svc.sketchybar"), "sketchybar service row removed")
   assert_nil(find_item(items, "cc.workspace"), "workspace row removed")
+  assert_nil(find_item(items, "cc.sep3"), "obsolete root separator removed")
+end)
+
+run_test("create_popup_items: required mode without yabai omits nested controls", function()
+  local flags = enabled_window_manager_flags()
+  flags.has_yabai = false
+  flags.yabai_running = false
+  flags.enabled = false
+  local items, metadata = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
+    window_manager_flags = flags,
+  })
+  assert_type(find_item(items, "cc.window_manager.notice"), "table", "unavailable notice should exist")
+  assert_nil(find_item(items, "cc.more"), "nested controls should be omitted without yabai")
+  assert_nil(find_item(items, "cc.layout_ops.balance"), "layout operations should be omitted without yabai")
+  assert_equal(#metadata.submenu_parents, 0, "unavailable mode should not register a nested popup")
 end)
 
 run_test("create_popup_items: shortcut toggle updates label and closes popup", function()
@@ -261,7 +316,7 @@ run_test("create_popup_items: shortcut toggle updates label and closes popup", f
 end)
 
 run_test("create_popup_items: custom parent and paths are threaded through", function()
-  local items = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
+  local items, metadata = control_center.create_popup_items(nil, test_theme(), test_font_string, test_settings(), {
     item_name = "status_hub",
     config_dir = "/tmp/config",
     scripts_dir = "/tmp/scripts",
@@ -269,14 +324,22 @@ run_test("create_popup_items: custom parent and paths are threaded through", fun
   })
   local header = find_item(items, "cc.header")
   local layout = find_item(items, "cc.layout.float")
+  local more = find_item(items, "cc.more")
   local balance = find_item(items, "cc.layout_ops.balance")
 
   assert_type(header, "table", "header item exists")
   assert_equal(header.position, "popup.status_hub", "custom popup parent should be used")
   assert_type(layout, "table", "layout item exists")
   assert_true(layout.click_script:match("/tmp/config/plugins/set_space_mode%.sh") ~= nil, "custom config dir should drive layout commands")
+  assert_true(layout.click_script:find("--set cc.more popup.drawing=off --set status_hub popup.drawing=off", 1, true) ~= nil,
+    "custom root action should close cc.more and the resolved root")
+  assert_type(more, "table", "nested popup anchor exists")
+  assert_equal(more.position, "popup.status_hub", "nested popup anchor should use the custom root")
   assert_type(balance, "table", "layout op item exists")
+  assert_equal(balance.position, "popup.cc.more", "nested rows should remain parented to cc.more")
   assert_true(balance.click_script:match("/tmp/scripts/yabai_control%.sh") ~= nil, "custom scripts dir should drive yabai commands")
-  assert_true(balance.click_script:match("status_hub") ~= nil, "popup close should target the custom item name")
+  assert_true(balance.click_script:find("--set cc.more popup.drawing=off --set status_hub popup.drawing=off", 1, true) ~= nil,
+    "nested action should close cc.more and the custom root")
+  assert_equal(table.concat(metadata.submenu_parents, "|"), "cc.more", "custom root should register the child popup")
   assert_nil(find_item(items, "cc.workspace"), "workspace item should stay removed even with custom paths")
 end)

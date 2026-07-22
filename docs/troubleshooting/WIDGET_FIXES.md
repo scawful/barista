@@ -86,7 +86,8 @@ style_map = {
 **Current path**: `plugins/control_center.sh` + `modules/integrations/control_center.lua`
 - Window-manager status label is rendered by `control_center` (`BSP`, `Stack`, `Float`, or fallback).
 - Space/window actions are exposed in the `control_center` popup and `front_app` popup rows.
-- The `control_center` popup is intentionally slim now: layout mode changes, layout operations, and shortcut state remain; service-health, dirty-repo, and utility rows were removed from the live path.
+- The fully enabled `control_center` root is intentionally slim: its 12 rows keep window-manager mode, space layout, and shortcut controls direct. The click-only `cc.more` / `More Layout Controls` child holds the 11 Layout Ops and App Defaults rows; service-health, dirty-repo, and utility rows remain removed from the live path.
+- Opening or closing the root resets `cc.more`, and an action in that child closes both popup levels after it runs. Disabled and no-Yabai paths omit the child and its popup-manager registry entry.
 - `control_center` follows the click-open popup-anchor contract; pointer hover only highlights, and dismissal is via second-click, popup actions, or global space/display/wake dismissal.
 - The active item name is resolved once and reused by `main.lua`, `items_left.lua`,
   `shortcuts.lua`, and `popup_action.lua`; `items_left.lua` reports the actually
@@ -266,7 +267,7 @@ are ever removed.
 - The `front_app` popup now updates its float/fullscreen/topmost row labels from the current window state, so the row explains the next action instead of always saying `Toggle`.
 - The fully enabled `front_app` root now shows 18 rows instead of 29. Its click-only `More Window Actions` child holds the `Utility`, `Focus`, `Presentation`, and `Tile Here` presets plus display/space move actions; the presets keep their conservative window-state behavior.
 - `Adopt Current Space Mode` stays on the root, while `Send to Float Space` lives in the child. Root toggles reset the child first, and child actions close both popup levels after running.
-- The Control Center popup keeps persistent app-default controls out of the smaller `front_app` popup. Its rows are `Default App: Float`, `Default App: Tile`, and `Unset App Default`; they call `scripts/yabai_control.sh app-default-current ...`, persist the choice in `state.json` under `window_defaults.apps`, and install/remove a labeled live yabai rule (`barista-default-*`) when yabai is running.
+- The Control Center popup keeps persistent app-default controls out of the smaller `front_app` popup. In enabled setups, its click-only `More Layout Controls` child contains `Default App: Float`, `Default App: Tile`, and `Unset App Default`; they call `scripts/yabai_control.sh app-default-current ...`, persist the choice in `state.json` under `window_defaults.apps`, and install/remove a labeled live yabai rule (`barista-default-*`) when yabai is running.
 - `app-default-current` uses the same front-app context fallback when yabai has
   no focused managed window, so unmanaged/frontmost utility apps can still be
   saved as app defaults.

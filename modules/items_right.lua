@@ -446,8 +446,11 @@ local function get_layout(ctx)
   if info_enabled("net") then table.insert(system_info_items, { name = "system_info.net", icon = icon_for("wifi", "󰖩"), label = "Wi-Fi …" }) end
   if info_enabled("swap") then table.insert(system_info_items, { name = "system_info.swap", icon = "󰾴", label = "Swap …" }) end
   if info_enabled("uptime") then table.insert(system_info_items, { name = "system_info.uptime", icon = "󰥔", label = "Uptime …" }) end
-  if info_enabled("procs") then table.insert(system_info_items, { name = "system_info.procs", icon = icon_for("cpu", "󰻠"), label = "Top CPU …", action = "open -a 'Activity Monitor'" }) end
-  table.insert(system_info_items, { name = "system_info.activity", icon = "󰨇", label = "Activity Monitor", action = "open -a 'Activity Monitor'" })
+  if info_enabled("procs") then
+    table.insert(system_info_items, { name = "system_info.procs", icon = icon_for("cpu", "󰻠"), label = "Top CPU …", action = "open -a 'Activity Monitor'" })
+  else
+    table.insert(system_info_items, { name = "system_info.activity", icon = "󰨇", label = "Activity Monitor", action = "open -a 'Activity Monitor'" })
+  end
   table.insert(system_info_items, { name = "system_info.settings", icon = "", label = "System Settings", action = "open -b com.apple.systempreferences" })
 
   for _, item in ipairs(system_info_items) do

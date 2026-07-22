@@ -833,6 +833,23 @@ local function test_items_right_layout()
   assert(type(layout) == "table", "layout should be a table")
   assert(#layout > 0, "layout should not be empty")
 
+  local system_info_procs = nil
+  local system_info_activity = nil
+  for _, entry in ipairs(layout) do
+    if entry.type == "item" and entry.name == "system_info.procs" then
+      system_info_procs = entry
+    elseif entry.type == "item" and entry.name == "system_info.activity" then
+      system_info_activity = entry
+    end
+  end
+  assert_true(system_info_procs ~= nil, "default system_info popup should keep the actionable Top CPU row")
+  local procs_action_at = system_info_procs.props.click_script:find("open %-a 'Activity Monitor'")
+  local procs_close_at = system_info_procs.props.click_script:find("popup.drawing=off", 1, true)
+  assert_true(procs_action_at ~= nil and procs_close_at ~= nil and procs_action_at < procs_close_at,
+    "Top CPU should launch Activity Monitor before closing the popup")
+  assert_true(system_info_activity == nil,
+    "system_info should omit the duplicate Activity Monitor row when Top CPU is enabled")
+
   -- Check for clock
   assert(added_items.clock ~= nil, "clock item not registered via widget factory")
   assert(added_items.clock.props.position == "right", "clock should be on the right")
@@ -988,9 +1005,25 @@ local function test_items_right_layout()
     uptime = true,
     procs = false,
   }
-  items_right.get_layout(mock_ctx)
+  local filtered_layout = items_right.get_layout(mock_ctx)
   assert_equal(system_info_env_values.BARISTA_SYSTEM_INFO_ROWS, "mem,net,uptime",
     "system_info topology env should preserve canonical order while omitting disabled rows")
+  local filtered_procs = nil
+  local filtered_activity = nil
+  for _, entry in ipairs(filtered_layout) do
+    if entry.type == "item" and entry.name == "system_info.procs" then
+      filtered_procs = entry
+    elseif entry.type == "item" and entry.name == "system_info.activity" then
+      filtered_activity = entry
+    end
+  end
+  assert_true(filtered_procs == nil, "disabled Top CPU should stay out of the system_info popup")
+  assert_true(filtered_activity ~= nil,
+    "system_info should retain the Activity Monitor action when Top CPU is disabled")
+  local activity_action_at = filtered_activity.props.click_script:find("open %-a 'Activity Monitor'")
+  local activity_close_at = filtered_activity.props.click_script:find("popup.drawing=off", 1, true)
+  assert_true(activity_action_at ~= nil and activity_close_at ~= nil and activity_action_at < activity_close_at,
+    "fallback Activity Monitor row should launch before closing the popup")
 
   mock_ctx.state.system_info_items = {
     cpu = false,

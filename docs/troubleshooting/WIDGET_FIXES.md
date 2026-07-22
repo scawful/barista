@@ -361,7 +361,9 @@ or helper-missing setups retain `plugins/clock.sh` without configuration edits.
 exact enabled subset of `cpu,mem,disk,net,swap,uptime,procs`, or `none` when no
 dynamic row exists. The native and shell parsers both reject malformed,
 duplicate, or unknown row names before issuing partial updates. Activity Monitor
-and System Settings remain static action rows outside that metric allowlist.
+and System Settings stay outside that metric allowlist. Top CPU already opens
+Activity Monitor, so the separate Activity Monitor row is omitted while Top CPU
+is enabled and restored when Top CPU is disabled. System Settings remains direct.
 
 Click behavior is deliberately split:
 
@@ -424,9 +426,13 @@ bash tests/test_system_info_widget.sh   # Darwin native contract
 For a supported live restart after verification, use
 `./plugins/reload_sketchybar.sh`, not a raw reload command. The final discovery
 profile measured the full helper at 25.376 ms median / 25.978 ms p95 and 20
-exact live updates at 25.463 / 26.533 ms. Configured click-to-visible samples
-were 123.728 / 125.491 ms; the shell launch itself was 43.657 / 49.583 ms and
-the observer includes repeated query latency after the popup has already toggled;
-probe-level methodology and the initial native-vs-shell comparison are kept in
-`docs/PERFORMANCE_AUDIT.md`. Treat all figures as one-machine evidence, not a
-hardware-wide guarantee.
+exact live updates at 25.463 / 26.533 ms. A later controlled profile found the
+exact background refresh dispatch at only 5.272 / 11.626 ms median/p95, direct
+popup open at 79.627 / 85.288 ms, and the full configured launcher at 79.883 /
+87.088 ms. The 110.029 / 137.852 ms label observer includes repeated open-popup
+query latency; the earlier 43.657 / 49.583 ms "shell launch" attribution was
+confounded. A randomized five-versus-seven-row root A/B produced only a noisy
+-0.446 ms paired median, so the tested nested-details prototype was rejected.
+Keep the popup flat and do not add a C click server to chase the roughly 5 ms
+client floor; SketchyBar/WindowServer materialization dominates. Full methodology
+is in `docs/PERFORMANCE_AUDIT.md`. Treat all figures as one-machine evidence.

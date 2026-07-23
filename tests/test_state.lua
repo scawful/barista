@@ -102,11 +102,20 @@ if ok and state_module then
     assert_equal(normalized.modes.widget_daemon, "auto", "widget daemon mode default applied")
     assert_equal(normalized.integrations.control_center.item_name, "control_center", "control_center item name default applied")
     assert_equal(normalized.widgets.task_focus, false, "task focus should be opt-in")
+    assert_equal(normalized.system_info_items.actions, true, "system info actions should remain enabled by default")
     assert_equal(normalized.menus.calendar.task_provider, "files", "calendar should use the portable file provider")
     assert_type(normalized.menus.calendar.task_sources, "table", "calendar task source defaults present")
     assert_equal(#normalized.menus.calendar.task_sources, 0, "calendar task sources should be machine-local")
     assert_equal(normalized.menus.calendar.meeting_cache_file, "", "calendar meeting cache should be opt-in")
     assert_equal(normalized.menus.calendar.meeting_cache_max_age_seconds, 86400, "calendar meeting cache should expire after 24 hours by default")
+  end)
+
+  run_test("state.normalize: preserves disabled system info actions", function()
+    local normalized = state_module.normalize({
+      system_info_items = { actions = false },
+    })
+    assert_equal(normalized.system_info_items.actions, false, "explicit system info action preference preserved")
+    assert_equal(normalized.system_info_items.procs, true, "unrelated system info defaults still merge")
   end)
 
   run_test("state.normalize: removes the retired Triforce polling interval", function()

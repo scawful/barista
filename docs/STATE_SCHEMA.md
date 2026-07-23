@@ -114,6 +114,16 @@ the item is not created unless `menus.calendar.task_sources` also contains at
 least one non-empty source. This two-part gate keeps shared installs free of
 personal task UI and paths.
 
+### `system_info_items`
+
+The dynamic-row keys are `cpu`, `mem`, `disk`, `net`, `swap`, `uptime`, and
+`procs`. They independently control both popup topology and the bounded helper
+allowlist. `actions` defaults to `true`; setting it to `false` preserves the
+enabled metrics, leaves Top CPU visible but non-clickable, and omits the Activity
+Monitor and System Settings launchers. The legacy `docs` key is retained for
+state compatibility but no longer creates rows; workflow documentation lives in
+the Apple menu and Help Center.
+
 ### `appearance`
 
 Common keys:

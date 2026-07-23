@@ -835,11 +835,14 @@ local function test_items_right_layout()
 
   local system_info_procs = nil
   local system_info_activity = nil
+  local system_info_settings = nil
   for _, entry in ipairs(layout) do
     if entry.type == "item" and entry.name == "system_info.procs" then
       system_info_procs = entry
     elseif entry.type == "item" and entry.name == "system_info.activity" then
       system_info_activity = entry
+    elseif entry.type == "item" and entry.name == "system_info.settings" then
+      system_info_settings = entry
     end
   end
   assert_true(system_info_procs ~= nil, "default system_info popup should keep the actionable Top CPU row")
@@ -849,6 +852,8 @@ local function test_items_right_layout()
     "Top CPU should launch Activity Monitor before closing the popup")
   assert_true(system_info_activity == nil,
     "system_info should omit the duplicate Activity Monitor row when Top CPU is enabled")
+  assert_true(system_info_settings ~= nil,
+    "missing actions state should preserve the default System Settings action")
 
   -- Check for clock
   assert(added_items.clock ~= nil, "clock item not registered via widget factory")
@@ -1024,6 +1029,49 @@ local function test_items_right_layout()
   local activity_close_at = filtered_activity.props.click_script:find("popup.drawing=off", 1, true)
   assert_true(activity_action_at ~= nil and activity_close_at ~= nil and activity_action_at < activity_close_at,
     "fallback Activity Monitor row should launch before closing the popup")
+
+  mock_ctx.state.system_info_items = {
+    cpu = false,
+    mem = true,
+    disk = false,
+    net = false,
+    swap = false,
+    uptime = false,
+    procs = true,
+    actions = false,
+  }
+  local actions_disabled_layout = items_right.get_layout(mock_ctx)
+  assert_equal(system_info_env_values.BARISTA_SYSTEM_INFO_ROWS, "mem,procs",
+    "disabling system_info actions should not remove dynamic helper targets")
+  local informational_procs = nil
+  local disabled_activity = nil
+  local disabled_settings = nil
+  for _, entry in ipairs(actions_disabled_layout) do
+    if entry.type == "item" and entry.name == "system_info.procs" then
+      informational_procs = entry
+    elseif entry.type == "item" and entry.name == "system_info.activity" then
+      disabled_activity = entry
+    elseif entry.type == "item" and entry.name == "system_info.settings" then
+      disabled_settings = entry
+    end
+  end
+  assert_true(informational_procs ~= nil,
+    "disabling actions should preserve Top CPU as a dynamic metric target")
+  assert_true(informational_procs.props.click_script == nil,
+    "disabling actions should make Top CPU informational")
+  assert_true(disabled_activity == nil and disabled_settings == nil,
+    "disabling actions should omit static system_info action rows")
+
+  mock_ctx.state.system_info_items.procs = false
+  local actions_and_procs_disabled_layout = items_right.get_layout(mock_ctx)
+  assert_equal(system_info_env_values.BARISTA_SYSTEM_INFO_ROWS, "mem",
+    "disabling Top CPU and actions should leave the remaining metric allowlist intact")
+  for _, entry in ipairs(actions_and_procs_disabled_layout) do
+    assert_true(entry.name ~= "system_info.procs"
+        and entry.name ~= "system_info.activity"
+        and entry.name ~= "system_info.settings",
+      "actions=false and procs=false should omit all system_info action-capable rows")
+  end
 
   mock_ctx.state.system_info_items = {
     cpu = false,

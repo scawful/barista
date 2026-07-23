@@ -364,6 +364,8 @@ duplicate, or unknown row names before issuing partial updates. Activity Monitor
 and System Settings stay outside that metric allowlist. Top CPU already opens
 Activity Monitor, so the separate Activity Monitor row is omitted while Top CPU
 is enabled and restored when Top CPU is disabled. System Settings remains direct.
+Setting `system_info_items.actions=false` removes both static launchers and makes
+Top CPU informational without removing it from the dynamic helper allowlist.
 
 Click behavior is deliberately split:
 

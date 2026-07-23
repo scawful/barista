@@ -393,6 +393,7 @@ local function get_layout(ctx)
     if v == nil then return true end
     return v
   end
+  local system_info_actions_enabled = info_enabled("actions")
   local enabled_system_info_rows = {}
   for _, key in ipairs({ "cpu", "mem", "disk", "net", "swap", "uptime", "procs" }) do
     if info_enabled(key) then
@@ -447,11 +448,18 @@ local function get_layout(ctx)
   if info_enabled("swap") then table.insert(system_info_items, { name = "system_info.swap", icon = "󰾴", label = "Swap …" }) end
   if info_enabled("uptime") then table.insert(system_info_items, { name = "system_info.uptime", icon = "󰥔", label = "Uptime …" }) end
   if info_enabled("procs") then
-    table.insert(system_info_items, { name = "system_info.procs", icon = icon_for("cpu", "󰻠"), label = "Top CPU …", action = "open -a 'Activity Monitor'" })
-  else
+    table.insert(system_info_items, {
+      name = "system_info.procs",
+      icon = icon_for("cpu", "󰻠"),
+      label = "Top CPU …",
+      action = system_info_actions_enabled and "open -a 'Activity Monitor'" or nil,
+    })
+  elseif system_info_actions_enabled then
     table.insert(system_info_items, { name = "system_info.activity", icon = "󰨇", label = "Activity Monitor", action = "open -a 'Activity Monitor'" })
   end
-  table.insert(system_info_items, { name = "system_info.settings", icon = "", label = "System Settings", action = "open -b com.apple.systempreferences" })
+  if system_info_actions_enabled then
+    table.insert(system_info_items, { name = "system_info.settings", icon = "", label = "System Settings", action = "open -b com.apple.systempreferences" })
+  end
 
   for _, item in ipairs(system_info_items) do
     local should_hover = item.hover == true

@@ -308,8 +308,9 @@ are ever removed.
 
 ### 12. Reload Serialization
 **Current path**: `plugins/reload_sketchybar.sh`
-- `reload_sketchybar.sh` now uses a short-lived lock directory under `TMPDIR` to serialize overlapping reload requests.
+- `reload_sketchybar.sh` now uses a short-lived lock directory under `TMPDIR` to serialize overlapping reload requests. The lock records its owner PID, so an old-looking directory is reclaimed only after that owner exits rather than being stolen during a valid slow startup.
 - Callers that arrive while another reload is already in flight now wait for that reload to finish and exit early if `front_app` is already live, instead of issuing a second LaunchAgent stop/bootstrap cycle.
+- Core-item readiness allows a ten-second startup tail and performs one final query at the wait boundary. A `front_app` that becomes queryable on that boundary no longer triggers an unnecessary raw `sketchybar --reload` or a false failure.
 - Reload completion now also waits for `space.1`; if spaces are missing after the core item is live, it runs `plugins/refresh_spaces.sh` before returning.
 - The reload helper does not schedule a second detached spaces repair; normal startup owns the native delayed refresh, while the synchronous missing-space check remains the recovery path.
 - This prevents rapid repeat invocations from leaving SketchyBar running without its runtime daemons after competing launchctl restarts.

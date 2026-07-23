@@ -10,15 +10,26 @@ LABEL="gui/$(id -u)/${AGENT}"
 PLIST="${HOME}/Library/LaunchAgents/${AGENT}.plist"
 SKETCHYBAR_BIN="${SKETCHYBAR_BIN:-$(command -v sketchybar || true)}"
 CORE_ITEM="${BARISTA_CORE_ITEM:-front_app}"
+CORE_ITEM_WAIT_ATTEMPTS="${BARISTA_CORE_ITEM_WAIT_ATTEMPTS:-10}"
+case "$CORE_ITEM_WAIT_ATTEMPTS" in
+  ""|*[!0-9]*) CORE_ITEM_WAIT_ATTEMPTS=10 ;;
+  *) CORE_ITEM_WAIT_ATTEMPTS=$((10#$CORE_ITEM_WAIT_ATTEMPTS)) ;;
+esac
 RELOAD_LOCK_DIR="${BARISTA_RELOAD_LOCK_DIR:-${TMPDIR:-/tmp}/barista-sketchybar-reload.lock}"
+RELOAD_LOCK_OWNER_FILE="$RELOAD_LOCK_DIR/owner_pid"
 RELOAD_LOCK_STALE_SECONDS="${BARISTA_RELOAD_LOCK_STALE_SECONDS:-20}"
-RELOAD_LOCK_WAIT_SECONDS="${BARISTA_RELOAD_LOCK_WAIT_SECONDS:-20}"
+RELOAD_LOCK_WAIT_SECONDS="${BARISTA_RELOAD_LOCK_WAIT_SECONDS:-$((CORE_ITEM_WAIT_ATTEMPTS * 2 + 15))}"
 LOCK_HELD=0
 WAITED_FOR_LOCK=0
 
 release_reload_lock() {
   if [ "$LOCK_HELD" -eq 1 ]; then
-    rmdir "$RELOAD_LOCK_DIR" >/dev/null 2>&1 || true
+    local owner_pid
+    owner_pid="$(cat "$RELOAD_LOCK_OWNER_FILE" 2>/dev/null || true)"
+    if [ -z "$owner_pid" ] || [ "$owner_pid" = "$$" ]; then
+      rm -f "$RELOAD_LOCK_OWNER_FILE"
+      rmdir "$RELOAD_LOCK_DIR" >/dev/null 2>&1 || true
+    fi
     LOCK_HELD=0
   fi
 }
@@ -34,6 +45,21 @@ reload_lock_age() {
   printf '%s' $((now - mtime))
 }
 
+reload_lock_owner_alive() {
+  local owner_pid
+  owner_pid="$(cat "$RELOAD_LOCK_OWNER_FILE" 2>/dev/null || true)"
+  case "$owner_pid" in
+    ""|*[!0-9]*) return 1 ;;
+  esac
+  kill -0 "$owner_pid" >/dev/null 2>&1
+}
+
+remove_stale_reload_lock() {
+  reload_lock_owner_alive && return 1
+  rm -f "$RELOAD_LOCK_OWNER_FILE"
+  rmdir "$RELOAD_LOCK_DIR" >/dev/null 2>&1
+}
+
 acquire_reload_lock() {
   local deadline now age
   deadline=$(( $(date +%s) + RELOAD_LOCK_WAIT_SECONDS ))
@@ -41,8 +67,7 @@ acquire_reload_lock() {
   while ! mkdir "$RELOAD_LOCK_DIR" 2>/dev/null; do
     WAITED_FOR_LOCK=1
     age=$(reload_lock_age)
-    if [ "$age" -gt "$RELOAD_LOCK_STALE_SECONDS" ]; then
-      rmdir "$RELOAD_LOCK_DIR" >/dev/null 2>&1 || true
+    if [ "$age" -gt "$RELOAD_LOCK_STALE_SECONDS" ] && remove_stale_reload_lock; then
       continue
     fi
     now=$(date +%s)
@@ -53,12 +78,16 @@ acquire_reload_lock() {
   done
 
   LOCK_HELD=1
+  if ! printf '%s\n' "$$" > "$RELOAD_LOCK_OWNER_FILE"; then
+    release_reload_lock
+    return 1
+  fi
   return 0
 }
 
 wait_for_recent_reload() {
   [ "$WAITED_FOR_LOCK" -eq 1 ] || return 1
-  wait_for_item "$CORE_ITEM" 5
+  wait_for_item "$CORE_ITEM"
 }
 
 trap release_reload_lock EXIT
@@ -75,7 +104,7 @@ item_loaded() {
 
 wait_for_item() {
   local item_name="${1:-$CORE_ITEM}"
-  local attempts="${2:-5}"
+  local attempts="${2:-$CORE_ITEM_WAIT_ATTEMPTS}"
 
   while [ "$attempts" -gt 0 ]; do
     if item_loaded "$item_name"; then
@@ -85,7 +114,7 @@ wait_for_item() {
     attempts=$((attempts - 1))
   done
 
-  return 1
+  item_loaded "$item_name"
 }
 
 ensure_live_config() {

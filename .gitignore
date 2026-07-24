@@ -48,6 +48,7 @@ imgui.ini
 
 # User configuration (should not be committed)
 state.json
+local.json
 barista_config.lua
 component_settings.json
 data/machine.local.json

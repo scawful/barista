@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 REQUIREMENTS_FILE="$REPO_DIR/config/requirements.txt"
 AUTO_YES=0
+PYTHON_BIN="${BARISTA_PYTHON:-python3}"
 
 # Colors
 RED='\033[0;31m'
@@ -25,12 +26,12 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 # Check Python version
 check_python() {
-    if command -v python3 &> /dev/null; then
-        PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    if command -v "$PYTHON_BIN" &> /dev/null; then
+        PYTHON_VERSION=$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
         MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
         MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
         
-        if [ "$MAJOR" -ge 3 ] && [ "$MINOR" -ge 9 ]; then
+        if [ "$MAJOR" -gt 3 ] || { [ "$MAJOR" -eq 3 ] && [ "$MINOR" -ge 9 ]; }; then
             echo -e "${GREEN}✓${NC} Python $PYTHON_VERSION found"
             return 0
         else
@@ -45,7 +46,56 @@ check_python() {
 
 # Check if a package is installed
 check_package() {
-    python3 -c "import $1" 2>/dev/null
+    "$PYTHON_BIN" -c "import $1" 2>/dev/null
+}
+
+# Print an installed package version and require it to meet a minimum.
+check_package_version() {
+    "$PYTHON_BIN" - "$1" "$2" <<'PY' 2>/dev/null
+import importlib
+import re
+import sys
+
+package, minimum = sys.argv[1:]
+
+try:
+    module = importlib.import_module(package)
+except (ImportError, OSError):
+    raise SystemExit(2)
+
+installed = str(getattr(module, "__version__", ""))
+print(installed or "unknown")
+
+
+def release(version):
+    match = re.match(r"^\s*(\d+(?:\.\d+)*)", version)
+    if match is None:
+        return None
+    parts = tuple(int(part) for part in match.group(1).split("."))
+    return parts, version[match.end():]
+
+
+installed_release = release(installed)
+minimum_release = release(minimum)
+if installed_release is None or minimum_release is None:
+    raise SystemExit(1)
+
+installed_parts, installed_suffix = installed_release
+minimum_parts, _ = minimum_release
+width = max(len(installed_parts), len(minimum_parts))
+installed_parts += (0,) * (width - len(installed_parts))
+minimum_parts += (0,) * (width - len(minimum_parts))
+is_floor_prerelease = (
+    installed_parts == minimum_parts
+    and re.search(r"(?:a|b|rc|dev|alpha|beta|pre|preview)", installed_suffix, re.I)
+)
+raise SystemExit(
+    0
+    if installed_parts > minimum_parts
+    or (installed_parts == minimum_parts and not is_floor_prerelease)
+    else 1
+)
+PY
 }
 
 # Check all dependencies
@@ -55,17 +105,21 @@ check_deps() {
     echo ""
     echo "Checking dependencies..."
     
-    if check_package "textual"; then
-        TEXTUAL_VERSION=$(python3 -c "import textual; print(textual.__version__)" 2>/dev/null || echo "unknown")
+    if TEXTUAL_VERSION=$(check_package_version "textual" "0.52.1"); then
         echo -e "${GREEN}✓${NC} textual ($TEXTUAL_VERSION)"
+    elif [ -n "${TEXTUAL_VERSION:-}" ]; then
+        echo -e "${RED}✗${NC} textual 0.52.1+ required (found $TEXTUAL_VERSION)"
+        all_ok=false
     else
         echo -e "${RED}✗${NC} textual not installed"
         all_ok=false
     fi
     
-    if check_package "pydantic"; then
-        PYDANTIC_VERSION=$(python3 -c "import pydantic; print(pydantic.__version__)" 2>/dev/null || echo "unknown")
+    if PYDANTIC_VERSION=$(check_package_version "pydantic" "2.0.0"); then
         echo -e "${GREEN}✓${NC} pydantic ($PYDANTIC_VERSION)"
+    elif [ -n "${PYDANTIC_VERSION:-}" ]; then
+        echo -e "${RED}✗${NC} pydantic 2+ required (found $PYDANTIC_VERSION)"
+        all_ok=false
     else
         echo -e "${RED}✗${NC} pydantic not installed"
         all_ok=false
@@ -94,9 +148,9 @@ install_deps() {
     echo "Installing dependencies..."
     
     if [ -f "$REQUIREMENTS_FILE" ]; then
-        python3 -m pip install -r "$REQUIREMENTS_FILE"
+        "$PYTHON_BIN" -m pip install -r "$REQUIREMENTS_FILE"
     else
-        python3 -m pip install textual pydantic pyyaml
+        "$PYTHON_BIN" -m pip install "textual>=0.52.1" "pydantic>=2.0.0" "pyyaml>=6.0.0"
     fi
     
     echo ""
@@ -110,7 +164,7 @@ create_venv() {
     echo ""
     echo "Creating virtual environment at $VENV_DIR..."
     
-    python3 -m venv "$VENV_DIR"
+    "$PYTHON_BIN" -m venv "$VENV_DIR"
     # shellcheck disable=SC1091
     source "$VENV_DIR/bin/activate"
 
@@ -118,7 +172,7 @@ create_venv() {
     if [ -f "$REQUIREMENTS_FILE" ]; then
         python3 -m pip install -r "$REQUIREMENTS_FILE"
     else
-        python3 -m pip install textual pydantic pyyaml
+        python3 -m pip install "textual>=0.52.1" "pydantic>=2.0.0" "pyyaml>=6.0.0"
     fi
     
     echo ""

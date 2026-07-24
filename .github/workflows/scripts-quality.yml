@@ -17,6 +17,22 @@ jobs:
           sudo apt-get install -y shellcheck lua5.4
           sudo ln -sf /usr/bin/lua5.4 /usr/local/bin/lua
 
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Install minimum TUI dependencies
+        run: |
+          python_bin="$(command -v python3)"
+          "$python_bin" -c 'import sys; assert sys.version_info[:2] == (3, 9), sys.version'
+          echo "BARISTA_PYTHON=$python_bin" >> "$GITHUB_ENV"
+          "$python_bin" -m pip install --disable-pip-version-check \
+            "textual==0.52.1" \
+            "pydantic==2.0.0" \
+            "pyyaml==6.0.0"
+          BARISTA_PYTHON="$python_bin" scripts/install-tui.sh --check
+
       - name: Install shfmt
         run: |
           go install mvdan.cc/sh/v3/cmd/shfmt@latest

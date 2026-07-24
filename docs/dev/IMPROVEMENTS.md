@@ -531,9 +531,10 @@ state.update_integration(data, name, k, v) -- Update integration
   widget_colors = {},
   space_icons = {},
   space_modes = {},
-  system_info_items = { cpu, mem, disk, net, docs, actions },
+  system_info_items = { cpu, mem, disk, net, swap, uptime, procs, actions, docs }, -- docs is legacy-preserved
+  modes = { window_manager, runtime_backend, widget_daemon },
   toggles = { yabai_shortcuts },
-  integrations = { yaze, emacs, halext }
+  integrations = { control_center }
 }
 ```
 

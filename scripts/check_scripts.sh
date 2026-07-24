@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+python_bin="${BARISTA_PYTHON:-$(command -v python3)}"
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,6 +15,7 @@ Checks:
   - Shell syntax (bash -n)
   - shellcheck (if available, required with --ci)
   - shfmt formatting report (strict with BARISTA_SHFMT_STRICT=1)
+  - Python TUI configuration and widget regression tests
   - smoke checks for setup/update scripts
 EOF
 }
@@ -126,12 +128,15 @@ printf '{}' > "$tmp_state"
 ./scripts/setup_machine.sh --state "$tmp_state" --skip-fonts --skip-panel --work-apps --replace --dry-run --yes --no-reload >/dev/null
 ./scripts/setup_machine.sh --state "$tmp_state" --restricted-work --domain example.com --dry-run --yes --no-reload >/dev/null
 ./scripts/setup_machine.sh --state "$tmp_state" --profile-variant cozy --skip-fonts --skip-panel --dry-run --yes --no-reload >/dev/null
-python3 -m py_compile scripts/restricted_config.py
-python3 -m py_compile scripts/machine_profile.py
-python3 -m py_compile scripts/focus_session.py
-python3 scripts/machine_profile.py capabilities --format env >/dev/null
-python3 tests/test_focus_session.py >/dev/null
-python3 tests/test_task_snapshot.py >/dev/null
+"$python_bin" -m py_compile scripts/restricted_config.py
+"$python_bin" -m py_compile scripts/machine_profile.py
+"$python_bin" -m py_compile scripts/focus_session.py
+"$python_bin" scripts/machine_profile.py capabilities --format env >/dev/null
+"$python_bin" tests/test_focus_session.py >/dev/null
+"$python_bin" tests/test_task_snapshot.py >/dev/null
+"$python_bin" tests/test_tui_config.py >/dev/null
+"$python_bin" tests/test_tui_forward_compat.py >/dev/null
+"$python_bin" tests/test_tui_widgets.py >/dev/null
 bash tests/test_task_actions.sh >/dev/null
 bash tests/test_task_focus.sh >/dev/null
 bash tests/test_task_pulse.sh >/dev/null
@@ -151,6 +156,7 @@ if [ "$(uname -s)" = "Darwin" ] \
   bash tests/test_system_info_widget.sh >/dev/null
 fi
 bash tests/test_restricted_config.sh >/dev/null
+bash tests/test_setup_machine_work_apps.sh >/dev/null
 bash tests/test_setup_machine_shortcuts.sh >/dev/null
 bash tests/test_state_migration.sh >/dev/null
 bash tests/test_work_profile_entrypoints.sh >/dev/null

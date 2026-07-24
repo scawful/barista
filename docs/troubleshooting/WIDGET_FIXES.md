@@ -261,7 +261,7 @@ are ever removed.
   widget or polling timer.
 
 ### 10. Front App Context Fallback
-**Current path**: `plugins/front_app.sh` + `scripts/front_app_context.sh`
+**Current path**: `plugins/front_app.sh` + `bin/runtime_context_helper` + portable context scripts
 - `front_app` no longer relies only on `yabai --windows --window` for popup state/location.
 - The helper prefers the shared `scripts/runtime_context.sh` cache when available, then falls back to direct discovery.
 - The shared helper first tries the focused window, then falls back to the best matching window for the current app on the active space/display.
@@ -273,7 +273,7 @@ are ever removed.
 - Cross-display window moves now adopt the visible destination space mode in both directions. A floating window moved onto a managed display is re-tiled, and a tiled window moved onto a float display is floated.
 - The `Toggle Topmost` action now maps to yabai's current window `sub-layer` control (`above` / `auto`) instead of the removed `--toggle topmost` flag, so the popup and skhd shortcut no longer emit runtime errors on yabai 7.x.
 - The `front_app` popup now updates its float/fullscreen/topmost row labels from the current window state, so the row explains the next action instead of always saying `Toggle`.
-- The fully enabled `front_app` root now shows 13 rows instead of 18. `Quit App`, `Float Window`, `Adopt Current Space Mode`, and `Fullscreen` stay direct. The existing click-only `front_app.more` child is now labeled `More Actions` and grows from 12 rows to 17 by adding `Hide App`, `Force Quit`, `Sticky`, `Topmost`, and `Center` beside the `Utility`, `Focus`, `Presentation`, and `Tile Here` presets plus display/space moves.
+- The fully enabled `front_app` root now shows 10 rows instead of 18. Its dynamic `App · <name>` title replaces the duplicate App section, and two decorative separators are omitted; `Quit App`, `Float Window`, `Adopt Current Space Mode`, and `Fullscreen` stay direct. The click-only `front_app.more` child remains the 17-row `More Actions` surface for `Hide App`, `Force Quit`, `Sticky`, `Topmost`, `Center`, presets, and display/space moves.
 - `Send to Float Space` remains in the child. Root toggles still reset the child first, and child actions still close both popup levels after running. Disabled/no-Yabai layouts keep Hide and Force Quit with the other app actions on the root and omit the child.
 - The Control Center popup keeps persistent app-default controls out of the smaller `front_app` popup. In enabled setups, its click-only `More Layout Controls` child contains `Default App: Float`, `Default App: Tile`, and `Unset App Default`; they call `scripts/yabai_control.sh app-default-current ...`, persist the choice in `state.json` under `window_defaults.apps`, and install/remove a labeled live yabai rule (`barista-default-*`) when yabai is running.
 - `app-default-current` uses the same front-app context fallback when yabai has
@@ -305,6 +305,12 @@ are ever removed.
   and keep the four-item base batch to one request. An animated-request failure
   retries the identical batch once without animation while retaining the
   portable shell path and configured SketchyBar binary.
+- On compiled popup refreshes, `front_app.sh` calls
+  `runtime_context_helper fresh-front-app` directly with the resolved absolute
+  yabai path instead of starting `runtime_context.sh` only to delegate back to
+  the same helper. Empty/failed native output falls through to one Lua-only
+  portable wrapper pass, and an explicitly Lua-only runtime skips the helper
+  from the start.
 
 ### 12. Reload Serialization
 **Current path**: `plugins/reload_sketchybar.sh`

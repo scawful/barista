@@ -741,6 +741,7 @@ function apple_menu.setup(ctx)
   local item_height = popup_item_height
   local popup_parents = { apple_menu = true }
   local submenu_parents = {}
+  local submenu_ancestors = {}
 
   local function remember_popup(name)
     if type(name) == "string" and name ~= "" then
@@ -748,10 +749,34 @@ function apple_menu.setup(ctx)
     end
   end
 
-  local function remember_submenu(name)
-    if type(name) == "string" and name ~= "" then
-      submenu_parents[name] = true
+  local function remember_submenu(name, containing_popup)
+    if type(name) ~= "string" or name == "" then
+      return
     end
+    submenu_parents[name] = true
+    if not submenu_parents[containing_popup] then
+      return
+    end
+
+    local ancestors = submenu_ancestors[name] or {}
+    local seen = {}
+    for _, ancestor in ipairs(ancestors) do
+      seen[ancestor] = true
+    end
+    local function add_ancestor(ancestor)
+      if type(ancestor) == "string" and ancestor ~= "" and ancestor ~= name
+          and not seen[ancestor] then
+        seen[ancestor] = true
+        table.insert(ancestors, ancestor)
+      end
+    end
+
+    add_ancestor(containing_popup)
+    for _, ancestor in ipairs(submenu_ancestors[containing_popup] or {}) do
+      add_ancestor(ancestor)
+    end
+    table.sort(ancestors)
+    submenu_ancestors[name] = ancestors
   end
 
   local function list_popup_parents()
@@ -848,8 +873,7 @@ function apple_menu.setup(ctx)
         or (entry.submenu and entry.items and #entry.items > 0)
       ))
     if entry.submenu and entry.items and #entry.items > 0 then
-      remember_popup(entry.name)
-      remember_submenu(entry.name)
+      remember_submenu(entry.name, popup_name)
       click_script = popup_toggle(entry.name, { direct = true, origin = "submenu" })
       label = string.format("%s  %s", label, entry.arrow_icon or "󰅂")
       popup_config = {
@@ -920,6 +944,7 @@ function apple_menu.setup(ctx)
   return {
     popup_parents = list_popup_parents(),
     submenu_parents = list_submenu_parents(),
+    submenu_ancestors = submenu_ancestors,
   }
 end
 

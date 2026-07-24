@@ -38,7 +38,11 @@ function menu_renderer.create(ctx)
   if submenu_hover_script ~= "" and ctx.env_prefix and style.submenu_hover_env then
     submenu_hover_script = ctx.env_prefix(style.submenu_hover_env) .. submenu_hover_script
   end
-  local metadata = { popup_parents = {}, submenu_parents = {} }
+  local metadata = {
+    popup_parents = {},
+    submenu_parents = {},
+    submenu_ancestors = {},
+  }
 
   local function remember(target, name)
     if type(name) ~= "string" or name == "" then return end
@@ -54,6 +58,41 @@ function menu_renderer.create(ctx)
     end
     table.sort(items)
     return items
+  end
+
+  local function remember_submenu(name, containing_popup)
+    remember(metadata.submenu_parents, name)
+    if not metadata.submenu_parents[containing_popup] then
+      return
+    end
+
+    local ancestors = metadata.submenu_ancestors[name] or {}
+    local seen = {}
+    for _, ancestor in ipairs(ancestors) do
+      seen[ancestor] = true
+    end
+    local function add_ancestor(ancestor)
+      if type(ancestor) == "string" and ancestor ~= "" and ancestor ~= name
+          and not seen[ancestor] then
+        seen[ancestor] = true
+        table.insert(ancestors, ancestor)
+      end
+    end
+
+    add_ancestor(containing_popup)
+    for _, ancestor in ipairs(metadata.submenu_ancestors[containing_popup] or {}) do
+      add_ancestor(ancestor)
+    end
+    table.sort(ancestors)
+    metadata.submenu_ancestors[name] = ancestors
+  end
+
+  local function copy_ancestor_map()
+    local result = {}
+    for name, ancestors in pairs(metadata.submenu_ancestors) do
+      result[name] = { unpack(ancestors) }
+    end
+    return result
   end
 
   local function menu_entry_padding()
@@ -242,7 +281,7 @@ function menu_renderer.create(ctx)
     
     -- Create popup container item (separate item, not nested)
     local popup_item_name = "popup." .. popup_name
-    remember(metadata.popup_parents, popup_item_name)
+    remember_submenu(popup_item_name, popup)
     sbar.add("item", popup_item_name, {
       position = "left",
       icon = "",
@@ -340,7 +379,7 @@ function menu_renderer.create(ctx)
       item_config.script = submenu_hover_script
     end
     sbar.add("item", parent, item_config)
-    remember(metadata.submenu_parents, parent)
+    remember_submenu(parent, popup)
     if hover_enabled then
       post_config_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", post_config_delay, sketchybar_bin, parent))
     end
@@ -354,6 +393,7 @@ function menu_renderer.create(ctx)
       return {
         popup_parents = list_from_set(metadata.popup_parents),
         submenu_parents = list_from_set(metadata.submenu_parents),
+        submenu_ancestors = copy_ancestor_map(),
       }
     end,
   }

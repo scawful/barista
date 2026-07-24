@@ -9,7 +9,7 @@ local function find_entry(entries, name)
   return nil
 end
 
-run_test("menu_renderer: uses direct toggle for nested submenu parents", function()
+run_test("menu_renderer: uses child switch scope for nested popup parents", function()
   local added = {}
   local hover_attached = {}
   local shell_exec_calls = {}
@@ -42,7 +42,7 @@ run_test("menu_renderer: uses direct toggle for nested submenu parents", functio
     SUBMENU_HOVER_SCRIPT = "submenu_hover.sh",
     popup_toggle_action = function(item_name, opts)
       if opts and opts.direct then
-        return "direct:" .. (item_name or "$NAME")
+        return tostring(opts.origin or "root") .. ":" .. (item_name or "$NAME")
       end
       return "default:" .. (item_name or "$NAME")
     end,
@@ -63,15 +63,49 @@ run_test("menu_renderer: uses direct toggle for nested submenu parents", functio
         },
       },
     },
+    {
+      name = "menu.tools",
+      popup = "tools",
+      icon = "T",
+      label = "Tools",
+      items = {
+        {
+          name = "tools.advanced",
+          popup = "advanced",
+          label = "Advanced",
+          items = {
+            {
+              name = "tools.advanced.open",
+              label = "Open Tool",
+              action = "echo tool",
+            },
+          },
+        },
+      },
+    },
   })
 
   local parent = find_entry(added, "menu.oracle")
   assert_true(parent ~= nil, "submenu parent should be rendered")
-  assert_equal(parent.props.click_script, "direct:menu.oracle", "submenu parent should use direct toggle")
+  assert_equal(parent.props.click_script, "submenu:menu.oracle", "submenu parent should use child-switch scope")
+  local popup_action = find_entry(added, "menu.tools")
+  assert_true(popup_action ~= nil, "popup action should be rendered")
+  assert_equal(popup_action.props.click_script, "submenu:popup.tools", "popup action should use child-switch scope")
+  local nested_action = find_entry(added, "tools.advanced")
+  assert_true(nested_action ~= nil, "nested popup action should be rendered")
+  assert_equal(nested_action.props.click_script, "submenu:popup.advanced", "nested popup should use child-switch scope")
 
   local metadata = renderer.get_metadata()
-  assert_true(#metadata.submenu_parents == 1, "submenu parent metadata should be tracked")
+  assert_equal(#metadata.popup_parents, 0, "nested popup actions should not be classified as root popups")
+  assert_true(#metadata.submenu_parents == 3, "submenu parent metadata should be tracked")
   assert_equal(metadata.submenu_parents[1], "menu.oracle", "submenu parent metadata value")
+  assert_equal(metadata.submenu_parents[2], "popup.advanced", "nested popup action metadata value")
+  assert_equal(metadata.submenu_parents[3], "popup.tools", "popup action should join child popup metadata")
+  assert_equal(
+    table.concat(metadata.submenu_ancestors["popup.advanced"] or {}, "|"),
+    "popup.tools",
+    "nested popup should retain its owning child as an ancestor"
+  )
   assert_equal(#hover_attached, 0, "submenu parent should not attach hover by default")
   assert_equal(#shell_exec_calls, 0, "submenu parent should not subscribe hover events by default")
 end)

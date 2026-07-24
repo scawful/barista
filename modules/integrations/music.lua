@@ -536,6 +536,8 @@ function music.create_popup_items(ctx)
       font = row_font,
       label_color = style.label_color,
       sketchybar_bin = ctx and (ctx.SKETCHYBAR_BIN or ctx.sketchybar_bin) or nil,
+      popup_manager_script = ctx and ctx.popup_manager_script or nil,
+      popup_topology_token = ctx and ctx.popup_topology_token or nil,
       close_popups = close_popups,
     })
     table.insert(submenu_parents, name)

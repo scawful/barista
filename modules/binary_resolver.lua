@@ -162,6 +162,42 @@ function M.compiled_script(config_dir, lua_only, binary_name, fallback)
   return fallback
 end
 
+--- Resolve the click-time popup helper only when its CLI protocol is compatible.
+--- The check runs once while building config, never on the popup click path.
+function M.resolve_popup_switch(config_dir, lua_only, fallback)
+  if lua_only then
+    return fallback
+  end
+  local protocol_probe = config_dir .. "/scripts/popup_switch_protocol_probe.pl"
+  if not shell_utils.file_exists(protocol_probe) then
+    return fallback
+  end
+  local search_dirs = {
+    config_dir .. "/build/bin",
+    config_dir .. "/bin",
+  }
+  for _, dir in ipairs(search_dirs) do
+    local path = string.format("%s/popup_switch", dir)
+    if shell_utils.file_exists(path) then
+      local command = string.format(
+        "{ /usr/bin/perl %s %s "
+          .. "&& printf 'barista-popup-switch-exit-0\\n'; } 2>/dev/null",
+        shell_utils.shell_quote(protocol_probe),
+        shell_utils.shell_quote(path)
+      )
+      local handle = io.popen(command)
+      if handle then
+        local result = trim(handle:read("*a") or "")
+        handle:close()
+        if result == "barista-popup-switch-exit-0" then
+          return path
+        end
+      end
+    end
+  end
+  return fallback
+end
+
 --- Check if yabai is currently running.
 function M.yabai_running()
   local handle = io.popen("pgrep -x yabai >/dev/null 2>&1 && echo 1 || echo 0")

@@ -223,3 +223,86 @@ run_test("apple_menu_enhanced: missing rows keep explicit recovery actions", fun
   assert_true(afs_item ~= nil, "Build AFS Browser row should be added")
   assert_true((afs_item.props.click_script or ""):find("Need rebuild", 1, true) ~= nil, "missing rows with explicit actions should keep their recovery action")
 end)
+
+run_test("apple_menu_enhanced: nested submenu metadata preserves every ancestor", function()
+  local meta = apple_menu.setup({
+    sbar = { add = function() end },
+    theme = {
+      WHITE = "0xffffffff",
+      DARK_WHITE = "0xffcccccc",
+      BG_SEC_COLR = "0xff111111",
+      bar = { bg = "0xff000000" },
+    },
+    widget_height = 22,
+    associated_displays = "all",
+    popup_anchor_script = "/tmp/popup_anchor",
+    popup_toggle_action = function(item, opts)
+      return string.format("%s:%s", tostring(opts and opts.origin), tostring(item))
+    end,
+    subscribe_popup_autoclose = function() end,
+    attach_hover = function() end,
+    apple_menu_prepared = {
+      config_dir = "/tmp/config",
+      style = {
+        popup_border_width = 2,
+        popup_corner_radius = 4,
+        popup_border_color = "0xffffffff",
+        popup_bg_color = "0xff111111",
+        popup_padding = 8,
+      },
+      font_small = "Inter:Regular:12.0",
+      font_bold = "Inter:Bold:12.0",
+      popup_item_height = 20,
+      popup_header_height = 22,
+      popup_item_corner_radius = 4,
+      popup_padding = {
+        icon_left = 4,
+        icon_right = 6,
+        label_left = 6,
+        label_right = 6,
+      },
+      rendered = {
+        {
+          name = "menu.level1",
+          label = "Level 1",
+          section = "tools",
+          submenu = true,
+          items = {
+            {
+              name = "menu.level2",
+              label = "Level 2",
+              submenu = true,
+              items = {
+                {
+                  name = "menu.level3",
+                  label = "Level 3",
+                  submenu = true,
+                  items = {
+                    { name = "menu.leaf", label = "Leaf", action = "echo leaf" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      sections = { tools = { id = "tools", label = "Tools" } },
+    },
+    icon_for = function(_, fallback)
+      return fallback or ""
+    end,
+  })
+
+  assert_equal(
+    table.concat(meta.submenu_ancestors["menu.level3"] or {}, "|"),
+    "menu.level1|menu.level2",
+    "deep submenu should preserve its complete ancestor chain"
+  )
+  local roots = {}
+  for _, name in ipairs(meta.popup_parents or {}) do
+    roots[name] = true
+  end
+  assert_true(roots.apple_menu == true, "Apple anchor should remain a root popup")
+  assert_true(not roots["menu.level1"] and not roots["menu.level2"] and not roots["menu.level3"],
+    "nested Apple fly-outs should be children only, not duplicate roots")
+end)

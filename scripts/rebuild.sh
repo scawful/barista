@@ -6,7 +6,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$ROOT_DIR"
 
 # Colors for output
 RED='\033[0;31m'
@@ -114,9 +115,10 @@ build_helpers() {
     print_info "Building C/C++ helper components..."
     
     if cmake --build build --target clock_widget system_info_widget system_info_popup_helper space_manager \
-        submenu_hover popup_anchor popup_hover popup_manager popup_guard \
+        submenu_hover popup_anchor popup_hover popup_manager popup_switch popup_guard \
         icon_manager state_manager widget_manager menu_renderer menu_action \
-        volume_popup_helper; then
+        volume_popup_helper \
+        && cmake --build build --target sync_binaries; then
         print_info "✓ Helpers build successful!"
     else
         print_error "Helpers build failed!"

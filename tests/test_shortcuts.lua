@@ -46,15 +46,37 @@ end)
 run_test("shortcuts.get_command: toggle_control_center is a popup toggle command", function()
   local command = shortcuts.get_command("toggle_control_center")
   assert_type(command, "string", "toggle command")
-  assert_true(command:match("%-%-set") ~= nil, "toggle command sets an item")
-  assert_true(command:match("popup%.drawing=toggle") ~= nil, "toggle command toggles popup drawing")
+  assert_true(command:match("invoke_popup_click%.sh") ~= nil,
+    "persisted shortcut should forward through the live generation-bound click")
+  assert_true(command:match("control_center") ~= nil,
+    "persisted shortcut should target the configured control center")
 end)
 
 run_test("shortcuts.build_control_center_toggle_command: item names are POSIX quoted", function()
   local hostile = "$(touch /tmp/barista-control-center-injection)'item"
-  local command = shortcuts.build_control_center_toggle_command(hostile)
+  local command = shortcuts.build_control_center_toggle_command(hostile, {
+    sketchybar_bin = "/custom/sketchybar",
+    popup_manager_script = "/custom/popup_manager",
+    popup_topology_token = "generation-1",
+  })
+  assert_true(command:find("/custom/popup_manager switch", 1, true) ~= nil, "shortcut should use the shared switch helper")
+  assert_true(command:find("BARISTA_POPUP_TOPOLOGY_TOKEN=generation-1", 1, true) ~= nil,
+    "shortcut should bind the click to the current topology generation")
   assert_true(command:find("--set '$(", 1, true) ~= nil, "item name should start in a single-quoted field")
-  assert_true(command:find("'\\''", 1, true) ~= nil, "embedded apostrophe should be escaped")
+  assert_true(command:find("'\"'\"'", 1, true) ~= nil, "embedded apostrophe should be escaped")
+end)
+
+run_test("shortcuts.set_popup_topology_token: refreshes the cached control-center action", function()
+  shortcuts.set_popup_topology_token("generation-current")
+  assert_true(
+    shortcuts.actions.toggle_control_center:find(
+      "BARISTA_POPUP_TOPOLOGY_TOKEN=generation-current",
+      1,
+      true
+    ) ~= nil,
+    "cached shortcut action should use the current topology generation"
+  )
+  shortcuts.set_popup_topology_token(nil)
 end)
 
 run_test("shortcuts.build_terminal_session_command: shell text is passed as argv", function()

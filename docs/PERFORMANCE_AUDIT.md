@@ -99,7 +99,7 @@ collection, task snapshots, and space visuals run on explicit event paths.
 *   **Update:**
     - the existing helper observes application activation, active-space changes, and system wake through `NSWorkspace`; callbacks only schedule work, while the daemon main thread performs the yabai queries
     - related notifications debounce for 50 ms and cap scheduled deferral at 250 ms when the daemon thread is available; a separate five-second safety interval repairs missed or externally generated state changes without changing the shell media cadence
-    - front-app clicks keep the direct popup toggle first, then consume one native refresh-and-return TSV asynchronously so same-app focus/property state is current without a second cache-read/validation query chain
+    - front-app clicks complete the shared popup visibility switch first, then consume one native refresh-and-return TSV asynchronously so same-app focus/property state is current without a second cache-read/validation query chain
     - Lua-only/helper-missing setups keep the portable one-second front-app producer; the native path keeps the same one-helper steady-state daemon topology, TSV schema, selection rules, and change-driven publication, while a popup click uses one short-lived refresh helper
     - the source-compiled test injects a private notification center, checks activation, active-space, and wake independently, and verifies that a sustained sub-debounce event stream cannot defer refresh indefinitely
 *   **Result:** the read-only live baseline observed 20 helper forks across 10.501 seconds, exactly one focused-window/spaces pair per roughly one-second refresh. A matched first post-reload sample observed 6 forks across 10.504 seconds (70% fewer), and a settled final sample observed 4 across 10.501 seconds, matching the five-second safety cadence's stable reduction from about 120 to 24 yabai executions per minute (80%). Event and popup refreshes remain demand-driven. Twenty live query pairs measured a combined 16.447 ms median and 20.103 ms p95 before this cadence reduction.
@@ -126,11 +126,22 @@ collection, task snapshots, and space visuals run on explicit event paths.
 *   **Update:**
     - on compiled popup refreshes, `front_app.sh` now invokes the existing `runtime_context_helper fresh-front-app` entrypoint directly with the resolved absolute yabai path instead of launching `runtime_context.sh` only for that wrapper to delegate back to the helper
     - an empty or failed native result falls through to one portable wrapper pass with native selection disabled, avoiding a duplicate attempt against the same helper
-    - helper-missing and explicit Lua-only setups keep the portable wrapper/context fallback, and the direct popup toggle still happens before this asynchronous detail work
+    - helper-missing and explicit Lua-only setups keep the portable wrapper/context fallback, and the popup visibility switch still completes before this asynchronous detail work
     - deterministic tests cover native success, native-to-portable fallback, the Lua-only boundary, and final direct-discovery fallback while retaining the single batched SketchyBar apply
 *   **Result:** in a same-session 30-round randomized A/B after four warmup pairs, the correctness-preserving direct native refresh reduced renderer-complete median from 48.118 ms to 41.524 ms (13.7%) and p95 from 54.683 ms to 50.972 ms (6.8%), winning 26/30 pairs with a -6.808 ms paired median. Raw native TSV matched the wrapper byte-for-byte before and after; every one of the 60 rendered samples matched `Logic Pro` / `Tiled · Float Space` / `Space 8 · Display 1`. SketchyBar PID `65521` and both runtime-daemon PIDs stayed stable; stdout/stderr added zero bytes/lines, `state.json` plus the live/private runtime caches stayed byte/identity stable, and both popup levels stayed closed. Artifact: `/tmp/barista_front_app_native_refresh_absolute_yabai_ab_20260724T165220-0400.json` (SHA-256 `386913f4b1ccc71d1f0be127ab853707ca14b518ab45c26d6c800fcce58340d3`).
 
-### 0k. On-Demand Triforce Status (Verified)
+### 0k. Exclusive Native Popup Switching (Verified)
+*   **Files:** `helpers/popup_manager.c`, `plugins/popup_manager.sh`, `modules/ui_builder.lua`, `modules/submenu_registry.lua`, `main.lua`, `modules/items_left.lua`, `modules/items_right.lua`, `tests/test_popup_manager.sh`
+*   **Update:**
+    - root clicks now use one target-last mutation that closes every other registered root and all registered children before toggling the requested root; a second click still closes the active root
+    - child clicks close unrelated branches, preserve the requested child's complete registered ancestor chain, then toggle the requested child without closing its owning root
+    - the distinct `popup_switch` alias shares the manager implementation without allowing a pre-upgrade `popup_manager` binary to receive the new CLI; a one-time protocol check rejects incompatible aliases, bounds stale script helpers to 250 ms with process-group cleanup and isolated output capture, and leaves helper-missing/Lua-only installs on the matching shell mode or prior direct/local-reset fallback
+    - async detail refresh remains after the visibility mutation, and the click path performs no popup query, yabai discovery, focus repair, or extra daemon IPC
+    - enabled LM Studio and rendered child popup actions join one deduplicated, versioned topology manifest that atomically publishes roots, children, and ancestry within the shared count/byte/delimiter bounds; click scripts carry a fresh publication token, so missing, malformed, or stale-generation topology sends only the requested toggle
+    - native item names now stay discrete `execvp` arguments with bounded dynamic registry storage instead of entering a fixed command buffer through `system()`; click mode tail-execs SketchyBar without an intermediate fork/wait
+*   **Result:** after three warmup rounds, a final-code 24-pair forced closed-to-open A/B with a 60 ms pre-sample settle measured `52.164 ms` median / `73.237 ms` p95 for the direct Front App toggle and `59.554 / 80.056 ms` for the full 11-root/4-child switch. The paired median cost was `5.361 ms` under the live renderer load. A separate 100-pair renderer-free process-completion A/B isolated the native helper at `3.238 ms` median versus a `1.356 ms` process baseline (`1.875 ms` paired overhead). Both runs preserved the SketchyBar PID, state identity, error log, and final all-off topology. Artifacts: `/tmp/barista_exclusive_popup_switch_ab_v3_20260724.json` (SHA-256 `f49980a7b4756f4b6cd5de75fc4bad064725755b120833e263f4e9e778c186ff`) and `/tmp/barista_popup_switch_native_dispatch_v1_20260724.json` (SHA-256 `ab5a1e6ff4e1d5c95853cf293e833fdf04df9d4e5022f33021ecb4c0923cc9c9`).
+
+### 0l. On-Demand Triforce Status (Verified)
 *   **Files:** `modules/integrations/oracle.lua`, `plugins/oracle_triforce.sh`, `tests/test_oracle_triforce.sh`
 *   **Update:**
     - removed the Triforce anchor's 45-second polling timer; click still toggles the popup first, then starts one background status refresh
@@ -215,7 +226,7 @@ collection, task snapshots, and space visuals run on explicit event paths.
 ### 2a. Music Menu Routine Path (Verified)
 *   **Files:** `modules/integrations/music.lua`, `modules/items_left.lua`, `modules/ui_builder.lua`, `plugins/music_studio.sh`
 *   **Update:** The music launcher stays click/hover driven only (`updates=false`), and its popup model points at the current `Studio/` songforge/studio CLI paths plus shallow kit folders. On the fully populated model, the initial surface is 13 rows instead of 24; secondary apps and kit/folder launchers remain available through the click-only `More Apps` and `Kits + Folders` children.
-    The root toggle resets both children before opening or closing, nested actions close the child and root together, and the shell plugin only owns hover/status behavior.
+    The shared root switch resets both children before opening or closing, nested actions close the child and root together, and the shell plugin only owns hover/status behavior.
 *   **Result:** the Music menu keeps every launcher without periodic forced updates or presenting all 24 rows at once. The live first-open measurement is recorded in section 3e.
 
 ### 2b. Control-Center Popup Cleanup (Verified Active Path)
@@ -226,7 +237,7 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - removed the synchronous config-time Yabai layout query; the widget seeds a `---` placeholder and the existing timeout-bounded post-config updater publishes the live layout
     - complete window-manager flags are reused while constructing popup rows instead of repeating capability and service probes
     - reduced the fully enabled root from 23 rows to 12; the click-only `cc.more` child keeps all 11 Layout Ops and App Defaults rows reachable
-    - root toggles reset `cc.more`, child actions close both levels, and disabled/no-Yabai models omit the child and its registry entry
+    - shared root switches reset `cc.more`, child actions close both levels, and disabled/no-Yabai models omit the child and its registry entry
 *   **Result:** the removed live layout query measured 11.20 ms median across 40 reads. In a same-session five-pair isolated sample, 20 popup-model builds dropped from 815.59 ms median to 7.93 ms (99.0%) after complete flags stopped repeating external probes; normal config still performs one shared health/capability snapshot before the bounded updater takes over.
 
 ### 3. Popup & Submenu Execution (Resolved)

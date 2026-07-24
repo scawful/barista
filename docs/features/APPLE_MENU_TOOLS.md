@@ -142,7 +142,9 @@ script-only path and also writes the machine-local capability profile.
 - Popup section density is controlled by `appearance.menu_item_height`, `appearance.menu_header_height`, and `appearance.menu_padding`.
 - `menus.apple.custom[].items` can define nested rows using `type = "header"`, `type = "separator"`, or standard action rows with `label`, `command`/`action`, `url`, `icon`, and `shortcut`.
 - Legacy fly-out submenu timing is controlled by `appearance.submenu_close_delay`.
-- Top-level popups still use the display-aware toggle path; nested submenu rows now use a direct SketchyBar toggle so fly-outs feel faster.
+- Top-level popups use the shared exclusive root switch; nested submenu rows use
+  its child-only mode so opening another fly-out dismisses unrelated branches
+  while preserving every containing fly-out and the Apple root.
 - Zelda hacking now lives on the standalone left-bar Triforce popup, not inside the Apple menu.
 - Oracle-specific UI preferences live under `menus.oracle` in `state.json`, not under `menus.apple`.
 - The Triforce surface should stay shallow: use it for `Continue`, `Patch + Launch`, `Open Oracle Hub`, and ROM context, then do the deeper Oracle work in Oracle Hub.

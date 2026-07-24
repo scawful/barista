@@ -22,6 +22,24 @@ local function sketchybar_bin(opts)
   return ctx.SKETCHYBAR_BIN or ctx.sketchybar_bin or opts.sketchybar_bin or "sketchybar"
 end
 
+local function popup_manager_script(opts)
+  opts = opts or {}
+  local ctx = opts.ctx or opts
+  return ctx.POPUP_MANAGER_SCRIPT
+    or ctx.popup_manager_script
+    or opts.POPUP_MANAGER_SCRIPT
+    or opts.popup_manager_script
+end
+
+local function popup_topology_token(opts)
+  opts = opts or {}
+  local ctx = opts.ctx or opts
+  return ctx.POPUP_TOPOLOGY_TOKEN
+    or ctx.popup_topology_token
+    or opts.POPUP_TOPOLOGY_TOKEN
+    or opts.popup_topology_token
+end
+
 local function append(layout, entry)
   if type(layout) == "table" then
     table.insert(layout, entry)
@@ -127,7 +145,7 @@ function ui.apply_anchor_chip(props, ctx, opts)
   return styled
 end
 
-function ui.toggle(item_name, opts)
+local function direct_toggle(item_name, opts)
   local bin = shell_quote(sketchybar_bin(opts))
   if item_name and item_name ~= "" then
     return string.format("%s -m --set %s popup.drawing=toggle", bin, shell_quote(item_name))
@@ -135,7 +153,36 @@ function ui.toggle(item_name, opts)
   return string.format([[USER="${USER:-$(id -un)}" %s -m --set "$NAME" popup.drawing=toggle]], bin)
 end
 
-function ui.toggle_after_closing(item_name, close_items, opts)
+local function managed_toggle(item_name, fallback, opts)
+  local manager = popup_manager_script(opts)
+  if type(manager) ~= "string" or manager == "" or (opts and opts.exclusive == false) then
+    return fallback
+  end
+  local target = item_name and item_name ~= "" and shell_quote(item_name) or [["$NAME"]]
+  local scope = opts and opts.popup_scope == "submenu" and "submenu" or "switch"
+  local environment = "BARISTA_SKETCHYBAR_BIN=" .. shell_quote(sketchybar_bin(opts))
+  local topology_token = popup_topology_token(opts)
+  if type(topology_token) == "string" and topology_token ~= "" then
+    environment = environment
+      .. " BARISTA_POPUP_TOPOLOGY_TOKEN="
+      .. shell_quote(topology_token)
+  end
+  return string.format(
+    "if [ -x %s ]; then %s %s %s %s; else %s; fi",
+    shell_quote(manager),
+    environment,
+    shell_quote(manager),
+    scope,
+    target,
+    fallback
+  )
+end
+
+function ui.toggle(item_name, opts)
+  return managed_toggle(item_name, direct_toggle(item_name, opts), opts)
+end
+
+local function direct_toggle_after_closing(item_name, close_items, opts)
   local bin = shell_quote(sketchybar_bin(opts))
   local args = {}
   local seen = {}
@@ -147,6 +194,11 @@ function ui.toggle_after_closing(item_name, close_items, opts)
   end
   table.insert(args, string.format("--set %s popup.drawing=toggle", shell_quote(item_name)))
   return string.format("%s -m %s", bin, table.concat(args, " "))
+end
+
+function ui.toggle_after_closing(item_name, close_items, opts)
+  local fallback = direct_toggle_after_closing(item_name, close_items, opts)
+  return managed_toggle(item_name, fallback, opts)
 end
 
 function ui.toggle_then_refresh_async(item_name, refresh_cmd, opts)
@@ -370,9 +422,11 @@ function ui.submenu(layout, parent, name, spec)
   popup.background = popup.background or popup_background or {}
   props.popup = popup
 
+  local toggle_opts = merge({}, spec)
+  toggle_opts.popup_scope = "submenu"
   local click_script = type(spec.close_popups) == "table"
-    and ui.toggle_after_closing(name, spec.close_popups, spec)
-    or ui.toggle(name, spec)
+    and ui.toggle_after_closing(name, spec.close_popups, toggle_opts)
+    or ui.toggle(name, toggle_opts)
 
   return ui.row(layout, parent, name, {
     style = style,

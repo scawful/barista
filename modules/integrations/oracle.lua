@@ -701,7 +701,11 @@ function oracle.create_triforce_widget(opts)
       item.script
     )
     local toggle_script = opts.popup_toggle_script
-      or ui.toggle(item.name, { sketchybar_bin = ctx.SKETCHYBAR_BIN })
+      or ui.toggle(item.name, {
+        sketchybar_bin = ctx.SKETCHYBAR_BIN,
+        popup_manager_script = ctx.popup_manager_script,
+        popup_topology_token = ctx.popup_topology_token,
+      })
     item.click_script = string.format(
       "%s; (%s) >/dev/null 2>&1 &",
       toggle_script,

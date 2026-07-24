@@ -151,3 +151,88 @@ run_test("compiled_script: missing binary returns fallback", function()
   local result = binary_resolver.compiled_script("/nonexistent", false, "nonexistent_binary", "/fallback.sh")
   assert_equal(result, "/fallback.sh", "missing binary fallback")
 end)
+
+run_test("compiled_script: old popup manager does not intercept popup switch upgrade", function()
+  local tmpdir = os.tmpname() .. "_barista_popup_switch_upgrade"
+  local bin_dir = tmpdir .. "/bin"
+  os.execute(string.format("mkdir -p %q", bin_dir))
+
+  local old_manager = assert(io.open(bin_dir .. "/popup_manager", "w"))
+  old_manager:write("old event-only manager")
+  old_manager:close()
+
+  local result = binary_resolver.compiled_script(
+    tmpdir,
+    false,
+    "popup_switch",
+    tmpdir .. "/plugins/popup_manager.sh"
+  )
+  assert_equal(
+    result,
+    tmpdir .. "/plugins/popup_manager.sh",
+    "an old popup_manager must not be selected for the new popup_switch CLI"
+  )
+
+  os.remove(bin_dir .. "/popup_manager")
+  os.execute(string.format("rmdir %q %q", bin_dir, tmpdir))
+end)
+
+run_test("resolve_popup_switch: rejects a stale executable and accepts protocol v1", function()
+  local tmpdir = os.tmpname() .. "_barista_popup_switch_protocol"
+  local bin_dir = tmpdir .. "/bin"
+  local scripts_dir = tmpdir .. "/scripts"
+  local helper = bin_dir .. "/popup_switch"
+  local fallback = tmpdir .. "/plugins/popup_manager.sh"
+  os.execute(string.format("mkdir -p %q %q", bin_dir, scripts_dir))
+  assert(os.execute(string.format(
+    "cp %q %q",
+    "scripts/popup_switch_protocol_probe.pl",
+    scripts_dir .. "/popup_switch_protocol_probe.pl"
+  )))
+
+  local file = assert(io.open(helper, "w"))
+  file:write("#!/bin/sh\nprintf '%s\\n' barista-popup-switch-v1\nexit 42\n")
+  file:close()
+  assert(os.execute(string.format("chmod +x %q", helper)))
+  assert_equal(
+    binary_resolver.resolve_popup_switch(tmpdir, false, fallback),
+    fallback,
+    "an executable with no supported switch protocol must fall back"
+  )
+
+  file = assert(io.open(helper, "w"))
+  file:write("#!/bin/sh\nsleep 4\n")
+  file:close()
+  local started = assert(io.popen(
+    [[/usr/bin/perl -MTime::HiRes=time -e 'printf("%.6f\n", time())']]
+  ))
+  local started_at = assert(tonumber(started:read("*a")))
+  started:close()
+  assert_equal(
+    binary_resolver.resolve_popup_switch(tmpdir, false, fallback),
+    fallback,
+    "a hung protocol probe must time out and fall back"
+  )
+  local finished = assert(io.popen(
+    [[/usr/bin/perl -MTime::HiRes=time -e 'printf("%.6f\n", time())']]
+  ))
+  local elapsed = assert(tonumber(finished:read("*a"))) - started_at
+  finished:close()
+  assert_true(
+    elapsed < 1,
+    string.format("a hung helper must not retain the resolver pipe (elapsed %.3fs)", elapsed)
+  )
+
+  file = assert(io.open(helper, "w"))
+  file:write("#!/bin/sh\nprintf '%s\\n' barista-popup-switch-v1\n")
+  file:close()
+  assert_equal(
+    binary_resolver.resolve_popup_switch(tmpdir, false, fallback),
+    helper,
+    "a protocol-v1 helper should be selected"
+  )
+
+  os.remove(helper)
+  os.remove(scripts_dir .. "/popup_switch_protocol_probe.pl")
+  os.execute(string.format("rmdir %q %q %q", bin_dir, scripts_dir, tmpdir))
+end)

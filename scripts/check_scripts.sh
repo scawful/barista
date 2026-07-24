@@ -13,6 +13,7 @@ Usage: $0 [--ci]
 
 Checks:
   - Shell syntax (bash -n)
+  - Perl helper syntax
   - shellcheck (if available, required with --ci)
   - shfmt formatting report (strict with BARISTA_SHFMT_STRICT=1)
   - Python TUI configuration and widget regression tests
@@ -60,6 +61,7 @@ echo "[check] bash -n syntax"
 for f in "${shell_files[@]}"; do
   bash -n "$f"
 done
+/usr/bin/perl -c scripts/popup_switch_protocol_probe.pl >/dev/null
 
 lint_candidates=(
   scripts/setup_machine.sh
@@ -141,8 +143,11 @@ bash tests/test_task_actions.sh >/dev/null
 bash tests/test_task_focus.sh >/dev/null
 bash tests/test_task_pulse.sh >/dev/null
 bash tests/test_calendar_tasks.sh >/dev/null
+bash tests/test_generate_shortcuts.sh >/dev/null
 bash tests/test_popup_anchor.sh >/dev/null
 bash tests/test_popup_hover.sh >/dev/null
+bash tests/test_popup_click.sh >/dev/null
+bash tests/test_popup_manager.sh >/dev/null
 bash tests/test_runtime_context_daemon_exec.sh >/dev/null
 bash tests/test_runtime_context_media_efficiency.sh >/dev/null
 bash tests/test_runtime_context_helper_publication.sh >/dev/null

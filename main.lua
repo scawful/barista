@@ -56,7 +56,12 @@ local binary_resolver  = require("binary_resolver")
 local runtime_daemon   = require("runtime_daemon")
 local runtime_startup  = require("runtime_startup")
 local ui_builder       = require("ui_builder")
+local submenu_registry = require("submenu_registry")
 local post_config_queue = runtime_startup.new_post_config_queue()
+local POPUP_TOPOLOGY_TOKEN = submenu_registry.new_topology_token()
+if type(shortcuts.set_popup_topology_token) == "function" then
+  shortcuts.set_popup_topology_token(POPUP_TOPOLOGY_TOKEN)
+end
 
 local function enqueue_post_config_command(command, opts)
   return post_config_queue:enqueue_command(command, opts)
@@ -188,7 +193,13 @@ local HOVER_SCRIPT         = compiled_script("popup_hover",    PLUGIN_DIR .. "/p
 local POPUP_ANCHOR_SCRIPT  = compiled_script("popup_anchor",   PLUGIN_DIR .. "/popup_anchor.sh")
 local SUBMENU_HOVER_SCRIPT = compiled_script("submenu_hover",  PLUGIN_DIR .. "/submenu_hover.sh")
 local POPUP_MANAGER_SCRIPT = compiled_script("popup_manager",  PLUGIN_DIR .. "/popup_manager.sh")
+local POPUP_SWITCH_SCRIPT  = binary_resolver.resolve_popup_switch(
+  CONFIG_DIR,
+  LUA_ONLY,
+  PLUGIN_DIR .. "/popup_manager.sh"
+)
 local POPUP_MANAGER_SCRIPT_CMD = shell_utils.env_prefix({
+  BARISTA_SKETCHYBAR_BIN = SKETCHYBAR_BIN,
   DISMISS_ON_APP_SWITCH = "0",
 }) .. POPUP_MANAGER_SCRIPT
 local POPUP_GUARD_SCRIPT   = compiled_script("popup_guard",    PLUGIN_DIR .. "/popup_guard.sh")
@@ -274,12 +285,17 @@ local widget_daemon_enabled = runtime_daemon.should_enable_widget_daemon(state, 
   lua_only = LUA_ONLY,
 })
 
-local function direct_popup_toggle(item_name)
-  return ui_builder.toggle(item_name, { sketchybar_bin = SKETCHYBAR_BIN })
+local function direct_popup_toggle(item_name, opts)
+  return ui_builder.toggle(item_name, {
+    sketchybar_bin = SKETCHYBAR_BIN,
+    popup_manager_script = POPUP_SWITCH_SCRIPT,
+    popup_topology_token = POPUP_TOPOLOGY_TOKEN,
+    popup_scope = opts and opts.origin == "submenu" and "submenu" or nil,
+  })
 end
 
-local function popup_toggle_action(item_name, _opts)
-  return direct_popup_toggle(item_name)
+local function popup_toggle_action(item_name, opts)
+  return direct_popup_toggle(item_name, opts)
 end
 
 -- Hover helpers
@@ -406,6 +422,10 @@ local barista_context = {
   ui_builder               = ui_builder,
   popup_toggle_script      = nil,
   popup_anchor_script      = POPUP_ANCHOR_SCRIPT,
+  POPUP_MANAGER_SCRIPT     = POPUP_SWITCH_SCRIPT,
+  popup_manager_script     = POPUP_SWITCH_SCRIPT,
+  POPUP_TOPOLOGY_TOKEN     = POPUP_TOPOLOGY_TOKEN,
+  popup_topology_token     = POPUP_TOPOLOGY_TOKEN,
 
   -- Directories & binaries
   CONFIG_DIR      = CONFIG_DIR,
@@ -587,7 +607,6 @@ right_layout_duration_ms = right_layout_build_duration_ms + right_layout_apply_d
 trace_startup("main:right_layout_processed")
 
 -- Write dynamic popup/submenu lists for C helpers (replaces hardcoded lists)
-local submenu_registry = require("submenu_registry")
 local popup_manager_items = {
   "front_app",
   "clock",
@@ -612,6 +631,9 @@ end
 if type(state.widgets) == "table" and state.widgets.task_focus == true and task_focus_has_source then
   table.insert(popup_manager_items, "task_focus")
 end
+if type(state.widgets) == "table" and state.widgets.lmstudio == true then
+  table.insert(popup_manager_items, "lmstudio")
+end
 for _, item_name in ipairs((left_layout_metadata and left_layout_metadata.popup_parents) or {}) do
   table.insert(popup_manager_items, item_name)
 end
@@ -620,12 +642,18 @@ for _, item_name in ipairs((left_layout_metadata and left_layout_metadata.submen
   table.insert(submenu_manager_items, item_name)
 end
 local registry_start_ms = runtime_startup.current_time_ms()
-submenu_registry.register(
+local popup_registry_ok = submenu_registry.register(
   -- Popup parents (items with popup.drawing=toggle)
   popup_manager_items,
   -- Submenu sections (items inside menu popups that have their own popups)
-  submenu_manager_items
+  submenu_manager_items,
+  nil,
+  menu_metadata.submenu_ancestors or {},
+  POPUP_TOPOLOGY_TOKEN
 )
+if not popup_registry_ok then
+  print("Barista: popup registry publication failed; this click generation will use target-only fallback")
+end
 registry_duration_ms = runtime_startup.current_time_ms() - registry_start_ms
 
 post_config_queue:enqueue_command(string.format(

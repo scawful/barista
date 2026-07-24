@@ -14,6 +14,20 @@ run_test("main startup wiring: commits and captures config timing before queue f
     "main should merge left-side nested popups into the submenu registry")
   assert_true(source:find("submenu_manager_items", 1, true) ~= nil,
     "main should register the merged submenu list")
+  assert_true(source:find('state.widgets.lmstudio == true', 1, true) ~= nil,
+    "main should register LM Studio only when its popup is enabled")
+  assert_true(source:find('opts.origin == "submenu"', 1, true) ~= nil,
+    "main should preserve root versus child popup switch scope")
+  assert_true(source:find("binary_resolver.resolve_popup_switch", 1, true) ~= nil,
+    "main should protocol-check the distinct click helper so stale binaries fall back safely")
+  assert_true(source:find("BARISTA_SKETCHYBAR_BIN = SKETCHYBAR_BIN", 1, true) ~= nil,
+    "event dismissal should not depend on launchd's minimal PATH")
+  assert_true(source:find("local popup_registry_ok = submenu_registry.register", 1, true) ~= nil,
+    "main should report popup topology publication failures")
+  assert_true(source:find("submenu_registry.new_topology_token()", 1, true) ~= nil,
+    "main should create a fresh topology generation before rendering click scripts")
+  assert_true(source:find("popup_topology_token = POPUP_TOPOLOGY_TOKEN", 1, true) ~= nil,
+    "main should bind generated click scripts to the current topology generation")
 end)
 
 run_test("runtime_startup post-config queue: defers and flushes actions in order", function()

@@ -786,6 +786,8 @@ local function test_items_right_layout()
     popup_toggle_action = function() return "toggle.sh" end,
     POST_CONFIG_DELAY = 0.1,
     SKETCHYBAR_BIN = "sketchybar",
+    popup_manager_script = "/custom/popup_manager",
+    popup_topology_token = "generation-1",
     group_bg_color = "0x44000000",
     group_border_color = "0xffffffff",
     group_border_width = 1,
@@ -869,16 +871,23 @@ local function test_items_right_layout()
   local system_info_env = shell_utils.env_prefix(system_info_env_values)
   assert_equal(
     added_items.system_info.props.click_script,
-    "sketchybar -m --set system_info popup.drawing=toggle; (" .. system_info_env
+    "if [ -x /custom/popup_manager ]; then BARISTA_SKETCHYBAR_BIN=sketchybar "
+      .. "BARISTA_POPUP_TOPOLOGY_TOKEN=generation-1 "
+      .. "/custom/popup_manager switch system_info; else sketchybar -m --set system_info "
+      .. "popup.drawing=toggle; fi; (" .. system_info_env
       .. "'/compiled/system_info_popup_helper' popup_refresh || " .. system_info_env
       .. "'/tmp/plugins/system_info.sh' popup_refresh) >/dev/null 2>&1 &",
-    "system_info click should toggle first, then prefer the native popup helper with the shell fallback"
+    "system_info click should switch roots first, then prefer the native popup helper with the shell fallback"
   )
   local system_info_toggle_at = added_items.system_info.props.click_script:find("popup.drawing=toggle", 1, true)
   local system_info_refresh_at = added_items.system_info.props.click_script:find("/compiled/system_info_popup_helper", 1, true)
   assert_true(system_info_toggle_at ~= nil and system_info_refresh_at ~= nil and system_info_toggle_at < system_info_refresh_at,
     "system_info click should toggle before starting popup refresh")
+  assert_true(added_items.clock.props.click_script:find("/custom/popup_manager switch clock", 1, true) ~= nil,
+    "clock should use the shared exclusive root switch")
   assert_true(added_items.volume.props.click_script:find("popup.drawing=toggle", 1, true) ~= nil, "volume click should toggle immediately")
+  assert_true(added_items.volume.props.click_script:find("/custom/popup_manager switch volume", 1, true) ~= nil,
+    "volume should use the shared exclusive root switch")
   assert_equal(added_items.volume.props.script, "/tmp/plugins/volume.sh", "routine volume events should keep the shell wrapper")
   assert_true(added_items.volume.props.update_freq == nil, "native click refresh should not add a polling timer")
   assert_true(added_items.volume.props.click_script:find("/compiled/volume_popup_helper", 1, true) ~= nil, "volume click should prefer the native popup helper")
@@ -887,6 +896,8 @@ local function test_items_right_layout()
   assert_equal(added_items.battery.props.script, "/tmp/plugins/battery.sh 0xffa6e3a1 0xfff9e2af 0xfff38ba8 0xff89b4fa", "battery should keep the shell event wrapper")
   assert_true(added_items.battery.props.update_freq == nil, "battery timer should be disabled when daemon-managed")
   assert_true(added_items.battery.props.click_script:find("popup.drawing=toggle", 1, true) ~= nil, "battery click should toggle immediately")
+  assert_true(added_items.battery.props.click_script:find("/custom/popup_manager switch battery", 1, true) ~= nil,
+    "battery should use the shared exclusive root switch")
   assert_true(added_items.battery.props.click_script:find("popup_refresh", 1, true) ~= nil, "battery click should refresh popup details asynchronously")
   local compiled_summary = table.concat(compiled_calls, ",")
   assert_true(compiled_summary:find("system_info_widget", 1, true) ~= nil, "items_right should resolve the compiled system_info helper")
@@ -975,7 +986,7 @@ local function test_items_right_layout()
     "helper-missing system_info click should refresh through the shell path")
   assert_true(portable_system_info.props.click_script:find("system_info_popup_helper", 1, true) == nil,
     "helper-missing system_info click should not include a broken native command")
-  assert_true(portable_system_info.props.click_script:find("||", 1, true) == nil,
+  assert_true(portable_system_info.props.click_script:find("popup_refresh ||", 1, true) == nil,
     "helper-missing system_info click should not include an empty fallback chain")
 
   local lua_only_items = {}
@@ -999,7 +1010,8 @@ local function test_items_right_layout()
   assert_true(portable_volume.props.click_script:find("popup.drawing=toggle", 1, true) ~= nil, "helper-missing click should still toggle immediately")
   assert_true(portable_volume.props.click_script:find("/tmp/plugins/volume.sh popup_refresh", 1, true) ~= nil, "helper-missing click should refresh through the shell path")
   assert_true(portable_volume.props.click_script:find("volume_popup_helper", 1, true) == nil, "helper-missing click should not include a broken native command")
-  assert_true(portable_volume.props.click_script:find("||", 1, true) == nil, "helper-missing click should not include an empty fallback chain")
+  assert_true(portable_volume.props.click_script:find("popup_refresh ||", 1, true) == nil,
+    "helper-missing click should not include an empty fallback chain")
 
   mock_ctx.state.system_info_items = {
     cpu = false,

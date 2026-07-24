@@ -18,7 +18,7 @@ Restored the enhanced Objective-C control panel suite and the high-performance C
 - `config_menu`, `config_menu_v2`, `config_menu_enhanced`
 - `icon_browser`, `help_center`
 - `menu_action`, `menu_renderer`
-- `popup_anchor`, `popup_hover`, `popup_manager`, `popup_guard`, `submenu_hover`
+- `popup_anchor`, `popup_hover`, `popup_manager`, `popup_switch`, `popup_guard`, `submenu_hover`
 - `space_manager`, `state_manager`, `widget_manager`
 - `clock_widget`, `system_info_widget`, `icon_manager`
 

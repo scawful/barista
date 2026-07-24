@@ -431,6 +431,8 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
       label_color = style.label_color,
       popup_background = opts.popup_background,
       sketchybar_bin = SKETCHYBAR_BIN,
+      popup_manager_script = opts.popup_manager_script,
+      popup_topology_token = opts.popup_topology_token,
     })
     local item = built[1]
     normalize_icon(item, icon, color, true)

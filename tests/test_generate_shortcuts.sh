@@ -52,6 +52,7 @@ jq -e '.keymap[0].items[] | select(.action == "capture_task" and .keys == "âŒ˜âŒ
 jq -e '.keymap[0].items[] | select(.action == "capture_task" and .requires == "task_source")' \
   "$WORKFLOW_OUTPUT" >/dev/null
 grep -Fq 'cmd + alt - d :' "$SKHD_OUTPUT"
+grep -Fq "${ROOT_DIR}/scripts/invoke_popup_click.sh' 'control_center" "$SKHD_OUTPUT"
 
 cat >"$LOCAL_WORKFLOW" <<'JSON'
 {

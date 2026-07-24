@@ -70,6 +70,20 @@ foreach(SOURCE ${HELPER_SOURCES})
   )
 endforeach()
 
+# Keep event-driven dismissal and click-time popup switching independently
+# addressable while sharing the same implementation. The distinct click binary
+# lets older installs fall back safely instead of invoking a stale manager ABI.
+add_executable(popup_switch popup_manager.c)
+if(APPLE)
+  target_link_libraries(popup_switch PRIVATE
+    ${COREFOUNDATION_LIB}
+    ${IOKIT_LIB}
+  )
+endif()
+set_target_properties(popup_switch PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
 # Keep the scheduled widget and on-demand popup entrypoints independently
 # addressable while sharing the same implementation.
 add_executable(system_info_popup_helper system_info_widget.c)
@@ -143,6 +157,7 @@ install(TARGETS
   popup_anchor
   popup_hover
   popup_manager
+  popup_switch
   popup_guard
   icon_manager
   state_manager

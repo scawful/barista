@@ -75,6 +75,7 @@ barista/
 - `popup_anchor` - Popup anchoring
 - `popup_hover` - Popup hover effects
 - `popup_manager` - Popup management
+- `popup_switch` - Click-time exclusive root/child switching, built from the popup manager source under a compatibility-safe name
 - `popup_guard` - Popup guard
 - `icon_manager` - Icon management
 - `state_manager` - State management

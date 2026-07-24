@@ -167,6 +167,8 @@ local function get_layout(ctx)
     script = front_app_script,
     click_script = ui.toggle_then_refresh_async("front_app", front_app_popup_refresh, {
       sketchybar_bin = SKETCHYBAR_BIN,
+      popup_manager_script = ctx.popup_manager_script,
+      popup_topology_token = ctx.popup_topology_token,
       close_popups = yabai_controls_enabled and { front_app_more_name } or nil,
     }),
     background = anchor_chip(),
@@ -289,6 +291,8 @@ local function get_layout(ctx)
     if music_popup_metadata and #(music_popup_metadata.submenu_parents or {}) > 0 then
       music_toggle_script = ui.toggle_after_closing(music_name, music_popup_metadata.submenu_parents, {
         sketchybar_bin = SKETCHYBAR_BIN,
+        popup_manager_script = ctx.popup_manager_script,
+        popup_topology_token = ctx.popup_topology_token,
       })
     end
     local music_widget = music_module.create_widget({
@@ -431,6 +435,8 @@ local function get_layout(ctx)
       font = font_small,
       label_color = front_app_style.label_color,
       sketchybar_bin = SKETCHYBAR_BIN,
+      popup_manager_script = ctx.popup_manager_script,
+      popup_topology_token = ctx.popup_topology_token,
     })
     add_front_popup_item(items[1])
     table.insert(submenu_parents, name)
@@ -601,6 +607,8 @@ local function get_layout(ctx)
       window_manager_flags = control_center_status and control_center_status.window_manager or nil,
       extension_items = control_center_extension_items,
       popup_background = cc_config.popup_background,
+      popup_manager_script = ctx.popup_manager_script,
+      popup_topology_token = ctx.popup_topology_token,
     })
     local cc_submenu_parents = (cc_popup_metadata and cc_popup_metadata.submenu_parents) or {}
     for _, submenu_name in ipairs(cc_submenu_parents) do
@@ -609,6 +617,8 @@ local function get_layout(ctx)
     if #cc_submenu_parents > 0 then
       cc_widget.click_script = ui.toggle_after_closing(control_center_item_name, cc_submenu_parents, {
         sketchybar_bin = SKETCHYBAR_BIN,
+        popup_manager_script = ctx.popup_manager_script,
+        popup_topology_token = ctx.popup_topology_token,
       })
     end
 

@@ -318,14 +318,20 @@ sbar.add("item", "front_app", {
   icon = { drawing = true },
   label = { drawing = true },
   script = PLUGIN_DIR .. "/front_app.sh",
-  click_script = [[sketchybar -m --set $NAME popup.drawing=toggle]],
+  click_script = popup_toggle_action("front_app"),
   -- ... popup configuration
 })
 
 sbar.exec("sketchybar --subscribe front_app front_app_switched")
-subscribe_popup_autoclose("front_app")  -- mouse.entered, mouse.exited, mouse.exited.global
+subscribe_popup_autoclose("front_app")  -- mouse.entered, mouse.exited
 attach_hover("front_app")               -- hover highlighting
 ```
+
+`popup_toggle_action()` now routes roots through the registry-backed
+`popup_switch switch` mode. Switching to another root closes this popup and any
+open child in the same SketchyBar mutation; `front_app_switched` and
+`mouse.exited.global` remain excluded from dismissal because they can race the
+physical click.
 
 ### 4.2 Front App Event Flow
 

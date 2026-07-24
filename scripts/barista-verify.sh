@@ -57,6 +57,7 @@ BINARIES=(
   "popup_anchor"
   "submenu_hover"
   "popup_manager"
+  "popup_switch"
   "popup_guard"
   "menu_action"
   "state_manager"

@@ -1,5 +1,35 @@
 # SketchyBar Configuration Changelog
 
+## July 24, 2026 - Exclusive Root and Child Popup Switching
+
+- Opening a registered top-level menu now closes every other root and all child
+  fly-outs before toggling the requested root. Child switches close sibling
+  branches while preserving the requested child's complete ancestor chain, and
+  second-click dismissal is unchanged.
+- Root anchors with asynchronous detail refresh, nested Apple/menu children,
+  the Control Center shortcut, and the display-focus compatibility entrypoint
+  share the same switch contract. Enabled LM Studio now joins the authoritative
+  root registry. Persisted skhd commands forward through the live item's click
+  script instead of caching a per-reload topology token.
+- The click path uses one target-last SketchyBar argument vector through the
+  new protocol-checked `popup_switch` native alias; portable installs use the
+  matching shell mode, while missing or incompatible helpers retain the prior
+  direct/local-reset fallback. The one-time compatibility probe is capped at
+  250 ms and kills the probe process group so a stale script cannot delay
+  configuration by leaving a child attached to the capture stream.
+- A versioned topology manifest atomically publishes roots, children, and
+  ancestor relationships after enforcing the native helper's count, byte, and
+  delimiter bounds. Each generated click carries the current publication token,
+  so missing, malformed, or stale topology degrades to a target-only toggle
+  even if a failed replacement cannot unlink the previous manifest. Native and
+  portable readers both reject raw NUL and carriage-return corruption.
+- The native helper now uses bounded dynamic registry storage and discrete
+  `execvp` arguments instead of interpolating item names through `system()`;
+  CLI switches tail-exec SketchyBar without an intermediate fork/wait.
+- A 100-pair renderer-free dispatch A/B measured `1.356 ms` median for the
+  process baseline and `3.238 ms` for the final native switch, a `1.875 ms`
+  paired median cost for manifest parsing plus target selection/exec.
+
 ## July 24, 2026 - Compact Native Front-App Popup
 
 - Compiled popup refreshes now call the existing

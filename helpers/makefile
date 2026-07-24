@@ -9,7 +9,7 @@ INSTALL_DIR = $(HOME)/.config/sketchybar/bin
 
 # Original targets
 ORIGINAL_TARGETS = clock_widget system_info_widget system_info_popup_helper space_manager submenu_hover \
-                   popup_anchor popup_hover popup_manager popup_guard menu_action
+                   popup_anchor popup_hover popup_manager popup_switch popup_guard menu_action
 
 # New enhanced targets
 NEW_TARGETS = icon_manager state_manager widget_manager menu_renderer space_visual_helper volume_popup_helper
@@ -41,6 +41,9 @@ popup_hover: popup_hover.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 popup_manager: popup_manager.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+popup_switch: popup_manager.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 popup_guard: popup_guard.c
@@ -79,6 +82,7 @@ install: $(TARGETS)
 	install -m 755 popup_anchor $(INSTALL_DIR)/
 	install -m 755 popup_hover $(INSTALL_DIR)/
 	install -m 755 popup_manager $(INSTALL_DIR)/
+	install -m 755 popup_switch $(INSTALL_DIR)/
 	install -m 755 popup_guard $(INSTALL_DIR)/
 	install -m 755 menu_action $(INSTALL_DIR)/
 	@echo "Installing enhanced components..."

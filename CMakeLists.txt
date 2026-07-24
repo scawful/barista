@@ -63,6 +63,7 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/
   FILES_MATCHING
     PATTERN "*.lua"
     PATTERN "*.sh"
+    PATTERN "*.pl"
     PATTERN "*.json"
     PATTERN "*.md"
     PATTERN "*.txt"
@@ -91,4 +92,3 @@ endif()
 message(STATUS "Install prefix: ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "===================================")
 message(STATUS "")
-

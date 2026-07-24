@@ -41,6 +41,11 @@ local function get_layout(ctx)
   local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
   local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
   local media_control_script = SCRIPTS_DIR ~= "" and (SCRIPTS_DIR .. "/media_control.sh") or ""
+  local popup_toggle_options = {
+    sketchybar_bin = SKETCHYBAR_BIN,
+    popup_manager_script = ctx.popup_manager_script,
+    popup_topology_token = ctx.popup_topology_token,
+  }
   local function close_popup_after(item_name, command)
     return ui.close_after(item_name, command, { sketchybar_bin = SKETCHYBAR_BIN })
   end
@@ -98,7 +103,7 @@ local function get_layout(ctx)
       },
       update_freq = 20,
       script = lmstudio_script,
-      click_script = ui.toggle_then_refresh_async("lmstudio", lmstudio_script, { sketchybar_bin = SKETCHYBAR_BIN }),
+      click_script = ui.toggle_then_refresh_async("lmstudio", lmstudio_script, popup_toggle_options),
       background = {
         color = theme.BG_SEC_COLR or "0x18313a46",
         corner_radius = math.max(group_corner_radius, 4),
@@ -205,7 +210,7 @@ local function get_layout(ctx)
     script = compiled_script("clock_widget", PLUGIN_DIR .. "/clock.sh"),
     update_freq = widget_daemon_enabled and false or 30,
     daemon_managed = widget_daemon_enabled,
-    click_script = ui.toggle_then_refresh_async("clock", calendar_script, { sketchybar_bin = SKETCHYBAR_BIN }),
+    click_script = ui.toggle_then_refresh_async("clock", calendar_script, popup_toggle_options),
     popup = {
       align = "right",
       background = popup_background()
@@ -270,9 +275,7 @@ local function get_layout(ctx)
           font = font_small,
         },
         script = task_pulse_command,
-        click_script = ui.toggle_then_refresh_async("task_focus", task_pulse_command, {
-          sketchybar_bin = SKETCHYBAR_BIN,
-        }),
+        click_script = ui.toggle_then_refresh_async("task_focus", task_pulse_command, popup_toggle_options),
         popup = {
           align = "right",
           background = popup_background(),
@@ -434,7 +437,7 @@ local function get_layout(ctx)
     script = system_info_script,
     update_freq = widget_daemon_enabled and false or 45,
     daemon_managed = widget_daemon_enabled,
-    click_script = ui.toggle_then_refresh_async("system_info", system_info_popup_refresh, { sketchybar_bin = SKETCHYBAR_BIN }),
+    click_script = ui.toggle_then_refresh_async("system_info", system_info_popup_refresh, popup_toggle_options),
   }))
   table.insert(right_group_children, "system_info")
   table.insert(layout, { action = "subscribe_popup_autoclose", name = "system_info" })
@@ -515,7 +518,7 @@ local function get_layout(ctx)
   end
   table.insert(layout, factory.create_volume({
     script = volume_script,
-    click_script = ui.toggle_then_refresh_async("volume", volume_popup_refresh, { sketchybar_bin = SKETCHYBAR_BIN }),
+    click_script = ui.toggle_then_refresh_async("volume", volume_popup_refresh, popup_toggle_options),
     popup = { align = "right", background = popup_background() }
   }))
   table.insert(layout, {
@@ -603,7 +606,7 @@ local function get_layout(ctx)
     script = battery_script,
     update_freq = widget_daemon_enabled and false or 120,
     daemon_managed = widget_daemon_enabled,
-    click_script = ui.toggle_then_refresh_async("battery", battery_script .. " popup_refresh", { sketchybar_bin = SKETCHYBAR_BIN }),
+    click_script = ui.toggle_then_refresh_async("battery", battery_script .. " popup_refresh", popup_toggle_options),
     popup = { align = "right", background = popup_background() }
   }))
   table.insert(layout, { action = "exec", cmd = string.format("sleep %.1f; %s --subscribe battery system_woke power_source_change", POST_CONFIG_DELAY, SKETCHYBAR_BIN) })

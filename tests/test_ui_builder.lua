@@ -18,6 +18,34 @@ run_test("ui_builder: popup toggles and async refresh scripts", function()
   )
 end)
 
+run_test("ui_builder: managed root and submenu switches stay one mutation", function()
+  local managed = {
+    sketchybar_bin = "/custom/sketchybar",
+    popup_manager_script = "/custom/popup_manager",
+    popup_topology_token = "generation-1",
+  }
+  assert_equal(
+    ui.toggle("volume", managed),
+    "if [ -x /custom/popup_manager ]; then BARISTA_SKETCHYBAR_BIN=/custom/sketchybar BARISTA_POPUP_TOPOLOGY_TOKEN=generation-1 /custom/popup_manager switch volume; else /custom/sketchybar -m --set volume popup.drawing=toggle; fi",
+    "managed root toggles should switch through the popup manager and retain a direct fallback"
+  )
+  assert_equal(
+    ui.toggle_after_closing("front_app", { "front_app.more" }, managed),
+    "if [ -x /custom/popup_manager ]; then BARISTA_SKETCHYBAR_BIN=/custom/sketchybar BARISTA_POPUP_TOPOLOGY_TOKEN=generation-1 /custom/popup_manager switch front_app; else /custom/sketchybar -m --set front_app.more popup.drawing=off --set front_app popup.drawing=toggle; fi",
+    "managed roots should retain their local child-reset fallback"
+  )
+  assert_equal(
+    ui.toggle("menu.oracle", {
+      sketchybar_bin = "/custom/sketchybar",
+      popup_manager_script = "/custom/popup_manager",
+      popup_topology_token = "generation-1",
+      popup_scope = "submenu",
+    }),
+    "if [ -x /custom/popup_manager ]; then BARISTA_SKETCHYBAR_BIN=/custom/sketchybar BARISTA_POPUP_TOPOLOGY_TOKEN=generation-1 /custom/popup_manager submenu menu.oracle; else /custom/sketchybar -m --set menu.oracle popup.drawing=toggle; fi",
+    "managed child toggles should preserve the owning root"
+  )
+end)
+
 run_test("ui_builder: close-after actions", function()
   assert_equal(
     ui.close_after("triforce", "open /Applications/Yaze.app"),
@@ -161,14 +189,16 @@ run_test("ui_builder: click-open submenu rows", function()
     icon = { string = "󰀻", color = "0xffcba6f7" },
     label = "More Apps",
     sketchybar_bin = "/custom/sketchybar",
+    popup_manager_script = "/custom/popup_manager",
+    popup_topology_token = "generation-1",
     close_popups = { "music.studio.kits" },
   })
 
   assert_equal(#layout, 1, "submenu should add one root row")
   assert_equal(layout[1].position, "popup.music_studio", "submenu row should attach to the root popup")
   assert_equal(layout[1].click_script,
-    "/custom/sketchybar -m --set music.studio.kits popup.drawing=off --set music.studio.more_apps popup.drawing=toggle",
-    "submenu row should close its sibling and toggle itself in one request")
+    "if [ -x /custom/popup_manager ]; then BARISTA_SKETCHYBAR_BIN=/custom/sketchybar BARISTA_POPUP_TOPOLOGY_TOKEN=generation-1 /custom/popup_manager submenu music.studio.more_apps; else /custom/sketchybar -m --set music.studio.kits popup.drawing=off --set music.studio.more_apps popup.drawing=toggle; fi",
+    "submenu row should switch children through the manager and retain its sibling-reset fallback")
   assert_equal(layout[1].popup.align, "right", "submenu should open to the right")
   assert_true(layout[1].label:find("More Apps", 1, true) ~= nil, "submenu row should keep its label")
   assert_equal(layout[1].hover, true, "submenu row should use normal row hover feedback")

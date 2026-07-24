@@ -11,6 +11,7 @@ Quick reference: which file defines each bar item, which plugin script runs for 
 | Item(s) | Plugin script | Events subscribed to | Notes |
 |--------|----------------|----------------------|--------|
 | `popup_manager` | `plugins/popup_manager.sh` | `space_change`, `display_changed`, `display_added`, `display_removed`, `system_woke` | Invisible; handles popup dismissal. It intentionally ignores `front_app_switched` during normal runtime so clicks that cause focus churn do not immediately close the popup that just opened. |
+| `popup_switch` (click helper) | `helpers/popup_manager.c`; shell fallback `plugins/popup_manager.sh` | direct root/child click scripts | Reads the atomically published, generation-bound topology and issues one target-last SketchyBar mutation. Root switches close other roots plus every child; child switches close unrelated branches while preserving the requested child's ancestor chain. The separately named native alias is protocol-checked once at config time, so an older or incompatible binary cannot receive the new CLI after a source-only upgrade. |
 | `space_runtime` | `plugins/space_visuals.sh` | `space_visual_refresh`, `front_app_switched`, `system_woke` | Invisible; single batch visual updater for all spaces. `front_app_switched` runs are coalesced after topology refresh, the focused-space fast path goes through `scripts/front_app_context.sh`, and full visual passes prefer `bin/space_visual_helper` plus `app_icon.sh --batch` for visible app/glyph lookup before one SketchyBar apply. |
 | `triforce` | `plugins/oracle_triforce.sh` | `mouse.entered`, `mouse.exited`, `system_woke`; async click refresh | Hover only highlights the anchor. Click toggles immediately, then the controller takes one canonical Oracle status snapshot and batches the mutable anchor/popup fields. No periodic timer is installed; the legacy anchor-only widget is only a missing-producer fallback. |
 | `music_studio` | `plugins/music_studio.sh` | `mouse.entered`, `mouse.exited` | Music launcher beside Triforce. Active name comes from `menus.music.item_name`; popup rows are app/workflow/kits launchers from `modules/integrations/music.lua`. Routine updates are disabled; its root toggle resets the click-only child popups while the plugin only owns hover/status work. |
@@ -97,8 +98,11 @@ Default runtime path:
 1. [main.lua](../../main.lua) resolves the active control-center item name once.
 2. [modules/items_left.lua](../../modules/items_left.lua) creates the left-bar item and passes the resolved name into popup creation.
 3. [modules/integrations/control_center.lua](../../modules/integrations/control_center.lua) renders root rows against `popup.<item_name>` and, when Yabai controls are available, the secondary layout/default rows against `popup.cc.more`.
-4. `items_left.lua` reports all successfully created optional left-side popup and submenu parents; `main.lua` merges those submenu names with menu metadata before registering the exact runtime lists with `popup_manager`.
-5. [modules/shortcuts.lua](../../modules/shortcuts.lua) generates `toggle_control_center` against that same resolved target.
+4. `items_left.lua` reports all successfully created optional left-side popup and submenu parents; `main.lua` merges those names with menu metadata plus enabled Task Focus/LM Studio roots before atomically registering the exact runtime lists for dismissal and switching.
+5. [modules/shortcuts.lua](../../modules/shortcuts.lua) generates
+   `toggle_control_center` against that same resolved target. Persisted skhd
+   commands use `scripts/invoke_popup_click.sh` to dispatch the live item's
+   generation-bound click instead of caching its per-reload token.
 6. [modules/popup_action.lua](../../modules/popup_action.lua) attaches helper popups to the resolved control-center popup parent instead of assuming `popup.control_center`.
 
 The default item name is `control_center`. If `integrations.control_center.item_name`
@@ -108,20 +112,35 @@ is set in `state.json`, the runtime uses that value consistently across those pa
 
 ## Popup click path
 
-Normal click-open anchors use direct SketchyBar toggles from `main.lua`'s
-`popup_toggle_action()` / `modules/ui_builder.lua`: `sketchybar -m --set <item> popup.drawing=toggle`.
+Normal click-open anchors route through `main.lua`'s `popup_toggle_action()` /
+`modules/ui_builder.lua` into `bin/popup_switch`, with
+`plugins/popup_manager.sh` as the portable fallback. A root switch sends one
+SketchyBar argument vector: every other registered root is set off, every child
+is reset, and the requested root toggles last. A child switch closes the other
+registered children and toggles its target last without touching the owning
+root. For deeper menus, ancestor relationships keep every containing child open
+while sibling and unrelated branches close. This preserves second-click closure
+while making a move from Front App or Music into Control Center dismiss the
+previous two-level surface.
+
 Do not put yabai display-focus queries, detail refresh helpers, or plugin update
-controllers in the generic click path; those can make real mouse clicks look
-dropped even when script-only tests pass. Use explicit yabai repair/actions for
-display focus instead.
-`front_app`, `control_center`, Triforce, Music, and right-side refresh popups
-are intentionally direct client-call anchors even though their plugin scripts
-still own status updates, hover events, or async detail refresh. Music, Front
-App, and Control Center first close their click-only child popups in that same
-root-toggle request; actions inside a child close both levels after running.
-Left-layout child names
-join the menu submenu metadata in the runtime registry, so global dismissal also
-clears them.
+controllers in this generic click path; those can make real mouse clicks look
+dropped even when script-only tests pass. `front_app`, `control_center`,
+Triforce, Music, and right-side refresh popups mutate visibility first, then
+retain their status/detail work asynchronously. Popup action rows still close
+their owning levels after running.
+
+Menu metadata, left-layout metadata, enabled Task Focus/LM Studio state, and the
+fixed right-side roots form the authoritative registry. One versioned manifest
+atomically publishes its deduplicated roots, children, and ancestor chains
+within the loader's shared limits, so custom names and only actually created
+children enter the switch vector. Each rendered click embeds the current
+manifest generation token. Missing, malformed, or stale-generation topology
+therefore fails open to the requested target only, including when a failed
+publication cannot remove the prior file. The
+distinct native alias and one-time protocol check prevent stale helpers from
+intercepting the new CLI; missing aliases retain the shell or direct/local-reset
+fallback.
 The global popup manager should not subscribe to `front_app_switched`; app focus
 can churn while SketchyBar handles a click, which makes menus appear to ignore
 the click by opening and immediately closing.

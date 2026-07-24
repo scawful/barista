@@ -236,6 +236,7 @@ function menu.render_all_menus(ctx)
   local metadata = {
     popup_parents = {},
     submenu_parents = {},
+    submenu_ancestors = {},
   }
 
   local function remember(list_name, value)
@@ -255,6 +256,24 @@ function menu.render_all_menus(ctx)
     for _, name in ipairs(extra.submenu_parents or {}) do
       remember("submenu_parents", name)
     end
+    for target, ancestors in pairs(extra.submenu_ancestors or {}) do
+      if type(target) == "string" and target ~= "" and type(ancestors) == "table" then
+        metadata.submenu_ancestors[target] = metadata.submenu_ancestors[target] or {}
+        for _, ancestor in ipairs(ancestors) do
+          if type(ancestor) == "string" and ancestor ~= "" and ancestor ~= target then
+            metadata.submenu_ancestors[target][ancestor] = true
+          end
+        end
+      end
+    end
+  end
+
+  local function submenu_ancestor_lists()
+    local result = {}
+    for target, ancestors in pairs(metadata.submenu_ancestors) do
+      result[target] = list_from_set(ancestors)
+    end
+    return result
   end
 
   local appearance = ctx.appearance or {}
@@ -312,6 +331,7 @@ function menu.render_all_menus(ctx)
     return {
       popup_parents = list_from_set(metadata.popup_parents),
       submenu_parents = list_from_set(metadata.submenu_parents),
+      submenu_ancestors = submenu_ancestor_lists(),
     }
   end
 
@@ -506,6 +526,7 @@ function menu.render_all_menus(ctx)
   return {
     popup_parents = list_from_set(metadata.popup_parents),
     submenu_parents = list_from_set(metadata.submenu_parents),
+    submenu_ancestors = submenu_ancestor_lists(),
   }
 end
 

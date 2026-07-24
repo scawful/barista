@@ -7,6 +7,7 @@ local binary_resolver = require("binary_resolver")
 local paths_module = require("paths")
 local shell_utils = require("shell_utils")
 local locator = require("tool_locator")
+local ui = require("ui_builder")
 
 local HOME = os.getenv("HOME") or ""
 local CONFIG_DIR = locator.resolve_config_dir()
@@ -68,6 +69,12 @@ if config_chunk then
   end
 end
 local SKETCHYBAR_BIN = binary_resolver.resolve_sketchybar_bin()
+local POPUP_MANAGER_SCRIPT = binary_resolver.resolve_popup_switch(
+  CONFIG_DIR,
+  binary_resolver.resolve_runtime_backend(runtime_state) == "lua",
+  CONFIG_DIR .. "/plugins/popup_manager.sh"
+)
+local POPUP_TOPOLOGY_TOKEN = nil
 local DEFAULT_CONTROL_CENTER_ITEM_NAME = "control_center"
 
 local function service_running(name)
@@ -105,12 +112,28 @@ function shortcuts.resolve_control_center_item_name(state, getenv_fn)
   return DEFAULT_CONTROL_CENTER_ITEM_NAME
 end
 
-function shortcuts.build_control_center_toggle_command(item_name)
-  return string.format(
-    "%s --set %s popup.drawing=toggle",
-    shell_quote(SKETCHYBAR_BIN),
-    shell_quote(item_name)
-  )
+function shortcuts.build_control_center_toggle_command(item_name, opts)
+  opts = opts or {}
+  local topology_token = opts.popup_topology_token or POPUP_TOPOLOGY_TOKEN
+  if not topology_token then
+    return shell_quote(CONFIG_DIR .. "/scripts/invoke_popup_click.sh")
+      .. " "
+      .. shell_quote(item_name)
+  end
+  return ui.toggle(item_name, {
+    sketchybar_bin = opts.sketchybar_bin or SKETCHYBAR_BIN,
+    popup_manager_script = opts.popup_manager_script or POPUP_MANAGER_SCRIPT,
+    popup_topology_token = topology_token,
+  })
+end
+
+function shortcuts.set_popup_topology_token(token)
+  POPUP_TOPOLOGY_TOKEN = nonblank(token)
+  if type(shortcuts.actions) == "table" then
+    shortcuts.actions.toggle_control_center = shortcuts.build_control_center_toggle_command(
+      shortcuts.resolve_control_center_item_name(runtime_state)
+    )
+  end
 end
 
 function shortcuts.build_terminal_session_command(command)

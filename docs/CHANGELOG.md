@@ -1,5 +1,19 @@
 # SketchyBar Configuration Changelog
 
+## July 24, 2026 - Compact Native Front-App Popup
+
+- Compiled popup refreshes now call the existing
+  `runtime_context_helper fresh-front-app` entrypoint directly instead of
+  starting the shell wrapper only to delegate back to the same helper.
+  Helper-missing, failed, and Lua-only paths keep the portable fallback.
+- The Yabai-enabled root omits its duplicate App header and two decorative
+  separators, reducing the initial surface from 13 rows to 10 without moving
+  any context or frequent action into the 17-row `More Actions` child.
+- In controlled live A/Bs, direct native refresh reduced renderer-complete
+  median from 48.12 ms to 41.52 ms, while the 10-row root reduced direct
+  layout median from 65.44 ms to 58.12 ms. Both runs kept the SketchyBar and
+  runtime-daemon PIDs stable with zero log growth.
+
 ## July 16, 2026 - On-Demand Triforce Status
 
 - Removed the Triforce anchor's 45-second timer. Popup clicks still toggle

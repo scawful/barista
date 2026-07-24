@@ -470,9 +470,6 @@ local function get_layout(ctx)
     label_color = tc("SUBTEXT1", "WHITE"),
     hover = false,
   })
-  add_front_separator("front_app.sep0")
-  add_front_header("front_app.app_header", "App", tc("PEACH"))
-
   local front_app_more_actions = {}
   local app_actions = {
     { name = "front_app.hide", icon = "󰘔", icon_color = tc("PEACH"), label = "Hide App", action = call_script(FRONT_APP_ACTION_SCRIPT, "hide"), shortcut = "⌘H", more = true },
@@ -507,7 +504,6 @@ local function get_layout(ctx)
       end
     end
 
-    add_front_separator("front_app.sep_presets")
     add_front_submenu(front_app_more_name, "More Actions", "󰘞", tc("YELLOW"))
     add_front_header("front_app.more_header", "App + Window", tc("YELLOW"), front_app_more_name)
 

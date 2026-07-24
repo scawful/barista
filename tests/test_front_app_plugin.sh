@@ -11,6 +11,7 @@ SCRIPTS_DIR="$TMP_DIR/scripts"
 LOG_FILE="$TMP_DIR/sketchybar.log"
 ARGV_LOG="$TMP_DIR/sketchybar-argv.log"
 RUNTIME_LOG="$TMP_DIR/runtime-context.log"
+HELPER_LOG="$TMP_DIR/runtime-context-helper.log"
 CONTEXT_LOG="$TMP_DIR/front-app-context.log"
 CONTEXT_MODE_FILE="$TMP_DIR/context-mode"
 POISON_LOG="$TMP_DIR/poison-sketchybar.log"
@@ -40,6 +41,12 @@ esac
 exit 0
 EOF
 chmod +x "$BIN_DIR/sketchybar"
+
+cat > "$BIN_DIR/yabai" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+chmod +x "$BIN_DIR/yabai"
 
 cat > "$POISON_BIN_DIR/sketchybar" <<EOF
 #!/bin/bash
@@ -101,7 +108,7 @@ chmod +x "$SCRIPTS_DIR/front_app_context.sh"
 cat > "$SCRIPTS_DIR/runtime_context.sh" <<'EOF'
 #!/bin/bash
 set -euo pipefail
-printf '%s\n' "$*" >> "${BARISTA_TEST_RUNTIME_LOG:?}"
+printf '%s\tlua_only=%s\n' "$*" "${BARISTA_LUA_ONLY:-0}" >> "${BARISTA_TEST_RUNTIME_LOG:?}"
 if [ "$*" = "fresh-front-app" ]; then
   case "${BARISTA_TEST_FRESH_MODE:-success}" in
     empty) exit 0 ;;
@@ -115,6 +122,24 @@ if [ "$*" = "fresh-front-app" ]; then
 fi
 EOF
 chmod +x "$SCRIPTS_DIR/runtime_context.sh"
+
+cat > "$SCRIPTS_DIR/runtime_context_helper" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+printf '%s\tyabai=%s\n' "$*" "${BARISTA_YABAI_BIN:-}" >> "${BARISTA_TEST_HELPER_LOG:?}"
+if [ "$*" = "fresh-front-app" ]; then
+  case "${BARISTA_TEST_HELPER_MODE:-success}" in
+    empty) exit 0 ;;
+    fail) exit 1 ;;
+  esac
+  printf 'app_name\tGhostty\n'
+  printf 'window_available\ttrue\n'
+  printf 'state_icon\t󰊓\n'
+  printf 'state_label\tFullscreen\n'
+  printf 'location_label\tSpace 1 · Display 1\n'
+fi
+EOF
+chmod +x "$SCRIPTS_DIR/runtime_context_helper"
 
 run_front_app() {
   : > "$LOG_FILE"
@@ -142,6 +167,7 @@ run_front_app_popup_refresh() {
   : > "$LOG_FILE"
   : > "$ARGV_LOG"
   : > "$RUNTIME_LOG"
+  : > "$HELPER_LOG"
   : > "$CONTEXT_LOG"
   printf 'floating_above\n' > "$CONTEXT_MODE_FILE"
   PATH="$POISON_BIN_DIR:$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
@@ -150,11 +176,16 @@ run_front_app_popup_refresh() {
     BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
     BARISTA_FRONT_APP_CONTEXT_SCRIPT="$SCRIPTS_DIR/front_app_context.sh" \
     BARISTA_RUNTIME_CONTEXT_SCRIPT="$SCRIPTS_DIR/runtime_context.sh" \
+    BARISTA_RUNTIME_CONTEXT_HELPER_BIN="$SCRIPTS_DIR/runtime_context_helper" \
+    BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
     BARISTA_APP_ICON_SCRIPT="$SCRIPTS_DIR/app_icon.sh" \
     BARISTA_TEST_RUNTIME_LOG="$RUNTIME_LOG" \
+    BARISTA_TEST_HELPER_LOG="$HELPER_LOG" \
     BARISTA_TEST_CONTEXT_LOG="$CONTEXT_LOG" \
     BARISTA_TEST_CONTEXT_MODE_FILE="$CONTEXT_MODE_FILE" \
     BARISTA_TEST_FRESH_MODE="${1:-success}" \
+    BARISTA_TEST_HELPER_MODE="${2:-success}" \
+    BARISTA_LUA_ONLY="${3:-0}" \
     NAME=front_app \
     SENDER=popup_refresh \
     INFO="Ghostty" \
@@ -377,8 +408,14 @@ assert_call_count 1
 assert_set_count 8
 assert_single_animated_batch Ghostty "󰊓" Fullscreen "Space 1 · Display 1" \
   "Float Window" "Exit Fullscreen" "Make Topmost" "Tile Here"
-grep -Fxq 'fresh-front-app' "$RUNTIME_LOG" || {
-  echo "FAIL: popup refresh should force fresh runtime context before rendering" >&2
+grep -Fxq $'fresh-front-app\tyabai='"$BIN_DIR/yabai" "$HELPER_LOG" || {
+  echo "FAIL: compiled popup refresh should call the native helper directly" >&2
+  cat "$HELPER_LOG" >&2
+  exit 1
+}
+[ ! -s "$RUNTIME_LOG" ] || {
+  echo "FAIL: a successful native snapshot should bypass the shell wrapper" >&2
+  cat "$RUNTIME_LOG" >&2
   exit 1
 }
 [ ! -s "$CONTEXT_LOG" ] || {
@@ -388,7 +425,42 @@ grep -Fxq 'fresh-front-app' "$RUNTIME_LOG" || {
 }
 assert_log_contains "--set front_app.window.fullscreen label=Exit Fullscreen"
 
-run_front_app_popup_refresh empty
+run_front_app_popup_refresh success empty
+assert_call_count 1
+assert_set_count 8
+assert_single_animated_batch Ghostty "󰊓" Fullscreen "Space 1 · Display 1" \
+  "Float Window" "Exit Fullscreen" "Make Topmost" "Tile Here"
+grep -Fxq $'fresh-front-app\tyabai='"$BIN_DIR/yabai" "$HELPER_LOG" || {
+  echo "FAIL: popup refresh should attempt the native helper" >&2
+  cat "$HELPER_LOG" >&2
+  exit 1
+}
+grep -Fxq $'fresh-front-app\tlua_only=1' "$RUNTIME_LOG" || {
+  echo "FAIL: an empty native snapshot should use the portable wrapper without retrying the helper" >&2
+  cat "$RUNTIME_LOG" >&2
+  exit 1
+}
+[ ! -s "$CONTEXT_LOG" ] || {
+  echo "FAIL: a successful portable snapshot should bypass front_app_context fallback" >&2
+  cat "$CONTEXT_LOG" >&2
+  exit 1
+}
+
+run_front_app_popup_refresh success success 1
+assert_call_count 1
+assert_set_count 8
+[ ! -s "$HELPER_LOG" ] || {
+  echo "FAIL: Lua-only popup refresh should not call the native helper" >&2
+  cat "$HELPER_LOG" >&2
+  exit 1
+}
+grep -Fxq $'fresh-front-app\tlua_only=1' "$RUNTIME_LOG" || {
+  echo "FAIL: Lua-only popup refresh should retain the portable wrapper" >&2
+  cat "$RUNTIME_LOG" >&2
+  exit 1
+}
+
+run_front_app_popup_refresh empty empty
 assert_call_count 1
 assert_set_count 8
 assert_single_animated_batch Ghostty "󰒄" "Floating · Above" "Space 1 · Display 1" \

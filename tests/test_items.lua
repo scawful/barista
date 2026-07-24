@@ -205,13 +205,13 @@ local function test_items_left_layout()
   assert_true(not found_front_app_default_row, "front_app should leave persistent app defaults to Control Center")
   assert(front_app_move_prev ~= nil, "front_app move-to-prev-display action not found in popup layout")
   assert(front_app_move_next ~= nil, "front_app move-to-next-display action not found in popup layout")
-  assert_equal(front_app_root_rows, 13, "front_app should render only its frequent actions initially")
+  assert_equal(front_app_root_rows, 10, "front_app should render only its context and frequent actions initially")
   assert_equal(front_app_more_rows, 17, "front_app nested popup should retain every secondary action")
   assert_equal(table.concat(front_app_root_names, "|"), table.concat({
-    "front_app.header", "front_app.state", "front_app.location", "front_app.sep0",
-    "front_app.app_header", "front_app.quit", "front_app.sep1", "front_app.window_header",
+    "front_app.header", "front_app.state", "front_app.location", "front_app.quit",
+    "front_app.sep1", "front_app.window_header",
     "front_app.window.float", "front_app.window.adopt_space_mode", "front_app.window.fullscreen",
-    "front_app.sep_presets", "front_app.more",
+    "front_app.more",
   }, "|"), "front_app root ordering should keep frequent actions direct")
   assert_equal(table.concat(front_app_more_names, "|"), table.concat({
     "front_app.more_header", "front_app.hide", "front_app.force_quit", "front_app.window.sticky",

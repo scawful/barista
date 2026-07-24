@@ -19,8 +19,10 @@ fi
 APP_NAME="${INFO:-}"
 FRONT_APP_CONTEXT_SCRIPT="${BARISTA_FRONT_APP_CONTEXT_SCRIPT:-$SCRIPTS_DIR/front_app_context.sh}"
 RUNTIME_CONTEXT_SCRIPT="${BARISTA_RUNTIME_CONTEXT_SCRIPT:-$SCRIPTS_DIR/runtime_context.sh}"
+RUNTIME_CONTEXT_HELPER_BIN="${BARISTA_RUNTIME_CONTEXT_HELPER_BIN:-$CONFIG_DIR/bin/runtime_context_helper}"
 APP_ICON_SCRIPT="${BARISTA_APP_ICON_SCRIPT:-$SCRIPTS_DIR/app_icon.sh}"
 OSASCRIPT_BIN="${BARISTA_OSASCRIPT_BIN:-$(command -v osascript 2>/dev/null || true)}"
+YABAI_BIN="${BARISTA_YABAI_BIN:-$(command -v yabai 2>/dev/null || true)}"
 
 # Barista's own binaries to filter out
 BARISTA_APPS="config_menu|config_menu_v2|Barista|BaristaControlPanel|Barista Control Panel|help_center|icon_browser|sketchybar"
@@ -84,8 +86,19 @@ APP_ICON="󰣆"
 WINDOW_AVAILABLE="false"
 CONTEXT_OUTPUT=""
 
-if [ "${SENDER:-}" = "popup_refresh" ] && [ -x "$RUNTIME_CONTEXT_SCRIPT" ]; then
-  CONTEXT_OUTPUT="$("$RUNTIME_CONTEXT_SCRIPT" fresh-front-app 2>/dev/null || true)"
+if [ "${SENDER:-}" = "popup_refresh" ]; then
+  NATIVE_REFRESH_ATTEMPTED=0
+  if [ "${BARISTA_LUA_ONLY:-0}" != "1" ] && [ -x "$RUNTIME_CONTEXT_HELPER_BIN" ]; then
+    NATIVE_REFRESH_ATTEMPTED=1
+    CONTEXT_OUTPUT="$(BARISTA_YABAI_BIN="$YABAI_BIN" "$RUNTIME_CONTEXT_HELPER_BIN" fresh-front-app 2>/dev/null || true)"
+  fi
+  if [ -z "$CONTEXT_OUTPUT" ] && [ -x "$RUNTIME_CONTEXT_SCRIPT" ]; then
+    if [ "$NATIVE_REFRESH_ATTEMPTED" = "1" ]; then
+      CONTEXT_OUTPUT="$(BARISTA_LUA_ONLY=1 "$RUNTIME_CONTEXT_SCRIPT" fresh-front-app 2>/dev/null || true)"
+    else
+      CONTEXT_OUTPUT="$("$RUNTIME_CONTEXT_SCRIPT" fresh-front-app 2>/dev/null || true)"
+    fi
+  fi
 fi
 
 if [ -z "$CONTEXT_OUTPUT" ] && [ -x "$FRONT_APP_CONTEXT_SCRIPT" ]; then

@@ -1,12 +1,14 @@
 """Integrations tab - integration toggles and paths."""
 
+from __future__ import annotations
+
 import os
 
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
 from textual.widgets import Static, Label, Switch, Input
 
-from ..config import BaristaConfig, load_local_config, LocalConfig
+from ..config import BaristaConfig, LocalConfig
 
 
 class IntegrationToggle(Horizontal):
@@ -104,16 +106,31 @@ class IntegrationsTab(Vertical):
     }
     
     DEFAULT_PATHS = {
-        "code": ("Code Directory", os.getenv("BARISTA_CODE_DIR", "~/src")),
-        "scripts": ("Scripts Directory", os.getenv("BARISTA_SCRIPTS_DIR", "~/.config/sketchybar/scripts")),
+        "code_dir": ("Code Directory", os.getenv("BARISTA_CODE_DIR", "~/src")),
+        "scripts_dir": (
+            "Scripts Directory",
+            os.getenv("BARISTA_SCRIPTS_DIR", "~/.config/sketchybar/scripts"),
+        ),
+    }
+
+    PATH_ALIASES = {
+        "code_dir": ("code_dir", "code"),
+        "scripts_dir": ("scripts_dir", "scripts"),
     }
     
-    def __init__(self, config: BaristaConfig, **kwargs):
+    def __init__(
+        self,
+        config: BaristaConfig,
+        local_config: LocalConfig | None = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.config = config
-        self.local_config = load_local_config()
+        self.local_config = local_config or LocalConfig()
+        self.custom_path_ids: dict[str, str] = {}
     
     def compose(self) -> ComposeResult:
+        self.custom_path_ids = {}
         yield Static("Integrations", classes="section-header")
         yield Static(
             "Enable or disable integrations with external tools.",
@@ -139,9 +156,18 @@ class IntegrationsTab(Vertical):
             classes="help-text"
         )
         
-        # Default paths from local config
+        # Runtime paths live in ignored state.json; local.json is a legacy fallback.
         for path_key, (name, default) in self.DEFAULT_PATHS.items():
-            current = self.local_config.paths.get(path_key, default)
+            aliases = self.PATH_ALIASES[path_key]
+            current = next(
+                (
+                    source[alias]
+                    for source in (self.config.paths, self.local_config.paths)
+                    for alias in aliases
+                    if source.get(alias)
+                ),
+                default,
+            )
             yield PathInput(
                 name=name,
                 path=current,
@@ -149,12 +175,19 @@ class IntegrationsTab(Vertical):
             )
         
         # Additional custom paths from config
+        custom_index = 0
         for path_key, path_value in self.config.paths.items():
-            if path_key not in self.DEFAULT_PATHS:
+            if not any(
+                path_key in aliases
+                for aliases in self.PATH_ALIASES.values()
+            ):
+                input_id = f"path_custom_{custom_index}"
+                custom_index += 1
+                self.custom_path_ids[path_key] = input_id
                 yield PathInput(
                     name=path_key.replace("_", " ").title(),
                     path=path_value,
-                    path_id=f"path_{path_key}"
+                    path_id=input_id,
                 )
     
     def get_values(self) -> dict:
@@ -173,11 +206,17 @@ class IntegrationsTab(Vertical):
                 pass
         
         # Paths
-        for path_key in list(self.DEFAULT_PATHS.keys()) + list(self.config.paths.keys()):
+        for path_key in self.DEFAULT_PATHS:
             try:
                 inp = self.query_one(f"#path_{path_key}", Input)
-                if inp.value:
-                    values["paths"][path_key] = inp.value
+                values["paths"][path_key] = inp.value
+            except Exception:
+                pass
+
+        for path_key, input_id in self.custom_path_ids.items():
+            try:
+                inp = self.query_one(f"#{input_id}", Input)
+                values["paths"][path_key] = inp.value
             except Exception:
                 pass
         

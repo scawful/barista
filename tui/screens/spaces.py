@@ -1,7 +1,7 @@
 """Spaces tab - space icons and layout modes."""
 
 from textual.app import ComposeResult
-from textual.containers import Vertical, Horizontal, Grid
+from textual.containers import Vertical, Horizontal
 from textual.widgets import Static, Label, Input, Select
 
 from ..config import BaristaConfig, SPACE_MODES
@@ -38,6 +38,10 @@ class SpaceConfig(Horizontal):
         self.mode = mode
     
     def compose(self) -> ComposeResult:
+        modes = list(SPACE_MODES)
+        if self.mode not in modes:
+            modes.append(self.mode)
+
         yield Label(f"Space {self.space_num}")
         yield Input(
             self.icon,
@@ -46,7 +50,7 @@ class SpaceConfig(Horizontal):
             classes="icon-input"
         )
         yield Select(
-            [(m, m) for m in SPACE_MODES],
+            [(mode, mode) for mode in modes],
             value=self.mode,
             id=f"space_mode_{self.space_num}",
         )
@@ -125,8 +129,7 @@ class SpacesTab(Vertical):
             # Icon
             try:
                 inp = self.query_one(f"#space_icon_{i}", Input)
-                if inp.value:
-                    values["space_icons"][str(i)] = inp.value
+                values["space_icons"][str(i)] = inp.value
             except Exception:
                 pass
             

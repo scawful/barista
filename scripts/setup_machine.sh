@@ -735,7 +735,18 @@ apply_work_apps() {
       .menus.work.apps_file = $apps_file |
       .menus.work.workspace_domain = $domain |
       .menus.work.google_apps = $apps |
-      .menus.apple.custom = $apps
+      .menus.apple.custom = (
+        (.menus.apple.custom // []) |
+        map(
+          select(
+            if type != "object" then
+              true
+            else
+              (((.id // "") | tostring | startswith("work_google_")) | not)
+            end
+          )
+        )
+      )
     ' --argjson apps "$APPS_JSON" --arg apps_file "$apps_file" --arg domain "$WORK_DOMAIN"
   else
     jq_edit_state '
@@ -748,10 +759,16 @@ apply_work_apps() {
       .menus.work.workspace_domain = $domain |
       .menus.work.google_apps = $apps |
       .menus.apple.custom = (
-        ((.menus.apple.custom // []) as $existing |
-         ($apps | map((.id // .label // "") | tostring)) as $incoming_keys |
-         ($existing | map(select((.id // .label // "") as $k | ($incoming_keys | index(($k|tostring))) | not)))
-         + $apps)
+        (.menus.apple.custom // []) |
+        map(
+          select(
+            if type != "object" then
+              true
+            else
+              (((.id // "") | tostring | startswith("work_google_")) | not)
+            end
+          )
+        )
       )
     ' --argjson apps "$APPS_JSON" --arg apps_file "$apps_file" --arg domain "$WORK_DOMAIN"
   fi

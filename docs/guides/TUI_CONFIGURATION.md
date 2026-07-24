@@ -1,6 +1,8 @@
 # Barista TUI Configuration Guide
 
-The `barista` command provides a terminal-based user interface (TUI) for configuring your SketchyBar status bar. No compilation required - it works on any machine with Python 3.9+.
+The `barista` command provides a terminal-based user interface (TUI) for
+configuring your SketchyBar status bar. No compilation is required; it works on
+machines with Python 3.9 or newer.
 
 ## Quick Start
 
@@ -11,7 +13,17 @@ cd ~/src/lab/barista
 
 # Or if barista/bin is in your PATH
 barista
+
+# Open an explicit state file instead of the default
+./bin/barista --config /path/to/state.json
 ```
+
+`--config` is an explicit load-and-save boundary: the TUI reads and writes that
+state file instead of `~/.config/sketchybar/state.json`. Without the flag,
+`BARISTA_CONFIG_DIR` still selects the configuration directory.
+`Ctrl+R` reloads only when the selected file is named `state.json`, because the
+SketchyBar runtime always reads that basename. Other explicit filenames remain
+safe save-only editing targets.
 
 ## CLI Fallbacks (No GUI Build)
 
@@ -42,7 +54,7 @@ lua ./scripts/runtime_update.lua bar-height 32
 Open `~/.config/sketchybar/state.json` in any editor and reload:
 
 ```bash
-sketchybar --reload
+./plugins/reload_sketchybar.sh
 ```
 
 ## Requirements
@@ -91,7 +103,22 @@ Enable or disable status bar widgets:
 - **Network**: Network status
 - **System Info**: CPU, memory, disk usage popup
 
-Also configure which items appear in the System Info popup.
+The System Info controls match the active runtime rows:
+
+- **CPU**: CPU usage and load
+- **Memory**: used and total memory
+- **Disk**: Data-volume usage
+- **Network**: active interface and address
+- **Swap**: swap usage
+- **Uptime**: system uptime
+- **Top CPU**: highest-CPU process
+- **Popup Actions**: Activity Monitor and System Settings launch behavior
+
+The seven metric toggles control row visibility independently. Disabling Popup
+Actions keeps enabled metrics visible, leaves Top CPU informational, and removes
+the Activity Monitor and System Settings launchers. The legacy
+`system_info_items.docs` key remains preserved for compatibility but is
+intentionally hidden because it no longer creates popup rows.
 
 ### Spaces
 
@@ -117,15 +144,37 @@ Also configure custom paths for your machine.
 ### Advanced
 
 - **Font Settings**: Configure icon, text, and number fonts
+- **Work Apps Data**: Configure the Google Workspace domain and the
+  machine-local apps data file
 - **Feature Toggles**: Enable/disable Yabai shortcuts
-- **Raw JSON**: Edit the configuration directly
+- **Raw JSON**: Read-only preview of the configuration the TUI loaded
+
+When Work Apps Data changes, Barista updates only rows whose IDs begin with
+`work_google_`. Other rows in the active apps file (or the state fallback when
+the file is empty) are retained, and the derived file is rolled back if the
+state save fails. Legacy `work_google_` duplicates are removed from
+`menus.apple.custom`; managed rows live only in `menus.work.google_apps` and
+the configured apps file. The Apps Data File cannot point at the active
+`state.json`.
 
 ## Configuration Files
 
-The TUI edits these files:
+The TUI uses these files:
 
-- **`~/.config/sketchybar/state.json`**: Main configuration
-- **`~/.config/sketchybar/local.json`**: Machine-specific paths (optional)
+- **`~/.config/sketchybar/state.json`**: Main ignored, per-machine
+  configuration and runtime path overrides
+- **`~/.config/sketchybar/local.json`**: Legacy path fallback, read only when
+  present; new TUI saves do not create or update it
+
+Saving is lossless for state the TUI does not own. Unexposed keys, unknown
+future top-level and nested keys, and the existing schema version are preserved
+while visible controls are updated. The Raw JSON panel is a read-only preview,
+not a second editor; use `--config` or an external editor when you need to
+change a key the form does not expose.
+
+Both `state.json` and the legacy `local.json` are gitignored. Runtime path
+changes use canonical `paths.code_dir` and `paths.scripts_dir` keys in
+`state.json`, matching the Lua runtime's source of truth.
 
 ## Environment Variables
 
@@ -195,7 +244,7 @@ pip3 show textual pydantic
 
 After saving, reload SketchyBar:
 ```bash
-sketchybar --reload
+./plugins/reload_sketchybar.sh
 ```
 
 Or use `Ctrl+R` in the TUI to save and reload automatically.

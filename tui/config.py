@@ -4,14 +4,45 @@ Configuration models and file handling for barista.
 Handles reading/writing state.json and local.json files.
 """
 
+from __future__ import annotations
+
+import copy
+import fcntl
+import hashlib
 import json
 import os
+import re
+import subprocess
+import tempfile
+from collections.abc import Callable, Iterable, Mapping
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Any, Union
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+)
 
 
-class AppearanceConfig(BaseModel):
+STATE_VERSION = 2
+MAX_SAVE_RETRIES = 5
+
+
+class ConfigFileError(ValueError):
+    """Raised when a configuration file cannot be read safely."""
+
+
+class PreservingModel(BaseModel):
+    """Typed UI view that retains state keys newer than this TUI."""
+
+    model_config = ConfigDict(extra="allow", validate_assignment=True)
+
+
+class AppearanceConfig(PreservingModel):
     """Appearance settings for the status bar."""
     theme: str = "default"
     bar_height: int = Field(default=28, ge=20, le=50)
@@ -31,8 +62,20 @@ class AppearanceConfig(BaseModel):
     menu_header_font_style: str = "Bold"
     menu_font_size_offset: int = Field(default=1, ge=-2, le=6)
 
+    @field_validator(
+        "bar_color",
+        "popup_bg_color",
+        "popup_border_color",
+        "menu_popup_bg_color",
+    )
+    @classmethod
+    def validate_argb_color(cls, value: str) -> str:
+        if re.fullmatch(r"0x[0-9A-Fa-f]{8}", value) is None:
+            raise ValueError("color must use 0xAARRGGBB format")
+        return value
 
-class WidgetsConfig(BaseModel):
+
+class WidgetsConfig(PreservingModel):
     """Widget enable/disable settings."""
     clock: bool = True
     battery: bool = True
@@ -41,7 +84,7 @@ class WidgetsConfig(BaseModel):
     system_info: bool = True
 
 
-class IconsConfig(BaseModel):
+class IconsConfig(PreservingModel):
     """Icon customization settings."""
     apple: str = ""
     quest: str = "󰊠"
@@ -53,22 +96,27 @@ class IconsConfig(BaseModel):
     volume: str = ""
 
 
-class SystemInfoItemsConfig(BaseModel):
+class SystemInfoItemsConfig(PreservingModel):
     """System info popup items."""
-    cpu: bool = True
+
+    cpu: bool = False
     mem: bool = True
     disk: bool = True
     net: bool = True
+    swap: bool = True
+    uptime: bool = True
+    procs: bool = True
+    # Retained for legacy state compatibility; the runtime no longer renders it.
     docs: bool = True
     actions: bool = True
 
 
-class TogglesConfig(BaseModel):
+class TogglesConfig(PreservingModel):
     """Feature toggles."""
     yabai_shortcuts: bool = True
 
 
-class IntegrationConfig(BaseModel):
+class IntegrationConfig(PreservingModel):
     """Base integration configuration."""
     enabled: bool = False
 
@@ -103,7 +151,7 @@ class HalextIntegration(IntegrationConfig):
     show_suggestions: bool = True
 
 
-class IntegrationsConfig(BaseModel):
+class IntegrationsConfig(PreservingModel):
     """All integration settings."""
     yaze: YazeIntegration = Field(default_factory=YazeIntegration)
     emacs: EmacsIntegration = Field(default_factory=EmacsIntegration)
@@ -111,16 +159,17 @@ class IntegrationsConfig(BaseModel):
     halext: HalextIntegration = Field(default_factory=HalextIntegration)
 
 
-class BaristaConfig(BaseModel):
+class BaristaConfig(PreservingModel):
     """Main barista configuration (state.json)."""
-    _version: int = 1
+
     appearance: AppearanceConfig = Field(default_factory=AppearanceConfig)
     widgets: WidgetsConfig = Field(default_factory=WidgetsConfig)
     icons: IconsConfig = Field(default_factory=IconsConfig)
     system_info_items: SystemInfoItemsConfig = Field(default_factory=SystemInfoItemsConfig)
     toggles: TogglesConfig = Field(default_factory=TogglesConfig)
     integrations: IntegrationsConfig = Field(default_factory=IntegrationsConfig)
-    widget_colors: dict[str, str] = Field(default_factory=dict)
+    # Lua encodes an empty table as [], so accept both JSON map representations.
+    widget_colors: Union[dict[str, str], list[object]] = Field(default_factory=dict)
     space_icons: dict[str, str] = Field(default_factory=dict)
     space_modes: dict[str, str] = Field(default_factory=dict)
     spaces: dict[str, object] = Field(default_factory=lambda: {
@@ -155,7 +204,7 @@ class BaristaConfig(BaseModel):
     paths: dict[str, str] = Field(default_factory=dict)
 
 
-class LocalConfig(BaseModel):
+class LocalConfig(PreservingModel):
     """Machine-specific local configuration (local.json)."""
     machine: str = ""
     paths: dict[str, str] = Field(default_factory=lambda: {
@@ -168,8 +217,15 @@ class LocalConfig(BaseModel):
 # Available themes
 THEMES = [
     "default",
-    "espresso", 
+    "dracula",
+    "espresso",
+    "gruvbox",
+    "kanagawa",
     "mocha",
+    "nord",
+    "rosepine",
+    "solarized",
+    "tokyo_night",
     "chocolate",
     "caramel",
     "white_coffee",
@@ -199,75 +255,517 @@ def get_local_file() -> Path:
     return get_config_dir() / "local.json"
 
 
-def load_config() -> BaristaConfig:
-    """Load configuration from state.json."""
-    state_file = get_state_file()
-    
-    if state_file.exists():
-        try:
-            with open(state_file) as f:
-                data = json.load(f)
-            return BaristaConfig.model_validate(data)
-        except (json.JSONDecodeError, Exception) as e:
-            print(f"Warning: Could not load state.json: {e}")
-    
-    return BaristaConfig()
+def _resolve_path(path: Path | str | None, default: Path) -> Path:
+    if path is None:
+        return default
+    return Path(path).expanduser()
 
 
-def save_config(config: BaristaConfig) -> None:
-    """Save configuration to state.json."""
-    state_file = get_state_file()
-    
-    # Ensure directory exists
-    state_file.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Convert to dict, handling the _version field
-    data = config.model_dump(exclude_none=True)
-    data["_version"] = 1
-    
-    # Write atomically (temp file + rename)
-    temp_file = state_file.with_suffix(".tmp")
-    with open(temp_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    temp_file.rename(state_file)
-
-
-def load_local_config() -> LocalConfig:
-    """Load local configuration from local.json."""
-    local_file = get_local_file()
-    
-    if local_file.exists():
-        try:
-            with open(local_file) as f:
-                data = json.load(f)
-            return LocalConfig.model_validate(data)
-        except (json.JSONDecodeError, Exception) as e:
-            print(f"Warning: Could not load local.json: {e}")
-    
-    return LocalConfig()
-
-
-def save_local_config(config: LocalConfig) -> None:
-    """Save local configuration to local.json."""
-    local_file = get_local_file()
-    
-    local_file.parent.mkdir(parents=True, exist_ok=True)
-    
-    data = config.model_dump(exclude_none=True)
-    
-    temp_file = local_file.with_suffix(".tmp")
-    with open(temp_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    temp_file.rename(local_file)
-
-
-def reload_sketchybar() -> bool:
-    """Reload sketchybar configuration."""
-    import subprocess
+def _load_raw_object_with_token(
+    path: Path,
+) -> tuple[dict[str, Any], str | None]:
+    """Read one complete JSON snapshot and its content token."""
     try:
-        subprocess.run(["sketchybar", "--reload"], check=True, capture_output=True)
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return {}, None
+    except OSError as exc:
+        raise ConfigFileError(f"Could not read {path}: {exc}") from exc
+
+    token = hashlib.sha256(raw).hexdigest()
+    try:
+        data = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ConfigFileError(f"Could not read {path}: {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise ConfigFileError(f"Could not read {path}: top-level JSON must be an object")
+    return data, token
+
+
+def _load_raw_object(path: Path) -> dict[str, Any]:
+    """Read a JSON object without inventing defaults on parse failure."""
+    data, _ = _load_raw_object_with_token(path)
+    return data
+
+
+def load_config_document(state_file: Path | str | None = None) -> dict[str, Any]:
+    """Load the raw state document for lossless previews and patching."""
+    path = _resolve_path(state_file, get_state_file())
+    return _load_raw_object(path)
+
+
+def load_config_document_snapshot(
+    state_file: Path | str | None = None,
+) -> tuple[dict[str, Any], str | None]:
+    """Load one raw state snapshot and its exact content token."""
+    path = _resolve_path(state_file, get_state_file())
+    return _load_raw_object_with_token(path)
+
+
+def _normalize_empty_map_views(
+    data: dict[str, Any],
+    map_keys: tuple[str, ...],
+) -> dict[str, Any]:
+    """Normalize Lua's [] encoding only in the typed UI view."""
+    view = copy.deepcopy(data)
+    for key in map_keys:
+        if view.get(key) == []:
+            view[key] = {}
+
+    integrations = view.get("integrations")
+    if isinstance(integrations, dict):
+        for key, value in integrations.items():
+            if value == []:
+                integrations[key] = {}
+    return view
+
+
+def validate_config_document(
+    data: dict[str, Any],
+    state_file: Path | str | None = None,
+) -> BaristaConfig:
+    """Validate one already-read state snapshot as the TUI's typed view."""
+    path = _resolve_path(state_file, get_state_file())
+    view = _normalize_empty_map_views(
+        data,
+        (
+            "appearance",
+            "widgets",
+            "icons",
+            "system_info_items",
+            "toggles",
+            "integrations",
+            "space_icons",
+            "space_modes",
+            "spaces",
+            "menus",
+            "modes",
+            "paths",
+        ),
+    )
+    try:
+        return BaristaConfig.model_validate(view)
+    except ValidationError as exc:
+        raise ConfigFileError(f"Could not validate {path}: {exc}") from exc
+
+
+def load_config(state_file: Path | str | None = None) -> BaristaConfig:
+    """Load state.json as a typed view while preserving its raw document."""
+    path = _resolve_path(state_file, get_state_file())
+    return validate_config_document(_load_raw_object(path), path)
+
+
+class _PatchMarker:
+    def __deepcopy__(self, memo: dict[int, object]) -> "_PatchMarker":
+        return self
+
+
+_NO_CHANGE = _PatchMarker()
+
+
+def _diff_value(before: Any, after: Any) -> Any:
+    if before == after:
+        return _NO_CHANGE
+    if isinstance(before, Mapping) and isinstance(after, Mapping):
+        patch: dict[str, Any] = {}
+        for key, value in after.items():
+            if key not in before:
+                patch[key] = copy.deepcopy(value)
+                continue
+            nested = _diff_value(before[key], value)
+            if nested is not _NO_CHANGE:
+                patch[key] = nested
+        return patch if patch else _NO_CHANGE
+    return copy.deepcopy(after)
+
+
+def build_config_patch(
+    before: Mapping[str, Any] | BaseModel,
+    after: Mapping[str, Any] | BaseModel,
+) -> dict[str, Any]:
+    """Build a recursive patch containing only changed UI values."""
+    before_values = (
+        before.model_dump(exclude_none=True)
+        if isinstance(before, BaseModel)
+        else before
+    )
+    after_values = (
+        after.model_dump(exclude_none=True)
+        if isinstance(after, BaseModel)
+        else after
+    )
+    patch = _diff_value(before_values, after_values)
+    if patch is _NO_CHANGE:
+        return {}
+    if not isinstance(patch, dict):
+        raise TypeError("Configuration snapshots must be mappings")
+    return patch
+
+
+def _deep_merge(base: dict[str, Any], patch: Mapping[str, Any]) -> dict[str, Any]:
+    result = copy.deepcopy(base)
+    for key, value in patch.items():
+        if isinstance(value, Mapping) and isinstance(result.get(key), dict):
+            result[key] = _deep_merge(result[key], value)
+        elif isinstance(value, Mapping):
+            result[key] = _deep_merge({}, value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
+
+
+def _file_token(path: Path) -> str | None:
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ConfigFileError(f"Could not inspect {path}: {exc}") from exc
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _atomic_write_bytes(
+    path: Path,
+    data: bytes,
+    *,
+    expected_token: str | None | _PatchMarker = _NO_CHANGE,
+) -> bool:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temp_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(descriptor, "wb") as file:
+            file.write(data)
+            file.flush()
+            os.fsync(file.fileno())
+        if (
+            expected_token is not _NO_CHANGE
+            and _file_token(path) != expected_token
+        ):
+            temp_path.unlink(missing_ok=True)
+            return False
+        os.replace(temp_path, path)
         return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+
+def _serialize_json(data: Any) -> bytes:
+    return (
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    ).encode("utf-8")
+
+
+def _atomic_write_json(
+    path: Path,
+    data: Any,
+    *,
+    expected_token: str | None | _PatchMarker = _NO_CHANGE,
+) -> bool:
+    return _atomic_write_bytes(
+        path,
+        _serialize_json(data),
+        expected_token=expected_token,
+    )
+
+
+@contextmanager
+def _config_lock(path: Path):
+    """Serialize read-merge-replace cycles for one canonical config path."""
+    lock_root = (
+        Path(tempfile.gettempdir())
+        / f"barista-config-locks-{os.getuid()}"
+    )
+    lock_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    canonical_path = str(path.resolve(strict=False))
+    lock_name = hashlib.sha256(canonical_path.encode("utf-8")).hexdigest()
+    lock_path = lock_root / f"{lock_name}.lock"
+
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def config_write_locks(paths: Iterable[Path | str]):
+    """Lock multiple config paths in one canonical order."""
+    canonical_paths = sorted(
+        {
+            Path(path).expanduser().resolve(strict=False)
+            for path in paths
+        },
+        key=str,
+    )
+    with ExitStack() as stack:
+        for path in canonical_paths:
+            stack.enter_context(_config_lock(path))
+        yield
+
+
+@contextmanager
+def config_write_lock(state_file: Path | str | None = None):
+    """Hold the TUI writer lock for a complete state-side-effect transaction."""
+    path = _resolve_path(state_file, get_state_file())
+    with config_write_locks((path,)):
+        yield
+
+
+def _save_json_document_locked(target: Path, data: Any) -> str:
+    serialized = _serialize_json(data)
+    written_token = hashlib.sha256(serialized).hexdigest()
+    for _ in range(MAX_SAVE_RETRIES):
+        token = _file_token(target)
+        if _atomic_write_bytes(
+            target,
+            serialized,
+            expected_token=token,
+        ):
+            return written_token
+    raise ConfigFileError(f"Could not save {target}: file changed repeatedly")
+
+
+def save_json_document(
+    path: Path | str,
+    data: Any,
+    *,
+    acquire_lock: bool = True,
+) -> str:
+    """Atomically replace a derived JSON document with bounded CAS retries."""
+    target = Path(path).expanduser()
+    if acquire_lock:
+        with _config_lock(target):
+            return _save_json_document_locked(target, data)
+    return _save_json_document_locked(target, data)
+
+
+def _read_json_array_snapshot(
+    path: Path,
+) -> tuple[bytes | None, str | None, list[Any]]:
+    try:
+        content = path.read_bytes()
+    except FileNotFoundError:
+        return None, None, []
+    except OSError as exc:
+        raise ConfigFileError(f"Could not read {path}: {exc}") from exc
+
+    token = hashlib.sha256(content).hexdigest()
+    try:
+        data = json.loads(content)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ConfigFileError(f"Could not read {path}: {exc}") from exc
+    if not isinstance(data, list):
+        raise ConfigFileError(
+            f"Could not read {path}: top-level JSON must be an array"
+        )
+    return content, token, data
+
+
+def _update_json_array_document_locked(
+    target: Path,
+    transform: Callable[[list[Any]], list[Any]],
+) -> tuple[bytes | None, list[Any], str]:
+    for _ in range(MAX_SAVE_RETRIES):
+        previous_content, token, current = _read_json_array_snapshot(target)
+        updated = transform(copy.deepcopy(current))
+        if not isinstance(updated, list):
+            raise TypeError("JSON array transform must return a list")
+        serialized = _serialize_json(updated)
+        written_token = hashlib.sha256(serialized).hexdigest()
+        if _atomic_write_bytes(
+            target,
+            serialized,
+            expected_token=token,
+        ):
+            return previous_content, updated, written_token
+    raise ConfigFileError(f"Could not save {target}: file changed repeatedly")
+
+
+def update_json_array_document(
+    path: Path | str,
+    transform: Callable[[list[Any]], list[Any]],
+    *,
+    acquire_lock: bool = True,
+) -> tuple[bytes | None, list[Any], str]:
+    """Run a lossless JSON-array read/transform/write cycle."""
+    target = Path(path).expanduser()
+    if acquire_lock:
+        with _config_lock(target):
+            return _update_json_array_document_locked(target, transform)
+    return _update_json_array_document_locked(target, transform)
+
+
+def restore_file_snapshot(
+    path: Path | str,
+    content: bytes | None,
+    *,
+    expected_token: str,
+    acquire_lock: bool = True,
+) -> bool:
+    """Restore exact bytes if a derived file still contains our last write."""
+    target = Path(path).expanduser()
+
+    def restore() -> bool:
+        if _file_token(target) != expected_token:
+            return False
+        if content is None:
+            target.unlink(missing_ok=True)
+            return True
+        return _atomic_write_bytes(
+            target,
+            content,
+            expected_token=expected_token,
+        )
+
+    if acquire_lock:
+        with _config_lock(target):
+            return restore()
+    return restore()
+
+
+def _save_config_locked(
+    config: BaristaConfig,
+    updates: Mapping[str, Any] | None,
+    path: Path,
+) -> None:
+    for _ in range(MAX_SAVE_RETRIES):
+        base, token = _load_raw_object_with_token(path)
+        existing_version = base.get("_version", _NO_CHANGE)
+
+        if updates is None:
+            patch: Mapping[str, Any] = config.model_dump(exclude_none=True)
+        else:
+            patch = updates
+
+        data = _deep_merge(base, patch)
+        if existing_version is not _NO_CHANGE:
+            data["_version"] = existing_version
+        else:
+            data.setdefault("_version", STATE_VERSION)
+
+        if token is not None and data == base:
+            return
+        if _atomic_write_json(path, data, expected_token=token):
+            return
+    raise ConfigFileError(f"Could not save {path}: file changed repeatedly")
+
+
+def save_config(
+    config: BaristaConfig,
+    *,
+    updates: Mapping[str, Any] | None = None,
+    state_file: Path | str | None = None,
+    acquire_lock: bool = True,
+) -> None:
+    """Patch state.json without deleting keys the TUI does not expose."""
+    path = _resolve_path(state_file, get_state_file())
+    if acquire_lock:
+        with _config_lock(path):
+            _save_config_locked(config, updates, path)
+    else:
+        _save_config_locked(config, updates, path)
+
+
+def save_config_if_unchanged(
+    config: BaristaConfig,
+    *,
+    updates: Mapping[str, Any] | None,
+    state_file: Path | str | None,
+    expected_token: str | None,
+    acquire_lock: bool = True,
+) -> bool:
+    """Patch one exact state snapshot, returning false if it changed."""
+    path = _resolve_path(state_file, get_state_file())
+
+    def save() -> bool:
+        base, token = _load_raw_object_with_token(path)
+        if token != expected_token:
+            return False
+        existing_version = base.get("_version", _NO_CHANGE)
+        patch: Mapping[str, Any] = (
+            config.model_dump(exclude_none=True)
+            if updates is None
+            else updates
+        )
+        data = _deep_merge(base, patch)
+        if existing_version is not _NO_CHANGE:
+            data["_version"] = existing_version
+        else:
+            data.setdefault("_version", STATE_VERSION)
+        if token is not None and data == base:
+            return True
+        return _atomic_write_json(path, data, expected_token=token)
+
+    if acquire_lock:
+        with _config_lock(path):
+            return save()
+    return save()
+
+
+def load_local_config(local_file: Path | str | None = None) -> LocalConfig:
+    """Load machine-local configuration without hiding parse failures."""
+    path = _resolve_path(local_file, get_local_file())
+    data = _load_raw_object(path)
+    view = _normalize_empty_map_views(data, ("paths", "integrations"))
+    try:
+        return LocalConfig.model_validate(view)
+    except ValidationError as exc:
+        raise ConfigFileError(f"Could not validate {path}: {exc}") from exc
+
+
+def save_local_config(
+    config: LocalConfig,
+    *,
+    updates: Mapping[str, Any] | None = None,
+    local_file: Path | str | None = None,
+) -> None:
+    """Patch local.json without deleting unknown machine-local keys."""
+    path = _resolve_path(local_file, get_local_file())
+    with _config_lock(path):
+        for _ in range(MAX_SAVE_RETRIES):
+            base, token = _load_raw_object_with_token(path)
+            if updates is None:
+                patch: Mapping[str, Any] = config.model_dump(exclude_none=True)
+            else:
+                patch = updates
+            data = _deep_merge(base, patch)
+            if token is None and not data:
+                return
+            if token is not None and data == base:
+                return
+            if _atomic_write_json(path, data, expected_token=token):
+                return
+        raise ConfigFileError(f"Could not save {path}: file changed repeatedly")
+
+
+def reload_sketchybar(config_dir: Path | str | None = None) -> bool:
+    """Reload through Barista's serialized, health-checked helper."""
+    directory = _resolve_path(config_dir, get_config_dir()).resolve(strict=False)
+    helper = directory / "plugins" / "reload_sketchybar.sh"
+    if not helper.is_file() or not os.access(helper, os.X_OK):
+        return False
+
+    environment = os.environ.copy()
+    environment["CONFIG_DIR"] = str(directory)
+    environment["BARISTA_CONFIG_DIR"] = str(directory)
+    try:
+        subprocess.run(
+            [str(helper)],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=environment,
+        )
+        return True
+    except (OSError, subprocess.CalledProcessError):
         return False
 
 

@@ -1,8 +1,8 @@
-"""Advanced tab - fonts, toggles, and raw JSON editor."""
+"""Advanced tab - fonts, toggles, work apps, and a raw JSON preview."""
 
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
-from textual.widgets import Static, Label, Input, Switch, TextArea, Button
+from textual.widgets import Static, Label, Input, Switch, TextArea
 
 from ..config import BaristaConfig
 
@@ -113,10 +113,10 @@ class AdvancedTab(Vertical):
             yield Label("Yabai Shortcuts")
             yield Switch(value=self.config.toggles.yabai_shortcuts, id="toggle_yabai_shortcuts")
         
-        yield Static("Raw Configuration", classes="section-header")
+        yield Static("Raw Configuration Preview", classes="section-header")
         yield Static(
-            "Edit the raw JSON configuration. "
-            "Changes here will override other settings.",
+            "Read-only startup snapshot. Use --config or an external editor "
+            "for settings this form does not expose.",
             classes="help-text"
         )
         
@@ -124,6 +124,7 @@ class AdvancedTab(Vertical):
             self.raw_json,
             id="raw_json",
             language="json",
+            read_only=True,
         )
     
     def get_values(self) -> dict:
@@ -145,36 +146,28 @@ class AdvancedTab(Vertical):
             "menu_popup_bg_color",
             "popup_border_color",
         ]:
-            try:
-                inp = self.query_one(f"#{font_key}", Input)
-                values["appearance"][font_key] = inp.value
-            except Exception:
-                pass
+            inp = self.query_one(f"#{font_key}", Input)
+            values["appearance"][font_key] = inp.value
 
+        menu_size_offset = self.query_one("#menu_font_size_offset", Input).value.strip()
+        if not menu_size_offset:
+            raise ValueError("Menu Font Size Offset is required")
         try:
-            menu_size_offset = self.query_one("#menu_font_size_offset", Input).value
             values["appearance"]["menu_font_size_offset"] = int(menu_size_offset)
-        except Exception:
-            pass
+        except ValueError as exc:
+            raise ValueError("Menu Font Size Offset must be an integer") from exc
 
-        work_menu_updates = {}
-        try:
-            work_menu_updates["workspace_domain"] = self.query_one("#work_workspace_domain", Input).value
-        except Exception:
-            pass
-        try:
-            work_menu_updates["apps_file"] = self.query_one("#work_apps_file", Input).value
-        except Exception:
-            pass
-        if work_menu_updates:
-            values["menus"]["work"] = work_menu_updates
+        values["menus"]["work"] = {
+            "workspace_domain": self.query_one(
+                "#work_workspace_domain",
+                Input,
+            ).value,
+            "apps_file": self.query_one("#work_apps_file", Input).value,
+        }
         
         # Toggles
-        try:
-            switch = self.query_one("#toggle_yabai_shortcuts", Switch)
-            values["toggles"]["yabai_shortcuts"] = switch.value
-        except Exception:
-            pass
+        switch = self.query_one("#toggle_yabai_shortcuts", Switch)
+        values["toggles"]["yabai_shortcuts"] = switch.value
         
         return values
     

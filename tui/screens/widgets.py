@@ -1,7 +1,7 @@
 """Widgets tab - enable/disable widgets."""
 
 from textual.app import ComposeResult
-from textual.containers import Vertical, Horizontal
+from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Static, Label, Switch
 
 from ..config import BaristaConfig
@@ -44,7 +44,7 @@ class WidgetToggle(Horizontal):
         yield Static(self.description, classes="widget-desc")
 
 
-class WidgetsTab(Vertical):
+class WidgetsTab(VerticalScroll):
     """Widgets enable/disable tab."""
     
     DEFAULT_CSS = """
@@ -64,7 +64,18 @@ class WidgetsTab(Vertical):
         "battery": ("Battery", "Battery status with charge level"),
         "volume": ("Volume", "Volume control with popup slider"),
         "network": ("Network", "Network status indicator"),
-        "system_info": ("System Info", "CPU, memory, disk usage popup"),
+        "system_info": ("System Info", "Glanceable metrics and actions popup"),
+    }
+
+    SYSTEM_INFO_ITEM_INFO = {
+        "cpu": ("CPU", "Overall CPU usage"),
+        "mem": ("Memory", "Memory usage"),
+        "disk": ("Disk", "Disk capacity usage"),
+        "net": ("Network", "Active network address"),
+        "swap": ("Swap", "Swap usage"),
+        "uptime": ("Uptime", "Time since startup"),
+        "procs": ("Top CPU", "Highest-CPU process"),
+        "actions": ("Popup Actions", "Activity Monitor and System Settings"),
     }
     
     def __init__(self, config: BaristaConfig, **kwargs):
@@ -85,17 +96,11 @@ class WidgetsTab(Vertical):
                 widget_id=f"widget_{widget_key}"
             )
         
-        yield Static("System Info Items", classes="section-header")
+        yield Static("System Info Popup", classes="section-header")
         
         sys_info = self.config.system_info_items
-        sys_info_items = {
-            "cpu": ("CPU", "CPU usage percentage"),
-            "mem": ("Memory", "Memory usage"),
-            "disk": ("Disk", "Disk space usage"),
-            "net": ("Network", "Network throughput"),
-        }
         
-        for item_key, (name, desc) in sys_info_items.items():
+        for item_key, (name, desc) in self.SYSTEM_INFO_ITEM_INFO.items():
             enabled = getattr(sys_info, item_key, True)
             yield WidgetToggle(
                 name=name,
@@ -120,7 +125,7 @@ class WidgetsTab(Vertical):
                 pass
         
         # System info items
-        for item_key in ["cpu", "mem", "disk", "net"]:
+        for item_key in self.SYSTEM_INFO_ITEM_INFO:
             try:
                 switch = self.query_one(f"#sysinfo_{item_key}", Switch)
                 values["system_info_items"][item_key] = switch.value

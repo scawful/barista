@@ -1,11 +1,12 @@
 """General settings tab - appearance configuration."""
 
+from __future__ import annotations
+
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
-from textual.widgets import Static, Label, Select, Input, Button
-from textual.widget import Widget
+from textual.widgets import Static, Label, Select, Input
 
-from ..config import BaristaConfig, THEMES, parse_color, format_color
+from ..config import BaristaConfig, THEMES, parse_color
 
 
 class ColorPreview(Static):
@@ -138,6 +139,9 @@ class GeneralTab(Vertical):
     
     def compose(self) -> ComposeResult:
         appearance = self.config.appearance
+        themes = list(THEMES)
+        if appearance.theme not in themes:
+            themes.append(appearance.theme)
         
         yield Static("Bar Appearance", classes="section-header")
         
@@ -191,7 +195,7 @@ class GeneralTab(Vertical):
         with Horizontal(classes="theme-row"):
             yield Label("Theme")
             yield Select(
-                [(t, t) for t in THEMES],
+                [(theme, theme) for theme in themes],
                 value=appearance.theme,
                 id="theme",
             )
@@ -209,28 +213,27 @@ class GeneralTab(Vertical):
         
         # Numeric inputs
         for field in ["bar_height", "corner_radius", "blur_radius", "widget_scale", "widget_corner_radius"]:
+            inp = self.query_one(f"#{field}", Input)
+            val = inp.value.strip()
+            if not val:
+                raise ValueError(f"{field.replace('_', ' ').title()} is required")
             try:
-                inp = self.query_one(f"#{field}", Input)
-                val = inp.value
                 if field == "widget_scale":
                     values[field] = float(val)
                 else:
                     values[field] = int(val)
-            except Exception:
-                pass
+            except ValueError as exc:
+                raise ValueError(
+                    f"{field.replace('_', ' ').title()} must be numeric"
+                ) from exc
         
         # Color
-        try:
-            values["bar_color"] = self.query_one("#bar_color", Input).value
-        except Exception:
-            pass
+        values["bar_color"] = self.query_one("#bar_color", Input).value
         
         # Theme
-        try:
-            select = self.query_one("#theme", Select)
-            if select.value:
-                values["theme"] = select.value
-        except Exception:
-            pass
+        select = self.query_one("#theme", Select)
+        if not isinstance(select.value, str) or not select.value:
+            raise ValueError("Theme is required")
+        values["theme"] = select.value
         
         return values

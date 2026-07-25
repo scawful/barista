@@ -1,5 +1,32 @@
 # SketchyBar Configuration Changelog
 
+## July 25, 2026 - Native Spaces Performance Clock
+
+- Space topology, orchestration, and visual-refresh timing now prefer the
+  framework-free `perf_clock` helper instead of launching Perl at every phase
+  boundary. Missing, nonnumeric, or failed helpers retain the existing
+  Perl/Python/date fallback and preserve realtime epoch semantics for cooldown
+  files shared across processes. Lua-only/restricted profiles propagate their
+  runtime gate through startup, event, yabai-signal, persisted space-action,
+  child-refresh, and state-aware reload-repair entrypoints and never execute
+  the compiled clock or space manager. A concurrency-safe atomic ignored marker
+  records the backend actually selected after component checks, covering
+  dynamic `auto`-to-Lua fallback without changing the configured profile;
+  failure to publish a resolved Lua marker invalidates any stale compiled
+  result and aborts config construction. Missing or invalid markers therefore
+  retain the portable path; Lua publishes before config construction, while a
+  compiled runtime publishes only after `end_config` commits successfully.
+- The helper is wired through CMake, the legacy helper makefile, install/sync,
+  verification, and hosted script checks. Deterministic tests preserve the six
+  full-rebuild timing boundaries and reject numeric output from a helper that
+  exits nonzero.
+- In a randomized 200-pair process benchmark, the deployed libSystem-only
+  helper measured `1.482 ms` median / `1.679 ms` p95 versus
+  `3.980 ms` / `4.251 ms` for the prior Perl probe: a `2.69x` median speedup
+  and roughly `30 ms` saved across the normal 12-timestamp topology + visual
+  chain. A separate 20-pair same-daemon visual-refresh A/B reduced median from
+  `85.453 ms` to `82.239 ms` with stable PID, state, space ordering, and logs.
+
 ## July 24, 2026 - Exclusive Root and Child Popup Switching
 
 - Opening a registered top-level menu now closes every other root and all child

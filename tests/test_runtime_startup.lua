@@ -28,6 +28,20 @@ run_test("main startup wiring: commits and captures config timing before queue f
     "main should create a fresh topology generation before rendering click scripts")
   assert_true(source:find("popup_topology_token = POPUP_TOPOLOGY_TOKEN", 1, true) ~= nil,
     "main should bind generated click scripts to the current topology generation")
+  assert_true(source:find("local space_visuals_script_cmd = shell_utils.env_prefix", 1, true) ~= nil,
+    "main should propagate Lua-only mode to event-driven space visual refreshes")
+  assert_true(source:find("spaces_module.create(", 1, true) ~= nil
+      and source:find("yabai_available,%s+LUA_ONLY") ~= nil,
+    "main should propagate Lua-only mode to direct and signal-driven spaces refreshes")
+  assert_true(source:find("binary_resolver.ensure_resolved_runtime_backend", 1, true) ~= nil,
+    "main should fail closed while publishing the backend selected after component checks")
+  local begin_config_pos = assert(source:find("sbar.begin_config()", 1, true))
+  local lua_marker_pos = assert(source:find('publish_runtime_marker_or_warn("lua")', 1, true))
+  local compiled_marker_pos = assert(source:find('publish_runtime_marker_or_warn("compiled")', 1, true))
+  assert_true(lua_marker_pos < begin_config_pos,
+    "resolved Lua should publish before fallible config construction")
+  assert_true(compiled_marker_pos > end_config_pos,
+    "resolved compiled should publish only after a successful config commit")
 end)
 
 run_test("runtime_startup post-config queue: defers and flushes actions in order", function()
@@ -318,9 +332,11 @@ run_test("runtime_startup.build_space_visual_refresh: triggers one delayed autho
     0.8,
     "/Users/scawful/.config/sketchybar/plugins/space_visuals.sh",
     "/Users/scawful/.config/sketchybar",
-    "/Users/scawful/.config/sketchybar/scripts"
+    "/Users/scawful/.config/sketchybar/scripts",
+    true
   )
   assert_true(command:find("sleep 0%.8;", 1) ~= nil, "command should include sync delay")
+  assert_true(command:find("/usr/bin/env BARISTA_LUA_ONLY=1", 1, true) ~= nil, "Lua-only startup sync should disable compiled helpers")
   assert_true(command:find("NAME=space_runtime", 1, true) ~= nil, "command should target the hidden runtime item context")
   assert_true(command:find("SENDER=startup_sync", 1, true) ~= nil, "command should run the authoritative startup-sync pass directly")
   assert_true(command:find("/plugins/space_visuals.sh", 1, true) ~= nil, "command should execute the space visuals script")

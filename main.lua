@@ -103,6 +103,17 @@ if not LUA_ONLY then
   end
 end
 
+local function publish_runtime_marker_or_warn(mode)
+  local ok, err = binary_resolver.ensure_resolved_runtime_backend(CONFIG_DIR, mode)
+  if not ok then
+    print("Barista: unable to publish resolved runtime backend: " .. tostring(err))
+  end
+end
+
+if LUA_ONLY then
+  publish_runtime_marker_or_warn("lua")
+end
+
 component_switcher.init()
 component_switcher.set_mode(LUA_ONLY and "lua" or "auto")
 
@@ -322,7 +333,15 @@ end
 
 -- Spaces module
 local spaces_module = require("spaces")
-local space_fns = spaces_module.create(CONFIG_DIR, PLUGIN_DIR, SKETCHYBAR_BIN, YABAI_BIN, shell_utils.shell_exec, yabai_available)
+local space_fns = spaces_module.create(
+  CONFIG_DIR,
+  PLUGIN_DIR,
+  SKETCHYBAR_BIN,
+  YABAI_BIN,
+  shell_utils.shell_exec,
+  yabai_available,
+  LUA_ONLY
+)
 local associated_displays = space_fns.get_associated_displays()
 print("Associated displays target: " .. associated_displays)
 
@@ -519,11 +538,14 @@ sbar.add("item", "popup_manager", {
 })
 
 -- Space runtime coordinator (single batch updater for all space visuals)
+local space_visuals_script_cmd = shell_utils.env_prefix({
+  BARISTA_LUA_ONLY = LUA_ONLY and "1" or nil,
+}) .. SPACE_VISUALS_SCRIPT
 sbar.add("item", "space_runtime", {
   position = "left",
   drawing = false,
   updates = false,
-  script = SPACE_VISUALS_SCRIPT,
+  script = space_visuals_script_cmd,
 })
 
 -- Bar configuration
@@ -665,6 +687,9 @@ post_config_queue:enqueue_command(string.format(
 -- End configuration
 sbar.end_config()
 trace_startup("main:end_config")
+if not LUA_ONLY then
+  publish_runtime_marker_or_warn("compiled")
+end
 local config_build_duration_ms = runtime_startup.current_time_ms() - config_build_start_ms
 local config_build_wall_duration_ms = runtime_startup.wall_time_ms() - config_build_start_wall_ms
 local post_config_action_count = post_config_queue:flush({
@@ -730,7 +755,8 @@ post_config_queue:enqueue_command(runtime_startup.build_space_visual_refresh(
   SPACE_STARTUP_SYNC_DELAY,
   SPACE_VISUALS_SCRIPT,
   CONFIG_DIR,
-  SCRIPTS_DIR
+  SCRIPTS_DIR,
+  LUA_ONLY
 ))
 local late_post_config_action_count = post_config_queue:flush({
   exec = shell_utils.shell_exec,

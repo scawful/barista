@@ -19,6 +19,7 @@ endif()
 set(HELPER_SOURCES
   clock_widget.c
   system_info_widget.c
+  perf_clock.c
   space_manager.c
   submenu_hover.c
   popup_anchor.c
@@ -48,7 +49,7 @@ foreach(SOURCE ${HELPER_SOURCES})
   get_filename_component(NAME ${SOURCE} NAME_WE)
   add_executable(${NAME} ${SOURCE})
   
-  if(APPLE)
+  if(APPLE AND NOT NAME STREQUAL "perf_clock")
     target_link_libraries(${NAME} PRIVATE
       ${COREFOUNDATION_LIB}
       ${IOKIT_LIB}
@@ -152,6 +153,7 @@ install(TARGETS
   clock_widget
   system_info_widget
   system_info_popup_helper
+  perf_clock
   space_manager
   submenu_hover
   popup_anchor

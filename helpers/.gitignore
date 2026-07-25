@@ -1,6 +1,7 @@
 bin
 clock_widget
 system_info_widget
+perf_clock
 space_manager
 submenu_hover
 popup_anchor

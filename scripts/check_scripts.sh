@@ -16,6 +16,7 @@ Checks:
   - Perl helper syntax
   - shellcheck (if available, required with --ci)
   - shfmt formatting report (strict with BARISTA_SHFMT_STRICT=1)
+  - focused Lua runtime-backend and startup checks
   - Python TUI configuration and widget regression tests
   - smoke checks for setup/update scripts
 EOF
@@ -122,6 +123,14 @@ else
 fi
 
 echo "[check] smoke tests"
+if command -v lua >/dev/null 2>&1; then
+  lua tests/run_tests.lua tests/test_binary_resolver.lua tests/test_runtime_startup.lua >/dev/null
+elif [ "$CI_MODE" -eq 1 ]; then
+  echo "lua is required in CI mode." >&2
+  exit 1
+else
+  echo "[warn] lua not installed; skipping focused Lua checks"
+fi
 ./scripts/setup_machine.sh --help >/dev/null
 ./scripts/barista-fonts.sh --help >/dev/null
 ./scripts/barista-debug.sh --help >/dev/null
@@ -148,6 +157,13 @@ bash tests/test_popup_anchor.sh >/dev/null
 bash tests/test_popup_hover.sh >/dev/null
 bash tests/test_popup_click.sh >/dev/null
 bash tests/test_popup_manager.sh >/dev/null
+bash tests/test_perf_clock.sh >/dev/null
+bash tests/test_runtime_backend_marker.sh >/dev/null
+bash tests/test_simple_spaces_full_rebuild.sh >/dev/null
+bash tests/test_space_action_click.sh >/dev/null
+bash tests/test_refresh_spaces.sh >/dev/null
+bash tests/test_space_visuals.sh >/dev/null
+bash tests/test_reload_sketchybar.sh >/dev/null
 bash tests/test_runtime_context_daemon_exec.sh >/dev/null
 bash tests/test_runtime_context_media_efficiency.sh >/dev/null
 bash tests/test_runtime_context_helper_publication.sh >/dev/null

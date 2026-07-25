@@ -264,15 +264,17 @@ function runtime_startup.build_space_runtime_subscription(delay_seconds, sketchy
   )
 end
 
-function runtime_startup.build_space_visual_refresh(delay_seconds, script_path, config_dir, scripts_dir)
+function runtime_startup.build_space_visual_refresh(delay_seconds, script_path, config_dir, scripts_dir, lua_only)
   local delay = tonumber(delay_seconds) or 0
   local script = script_path or ""
   local config = config_dir or ""
   local scripts = scripts_dir or ""
+  local runtime_prefix = lua_only and "/usr/bin/env BARISTA_LUA_ONLY=1 " or ""
 
   return string.format(
-    "sleep %.1f; NAME=space_runtime SENDER=startup_sync CONFIG_DIR=%q SCRIPTS_DIR=%q %q >/dev/null 2>&1 || true",
+    "sleep %.1f; %sNAME=space_runtime SENDER=startup_sync CONFIG_DIR=%q SCRIPTS_DIR=%q %q >/dev/null 2>&1 || true",
     delay,
+    runtime_prefix,
     config,
     scripts,
     script

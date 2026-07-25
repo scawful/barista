@@ -5,12 +5,67 @@ PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:
 
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
 STATE_FILE="$CONFIG_DIR/state.json"
+RESOLVED_RUNTIME_FILE="${BARISTA_RESOLVED_RUNTIME_FILE:-$CONFIG_DIR/.barista_runtime_backend}"
 YABAI_BIN="${YABAI_BIN:-$(command -v yabai || true)}"
-JQ_BIN="${JQ_BIN:-$(command -v jq || true)}"
+if [ -z "${JQ_BIN+x}" ]; then
+  JQ_BIN="$(command -v jq || true)"
+fi
+SKETCHYBAR_BIN="${SKETCHYBAR_BIN:-$(command -v sketchybar || true)}"
 SPACE_MANAGER_BIN="${SPACE_MANAGER_BIN:-$CONFIG_DIR/bin/space_manager}"
 SPACE_CLOSE_CONFIRM_TTL_SEC="${SPACE_CLOSE_CONFIRM_TTL_SEC:-2}"
 SPACE_SWAP_ARM_TTL_SEC="${SPACE_SWAP_ARM_TTL_SEC:-10}"
 SPACE_SWAP_INDICATOR_ITEM="${SPACE_SWAP_INDICATOR_ITEM:-spaces.swap_indicator}"
+
+runtime_is_lua_only() {
+  if [ "${BARISTA_LUA_ONLY:-0}" = "1" ] || [ "${BARISTA_NO_CMAKE:-0}" = "1" ]; then
+    return 0
+  fi
+
+  local runtime_backend="${BARISTA_RUNTIME_BACKEND:-}"
+  local resolved_runtime=""
+  if [ -f "$RESOLVED_RUNTIME_FILE" ]; then
+    IFS= read -r resolved_runtime < "$RESOLVED_RUNTIME_FILE" || true
+    if [ "$resolved_runtime" = "lua" ]; then
+      return 0
+    fi
+  fi
+  if [ -z "$runtime_backend" ] && [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ]; then
+    runtime_backend="$("$JQ_BIN" -r '.modes.runtime_backend // empty' "$STATE_FILE" 2>/dev/null || true)"
+  fi
+  if [ -z "$runtime_backend" ] && [ -f "$STATE_FILE" ] \
+    && grep -Eqi '"runtime_backend"[[:space:]]*:[[:space:]]*"[[:space:]]*(lua|lua-only|lua_only|pure-lua|pure_lua|fallback|shell|no-cmake|no_cmake)[[:space:]]*"' "$STATE_FILE"; then
+    runtime_backend="lua"
+  fi
+  runtime_backend="$(printf '%s' "$runtime_backend" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  case "$runtime_backend" in
+    lua|lua-only|lua_only|pure-lua|pure_lua|fallback|shell|no-cmake|no_cmake)
+      return 0
+      ;;
+  esac
+  [ "$resolved_runtime" = "compiled" ] && return 1
+  return 0
+}
+
+if runtime_is_lua_only; then
+  BARISTA_LUA_ONLY=1
+  export BARISTA_LUA_ONLY
+fi
+
+SPACE_ACTION_ENV_PREFIX=""
+if [ "${BARISTA_LUA_ONLY:-0}" = "1" ]; then
+  SPACE_ACTION_ENV_PREFIX="/usr/bin/env BARISTA_LUA_ONLY=1 "
+fi
+
+native_space_manager_available() {
+  [ "${BARISTA_LUA_ONLY:-0}" != "1" ] && [ -x "$SPACE_MANAGER_BIN" ]
+}
+
+sketchybar() {
+  [ -n "$SKETCHYBAR_BIN" ] || return 1
+  "$SKETCHYBAR_BIN" "$@"
+}
 
 run_with_timeout() {
   local timeout_s="$1"
@@ -46,7 +101,7 @@ state_value() {
 
 resolve_space_item_height() {
   local bar_height=""
-  if command -v sketchybar >/dev/null 2>&1 && [ -n "$JQ_BIN" ]; then
+  if [ -n "$SKETCHYBAR_BIN" ] && [ -n "$JQ_BIN" ]; then
     bar_height="$(sketchybar --query bar 2>/dev/null | "$JQ_BIN" -r '.height // empty' 2>/dev/null || true)"
   fi
   if [ -z "$bar_height" ] || [ "$bar_height" = "null" ]; then
@@ -258,7 +313,7 @@ ensure_swap_indicator_item() {
     background.corner_radius=8 \
     background.height="$indicator_height" \
     drawing=off \
-    click_script="$CONFIG_DIR/scripts/space_action.sh swap-cancel" >/dev/null 2>&1 || true
+    click_script="${SPACE_ACTION_ENV_PREFIX}${CONFIG_DIR}/scripts/space_action.sh swap-cancel" >/dev/null 2>&1 || true
 }
 
 sync_swap_indicator() {
@@ -299,8 +354,9 @@ hide_space_menu() {
 }
 
 refresh_space_items() {
-  if [ -x "$CONFIG_DIR/plugins/refresh_spaces.sh" ]; then
-    (CONFIG_DIR="$CONFIG_DIR" "$CONFIG_DIR/plugins/refresh_spaces.sh" >/dev/null 2>&1 || true) &
+  local refresh_script="$CONFIG_DIR/plugins/refresh_spaces.sh"
+  if [ -x "$refresh_script" ]; then
+    (CONFIG_DIR="$CONFIG_DIR" BARISTA_LUA_ONLY="${BARISTA_LUA_ONLY:-0}" "$refresh_script" >/dev/null 2>&1 || true) &
     return 0
   fi
   sketchybar --trigger space_change >/dev/null 2>&1 || true
@@ -455,7 +511,7 @@ move_space() {
   if [ "$from_idx" = "$to_idx" ]; then
     return 0
   fi
-  if [ -x "$SPACE_MANAGER_BIN" ]; then
+  if native_space_manager_available; then
     "$SPACE_MANAGER_BIN" move "$from_idx" "$to_idx" >/dev/null 2>&1 || true
   else
     run_with_timeout 1 "$YABAI_BIN" -m space "$from_idx" --move "$to_idx" >/dev/null 2>&1 || true
@@ -470,7 +526,7 @@ swap_spaces() {
   if [ "$from_idx" = "$to_idx" ]; then
     return 0
   fi
-  if [ -x "$SPACE_MANAGER_BIN" ]; then
+  if native_space_manager_available; then
     "$SPACE_MANAGER_BIN" swap "$from_idx" "$to_idx" >/dev/null 2>&1 || true
   else
     run_with_timeout 1 "$YABAI_BIN" -m space "$from_idx" --swap "$to_idx" >/dev/null 2>&1 || true
@@ -514,7 +570,7 @@ destroy_space() {
     fi
   fi
 
-  if [ -x "$SPACE_MANAGER_BIN" ]; then
+  if native_space_manager_available; then
     "$SPACE_MANAGER_BIN" destroy "$space_idx" >/dev/null 2>&1 || true
   else
     run_with_timeout 1 "$YABAI_BIN" -m space "$space_idx" --destroy >/dev/null 2>&1 || true
@@ -536,7 +592,7 @@ create_space() {
       ;;
   esac
 
-  if [ -x "$SPACE_MANAGER_BIN" ]; then
+  if native_space_manager_available; then
     "$SPACE_MANAGER_BIN" create >/dev/null 2>&1 || true
   else
     run_with_timeout 1 "$YABAI_BIN" -m space --create >/dev/null 2>&1 || true

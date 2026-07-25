@@ -15,6 +15,7 @@ YABAI_LOG="$TMP_DIR/yabai.log"
 SKETCHYBAR_LOG="$TMP_DIR/sketchybar.log"
 HELPER_LOG="$TMP_DIR/space_visual_helper.log"
 ICON_LOG="$TMP_DIR/app_icon.log"
+CLOCK_LOG="$TMP_DIR/perf_clock.log"
 TIMEOUT_BIN="$(command -v timeout || true)"
 
 cleanup() {
@@ -25,6 +26,15 @@ trap cleanup EXIT
 mkdir -p "$CONFIG_DIR" "$BIN_DIR" "$SCRIPTS_DIR" "$CONFIG_DIR/cache" "$CONFIG_DIR/bin" "$BAR_STATE_DIR"
 cp "$STATS_SCRIPT" "$CONFIG_DIR/bin/barista-stats.sh"
 chmod +x "$CONFIG_DIR/bin/barista-stats.sh"
+
+cat > "$BIN_DIR/perf_clock" <<'EOF'
+#!/bin/bash
+printf 'clock\n' >> "$BARISTA_PERF_CLOCK_LOG"
+printf '%s000\n' "$(/bin/date +%s)"
+EOF
+chmod +x "$BIN_DIR/perf_clock"
+export BARISTA_PERF_CLOCK_BIN="$BIN_DIR/perf_clock"
+export BARISTA_PERF_CLOCK_LOG="$CLOCK_LOG"
 
 cat > "$CONFIG_DIR/state.json" <<'EOF'
 {
@@ -351,5 +361,6 @@ run_visual "front_app_switched" \
   BARISTA_SPACE_FRONT_APP_COOLDOWN_MS=5000 \
   BARISTA_SPACE_FRONT_APP_DEBOUNCE_MS=0
 [ "$(count_visual_events)" = "6" ] || { echo "FAIL: cooldown should suppress front_app refresh after topology refresh" >&2; exit 1; }
+[ -s "$CLOCK_LOG" ] || { echo "FAIL: visual refresh should prefer the injected native clock" >&2; exit 1; }
 
 printf 'test_space_visuals.sh: ok\n'

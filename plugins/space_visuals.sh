@@ -17,6 +17,7 @@ PERF_STATS_BIN="$CONFIG_DIR/bin/barista-stats.sh"
 ICON_SCRIPT="$SCRIPTS_DIR/app_icon.sh"
 FRONT_APP_CONTEXT_SCRIPT="${BARISTA_FRONT_APP_CONTEXT_SCRIPT:-$SCRIPTS_DIR/front_app_context.sh}"
 SPACE_VISUAL_HELPER_BIN="${BARISTA_SPACE_VISUAL_HELPER_BIN:-$CONFIG_DIR/bin/space_visual_helper}"
+PERF_CLOCK_BIN="${BARISTA_PERF_CLOCK_BIN:-$CONFIG_DIR/bin/perf_clock}"
 BARISTA_ALL_SPACES_DATA="${BARISTA_ALL_SPACES_DATA:-}"
 STATE_FILE="${STATE_FILE:-$CONFIG_DIR/state.json}"
 ICON_CACHE_DIR="$CONFIG_DIR/cache/space_icons"
@@ -177,6 +178,18 @@ ${line}"
 }
 
 now_ms() {
+  local native_ms=""
+  if [ "${BARISTA_LUA_ONLY:-0}" != "1" ] && [ -x "$PERF_CLOCK_BIN" ]; then
+    if native_ms="$("$PERF_CLOCK_BIN" 2>/dev/null)"; then
+      case "$native_ms" in
+        ''|*[!0-9]*) ;;
+        *)
+          printf '%s\n' "$native_ms"
+          return
+          ;;
+      esac
+    fi
+  fi
   if command -v perl >/dev/null 2>&1; then
     perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)'
     return

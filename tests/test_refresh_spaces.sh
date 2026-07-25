@@ -13,6 +13,7 @@ EXTERNAL_BAR_LOG="$TMP_DIR/external_bar.log"
 VISUAL_ENV_LOG="$TMP_DIR/visual_env.log"
 TOPOLOGY_ENV_LOG="$TMP_DIR/topology_env.log"
 YABAI_LOG="$TMP_DIR/yabai.log"
+CLOCK_LOG="$TMP_DIR/perf_clock.log"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -24,6 +25,15 @@ mkdir -p "$CONFIG_DIR/scripts"
 mkdir -p "$CONFIG_DIR/cache/space_visuals"
 MODE_FILE="$TMP_DIR/mode"
 printf 'topology\n' > "$MODE_FILE"
+
+cat > "$BIN_DIR/perf_clock" <<'EOF'
+#!/bin/bash
+printf 'clock\n' >> "$BARISTA_PERF_CLOCK_LOG"
+printf '%s000\n' "$(/bin/date +%s)"
+EOF
+chmod +x "$BIN_DIR/perf_clock"
+export BARISTA_PERF_CLOCK_BIN="$BIN_DIR/perf_clock"
+export BARISTA_PERF_CLOCK_LOG="$CLOCK_LOG"
 
 cat > "$BIN_DIR/yabai" <<'EOF'
 #!/bin/bash
@@ -241,5 +251,6 @@ for _ in $(seq 1 50); do
   sleep 0.05
 done
 [ "$(wc -l < "$METRICS_PATH_LOG" | tr -d ' ')" = "3" ] || { echo "FAIL: contended refresh should schedule one coalesced follow-up" >&2; exit 1; }
+[ -s "$CLOCK_LOG" ] || { echo "FAIL: refresh orchestration should prefer the injected native clock" >&2; exit 1; }
 
 printf 'test_refresh_spaces.sh: ok\n'

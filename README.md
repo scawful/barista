@@ -401,6 +401,7 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **Post-config Commit Queue:** layout effects, hover/submenu subscriptions, and Yabai signal registration are collected during construction and flushed only after `sbar.end_config()`. Configuration-time delays use native `sbar.delay` callbacks instead of detached sleeper shells, duplicate hover/dismissal subscription intents collapse to one client call per item, the supported reload path relies on its existing synchronous missing-space fallback instead of scheduling a redundant repair sleeper, and popup dismissal registers optional left-side anchors, enabled LM Studio, and nested popup parents only when they were actually created.
 - **Left-Layout Section Metrics:** the same stats view now also breaks left-layout build into `front_app`, `triforce`, `spaces`, `control_center`, and group assembly so the next reload fix can target the slow subsection instead of the whole left side.
 - **Cheap Timing Probes:** config-build and left-layout section metrics now use an in-process profiling clock so measuring reload hot paths no longer adds extra timestamp subprocesses; end-to-end `reload_time` still uses wall-clock.
+- **Native Spaces Timing:** topology, wrapper, and visual-refresh phase boundaries prefer the framework-free `bin/perf_clock` realtime helper. Missing, invalid, failed, and Lua-only/restricted paths keep the portable Perl/Python/date fallback; the Lua-only gate is preserved across startup, event, yabai-signal, persisted space-action, and reload-repair refreshes, including dynamic `auto`-to-Lua fallback recorded in an ignored resolved-runtime marker. A randomized 200-pair process benchmark measured the deployed helper at 1.482 ms median versus 3.980 ms for Perl, removing about 30 ms of timestamp-launch overhead from the normal 12-call full spaces chain.
 - **Spaces Discovery Reuse:** `simple_spaces.sh` now derives active display and display count from the already-fetched `yabai query --spaces` payload in the normal path, keeping the separate displays query only as a fallback.
 - **Topology vs. Overhead Metrics:** `space_topology_refresh` now reflects pure `simple_spaces.sh` topology time, while `space_refresh_overhead` reports the remaining orchestration work around triggers, visual refresh invocation, and external-bar follow-up.
 - **Full-Rebuild Phase Timing:** space topology stats now expose `full_rebuild` preparation vs. SketchyBar batch-apply time so reload tuning can target the slower half instead of guessing.
@@ -421,7 +422,8 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 
 ## Testing
 
-Barista includes a comprehensive test suite of **94+ tests** across its Lua modules.
+Barista includes a comprehensive suite of **250+ Lua tests** plus focused shell
+and native-helper checks.
 
 ```bash
 ./scripts/barista-verify.sh          # Full smoke test (binaries, shell, lua)

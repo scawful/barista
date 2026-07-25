@@ -4,11 +4,18 @@
 set -euo pipefail
 
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
+STATE_FILE="${BARISTA_STATE_FILE:-$CONFIG_DIR/state.json}"
+RESOLVED_RUNTIME_FILE="${BARISTA_RESOLVED_RUNTIME_FILE:-$CONFIG_DIR/.barista_runtime_backend}"
 AGENT="homebrew.mxcl.sketchybar"
 HELPER="${CONFIG_DIR}/helpers/launch_agent_manager.sh"
 LABEL="gui/$(id -u)/${AGENT}"
 PLIST="${HOME}/Library/LaunchAgents/${AGENT}.plist"
 SKETCHYBAR_BIN="${SKETCHYBAR_BIN:-$(command -v sketchybar || true)}"
+if [ -n "${BARISTA_JQ_BIN+x}" ]; then
+  JQ_BIN="$BARISTA_JQ_BIN"
+else
+  JQ_BIN="$(command -v jq || true)"
+fi
 CORE_ITEM="${BARISTA_CORE_ITEM:-front_app}"
 CORE_ITEM_WAIT_ATTEMPTS="${BARISTA_CORE_ITEM_WAIT_ATTEMPTS:-10}"
 case "$CORE_ITEM_WAIT_ATTEMPTS" in
@@ -127,6 +134,38 @@ ensure_live_config() {
   wait_for_item "$CORE_ITEM"
 }
 
+runtime_is_lua_only() {
+  if [ "${BARISTA_LUA_ONLY:-0}" = "1" ] || [ "${BARISTA_NO_CMAKE:-0}" = "1" ]; then
+    return 0
+  fi
+
+  local runtime_backend="${BARISTA_RUNTIME_BACKEND:-}"
+  local resolved_runtime=""
+  if [ -f "$RESOLVED_RUNTIME_FILE" ]; then
+    IFS= read -r resolved_runtime < "$RESOLVED_RUNTIME_FILE" || true
+    if [ "$resolved_runtime" = "lua" ]; then
+      return 0
+    fi
+  fi
+  if [ -z "$runtime_backend" ] && [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ]; then
+    runtime_backend="$("$JQ_BIN" -r '.modes.runtime_backend // empty' "$STATE_FILE" 2>/dev/null || true)"
+  fi
+  if [ -z "$runtime_backend" ] && [ -f "$STATE_FILE" ] \
+    && grep -Eqi '"runtime_backend"[[:space:]]*:[[:space:]]*"[[:space:]]*(lua|lua-only|lua_only|pure-lua|pure_lua|fallback|shell|no-cmake|no_cmake)[[:space:]]*"' "$STATE_FILE"; then
+    runtime_backend="lua"
+  fi
+  runtime_backend="$(printf '%s' "$runtime_backend" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  case "$runtime_backend" in
+    lua|lua-only|lua_only|pure-lua|pure_lua|fallback|shell|no-cmake|no_cmake)
+      return 0
+      ;;
+  esac
+  [ "$resolved_runtime" = "compiled" ] && return 1
+  return 0
+}
+
 if ! acquire_reload_lock; then
   echo "SketchyBar reload lock timed out: $RELOAD_LOCK_DIR" >&2
   exit 1
@@ -143,7 +182,13 @@ finish_reload() {
   fi
   if ! wait_for_item space.1 4; then
     local refresh_script="${CONFIG_DIR}/plugins/refresh_spaces.sh"
-    [ -f "$refresh_script" ] && env CONFIG_DIR="$CONFIG_DIR" BARISTA_CONFIG_DIR="$CONFIG_DIR" "$refresh_script" >/dev/null 2>&1 || true
+    if [ -f "$refresh_script" ]; then
+      if runtime_is_lua_only; then
+        env CONFIG_DIR="$CONFIG_DIR" BARISTA_CONFIG_DIR="$CONFIG_DIR" BARISTA_LUA_ONLY=1 "$refresh_script" >/dev/null 2>&1 || true
+      else
+        env CONFIG_DIR="$CONFIG_DIR" BARISTA_CONFIG_DIR="$CONFIG_DIR" "$refresh_script" >/dev/null 2>&1 || true
+      fi
+    fi
     wait_for_item space.1 3 || true
   fi
   return 0

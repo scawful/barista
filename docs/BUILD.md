@@ -70,6 +70,7 @@ barista/
 - `clock_widget` - Clock widget
 - `system_info_widget` - System information widget
 - `system_info_popup_helper` - On-demand system-detail entrypoint built from the same source as `system_info_widget`
+- `perf_clock` - Framework-free realtime millisecond clock for spaces performance instrumentation
 - `space_manager` - Space management
 - `submenu_hover` - Submenu hover handling
 - `popup_anchor` - Popup anchoring
@@ -141,7 +142,7 @@ The `scripts/rebuild.sh` script provides a convenient build wrapper:
 
 ### Running Tests
 
-Barista includes a Lua test suite (94 tests) and a smoke test script:
+Barista includes more than 250 Lua tests and a smoke test script:
 
 ```bash
 # Lua unit tests

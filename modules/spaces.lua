@@ -1,8 +1,9 @@
 -- Space management: display list, refresh, and yabai signal wiring.
 
-local function create(CONFIG_DIR, PLUGIN_DIR, SKETCHYBAR_BIN, YABAI_BIN, shell_exec, yabai_available)
+local function create(CONFIG_DIR, PLUGIN_DIR, SKETCHYBAR_BIN, YABAI_BIN, shell_exec, yabai_available, lua_only)
   local last_display_state = nil
   local display_refresh_pending = false
+  local runtime_prefix = lua_only and "/usr/bin/env BARISTA_LUA_ONLY=1 " or ""
 
   local function get_display_state()
     if not yabai_available() then
@@ -53,13 +54,19 @@ local function create(CONFIG_DIR, PLUGIN_DIR, SKETCHYBAR_BIN, YABAI_BIN, shell_e
   end
 
   local function refresh_spaces()
-    local cmd = string.format("CONFIG_DIR=%q %q", CONFIG_DIR, PLUGIN_DIR .. "/refresh_spaces.sh")
+    local cmd = string.format("%sCONFIG_DIR=%q %q", runtime_prefix, CONFIG_DIR, PLUGIN_DIR .. "/refresh_spaces.sh")
     shell_exec(cmd)
   end
 
   local function build_refresh_action(reason)
     local refresh_script = PLUGIN_DIR .. "/refresh_spaces.sh"
-    return string.format("BARISTA_REASON=%q CONFIG_DIR=%q %q", reason or "topology_refresh", CONFIG_DIR, refresh_script)
+    return string.format(
+      "%sBARISTA_REASON=%q CONFIG_DIR=%q %q",
+      runtime_prefix,
+      reason or "topology_refresh",
+      CONFIG_DIR,
+      refresh_script
+    )
   end
 
   local function refresh_spaces_if_needed()

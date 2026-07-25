@@ -23,6 +23,8 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$CONFIG_DIR/helpers" "$CONFIG_DIR/plugins" "$BIN_DIR"
+printf '{"modes":{"runtime_backend":"auto"}}\n' > "$CONFIG_DIR/state.json"
+printf 'lua\n' > "$CONFIG_DIR/.barista_runtime_backend"
 
 cat > "$CONFIG_DIR/helpers/launch_agent_manager.sh" <<EOF
 #!/bin/bash
@@ -35,10 +37,14 @@ chmod +x "$CONFIG_DIR/helpers/launch_agent_manager.sh"
 
 cat > "$CONFIG_DIR/plugins/refresh_spaces.sh" <<EOF
 #!/bin/bash
-printf '%s\n' refresh >> "$REFRESH_LOG"
+printf 'refresh lua_only=%s\n' "\${BARISTA_LUA_ONLY:-0}" >> "$REFRESH_LOG"
 touch "$SPACE_FLAG"
 EOF
 chmod +x "$CONFIG_DIR/plugins/refresh_spaces.sh"
+
+export BARISTA_JQ_BIN=""
+export BARISTA_LUA_ONLY=0
+export BARISTA_RUNTIME_BACKEND=""
 
 cat > "$BIN_DIR/nohup" <<EOF
 #!/bin/bash
@@ -90,9 +96,12 @@ if grep -Fqx -- '--reload' "$SKETCHYBAR_LOG"; then
 fi
 [ -f "$SPACE_FLAG" ] || { echo "FAIL: boundary-ready reload should still repair a missing space.1" >&2; exit 1; }
 [ "$(grep -Fc refresh "$REFRESH_LOG")" -eq 1 ] || { echo "FAIL: boundary-ready reload should run one synchronous space repair" >&2; exit 1; }
+grep -Fqx 'refresh lua_only=1' "$REFRESH_LOG" || { echo "FAIL: dynamically resolved Lua-only reload repair must preserve the helper gate without jq" >&2; exit 1; }
 [ ! -s "$NOHUP_LOG" ] || { echo "FAIL: reload helper should not schedule a detached repair" >&2; exit 1; }
 
 # A core item that never appears should retain the raw reload recovery path.
+printf '{"modes":{"runtime_backend":"auto"}}\n' > "$CONFIG_DIR/state.json"
+printf 'compiled\n' > "$CONFIG_DIR/.barista_runtime_backend"
 : > "$HELPER_LOG"
 : > "$REFRESH_LOG"
 : > "$SKETCHYBAR_LOG"
@@ -109,6 +118,7 @@ grep -Fqx 'restart homebrew.mxcl.sketchybar' "$HELPER_LOG" || { echo "FAIL: fall
 [ "$(grep -Fxc -- '--reload' "$SKETCHYBAR_LOG")" -eq 1 ] || { echo "FAIL: missing core item should trigger exactly one raw reload fallback" >&2; exit 1; }
 [ -f "$SPACE_FLAG" ] || { echo "FAIL: reload helper should repair a missing space.1 synchronously" >&2; exit 1; }
 [ "$(grep -Fc refresh "$REFRESH_LOG")" -eq 1 ] || { echo "FAIL: missing spaces should trigger one synchronous repair" >&2; exit 1; }
+grep -Fqx 'refresh lua_only=0' "$REFRESH_LOG" || { echo "FAIL: normal reload repair should not force the Lua-only gate" >&2; exit 1; }
 [ ! -s "$NOHUP_LOG" ] || { echo "FAIL: reload helper should not schedule a detached repair" >&2; exit 1; }
 
 : > "$HELPER_LOG"

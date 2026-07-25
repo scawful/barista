@@ -68,6 +68,47 @@ run_test("normalize_runtime_backend: unknown -> auto", function()
   assert_equal(binary_resolver.normalize_runtime_backend("weird"), "auto")
 end)
 
+run_test("publish_resolved_runtime_backend: atomically records the selected backend", function()
+  local tmpdir = os.tmpname() .. ".d"
+  os.execute(string.format("mkdir -p %q", tmpdir))
+
+  local ok, err = binary_resolver.publish_resolved_runtime_backend(tmpdir, "lua")
+  assert_true(ok, err)
+  local marker = assert(io.open(tmpdir .. "/.barista_runtime_backend", "r"))
+  assert_equal(marker:read("*a"), "lua\n", "resolved Lua marker")
+  marker:close()
+
+  ok, err = binary_resolver.publish_resolved_runtime_backend(tmpdir, "compiled")
+  assert_true(ok, err)
+  marker = assert(io.open(tmpdir .. "/.barista_runtime_backend", "r"))
+  assert_equal(marker:read("*a"), "compiled\n", "resolved compiled marker")
+  marker:close()
+
+  os.remove(tmpdir .. "/.barista_runtime_backend")
+  os.execute(string.format("rmdir %q", tmpdir))
+end)
+
+run_test("ensure_resolved_runtime_backend: Lua publication failure aborts before stale compiled reuse", function()
+  local tmpdir = os.tmpname() .. ".d"
+  os.execute(string.format("mkdir -p %q", tmpdir))
+  local marker_path = tmpdir .. "/.barista_runtime_backend"
+  local marker = assert(io.open(marker_path, "w"))
+  marker:write("compiled\n")
+  marker:close()
+
+  local ok, err = pcall(binary_resolver.ensure_resolved_runtime_backend, tmpdir, "lua", {
+    open_file = function()
+      return nil, "forced publication failure"
+    end,
+  })
+  assert_true(not ok, "resolved Lua marker failure should abort config construction")
+  assert_true(tostring(err):find("forced publication failure", 1, true) ~= nil, "failure should retain its cause")
+
+  marker = io.open(marker_path, "r")
+  assert_nil(marker, "failed Lua publication should invalidate the stale compiled marker")
+  os.execute(string.format("rmdir %q", tmpdir))
+end)
+
 run_test("resolve_runtime_backend: env override wins", function()
   local result = binary_resolver.resolve_runtime_backend(
     { modes = { runtime_backend = "auto" } },

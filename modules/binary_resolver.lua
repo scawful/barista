@@ -87,6 +87,79 @@ function M.normalize_runtime_backend(mode)
   return "auto"
 end
 
+--- Atomically publish the backend that main.lua actually selected after
+--- component availability checks. Standalone actions use this to preserve a
+--- dynamic auto -> Lua fallback without mutating the user's configured mode.
+function M.publish_resolved_runtime_backend(config_dir, mode, opts)
+  if type(config_dir) ~= "string" or config_dir == "" then
+    return false, "config directory is required"
+  end
+
+  local normalized = M.normalize_runtime_backend(mode)
+  if normalized == "auto" then
+    return false, "resolved runtime backend must be lua or compiled"
+  end
+
+  opts = type(opts) == "table" and opts or {}
+  local open_file = opts.open_file or io.open
+  local remove_file = opts.remove_file or os.remove
+  local rename_file = opts.rename_file or os.rename
+  local tmpname = opts.tmpname or os.tmpname
+
+  local tmp_ok, reservation = pcall(tmpname)
+  if not tmp_ok or type(reservation) ~= "string" or reservation == "" then
+    return false, tostring(reservation or "cannot reserve runtime marker name")
+  end
+
+  local suffix = reservation:match("([^/]+)$")
+  if not suffix or suffix == "" then
+    remove_file(reservation)
+    return false, "cannot derive runtime marker name"
+  end
+
+  local target = config_dir .. "/.barista_runtime_backend"
+  local temporary = target .. "." .. suffix .. ".tmp"
+  local file, open_err = open_file(temporary, "w")
+  if not file then
+    remove_file(reservation)
+    return false, open_err or "cannot open runtime marker"
+  end
+
+  local wrote, write_err = file:write(normalized, "\n")
+  local closed, close_err = file:close()
+  if not wrote or not closed then
+    remove_file(temporary)
+    remove_file(reservation)
+    return false, write_err or close_err or "cannot write runtime marker"
+  end
+
+  local renamed, rename_err = rename_file(temporary, target)
+  if not renamed then
+    remove_file(temporary)
+    remove_file(reservation)
+    return false, rename_err or "cannot publish runtime marker"
+  end
+  remove_file(reservation)
+  return true
+end
+
+--- Publishing a dynamically selected Lua backend is safety-critical: without
+--- its marker, stale standalone actions could reactivate leftover binaries.
+--- Abort config construction on that failure; compiled publication failure is
+--- safe to report and continue because a stale Lua marker only disables work.
+function M.ensure_resolved_runtime_backend(config_dir, mode, opts)
+  local ok, err = M.publish_resolved_runtime_backend(config_dir, mode, opts)
+  if ok then
+    return true
+  end
+  if M.normalize_runtime_backend(mode) == "lua" then
+    local remove_file = type(opts) == "table" and opts.remove_file or os.remove
+    remove_file(config_dir .. "/.barista_runtime_backend")
+    error("cannot publish resolved Lua runtime backend: " .. tostring(err), 2)
+  end
+  return false, err
+end
+
 --- Read the preferred runtime backend directly from state.json.
 --- Used during startup before the full state module is loaded.
 function M.read_runtime_backend_from_state(config_dir)

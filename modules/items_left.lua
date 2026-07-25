@@ -558,9 +558,16 @@ local function get_layout(ctx)
 
   -- Spaces: refresh and watch
   local spaces_start_ms = current_time_ms()
+  local spaces_refresh_prefix = ctx.lua_only and "/usr/bin/env BARISTA_LUA_ONLY=1 " or ""
   table.insert(layout, {
     action = "exec",
-    cmd = string.format("sleep %.1f; CONFIG_DIR=%q %q", SPACE_POST_CONFIG_DELAY, CONFIG_DIR, PLUGIN_DIR .. "/refresh_spaces.sh"),
+    cmd = string.format(
+      "sleep %.1f; %sCONFIG_DIR=%q %q",
+      SPACE_POST_CONFIG_DELAY,
+      spaces_refresh_prefix,
+      CONFIG_DIR,
+      PLUGIN_DIR .. "/refresh_spaces.sh"
+    ),
   })
   if ctx.yabai_available() then
     table.insert(layout, { action = "post_config_call", fn = ctx.watch_spaces })

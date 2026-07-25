@@ -15,6 +15,7 @@ SIG_CACHE_FILE="$CONFIG_DIR/.spaces_signatures"
 STATE_FILE="$CONFIG_DIR/state.json"
 SPACE_ACTION_SCRIPT="$CONFIG_DIR/scripts/space_action.sh"
 SPACE_MANAGER_BIN="$CONFIG_DIR/bin/space_manager"
+PERF_CLOCK_BIN="${BARISTA_PERF_CLOCK_BIN:-$CONFIG_DIR/bin/perf_clock}"
 SPACE_METRICS_FILE="${BARISTA_SPACE_METRICS_FILE:-}"
 BARISTA_ALL_SPACES_DATA="${BARISTA_ALL_SPACES_DATA:-}"
 # OPTIMIZED: Reduced retry attempts and delays for faster startup
@@ -42,11 +43,24 @@ FULL_REBUILD_BUILD_END_MS=""
 SPACE_ACTION_PREFIX=""
 CREATOR_ACTION_PREFIX=""
 CREATOR_ACTION_FALLBACK=""
+ACTION_RUNTIME_PREFIX=""
 NATIVE_SPACES_FALLBACK=0
 
 declare -a CACHED_SPACE_ICONS
 
 now_ms() {
+  local native_ms=""
+  if [ "${BARISTA_LUA_ONLY:-0}" != "1" ] && [ -x "$PERF_CLOCK_BIN" ]; then
+    if native_ms="$("$PERF_CLOCK_BIN" 2>/dev/null)"; then
+      case "$native_ms" in
+        ''|*[!0-9]*) ;;
+        *)
+          printf '%s\n' "$native_ms"
+          return
+          ;;
+      esac
+    fi
+  fi
   if command -v perl >/dev/null 2>&1; then
     perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)'
     return
@@ -187,16 +201,21 @@ resolve_diff_updates_enabled() {
 }
 
 initialize_action_prefixes() {
+  ACTION_RUNTIME_PREFIX=""
+  if [ "${BARISTA_LUA_ONLY:-0}" = "1" ]; then
+    ACTION_RUNTIME_PREFIX="/usr/bin/env BARISTA_LUA_ONLY=1 "
+  fi
+
   if [ -x "$SPACE_ACTION_SCRIPT" ]; then
-    SPACE_ACTION_PREFIX="$SPACE_ACTION_SCRIPT focus --space "
-    CREATOR_ACTION_PREFIX="$SPACE_ACTION_SCRIPT create --display "
+    SPACE_ACTION_PREFIX="${ACTION_RUNTIME_PREFIX}${SPACE_ACTION_SCRIPT} focus --space "
+    CREATOR_ACTION_PREFIX="${ACTION_RUNTIME_PREFIX}${SPACE_ACTION_SCRIPT} create --display "
     CREATOR_ACTION_FALLBACK=""
     return 0
   fi
 
   SPACE_ACTION_PREFIX=""
   CREATOR_ACTION_PREFIX=""
-  if [ -x "$SPACE_MANAGER_BIN" ]; then
+  if [ "${BARISTA_LUA_ONLY:-0}" != "1" ] && [ -x "$SPACE_MANAGER_BIN" ]; then
     CREATOR_ACTION_FALLBACK="$SPACE_MANAGER_BIN create"
     return 0
   fi

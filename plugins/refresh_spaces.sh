@@ -17,6 +17,7 @@ SPACE_REFRESH_COALESCE_DELAY="${BARISTA_SPACE_REFRESH_COALESCE_DELAY:-0.12}"
 ICON_CACHE_DIR="${CONFIG_DIR}/cache/space_icons"
 PERF_STATS_BIN="${CONFIG_DIR}/bin/barista-stats.sh"
 SPACE_VISUALS_SCRIPT="${CONFIG_DIR}/plugins/space_visuals.sh"
+PERF_CLOCK_BIN="${BARISTA_PERF_CLOCK_BIN:-$CONFIG_DIR/bin/perf_clock}"
 BARISTA_REASON="${BARISTA_REASON:-}"
 BARISTA_ALL_SPACES_DATA="${BARISTA_ALL_SPACES_DATA:-}"
 SPACE_METRICS_FILE=""
@@ -131,6 +132,18 @@ resolve_external_bar_height() {
 }
 
 now_ms() {
+  local native_ms=""
+  if [ "${BARISTA_LUA_ONLY:-0}" != "1" ] && [ -x "$PERF_CLOCK_BIN" ]; then
+    if native_ms="$("$PERF_CLOCK_BIN" 2>/dev/null)"; then
+      case "$native_ms" in
+        ''|*[!0-9]*) ;;
+        *)
+          printf '%s\n' "$native_ms"
+          return
+          ;;
+      esac
+    fi
+  fi
   if command -v perl >/dev/null 2>&1; then
     perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)'
     return

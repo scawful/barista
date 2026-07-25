@@ -43,6 +43,8 @@ logs
 
 # Local runtime artifacts
 .barista_stats.json
+.barista_runtime_backend
+.barista_runtime_backend.*.tmp
 imgui.ini
 .spaces_retry
 

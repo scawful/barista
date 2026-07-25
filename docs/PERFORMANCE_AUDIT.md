@@ -1,6 +1,6 @@
 # Barista Performance & Safety Audit
 
-**Date:** 2026-07-16
+**Date:** 2026-07-25
 **Status:** Active runtime app-model path verified
 **Scope:** `main.lua`, `modules/`, `helpers/`, `plugins/`, `scripts/`
 
@@ -338,6 +338,51 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
     - `barista-stats.sh` now writes JSONL and migrates legacy pipe-delimited logs aside
     - `barista-stats.sh show` summarizes the live runtime path and breaks topology timings out by strategy so incremental reorder/add-remove paths are measured separately from full rebuilds
 *   **Result:** reload time, topology rebuild time, incremental topology update time, and visual refresh time are now measurable from the installed runtime.
+
+### 5a. Native Spaces Timing Clock (Verified)
+*   **Files:** `helpers/perf_clock.c`, `main.lua`, `modules/items_left.lua`,
+    `modules/runtime_startup.lua`, `modules/spaces.lua`,
+    `plugins/simple_spaces.sh`, `plugins/refresh_spaces.sh`,
+    `plugins/space_visuals.sh`, `plugins/reload_sketchybar.sh`,
+    `scripts/space_action.sh`
+*   **Update:**
+    - the spaces topology, wrapper, and visual paths now prefer one tiny
+      realtime-millisecond helper at each existing timing boundary
+    - the helper links only libSystem rather than inheriting unrelated
+      CoreFoundation/IOKit dependencies from the generic helper build
+    - realtime semantics remain aligned with the existing Perl/Python/date
+      fallbacks because space-visual cooldown timestamps persist across
+      processes
+    - missing, nonnumeric, or nonzero-exit native helpers fail softly to the
+      portable clock; timing boundaries and normal UI mutations are unchanged
+    - Lua-only/restricted mode bypasses the helper, and its gate is propagated
+      through initial layout work, direct startup sync, the hidden event item,
+      persistent yabai signal and space-action commands, child refreshes, and
+      state-aware reload repair; a unique-temp atomic ignored marker preserves
+      the runtime actually selected when `auto` falls back because a required
+      component is unavailable; missing/invalid markers and resolved-Lua
+      publication failure both fail closed, while compiled publication waits
+      until the configuration transaction commits
+    - deterministic hosted checks cover all three consumers and the exact six
+      timestamps used by a full topology rebuild
+*   **Result:** a randomized 200-pair benchmark of the deployed binary measured
+    `1.482 ms` median / `1.679 ms` p95, versus `3.980 ms` / `4.251 ms` for the
+    previous Perl timestamp. The `2.69x` median speedup removes an estimated
+    `29.98 ms` across the normal 12-timestamp topology + visual chain. Artifact:
+    `/tmp/barista_perf_clock_ab_v2_20260725.json` (SHA-256
+    `4fcb6fe5d5d0804178504387f5a209252c82fe39d7e322c5287480e2aacc8576`).
+    A 20-pair same-daemon `space_active_refresh` A/B then measured
+    `82.239 ms` median / `83.877 ms` p95 with the native clock versus
+    `85.453 ms` / `89.304 ms` through the Perl fallback, a `3.273 ms` paired
+    median reduction for that two-timestamp path. SketchyBar PID, `state.json`,
+    ordered `space.*` items, and the error log remained unchanged. Live
+    artifact: `/tmp/barista_perf_clock_live_space_visual_ab_20260725.json`
+    (SHA-256
+    `5539fdbea086a60a72dddac0bd39af60f0220c3784454af92ae945a80c67dec7`).
+    A subsequent supported restart rebuilt nine spaces plus the two
+    display-scoped creator items, recorded a `348 ms` full topology pass, and
+    added no error-log bytes. That single restart is a runtime smoke result,
+    not a causal before/after measurement.
 
 ## Remaining Considerations
 1.  **Visible app lookup cost:** `space_visuals.sh` avoids full snapshots and batches helper-backed visible-space lookups when the compiled helper exists, but full visual passes still depend on yabai window data for each visible space.

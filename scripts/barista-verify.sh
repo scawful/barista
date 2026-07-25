@@ -69,6 +69,7 @@ BINARIES=(
   "clock_widget"
   "system_info_widget"
   "system_info_popup_helper"
+  "perf_clock"
 )
 for bin in "${BINARIES[@]}"; do
   if [ -f "$CONFIG_DIR/build/bin/$bin" ] || [ -f "$CONFIG_DIR/bin/$bin" ]; then

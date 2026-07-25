@@ -332,6 +332,7 @@ local function test_items_left_without_yabai()
   local foundExtensionGuide = false
   local foundMoveAction = false
   local foundLuaOnlyRefresh = false
+  local foundLuaOnlySpacesRefresh = false
   local foundPortableActionRows = false
   local foundFrontAppMore = false
   local foundPortableHide = false
@@ -368,6 +369,12 @@ local function test_items_left_without_yabai()
         and entry.props.click_script:find("BARISTA_FRONT_APP_ACTION_ROWS=0", 1, true) ~= nil then
       foundPortableActionRows = true
     end
+    if entry.action == "exec"
+        and entry.cmd
+        and entry.cmd:find("refresh_spaces.sh", 1, true) ~= nil
+        and entry.cmd:find("/usr/bin/env BARISTA_LUA_ONLY=1", 1, true) ~= nil then
+      foundLuaOnlySpacesRefresh = true
+    end
   end
 
   assert_true(foundUnavailable, "unavailable yabai row should exist")
@@ -379,6 +386,7 @@ local function test_items_left_without_yabai()
   assert_true(foundPortableForceQuit, "portable front_app should keep Force Quit on the root")
   assert_equal(#metadata.submenu_parents, 0, "portable front_app should not register a missing submenu")
   assert_true(foundLuaOnlyRefresh, "Lua-only front_app popup refresh should keep compiled helpers disabled")
+  assert_true(foundLuaOnlySpacesRefresh, "Lua-only startup spaces refresh should keep compiled helpers disabled")
   assert_true(foundPortableActionRows, "portable front_app refresh should omit unavailable yabai action rows")
   print("  items_left no-yabai test passed!")
 end

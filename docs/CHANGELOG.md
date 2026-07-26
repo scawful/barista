@@ -1,5 +1,23 @@
 # SketchyBar Configuration Changelog
 
+## July 26, 2026 - Single-Pass Spaces Topology Rebuild
+
+- `simple_spaces.sh` now loads its state and bar snapshots in the parent shell
+  before resolving derived values, so full rebuilds reuse one `state.json`
+  parse and one `sketchybar --query bar` result instead of losing both caches
+  through command-substitution subshells.
+- Stale topology removal and complete space/creator reconstruction now travel
+  in one ordered SketchyBar request. Incremental, Lua-only, helper-fallback,
+  click-action, and per-display creator behavior are unchanged. A failed batch
+  clears any partial additions before attempting reconstruction; persistent
+  failure schedules exactly one marker-bound forced rebuild that bypasses
+  topology caches and reapplies visuals without entering a retry loop.
+- A 12-pair randomized same-daemon live A/B reduced cold full-rebuild wall
+  median from `353.45 ms` to `284.80 ms` (19.4%) and topology median from
+  `303.0 ms` to `234.5 ms` (22.6%). The feature won 12/12 pairs with a
+  `-62.76 ms` paired median while preserving the SketchyBar PID, state hash,
+  error-log identity, nine ordered spaces, and two display-scoped creators.
+
 ## July 25, 2026 - Native Spaces Performance Clock
 
 - Space topology, orchestration, and visual-refresh timing now prefer the

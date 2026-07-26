@@ -26,6 +26,7 @@ STATE_SPACE_CONFIG_LOADED=0
 STATE_CREATOR_MODE=""
 STATE_DIFF_UPDATES_ENABLED=""
 BAR_QUERY_JSON=""
+BAR_SNAPSHOT_LOADED=0
 BAR_HEIGHT_SNAPSHOT=""
 BAR_ITEMS_LOOKUP=""
 BAR_SPACE_ITEM_COUNT=""
@@ -77,22 +78,36 @@ PY
 
 load_state_space_config() {
   [ "$STATE_SPACE_CONFIG_LOADED" -eq 0 ] || return 0
-  STATE_SPACE_CONFIG_LOADED=1
   if [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ]; then
     local state_values=""
-    state_values="$("$JQ_BIN" -r '[.spaces.creator_mode // "", (.spaces.experimental_diff_updates // "")] | @tsv' "$STATE_FILE" 2>/dev/null || true)"
+    if ! state_values="$("$JQ_BIN" -r '[.spaces.creator_mode // "", (.spaces.experimental_diff_updates // "")] | @tsv' "$STATE_FILE" 2>/dev/null)"; then
+      return 0
+    fi
     if [ -n "$state_values" ]; then
       IFS=$'\t' read -r STATE_CREATOR_MODE STATE_DIFF_UPDATES_ENABLED <<< "$state_values"
     fi
   fi
+  STATE_SPACE_CONFIG_LOADED=1
 }
 
 ensure_bar_snapshot_loaded() {
-  [ -n "$BAR_ITEMS_SNAPSHOT" ] && return 0
+  [ "$BAR_SNAPSHOT_LOADED" -eq 0 ] || return 0
   [ -n "$SKETCHYBAR_BIN" ] || return 0
   [ -n "$JQ_BIN" ] || return 0
+  local snapshot_records=""
   BAR_QUERY_JSON="$("$SKETCHYBAR_BIN" --query bar 2>/dev/null || true)"
   [ -n "$BAR_QUERY_JSON" ] || return 0
+  if ! snapshot_records="$(printf '%s' "$BAR_QUERY_JSON" | "$JQ_BIN" -r '("H\t" + ((.height // empty) | tostring)), (.items[]? | "I\t" + .)' 2>/dev/null)"; then
+    BAR_QUERY_JSON=""
+    return 0
+  fi
+  case "$snapshot_records" in
+    H$'\t'*) ;;
+    *)
+      BAR_QUERY_JSON=""
+      return 0
+      ;;
+  esac
   BAR_HEIGHT_SNAPSHOT=""
   BAR_ITEMS_SNAPSHOT=""
   local item line_type line_value
@@ -119,9 +134,10 @@ ensure_bar_snapshot_loaded() {
         ;;
     esac
     item=""
-  done < <(printf '%s' "$BAR_QUERY_JSON" | "$JQ_BIN" -r '("H\t" + ((.height // empty) | tostring)), (.items[]? | "I\t" + .)' 2>/dev/null || true)
+  done <<< "$snapshot_records"
   BAR_ITEMS_LOOKUP=$'\n'"$BAR_ITEMS_SNAPSHOT"$'\n'
   BAR_SPACE_ITEM_COUNT="$count"
+  BAR_SNAPSHOT_LOADED=1
 }
 
 load_display_state() {
@@ -614,7 +630,32 @@ schedule_spaces_retry() {
   ) &
 }
 
-CREATOR_MODE="$(resolve_creator_mode)"
+schedule_topology_apply_retry() {
+  [ "${BARISTA_TOPOLOGY_APPLY_RETRY:-0}" != "1" ] || return 0
+  (
+    sleep 0.15
+    if BARISTA_TOPOLOGY_APPLY_RETRY=1 \
+      CONFIG_DIR="$CONFIG_DIR" \
+      "$0" >/dev/null 2>&1; then
+      if [ -x "$CONFIG_DIR/plugins/space_visuals.sh" ]; then
+        NAME="space_runtime" \
+          SENDER="space_topology_repair" \
+          BARISTA_ALL_SPACES_DATA="${BARISTA_ALL_SPACES_DATA:-}" \
+          "$CONFIG_DIR/plugins/space_visuals.sh" >/dev/null 2>&1 || true
+      fi
+    fi
+  ) &
+}
+
+load_state_space_config
+if [ "$STATE_SPACE_CONFIG_LOADED" -eq 0 ]; then
+  load_state_space_config
+fi
+CREATOR_MODE="$(normalize_creator_mode "${STATE_CREATOR_MODE:-per_display}")"
+ensure_bar_snapshot_loaded
+if [ "$BAR_SNAPSHOT_LOADED" -eq 0 ]; then
+  ensure_bar_snapshot_loaded
+fi
 SPACE_ITEM_HEIGHT="$(resolve_space_item_height)"
 SIMPLE_SPACES_START_MS="$(now_ms)"
 initialize_action_prefixes
@@ -1020,7 +1061,7 @@ apply_incremental_space_items() {
 declare -a SB_ARGS=()
 SNAPSHOT_SPACE_COUNT="$(count_snapshot_space_items)"
 FORCE_FULL_REBUILD=0
-if [ "$SNAPSHOT_SPACE_COUNT" -eq 0 ]; then
+if [ "${BARISTA_TOPOLOGY_APPLY_RETRY:-0}" = "1" ] || [ "$SNAPSHOT_SPACE_COUNT" -eq 0 ]; then
   FORCE_FULL_REBUILD=1
 fi
 
@@ -1344,13 +1385,31 @@ for creator_target in "${CREATOR_TARGETS[@]-}"; do
   CREATOR_ITEMS+=("$creator_item")
 done
 
-# PERF: Single batched remove call for full rebuild path
+# Apply removal and reconstruction in one ordered SketchyBar request so a full
+# rebuild does not pay for a second client round-trip or expose an empty strip
+# between requests.
 existing_space_count="$(count_snapshot_space_items)"
 full_rebuild_apply_start_ms="$(now_ms)"
-"$SKETCHYBAR_BIN" --remove '/space\..*/' --remove '/spaces\..*/' --remove '/space_creator\..*/' --remove space_creator >/dev/null 2>&1 || true
-
-# Execute all commands in one single call
-"$SKETCHYBAR_BIN" "${SB_ARGS[@]}"
+if ! "$SKETCHYBAR_BIN" \
+  --remove '/space\..*/' \
+  --remove '/spaces\..*/' \
+  --remove '/space_creator\..*/' \
+  --remove space_creator \
+  "${SB_ARGS[@]}"; then
+  # Preserve the former best-effort recovery contract: a failed removal batch
+  # must not prevent reconstruction from being attempted. Clear any partially
+  # applied additions first; if the client is still unavailable, queue one
+  # marked topology repair without retry loops.
+  "$SKETCHYBAR_BIN" \
+    --remove '/space\..*/' \
+    --remove '/spaces\..*/' \
+    --remove '/space_creator\..*/' \
+    --remove space_creator >/dev/null 2>&1 || true
+  if ! "$SKETCHYBAR_BIN" "${SB_ARGS[@]}"; then
+    schedule_topology_apply_retry
+    exit 1
+  fi
+fi
 full_rebuild_apply_end_ms="$(now_ms)"
 full_rebuild_prepare_ms=$((full_rebuild_apply_start_ms - SIMPLE_SPACES_START_MS))
 full_rebuild_apply_ms=$((full_rebuild_apply_end_ms - full_rebuild_apply_start_ms))

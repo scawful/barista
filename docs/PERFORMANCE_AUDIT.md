@@ -420,12 +420,72 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
     `/tmp/barista_topology_single_pass_ab_20260726.json` (SHA-256
     `53a085d2ce508cd15a91b6d4fbbbaac0479af813dce3bf9904cc26a26ef62090`).
 
+### 5c. Native Space Visual Capture and Startup Child Reaping (Verified)
+*   **Files:** `helpers/space_visual_helper.m`,
+    `plugins/space_visuals.sh`, `main.lua`, `modules/shell_utils.lua`,
+    `tests/test_space_visual_helper.sh`, `tests/test_space_visuals.sh`,
+    `tests/test_runtime_startup.lua`
+*   **Update:**
+    - the native visual helper now launches each scoped Yabai query through an
+      exact `posix_spawn` argument vector instead of Foundation `NSTask`,
+      concurrently drains nonblocking stdout, caps output at 1 MiB, and uses a
+      monotonic timeout
+    - every completion path terminates surviving same-group members and reaps
+      the direct child; timeout, overflow, I/O, and nonzero-exit failures retain
+      the existing portable fallback
+    - the full visual path preloads its persisted space-icon cache once in the
+      parent shell, so later command substitutions read populated arrays
+      instead of repeatedly rebuilding cache state in discarded subshells
+    - `startup_sync` waits outside the visual lock for an active topology pass,
+      then rechecks its authoritative marker; if the lock remains after the
+      two-second bound, the fallback ignores any stale marker and proceeds
+    - authoritative cooldown markers publish only after a successful focused
+      or full SketchyBar apply; failed discovery/apply leaves recovery enabled,
+      failed applies invalidate staged style-state cache entries, and reload
+      startup discards the previous runtime's marker before scheduling topology
+    - startup custom events register through `sbar.add("event", ...)` inside
+      the config transaction rather than launching eight SketchyBar clients
+    - the external-bar update and other asynchronous post-config clients do not
+      dispatch until synchronous stats and runtime-daemon `os.execute` work is
+      complete; startup performs no later `os.execute`, avoiding SbarLua's
+      temporary `SIGCHLD` disposition window
+    - deterministic tests cover large output, exact argument handling, partial
+      failure, timeout cleanup for a child plus grandchild, native event
+      registration, startup ordering, topology-wait coalescing, and recovery
+      after discovery or apply failure
+*   **Result:** after three warmup pairs, a seeded randomized 30-pair
+    release-code A/B for visible spaces `5` and `9` reduced helper median from
+    `177.126 ms` to `21.776 ms` (87.7%) and p95 from `183.834 ms` to
+    `30.953 ms`. The feature won 30/30 pairs with a `-154.619 ms` paired
+    median and byte-identical output in every pair. Artifact:
+    `/tmp/barista_space_visual_helper_release_ab_20260726.json` (SHA-256
+    `a5551c18e5c7b35a053d7a140336f691be590f400ec35270bdc89cb11e7a51d4`).
+    A separate six-warmup, 45-round isolated visual-loop A/B reduced median
+    from `183.832 ms` to `133.364 ms` and p95 from `193.469 ms` to
+    `143.118 ms` after the one-line parent cache preload. It won 43/45 pairs
+    with a `-47.858 ms` paired median. Artifact:
+    `/tmp/barista_space_visual_cache_preload_ab_20260726.json` (SHA-256
+    `ccfaef30d1c5e1692d89c8703e37a80a51801c0887ebae534c894a9a764e887a`).
+    `reload_time` ends before runtime-sidecar startup and initial asynchronous
+    post-config dispatch, so use the outer reload/readiness wall time when
+    comparing complete startup. A supported live restart then completed in
+    `3996.858 ms` outer wall / `1162 ms` internal time and emitted one
+    `424 ms` `space_topology_refresh` visual with no backup `startup_sync`.
+    The immediately preceding same-helper restart had emitted `158 ms` and
+    `616 ms` visual passes, so the coordination change removed the duplicate
+    rather than merely overlapping it. The final SketchyBar PID remained
+    stable after settling, its Lua child had zero zombies at both checks,
+    `skhd` stayed on PID `4319`, the error log identity and `state.json` hash
+    were unchanged, and spaces `1` through `9` plus creators `1` and `2`
+    remained queryable.
+
 ## Remaining Considerations
-1.  **Visible app lookup cost:** `space_visuals.sh` avoids full snapshots and batches helper-backed visible-space lookups when the compiled helper exists, but full visual passes still depend on yabai window data for each visible space.
-2.  **Clock daemon coverage:** the current daemon path is verified live, but there is still no dedicated test coverage around `main.lua` startup instrumentation.
-3.  **Topology rebuild cost:** `simple_spaces.sh` is materially cheaper after removing dead popup rows, but full rebuild remains the dominant startup cost.
+1.  **Visible app lookup cost:** `space_visuals.sh` avoids full snapshots and batches helper-backed visible-space lookups when the compiled helper exists, but full visual passes still issue one scoped Yabai query for each visible space.
+2.  **Reload measurement boundary:** internal `reload_time` ends before runtime-sidecar startup and initial asynchronous dispatch, while the reload wrapper's readiness wall time includes both; compare like-for-like metrics.
+3.  **Startup attribution:** topology and visual costs vary with the number of spaces, displays, and visible apps. Profile both paths instead of assuming topology is always dominant.
 4.  **Async I/O:** the current architecture is event-driven enough for daily use, but long-term migration to a fully async runtime remains the cleaner end state.
 5.  **Fully event-driven media state:** the producer is now adaptive and change-detected, but Spotify/Music do not expose a shared portable event stream. A future native event source could remove the remaining bounded idle probe without weakening Lua-only/work-machine portability.
+6.  **Visual shell overhead:** detailed phase samples still show avoidable style and phase-accounting subshell work after native app capture; optimize only with a paired end-to-end visual benchmark.
 
 ## Shell Script Optimization Summary
 - **AWK Variable Naming**: Standardized to avoid collisions.

@@ -27,6 +27,10 @@ APP_GLYPH_CACHE_VERSION_FILE="$APP_GLYPH_CACHE_DIR/.version"
 SPACE_VISUALS_STATE_DIR="$CONFIG_DIR/cache/space_visuals"
 SPACE_VISUALS_LOCK_DIR="$CONFIG_DIR/.space_visuals.lock"
 SPACE_VISUALS_LOCK_STALE_SECONDS=5
+SPACE_REFRESH_LOCK_DIR="${BARISTA_SPACE_REFRESH_LOCK_DIR:-$CONFIG_DIR/.refresh_spaces.lock}"
+STARTUP_TOPOLOGY_WAIT_ATTEMPTS="${BARISTA_SPACE_STARTUP_TOPOLOGY_WAIT_ATTEMPTS:-20}"
+STARTUP_TOPOLOGY_WAIT_DELAY="${BARISTA_SPACE_STARTUP_TOPOLOGY_WAIT_DELAY:-0.10}"
+STARTUP_TOPOLOGY_WAIT_TIMED_OUT=0
 FRONT_APP_COOLDOWN_MS="${BARISTA_SPACE_FRONT_APP_COOLDOWN_MS:-1200}"
 FRONT_APP_DEBOUNCE_MS="${BARISTA_SPACE_FRONT_APP_DEBOUNCE_MS:-250}"
 STARTUP_SYNC_COOLDOWN_MS="${BARISTA_SPACE_STARTUP_SYNC_COOLDOWN_MS:-4000}"
@@ -134,6 +138,13 @@ ensure_style_state_dir() {
   [ "$STYLE_STATE_DIR_READY" -eq 0 ] || return 0
   STYLE_STATE_DIR_READY=1
   mkdir -p "$(cached_style_state_root)" 2>/dev/null || true
+}
+
+invalidate_style_state_cache() {
+  local root
+  root="$(cached_style_state_root)"
+  [ -d "$root" ] || return 0
+  rm -f "$root"/space.*.state >/dev/null 2>&1 || true
 }
 
 style_state_file_for_item() {
@@ -441,10 +452,38 @@ should_skip_startup_sync() {
   local sender="${SENDER:-}"
   local last_authoritative
   [ "$sender" = "startup_sync" ] || return 1
+  [ "$STARTUP_TOPOLOGY_WAIT_TIMED_OUT" -eq 0 ] || return 1
 
   last_authoritative="$(read_ms_file "$LAST_AUTHORITATIVE_REFRESH_FILE")"
   [ -n "$last_authoritative" ] || return 1
   [ $((START_MS - last_authoritative)) -lt "$STARTUP_SYNC_COOLDOWN_MS" ]
+}
+
+wait_for_topology_refresh() {
+  local attempts
+  [ "${SENDER:-}" = "startup_sync" ] || return 0
+  # Wait before taking the visual lock so the authoritative topology path can
+  # finish its own visual pass. The bound fails open for dead/stale owners.
+  attempts="$STARTUP_TOPOLOGY_WAIT_ATTEMPTS"
+  case "$attempts" in
+    ""|*[!0-9]*) attempts=20 ;;
+  esac
+
+  while [ -d "$SPACE_REFRESH_LOCK_DIR" ] && [ "$attempts" -gt 0 ]; do
+    sleep "$STARTUP_TOPOLOGY_WAIT_DELAY" 2>/dev/null || break
+    attempts=$((attempts - 1))
+  done
+  if [ -d "$SPACE_REFRESH_LOCK_DIR" ]; then
+    STARTUP_TOPOLOGY_WAIT_TIMED_OUT=1
+  fi
+}
+
+begin_sender_refresh() {
+  case "${SENDER:-}" in
+    space_topology_refresh|space_active_refresh|space_visual_refresh|display_changed|display_added|display_removed|manual|startup_sync)
+      rm -f "$LAST_AUTHORITATIVE_REFRESH_FILE" >/dev/null 2>&1 || true
+      ;;
+  esac
 }
 
 mark_sender_refresh() {
@@ -652,7 +691,10 @@ refresh_single_visible_space_from_focus_context() {
     previous_args=("${STYLE_IDLE_ARGS[@]}")
     phase_add PHASE_STYLE_MS "$phase_start"
     phase_start="$(phase_now)"
-    "$SKETCHYBAR_BIN" --set "space.$last_selected_space" "${previous_args[@]}" >/dev/null 2>&1 || true
+    if ! "$SKETCHYBAR_BIN" --set "space.$last_selected_space" "${previous_args[@]}" >/dev/null 2>&1; then
+      invalidate_style_state_cache
+      return 1
+    fi
     phase_add PHASE_APPLY_MS "$phase_start"
   fi
 
@@ -664,7 +706,10 @@ refresh_single_visible_space_from_focus_context() {
   focused_args=("${STYLE_FOCUSED_ARGS[@]}")
   phase_add PHASE_STYLE_MS "$phase_start"
   phase_start="$(phase_now)"
-  "$SKETCHYBAR_BIN" --set "$item" icon="$icon_value" "${focused_args[@]}" >/dev/null 2>&1 || true
+  if ! "$SKETCHYBAR_BIN" --set "$item" icon="$icon_value" "${focused_args[@]}" >/dev/null 2>&1; then
+    invalidate_style_state_cache
+    return 1
+  fi
   phase_add PHASE_APPLY_MS "$phase_start"
   write_ms_file "$LAST_SELECTED_SPACE_FILE" "$current_space_index"
 
@@ -697,11 +742,12 @@ resolve_visible_space_app() {
   printf '%s' "$app_name"
 }
 
-START_MS="$(now_ms)"
-
 if [ "${SENDER:-}" = "forced" ]; then
   exit 0
 fi
+
+wait_for_topology_refresh
+START_MS="$(now_ms)"
 
 load_state_space_maps() {
   [ "$STATE_SPACE_MAPS_LOADED" -eq 0 ] || return 0
@@ -774,11 +820,13 @@ if should_skip_startup_sync; then
   exit 0
 fi
 
-mark_sender_refresh
+begin_sender_refresh
 
 if refresh_single_visible_space_from_focus_context; then
+  mark_sender_refresh
   exit 0
 fi
+SPACE_VISUAL_PATH="full"
 
 [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ] || exit 0
 
@@ -815,6 +863,7 @@ visible_count=0
 focused_space_index=""
 
 phase_start="$(phase_now)"
+load_cached_space_icons
 while IFS=' ' read -r space_index _display is_visible has_focus space_type; do
   [ -n "$space_index" ] || continue
   item="space.$space_index"
@@ -876,11 +925,15 @@ while IFS=' ' read -r space_index _display is_visible has_focus space_type; do
 done < <(printf '%s\n' "$ALL_SPACES_DATA" | "$JQ_BIN" -r 'sort_by(.display, .index)[] | "\(.index) \(.display) \(.["is-visible"]) \(.["has-focus"] // false) \(.type // "unknown")"')
 phase_add PHASE_LOOP_MS "$phase_start"
 
-if [ ${#FAST_ARGS[@]} -gt 0 ]; then
-  phase_start="$(phase_now)"
-  "$SKETCHYBAR_BIN" "${FAST_ARGS[@]}" >/dev/null 2>&1 || true
+[ ${#FAST_ARGS[@]} -gt 0 ] || exit 0
+phase_start="$(phase_now)"
+if ! "$SKETCHYBAR_BIN" "${FAST_ARGS[@]}" >/dev/null 2>&1; then
   phase_add PHASE_APPLY_MS "$phase_start"
+  invalidate_style_state_cache
+  exit 1
 fi
+phase_add PHASE_APPLY_MS "$phase_start"
+mark_sender_refresh
 
 if [ -n "$focused_space_index" ]; then
   write_ms_file "$LAST_SELECTED_SPACE_FILE" "$focused_space_index"

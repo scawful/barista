@@ -1,15 +1,54 @@
 local runtime_startup = require("runtime_startup")
 
-run_test("main startup wiring: commits and captures config timing before queue flush", function()
+run_test("main startup wiring: completes synchronous startup before async queue flush", function()
   local file = assert(io.open("main.lua", "r"))
   local source = file:read("*a")
   file:close()
 
   local end_config_pos = assert(source:find("sbar.end_config()", 1, true))
+  local marker_reset_pos = assert(source:find(
+    "os.remove(SPACE_VISUAL_AUTHORITATIVE_MARKER)",
+    1,
+    true
+  ))
   local timing_pos = assert(source:find("local config_build_duration_ms", end_config_pos, true))
+  local stats_pos = assert(source:find("runtime_startup.record_duration_events", end_config_pos, true))
+  local daemon_pos = assert(source:find("runtime_daemon.ensure_runtime_context_daemon", end_config_pos, true))
   local flush_pos = assert(source:find("post_config_queue:flush", end_config_pos, true))
-  assert_true(end_config_pos < timing_pos and timing_pos < flush_pos,
-    "main should commit config and stop config timing before dispatching post-config work")
+  assert_true(marker_reset_pos < end_config_pos,
+    "startup should invalidate the previous runtime's authoritative visual marker")
+  assert_true(end_config_pos < timing_pos and timing_pos < stats_pos
+      and stats_pos < daemon_pos and daemon_pos < flush_pos,
+    "main should commit config and finish synchronous stats/daemon work before async dispatch")
+  assert_true(source:find("sketchybar_cli", 1, true) == nil,
+    "startup should not fork SketchyBar clients to register custom events")
+  local native_event_pos = assert(source:find('sbar.add("event", event_name)', 1, true))
+  assert_true(native_event_pos > source:find("sbar.begin_config()", 1, true)
+      and native_event_pos < end_config_pos,
+    "custom events should register through the Lua API inside the config transaction")
+  for _, event_name in ipairs({
+    "space_change",
+    "space_active_refresh",
+    "space_mode_refresh",
+    "space_visual_refresh",
+    "display_changed",
+    "display_added",
+    "display_removed",
+    "task_state_changed",
+  }) do
+    local event_pos = assert(source:find('"' .. event_name .. '"', 1, true))
+    assert_true(event_pos < native_event_pos,
+      "native custom-event list should include " .. event_name)
+  end
+  local external_update_pos = assert(source:find(
+    'enqueue_post_config_command(string.format("%s/update_external_bar.sh %d"',
+    1,
+    true
+  ))
+  assert_true(external_update_pos < end_config_pos,
+    "the external-bar update should enter the post-config queue")
+  assert_true(source:find("os.execute", flush_pos, true) == nil,
+    "startup must not restore SIGCHLD defaults after async clients are dispatched")
   assert_true(source:find("left_layout_metadata.submenu_parents", 1, true) ~= nil,
     "main should merge left-side nested popups into the submenu registry")
   assert_true(source:find("submenu_manager_items", 1, true) ~= nil,

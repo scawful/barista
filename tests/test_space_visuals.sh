@@ -101,6 +101,9 @@ if [ "${1:-}" = "--query" ] && [[ "${2:-}" == space.* ]]; then
 fi
 
 printf 'set\t%s\n' "$*" >> "__SKETCHYBAR_LOG__"
+if [ "${BARISTA_TEST_SKETCHYBAR_APPLY_FAIL:-0}" = "1" ]; then
+  exit 1
+fi
 current_item=""
 while [ "$#" -gt 0 ]; do
   case "${1:-}" in
@@ -362,5 +365,74 @@ run_visual "front_app_switched" \
   BARISTA_SPACE_FRONT_APP_DEBOUNCE_MS=0
 [ "$(count_visual_events)" = "6" ] || { echo "FAIL: cooldown should suppress front_app refresh after topology refresh" >&2; exit 1; }
 [ -s "$CLOCK_LOG" ] || { echo "FAIL: visual refresh should prefer the injected native clock" >&2; exit 1; }
+
+printf '%s000' "$(/bin/date +%s)" > "$CONFIG_DIR/cache/space_visuals/last_authoritative_refresh_ms"
+mkdir "$CONFIG_DIR/.refresh_spaces.lock"
+run_visual "startup_sync" \
+  BARISTA_SPACE_STARTUP_TOPOLOGY_WAIT_ATTEMPTS=100 \
+  BARISTA_SPACE_STARTUP_TOPOLOGY_WAIT_DELAY=0.01 \
+  BARISTA_SPACE_STARTUP_SYNC_COOLDOWN_MS=5000 &
+startup_wait_pid=$!
+sleep 0.10
+kill -0 "$startup_wait_pid" >/dev/null 2>&1 || { echo "FAIL: startup_sync should remain blocked while active topology owns its lock" >&2; exit 1; }
+rmdir "$CONFIG_DIR/.refresh_spaces.lock"
+wait "$startup_wait_pid"
+[ "$(count_visual_events)" = "6" ] || { echo "FAIL: startup_sync should wait for an active topology visual and then honor its marker" >&2; exit 1; }
+
+printf '%s000' "$(/bin/date +%s)" > "$CONFIG_DIR/cache/space_visuals/last_authoritative_refresh_ms"
+mkdir "$CONFIG_DIR/.refresh_spaces.lock"
+run_visual "startup_sync" \
+  BARISTA_SPACE_STARTUP_TOPOLOGY_WAIT_ATTEMPTS=1 \
+  BARISTA_SPACE_STARTUP_TOPOLOGY_WAIT_DELAY=0.01 \
+  BARISTA_SPACE_STARTUP_SYNC_COOLDOWN_MS=5000
+rmdir "$CONFIG_DIR/.refresh_spaces.lock"
+[ "$(count_visual_events)" = "7" ] || { echo "FAIL: startup_sync should fail open after a bounded topology wait even when a stale marker exists" >&2; exit 1; }
+
+rm -f "$CONFIG_DIR/cache/space_visuals/last_authoritative_refresh_ms"
+mkdir "$CONFIG_DIR/.refresh_spaces.lock"
+topology_started_at="$(python3 - <<'PY'
+import time
+print(time.monotonic_ns())
+PY
+)"
+run_visual "space_topology_refresh" \
+  BARISTA_SPACE_STARTUP_TOPOLOGY_WAIT_ATTEMPTS=20 \
+  BARISTA_SPACE_STARTUP_TOPOLOGY_WAIT_DELAY=0.10 \
+  BARISTA_ALL_SPACES_DATA='[{"display":1,"index":1,"is-visible":true,"has-focus":true,"type":"bsp"},{"display":1,"index":2,"is-visible":false,"has-focus":false,"type":"bsp"}]'
+topology_finished_at="$(python3 - <<'PY'
+import time
+print(time.monotonic_ns())
+PY
+)"
+rmdir "$CONFIG_DIR/.refresh_spaces.lock"
+topology_elapsed_ms=$(((topology_finished_at - topology_started_at) / 1000000))
+[ "$topology_elapsed_ms" -lt 1500 ] || { echo "FAIL: topology refresh waited on its own lock (${topology_elapsed_ms}ms)" >&2; exit 1; }
+[ "$(count_visual_events)" = "8" ] || { echo "FAIL: topology refresh should not wait on its own orchestration lock" >&2; exit 1; }
+
+printf '%s000' "$(/bin/date +%s)" > "$CONFIG_DIR/cache/space_visuals/last_authoritative_refresh_ms"
+run_visual "space_topology_refresh" \
+  BARISTA_YABAI_BIN="$TMP_DIR/missing_yabai"
+[ ! -e "$CONFIG_DIR/cache/space_visuals/last_authoritative_refresh_ms" ] || { echo "FAIL: failed topology discovery must invalidate the prior authoritative marker" >&2; exit 1; }
+[ "$(count_visual_events)" = "8" ] || { echo "FAIL: failed topology discovery should not record a visual event" >&2; exit 1; }
+
+run_visual "startup_sync" \
+  BARISTA_SPACE_STARTUP_SYNC_COOLDOWN_MS=5000
+[ "$(count_visual_events)" = "9" ] || { echo "FAIL: startup_sync should recover after failed topology discovery" >&2; exit 1; }
+
+printf '%s000' "$(/bin/date +%s)" > "$CONFIG_DIR/cache/space_visuals/last_authoritative_refresh_ms"
+set +e
+run_visual "space_topology_refresh" \
+  BARISTA_TEST_SKETCHYBAR_APPLY_FAIL=1 \
+  BARISTA_ALL_SPACES_DATA='[{"display":1,"index":1,"is-visible":true,"has-focus":true,"type":"bsp"},{"display":1,"index":2,"is-visible":false,"has-focus":false,"type":"bsp"}]'
+failed_apply_status=$?
+set -e
+[ "$failed_apply_status" -ne 0 ] || { echo "FAIL: failed SketchyBar apply should propagate failure" >&2; exit 1; }
+[ ! -e "$CONFIG_DIR/cache/space_visuals/last_authoritative_refresh_ms" ] || { echo "FAIL: failed SketchyBar apply must invalidate the prior authoritative marker" >&2; exit 1; }
+[ "$(count_visual_events)" = "9" ] || { echo "FAIL: failed SketchyBar apply should not record a visual event" >&2; exit 1; }
+[ -z "$(find "$CONFIG_DIR/cache/space_visuals/style_state" -maxdepth 1 -name 'space.*.state' -print -quit 2>/dev/null)" ] || { echo "FAIL: failed apply should invalidate staged style state" >&2; exit 1; }
+
+run_visual "startup_sync" \
+  BARISTA_SPACE_STARTUP_SYNC_COOLDOWN_MS=5000
+[ "$(count_visual_events)" = "10" ] || { echo "FAIL: startup_sync should recover after a failed SketchyBar apply" >&2; exit 1; }
 
 printf 'test_space_visuals.sh: ok\n'

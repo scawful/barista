@@ -44,14 +44,6 @@ function M.shell_exec_background(cmd)
   ))
 end
 
---- Execute a sketchybar CLI command.
-function M.sketchybar_cli(sketchybar_bin, cmd)
-  if not cmd or cmd == "" then
-    return
-  end
-  M.shell_exec(string.format("%s %s", sketchybar_bin, cmd))
-end
-
 --- Build a shell command to open a path in Finder / default handler.
 function M.open_path(path)
   return string.format("open %q", path)

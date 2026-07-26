@@ -163,6 +163,7 @@ bash tests/test_simple_spaces_full_rebuild.sh >/dev/null
 bash tests/test_space_action_click.sh >/dev/null
 bash tests/test_refresh_spaces.sh >/dev/null
 bash tests/test_space_visuals.sh >/dev/null
+bash tests/test_space_visual_helper.sh >/dev/null
 bash tests/test_reload_sketchybar.sh >/dev/null
 bash tests/test_runtime_context_daemon_exec.sh >/dev/null
 bash tests/test_runtime_context_media_efficiency.sh >/dev/null

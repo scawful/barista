@@ -1,5 +1,38 @@
 # SketchyBar Configuration Changelog
 
+## July 26, 2026 - Native Space Visual Capture and Startup Reaping
+
+- `space_visual_helper` now captures scoped Yabai queries with exact-argument
+  `posix_spawn` calls instead of Foundation task objects. It drains stdout
+  while the child runs, caps output, enforces a monotonic timeout, and
+  terminates surviving process-group members and reaps its direct child on
+  completion.
+- `space_visuals.sh` now loads its persisted space-icon cache once in the
+  parent shell before the full visual loop, avoiding repeated cache reads lost
+  through command-substitution subshells.
+- The delayed `startup_sync` fallback now waits up to two seconds for an active
+  topology refresh before checking its authoritative marker. Normal startup keeps
+  one authoritative visual pass; if the lock remains after the bound, the
+  fallback ignores any stale marker and proceeds.
+- Authoritative cooldown markers now publish only after a successful
+  SketchyBar apply. Failed discovery or apply leaves startup recovery enabled,
+  failed applies invalidate staged style-state cache entries, and each reload
+  discards the previous runtime's marker before scheduling topology.
+- Startup custom events now register through SbarLua inside the config
+  transaction. External post-config clients are queued until synchronous
+  stats and runtime-daemon work completes, preventing completed asynchronous
+  clients from becoming unreaped Lua children during startup.
+- A 30-pair release-code A/B reduced the two-visible-space helper median from
+  `177.13 ms` to `21.78 ms` (87.7%) and p95 from `183.83 ms` to `30.95 ms`;
+  the feature won 30/30 pairs with identical output. A separate 45-round
+  isolated visual-loop A/B reduced median from `183.83 ms` to `133.36 ms`
+  after the parent cache preload, with 43/45 paired wins.
+- A supported live restart produced one `424 ms` topology visual and no backup
+  `startup_sync`, versus `158 ms + 616 ms` across two visual passes on the
+  immediately preceding same-helper restart. The new Lua PID stayed at zero
+  zombies, `skhd` stayed on PID `4319`, and state, errors, nine spaces, and two
+  creators remained unchanged.
+
 ## July 26, 2026 - Single-Pass Spaces Topology Rebuild
 
 - `simple_spaces.sh` now loads its state and bar snapshots in the parent shell

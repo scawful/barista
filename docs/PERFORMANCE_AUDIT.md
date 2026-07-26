@@ -1,6 +1,6 @@
 # Barista Performance & Safety Audit
 
-**Date:** 2026-07-25
+**Date:** 2026-07-26
 **Status:** Active runtime app-model path verified
 **Scope:** `main.lua`, `modules/`, `helpers/`, `plugins/`, `scripts/`
 
@@ -383,6 +383,42 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
     display-scoped creator items, recorded a `348 ms` full topology pass, and
     added no error-log bytes. That single restart is a runtime smoke result,
     not a causal before/after measurement.
+
+### 5b. Single-Pass Spaces Topology Rebuild (Verified)
+*   **Files:** `plugins/simple_spaces.sh`,
+    `tests/test_simple_spaces_full_rebuild.sh`
+*   **Update:**
+    - state and bar snapshot caches are now populated in the parent shell
+      before derived creator-mode and item-height values are resolved, avoiding
+      the duplicate `state.json` parse and duplicate full-bar query previously
+      caused by cache mutations inside command-substitution subshells
+    - a full rebuild sends stale-item removal followed by the complete ordered
+      space/creator reconstruction in one SketchyBar argument vector rather
+      than two client requests
+    - a failed combined request clears any partial topology before its
+      reconstruction fallback; if the client remains unavailable, one
+      marker-bound forced rebuild bypasses cached topology decisions, cannot
+      reschedule itself, and reapplies visuals after recovery
+    - the deterministic full-rebuild test now enforces one state parse, one bar
+      query, and one normal topology mutation request while retaining the six
+      native timing boundaries; transient state/bar reads, stale-item ordering,
+      combined-call fallback, and persistent-failure retry bounds are covered
+*   **Result:** after three warmup pairs, a same-daemon 12-pair seeded,
+    randomized live A/B pre-removed the current strip before each sample and
+    reduced cold full-rebuild wall median from `353.452 ms` to `284.798 ms`
+    (19.4%) and p95 from `388.093 ms` to `320.409 ms` (17.4%). Recorded
+    topology median fell from `303.0 ms` to `234.5 ms` (22.6%), preparation
+    from `101.0 ms` to `63.0 ms` (37.6%), discovery from `52.0 ms` to
+    `19.5 ms` (62.5%), and apply from `136.5 ms` to `120.0 ms` (12.1%). The
+    feature won 12/12 pairs with a `-62.756 ms` paired wall median. Load
+    average rose from `8.81` to `9.51` during the release-code run, so the
+    randomized paired direction is stronger evidence than its absolute
+    latencies. Each sample rebuilt and verified spaces `1` through `9` plus
+    `space_creator.1` and `space_creator.2`; a deterministic stale-item fixture
+    separately enforces remove-before-add ordering. The final SketchyBar PID,
+    `state.json` hash, and error-log identity matched the baseline. Artifact:
+    `/tmp/barista_topology_single_pass_ab_20260726.json` (SHA-256
+    `53a085d2ce508cd15a91b6d4fbbbaac0479af813dce3bf9904cc26a26ef62090`).
 
 ## Remaining Considerations
 1.  **Visible app lookup cost:** `space_visuals.sh` avoids full snapshots and batches helper-backed visible-space lookups when the compiled helper exists, but full visual passes still depend on yabai window data for each visible space.

@@ -158,6 +158,7 @@ bash tests/test_popup_hover.sh >/dev/null
 bash tests/test_popup_click.sh >/dev/null
 bash tests/test_popup_manager.sh >/dev/null
 bash tests/test_perf_clock.sh >/dev/null
+bash tests/test_file_lock.sh >/dev/null
 bash tests/test_runtime_backend_marker.sh >/dev/null
 bash tests/test_simple_spaces_full_rebuild.sh >/dev/null
 bash tests/test_space_action_click.sh >/dev/null

@@ -18,6 +18,19 @@ ICON_SCRIPT="$SCRIPTS_DIR/app_icon.sh"
 FRONT_APP_CONTEXT_SCRIPT="${BARISTA_FRONT_APP_CONTEXT_SCRIPT:-$SCRIPTS_DIR/front_app_context.sh}"
 SPACE_VISUAL_HELPER_BIN="${BARISTA_SPACE_VISUAL_HELPER_BIN:-$CONFIG_DIR/bin/space_visual_helper}"
 PERF_CLOCK_BIN="${BARISTA_PERF_CLOCK_BIN:-$CONFIG_DIR/bin/perf_clock}"
+MV_BIN="${BARISTA_MV_BIN:-/bin/mv}"
+FILE_LOCK_BIN="${BARISTA_FILE_LOCK_BIN:-$CONFIG_DIR/bin/file_lock}"
+FILE_LOCK_SOURCE="${BARISTA_FILE_LOCK_SOURCE:-$CONFIG_DIR/helpers/file_lock.c}"
+FILE_LOCK_CC="${BARISTA_FILE_LOCK_CC:-}"
+FLOCK_BIN="${BARISTA_FLOCK_BIN:-/usr/bin/flock}"
+PYTHON_BIN="${BARISTA_PYTHON_BIN:-}"
+PORTABLE_LOCK_ONLY=0
+if [ "${BARISTA_LUA_ONLY:-0}" = "1" ] || [ "${BARISTA_NO_CMAKE:-0}" = "1" ]; then
+  PORTABLE_LOCK_ONLY=1
+fi
+if [ "$PORTABLE_LOCK_ONLY" -eq 1 ] && [ -z "$PYTHON_BIN" ]; then
+  PYTHON_BIN="$(command -v python3 2>/dev/null || true)"
+fi
 BARISTA_ALL_SPACES_DATA="${BARISTA_ALL_SPACES_DATA:-}"
 STATE_FILE="${STATE_FILE:-$CONFIG_DIR/state.json}"
 ICON_CACHE_DIR="$CONFIG_DIR/cache/space_icons"
@@ -25,12 +38,22 @@ APP_GLYPH_CACHE_DIR="$CONFIG_DIR/cache/app_glyphs"
 APP_GLYPH_CACHE_VERSION="2"
 APP_GLYPH_CACHE_VERSION_FILE="$APP_GLYPH_CACHE_DIR/.version"
 SPACE_VISUALS_STATE_DIR="$CONFIG_DIR/cache/space_visuals"
-SPACE_VISUALS_LOCK_DIR="$CONFIG_DIR/.space_visuals.lock"
-SPACE_VISUALS_LOCK_STALE_SECONDS=5
+SPACE_VISUALS_LOCK_FILE="$SPACE_VISUALS_STATE_DIR/visual.lock"
+SPACE_VISUALS_LOCK_HELD=0
+SPACE_VISUALS_LOCK_BACKEND=""
+FRONT_APP_VISUAL_RETRY_LOCK_FILE="$SPACE_VISUALS_STATE_DIR/front_app_retry.lock"
+FRONT_APP_VISUAL_RETRY_LOCK_HELD=0
+FRONT_APP_VISUAL_RETRY_LOCK_BACKEND=""
+FRONT_APP_VISUAL_WAIT_ATTEMPTS="${BARISTA_SPACE_FRONT_APP_VISUAL_WAIT_ATTEMPTS:-240}"
+FRONT_APP_VISUAL_WAIT_DELAY="${BARISTA_SPACE_FRONT_APP_VISUAL_WAIT_DELAY:-0.025}"
+FRONT_APP_VISUAL_WAITED=0
 SPACE_REFRESH_LOCK_DIR="${BARISTA_SPACE_REFRESH_LOCK_DIR:-$CONFIG_DIR/.refresh_spaces.lock}"
 STARTUP_TOPOLOGY_WAIT_ATTEMPTS="${BARISTA_SPACE_STARTUP_TOPOLOGY_WAIT_ATTEMPTS:-20}"
 STARTUP_TOPOLOGY_WAIT_DELAY="${BARISTA_SPACE_STARTUP_TOPOLOGY_WAIT_DELAY:-0.10}"
 STARTUP_TOPOLOGY_WAIT_TIMED_OUT=0
+FRONT_APP_TOPOLOGY_WAIT_ATTEMPTS="${BARISTA_SPACE_FRONT_APP_TOPOLOGY_WAIT_ATTEMPTS:-40}"
+FRONT_APP_TOPOLOGY_WAIT_DELAY="${BARISTA_SPACE_FRONT_APP_TOPOLOGY_WAIT_DELAY:-0.05}"
+FRONT_APP_TOPOLOGY_WAITED=0
 FRONT_APP_COOLDOWN_MS="${BARISTA_SPACE_FRONT_APP_COOLDOWN_MS:-1200}"
 FRONT_APP_DEBOUNCE_MS="${BARISTA_SPACE_FRONT_APP_DEBOUNCE_MS:-250}"
 STARTUP_SYNC_COOLDOWN_MS="${BARISTA_SPACE_STARTUP_SYNC_COOLDOWN_MS:-4000}"
@@ -54,7 +77,7 @@ STYLE_WRITES=0
 STYLE_SKIPS=0
 STYLE_ARGS_INITIALIZED=0
 STYLE_STATE_DIR_READY=0
-STYLE_STATE_ROOT_CACHE=""
+STYLE_STATE_ROOT_CACHE="$SPACE_VISUALS_STATE_DIR/style_state"
 STYLE_FOCUSED_PROPS=""
 STYLE_VISIBLE_PROPS=""
 STYLE_IDLE_PROPS=""
@@ -72,6 +95,7 @@ declare -a STYLE_IDLE_ARGS
 EMPTY_ICON="○"
 ACTIVE_EMPTY_ICON="•"
 LAST_SELECTED_SPACE_FILE="$SPACE_VISUALS_STATE_DIR/last_selected_space"
+LAST_SELECTED_CONTEXT_FILE="$SPACE_VISUALS_STATE_DIR/last_selected_context"
 
 [ -r "${_d}/lib/space_style.sh" ] && . "${_d}/lib/space_style.sh"
 
@@ -104,18 +128,23 @@ init_cached_style_args() {
     "icon.color=$SPACE_IDLE_ICON_COLOR"
   )
 
-  STYLE_FOCUSED_PROPS="$(printf '%s\n' "${STYLE_FOCUSED_ARGS[@]}")"
-  STYLE_VISIBLE_PROPS="$(printf '%s\n' "${STYLE_VISIBLE_ARGS[@]}")"
-  STYLE_IDLE_PROPS="$(printf '%s\n' "${STYLE_IDLE_ARGS[@]}")"
+  printf -v STYLE_FOCUSED_PROPS '%s\n%s\n%s\n%s\n%s\n%s' "${STYLE_FOCUSED_ARGS[@]}"
+  printf -v STYLE_VISIBLE_PROPS '%s\n%s\n%s\n%s\n%s\n%s' "${STYLE_VISIBLE_ARGS[@]}"
+  printf -v STYLE_IDLE_PROPS '%s\n%s\n%s\n%s\n%s\n%s' "${STYLE_IDLE_ARGS[@]}"
 }
 
-cached_space_style_props() {
+cached_space_style_props_into() {
+  local output_name="${1:-}"
+  local state="${2:-idle}"
+  local output_value=""
+  [ -n "$output_name" ] || return 1
   init_cached_style_args
-  case "${1:-idle}" in
-    focused) printf '%s' "$STYLE_FOCUSED_PROPS" ;;
-    visible) printf '%s' "$STYLE_VISIBLE_PROPS" ;;
-    idle|*) printf '%s' "$STYLE_IDLE_PROPS" ;;
+  case "$state" in
+    focused) output_value="$STYLE_FOCUSED_PROPS" ;;
+    visible) output_value="$STYLE_VISIBLE_PROPS" ;;
+    idle|*) output_value="$STYLE_IDLE_PROPS" ;;
   esac
+  printf -v "$output_name" '%s' "$output_value"
 }
 
 append_cached_style_args_to_fast() {
@@ -127,39 +156,32 @@ append_cached_style_args_to_fast() {
   esac
 }
 
-cached_style_state_root() {
-  if [ -z "$STYLE_STATE_ROOT_CACHE" ]; then
-    STYLE_STATE_ROOT_CACHE="$(space_style_state_root)"
-  fi
-  printf '%s' "$STYLE_STATE_ROOT_CACHE"
-}
-
 ensure_style_state_dir() {
   [ "$STYLE_STATE_DIR_READY" -eq 0 ] || return 0
   STYLE_STATE_DIR_READY=1
-  mkdir -p "$(cached_style_state_root)" 2>/dev/null || true
+  mkdir -p "$STYLE_STATE_ROOT_CACHE" 2>/dev/null || true
 }
 
 invalidate_style_state_cache() {
-  local root
-  root="$(cached_style_state_root)"
-  [ -d "$root" ] || return 0
-  rm -f "$root"/space.*.state >/dev/null 2>&1 || true
+  [ -d "$STYLE_STATE_ROOT_CACHE" ] || return 0
+  rm -f "$STYLE_STATE_ROOT_CACHE"/space.*.state >/dev/null 2>&1 || true
 }
 
-style_state_file_for_item() {
-  local item="${1:-}"
-  local root
+style_state_file_for_item_into() {
+  local output_name="${1:-}"
+  local item="${2:-}"
+  local output_value=""
+  [ -n "$output_name" ] || return 1
   [ -n "$item" ] || return 1
-  root="$(cached_style_state_root)"
   case "$item" in
     *[!A-Za-z0-9._-]*)
-      space_style_state_file "$item"
+      output_value="$(space_style_state_file "$item")"
       ;;
     *)
-      printf '%s/%s.state' "$root" "$item"
+      output_value="$STYLE_STATE_ROOT_CACHE/$item.state"
       ;;
   esac
+  printf -v "$output_name" '%s' "$output_value"
 }
 
 style_state_matches_file() {
@@ -215,12 +237,14 @@ PY
   date +%s | awk '{print $1 "000"}'
 }
 
-phase_now() {
+phase_begin() {
+  local output_name="${1:-}"
+  local start_value=0
+  [ -n "$output_name" ] || return 1
   if [ "$PHASE_METRICS_ENABLED" = "1" ]; then
-    now_ms
-  else
-    printf '0'
+    start_value="$(now_ms)"
   fi
+  printf -v "$output_name" '%s' "$start_value"
 }
 
 phase_add() {
@@ -373,13 +397,86 @@ write_ms_file() {
   printf '%s' "$value" > "$path" 2>/dev/null || true
 }
 
+read_last_selected_context() {
+  local space_output_name="${1:-}"
+  local display_output_name="${2:-}"
+  local context_line=""
+  local trailing_line=""
+  local payload="" selected_space="" selected_display=""
+  [ -n "$space_output_name" ] || return 1
+  [ -n "$display_output_name" ] || return 1
+  [ -f "$LAST_SELECTED_CONTEXT_FILE" ] || return 1
+  {
+    IFS= read -r context_line || return 1
+    if IFS= read -r trailing_line || [ -n "$trailing_line" ]; then
+      return 1
+    fi
+  } < "$LAST_SELECTED_CONTEXT_FILE"
+  case "$context_line" in
+    "v1"$'\t'*) payload="${context_line#"v1"$'\t'}" ;;
+    *) return 1 ;;
+  esac
+  case "$payload" in
+    *$'\t'*)
+      selected_space="${payload%%$'\t'*}"
+      selected_display="${payload#*$'\t'}"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  case "$selected_space" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  case "$selected_display" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  printf -v "$space_output_name" '%s' "$selected_space"
+  printf -v "$display_output_name" '%s' "$selected_display"
+}
+
+write_last_selected_context() {
+  local selected_space="${1:-}"
+  local selected_display="${2:-}"
+  local temp_file="$LAST_SELECTED_CONTEXT_FILE.tmp.$$"
+  case "$selected_space" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  case "$selected_display" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ ! -d "$LAST_SELECTED_CONTEXT_FILE" ] || return 1
+  if [ ! -d "$SPACE_VISUALS_STATE_DIR" ]; then
+    mkdir -p "$SPACE_VISUALS_STATE_DIR" 2>/dev/null || return 1
+  fi
+  if printf 'v1\t%s\t%s\n' "$selected_space" "$selected_display" > "$temp_file" 2>/dev/null &&
+      "$MV_BIN" -f "$temp_file" "$LAST_SELECTED_CONTEXT_FILE" 2>/dev/null; then
+    if [ -e "$LAST_SELECTED_SPACE_FILE" ]; then
+      rm -f "$LAST_SELECTED_SPACE_FILE" >/dev/null 2>&1 || true
+    fi
+    return 0
+  fi
+  rm -f "$temp_file" "$LAST_SELECTED_CONTEXT_FILE" >/dev/null 2>&1 || true
+  return 1
+}
+
+invalidate_selected_context() {
+  rm -f "$LAST_SELECTED_CONTEXT_FILE" "$LAST_SELECTED_SPACE_FILE" >/dev/null 2>&1 || true
+}
+
+invalidate_visual_recovery_state() {
+  invalidate_style_state_cache
+  invalidate_selected_context
+  rm -f "$LAST_AUTHORITATIVE_REFRESH_FILE" >/dev/null 2>&1 || true
+}
+
 append_style_args() {
   local item="${1:-}"
   local state="${2:-idle}"
   local style_props="" style_start_ms
   [ -n "$item" ] || return 0
-  style_start_ms="$(phase_now)"
-  style_props="$(cached_space_style_props "$state")"
+  phase_begin style_start_ms
+  cached_space_style_props_into style_props "$state"
   remember_style_state "$item" "$state" "$style_props"
   append_cached_style_args_to_fast "$state"
   phase_add PHASE_STYLE_MS "$style_start_ms"
@@ -391,9 +488,11 @@ remember_style_state() {
   local style_props="${3:-}"
   local state_file
   [ -n "$item" ] || return 0
-  [ -n "$style_props" ] || style_props="$(cached_space_style_props "$state")"
+  if [ -z "$style_props" ]; then
+    cached_space_style_props_into style_props "$state"
+  fi
 
-  state_file="$(style_state_file_for_item "$item" 2>/dev/null || true)"
+  style_state_file_for_item_into state_file "$item" 2>/dev/null || true
   [ -n "$state_file" ] || return 0
   if style_state_matches_file "$state_file" "$state" "$style_props"; then
     STYLE_SKIPS=$((STYLE_SKIPS + 1))
@@ -408,25 +507,150 @@ remember_style_state() {
   STYLE_WRITES=$((STYLE_WRITES + 1))
 }
 
-acquire_visual_lock() {
-  local lock_age=0
-  if [ -d "$SPACE_VISUALS_LOCK_DIR" ]; then
-    if stat -f %m "$SPACE_VISUALS_LOCK_DIR" >/dev/null 2>&1; then
-      local lock_mtime now
-      lock_mtime=$(stat -f %m "$SPACE_VISUALS_LOCK_DIR" 2>/dev/null || echo 0)
-      now=$(date +%s)
-      lock_age=$((now - lock_mtime))
-    fi
-    if [ "$lock_age" -gt "$SPACE_VISUALS_LOCK_STALE_SECONDS" ]; then
-      rmdir "$SPACE_VISUALS_LOCK_DIR" 2>/dev/null || true
-    fi
+cleanup_visual_locks() {
+  if [ "$SPACE_VISUALS_LOCK_HELD" -eq 1 ]; then
+    case "$SPACE_VISUALS_LOCK_BACKEND" in
+      native|flock|python) exec 9>&- ;;
+    esac
+    SPACE_VISUALS_LOCK_HELD=0
+    SPACE_VISUALS_LOCK_BACKEND=""
   fi
+  if [ "$FRONT_APP_VISUAL_RETRY_LOCK_HELD" -eq 1 ]; then
+    case "$FRONT_APP_VISUAL_RETRY_LOCK_BACKEND" in
+      native|flock|python) exec 8>&- ;;
+    esac
+    FRONT_APP_VISUAL_RETRY_LOCK_HELD=0
+    FRONT_APP_VISUAL_RETRY_LOCK_BACKEND=""
+  fi
+}
 
-  if mkdir "$SPACE_VISUALS_LOCK_DIR" 2>/dev/null; then
-    trap 'rmdir "$SPACE_VISUALS_LOCK_DIR" 2>/dev/null || true' EXIT
+acquire_lock_fd() {
+  local fd="${1:-}"
+  [ -n "$fd" ] || return 1
+  if [ "$PORTABLE_LOCK_ONLY" -eq 1 ]; then
+    [ -x "$PYTHON_BIN" ] || return 1
+    "$PYTHON_BIN" -c '
+import fcntl
+import sys
+
+try:
+    descriptor = int(sys.argv[1])
+    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    raise SystemExit(75)
+except (OSError, ValueError):
+    raise SystemExit(74)
+' "$fd" >/dev/null 2>&1
+    return $?
+  fi
+  if [ -x "$FILE_LOCK_BIN" ]; then
+    "$FILE_LOCK_BIN" "$fd" >/dev/null 2>&1
+    return $?
+  fi
+  [ -x "$FLOCK_BIN" ] || return 1
+  "$FLOCK_BIN" -n "$fd" >/dev/null 2>&1
+}
+
+ensure_file_lock_helper() {
+  local cc_bin="$FILE_LOCK_CC"
+  local temp_bin="$FILE_LOCK_BIN.tmp.$$"
+  [ "$PORTABLE_LOCK_ONLY" -eq 0 ] || return 1
+  [ -x "$FILE_LOCK_BIN" ] && return 0
+  [ "$(uname -s)" = "Darwin" ] || return 1
+  [ -f "$FILE_LOCK_SOURCE" ] || return 1
+  if [ -z "$cc_bin" ]; then
+    cc_bin="$(command -v clang 2>/dev/null || command -v cc 2>/dev/null || true)"
+  fi
+  [ -n "$cc_bin" ] || return 1
+  mkdir -p "$(dirname "$FILE_LOCK_BIN")" 2>/dev/null || return 1
+  if "$cc_bin" -std=c99 -O2 -mmacosx-version-min=13.0 \
+      "$FILE_LOCK_SOURCE" -o "$temp_bin" >/dev/null 2>&1 &&
+      chmod +x "$temp_bin" 2>/dev/null &&
+      "$MV_BIN" -f "$temp_bin" "$FILE_LOCK_BIN" 2>/dev/null; then
     return 0
   fi
+  rm -f "$temp_bin" >/dev/null 2>&1 || true
+  return 1
+}
 
+acquire_visual_lock() {
+  if { [ "$PORTABLE_LOCK_ONLY" -eq 1 ] && [ -x "$PYTHON_BIN" ]; } ||
+      [ -x "$FILE_LOCK_BIN" ] || [ -x "$FLOCK_BIN" ]; then
+    exec 9>"$SPACE_VISUALS_LOCK_FILE" || return 1
+    if acquire_lock_fd 9; then
+      SPACE_VISUALS_LOCK_HELD=1
+      if [ "$PORTABLE_LOCK_ONLY" -eq 1 ]; then
+        SPACE_VISUALS_LOCK_BACKEND="python"
+      elif [ -x "$FILE_LOCK_BIN" ]; then
+        SPACE_VISUALS_LOCK_BACKEND="native"
+      else
+        SPACE_VISUALS_LOCK_BACKEND="flock"
+      fi
+      trap cleanup_visual_locks EXIT
+      return 0
+    fi
+    exec 9>&-
+    return 1
+  fi
+  return 1
+}
+
+acquire_front_app_visual_retry_lock() {
+  if { [ "$PORTABLE_LOCK_ONLY" -eq 1 ] && [ -x "$PYTHON_BIN" ]; } ||
+      [ -x "$FILE_LOCK_BIN" ] || [ -x "$FLOCK_BIN" ]; then
+    exec 8>"$FRONT_APP_VISUAL_RETRY_LOCK_FILE" || return 1
+    if acquire_lock_fd 8; then
+      FRONT_APP_VISUAL_RETRY_LOCK_HELD=1
+      if [ "$PORTABLE_LOCK_ONLY" -eq 1 ]; then
+        FRONT_APP_VISUAL_RETRY_LOCK_BACKEND="python"
+      elif [ -x "$FILE_LOCK_BIN" ]; then
+        FRONT_APP_VISUAL_RETRY_LOCK_BACKEND="native"
+      else
+        FRONT_APP_VISUAL_RETRY_LOCK_BACKEND="flock"
+      fi
+      trap cleanup_visual_locks EXIT
+      return 0
+    fi
+    exec 8>&-
+    return 1
+  fi
+  return 1
+}
+
+release_front_app_visual_retry_lock() {
+  [ "$FRONT_APP_VISUAL_RETRY_LOCK_HELD" -eq 1 ] || return 0
+  case "$FRONT_APP_VISUAL_RETRY_LOCK_BACKEND" in
+    native|flock|python) exec 8>&- ;;
+  esac
+  FRONT_APP_VISUAL_RETRY_LOCK_HELD=0
+  FRONT_APP_VISUAL_RETRY_LOCK_BACKEND=""
+}
+
+wait_for_front_app_visual_lock() {
+  local attempts
+  [ "${SENDER:-}" = "front_app_switched" ] || return 1
+
+  # Only one waiter represents all front-app events that arrive while another
+  # visual pass owns the lock. It refreshes from live focus context after the
+  # owner exits; later contenders can return because this waiter covers them.
+  acquire_front_app_visual_retry_lock || return 1
+
+  attempts="$FRONT_APP_VISUAL_WAIT_ATTEMPTS"
+  case "$attempts" in
+    ""|*[!0-9]*) attempts=240 ;;
+  esac
+  while [ "$attempts" -gt 0 ]; do
+    if acquire_visual_lock; then
+      FRONT_APP_VISUAL_WAITED=1
+      # Open the single retry slot before querying focus. An event that arrives
+      # after this waiter snapshots context can queue behind the main lock and
+      # become the next fresh-context pass instead of being dropped.
+      release_front_app_visual_retry_lock
+      return 0
+    fi
+    sleep "$FRONT_APP_VISUAL_WAIT_DELAY" 2>/dev/null || break
+    attempts=$((attempts - 1))
+  done
   return 1
 }
 
@@ -435,14 +659,22 @@ should_skip_front_app_refresh() {
   local last_authoritative last_front
   [ "$sender" = "front_app_switched" ] || return 1
 
-  last_authoritative="$(read_ms_file "$LAST_AUTHORITATIVE_REFRESH_FILE")"
-  if [ -n "$last_authoritative" ] && [ $((START_MS - last_authoritative)) -lt "$FRONT_APP_COOLDOWN_MS" ]; then
-    return 0
+  if [ "$FRONT_APP_TOPOLOGY_WAITED" -eq 0 ] &&
+      [ "$FRONT_APP_VISUAL_WAITED" -eq 0 ]; then
+    last_authoritative="$(read_ms_file "$LAST_AUTHORITATIVE_REFRESH_FILE")"
+    if [ -n "$last_authoritative" ] && [ $((START_MS - last_authoritative)) -lt "$FRONT_APP_COOLDOWN_MS" ]; then
+      return 0
+    fi
   fi
 
-  last_front="$(read_ms_file "$LAST_FRONT_APP_REFRESH_FILE")"
-  if [ -n "$last_front" ] && [ $((START_MS - last_front)) -lt "$FRONT_APP_DEBOUNCE_MS" ]; then
-    return 0
+  # Any visual-lock waiter can represent an event that arrived after the prior
+  # owner sampled focus, so it must run once with fresh context even when that
+  # owner just published a debounce marker.
+  if [ "$FRONT_APP_VISUAL_WAITED" -eq 0 ]; then
+    last_front="$(read_ms_file "$LAST_FRONT_APP_REFRESH_FILE")"
+    if [ -n "$last_front" ] && [ $((START_MS - last_front)) -lt "$FRONT_APP_DEBOUNCE_MS" ]; then
+      return 0
+    fi
   fi
 
   return 1
@@ -457,6 +689,24 @@ should_skip_startup_sync() {
   last_authoritative="$(read_ms_file "$LAST_AUTHORITATIVE_REFRESH_FILE")"
   [ -n "$last_authoritative" ] || return 1
   [ $((START_MS - last_authoritative)) -lt "$STARTUP_SYNC_COOLDOWN_MS" ]
+}
+
+wait_for_front_app_topology_refresh() {
+  local attempts
+  [ "${SENDER:-}" = "front_app_switched" ] || return 0
+  [ -d "$SPACE_REFRESH_LOCK_DIR" ] || return 0
+  FRONT_APP_TOPOLOGY_WAITED=1
+  attempts="$FRONT_APP_TOPOLOGY_WAIT_ATTEMPTS"
+  case "$attempts" in
+    ""|*[!0-9]*) attempts=40 ;;
+  esac
+
+  # Wait outside the visual lock so topology can finish its authoritative pass.
+  # The bound fails open for a stale lock rather than dropping app updates.
+  while [ -d "$SPACE_REFRESH_LOCK_DIR" ] && [ "$attempts" -gt 0 ]; do
+    sleep "$FRONT_APP_TOPOLOGY_WAIT_DELAY" 2>/dev/null || break
+    attempts=$((attempts - 1))
+  done
 }
 
 wait_for_topology_refresh() {
@@ -490,6 +740,9 @@ mark_sender_refresh() {
   case "${SENDER:-}" in
     front_app_switched)
       write_ms_file "$LAST_FRONT_APP_REFRESH_FILE" "$START_MS"
+      if [ "$SPACE_VISUAL_PATH" = "full" ]; then
+        write_ms_file "$LAST_AUTHORITATIVE_REFRESH_FILE" "$START_MS"
+      fi
       ;;
     space_topology_refresh|space_active_refresh|space_visual_refresh|display_changed|display_added|display_removed|manual|startup_sync)
       write_ms_file "$LAST_AUTHORITATIVE_REFRESH_FILE" "$START_MS"
@@ -612,9 +865,13 @@ EOF
 
 refresh_single_visible_space_from_focus_context() {
   local sender="${SENDER:-}"
-  local app_name="" current_space_index="" current_space_visible="false"
-  local item default_icon cached_icon icon_value last_selected_space
+  local app_name="" current_space_index="" current_display_index="" current_space_visible="false"
+  local last_selected_space="" last_selected_display="" previous_state="idle"
+  local item default_icon cached_icon icon_value
   local phase_start style_props focus_context_ms=0
+  local -a apply_args=()
+  local -a previous_args=()
+  local -a focused_args=()
 
   case "$sender" in
     front_app_switched|space_active_refresh)
@@ -626,15 +883,19 @@ refresh_single_visible_space_from_focus_context() {
   [ -x "$FRONT_APP_CONTEXT_SCRIPT" ] || return 1
   [ -n "$SKETCHYBAR_BIN" ] || return 1
 
-  phase_start="$(phase_now)"
+  phase_begin phase_start
   while IFS=$'\t' read -r key value; do
     case "$key" in
       app_name) app_name="$value" ;;
       space_index) current_space_index="$value" ;;
+      display_index) current_display_index="$value" ;;
       space_visible) current_space_visible="$value" ;;
     esac
   done < <(
-    if [ "$sender" = "front_app_switched" ] && [ -n "${INFO:-}" ]; then
+    if [ "$sender" = "front_app_switched" ] &&
+        [ "$FRONT_APP_TOPOLOGY_WAITED" -eq 0 ] &&
+        [ "$FRONT_APP_VISUAL_WAITED" -eq 0 ] &&
+        [ -n "${INFO:-}" ]; then
       "$FRONT_APP_CONTEXT_SCRIPT" --mode focused-space --app "${INFO:-}" 2>/dev/null || true
     else
       "$FRONT_APP_CONTEXT_SCRIPT" --mode focused-space 2>/dev/null || true
@@ -645,31 +906,45 @@ refresh_single_visible_space_from_focus_context() {
   fi
 
   [ -n "$app_name" ] || return 1
-  [ -n "$current_space_index" ] || return 1
+  case "$current_space_index" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  case "$current_display_index" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
   [ "$current_space_visible" = "true" ] || return 1
+  read_last_selected_context last_selected_space last_selected_display || return 1
+  if [ "$last_selected_space" = "$current_space_index" ] &&
+      [ "$last_selected_display" != "$current_display_index" ]; then
+    return 1
+  fi
+  if [ "$last_selected_space" != "$current_space_index" ] &&
+      [ "$last_selected_display" != "$current_display_index" ]; then
+    previous_state="visible"
+  fi
 
   SPACE_VISUAL_PATH="focus"
   PHASE_SPACES_MS=$((PHASE_SPACES_MS + focus_context_ms))
 
   item="space.$current_space_index"
-  phase_start="$(phase_now)"
+  phase_begin phase_start
   load_state_space_maps
   phase_add PHASE_STATE_MS "$phase_start"
-  if [ ! -s "$SPACE_ITEM_LOOKUP_FILE" ]; then
-    mkdir -p "$SPACE_VISUALS_STATE_DIR" 2>/dev/null || true
-    printf '%s\n' "$item" > "$SPACE_ITEM_LOOKUP_FILE" 2>/dev/null || true
-  fi
-  phase_start="$(phase_now)"
+  [ -s "$SPACE_ITEM_LOOKUP_FILE" ] || return 1
+  phase_begin phase_start
   load_space_item_lookup
   phase_add PHASE_LOOKUP_MS "$phase_start"
   [ "${SPACE_ITEM_PRESENT[$current_space_index]-0}" = "1" ] || return 1
+  if [ "$last_selected_space" != "$current_space_index" ]; then
+    [ "${SPACE_ITEM_PRESENT[$last_selected_space]-0}" = "1" ] || return 1
+  fi
 
   default_icon="${STATE_DEFAULT_ICONS[$current_space_index]-}"
   cached_icon="$(read_cached_icon "$current_space_index")"
   if [ -n "$default_icon" ]; then
     icon_value="$default_icon"
   else
-    phase_start="$(phase_now)"
+    phase_begin phase_start
     icon_value="$(resolve_app_glyph "$app_name")"
     phase_add PHASE_GLYPH_MS "$phase_start"
     if [ -n "$icon_value" ]; then
@@ -681,37 +956,37 @@ refresh_single_visible_space_from_focus_context() {
     fi
   fi
 
-  last_selected_space="$(read_ms_file "$LAST_SELECTED_SPACE_FILE")"
   if [ -n "$last_selected_space" ] && [ "$last_selected_space" != "$current_space_index" ] && [ "${SPACE_ITEM_PRESENT[$last_selected_space]-0}" = "1" ]; then
-    local previous_args=()
-    phase_start="$(phase_now)"
+    phase_begin phase_start
     init_cached_style_args
-    style_props="$(cached_space_style_props idle)"
-    remember_style_state "space.$last_selected_space" idle "$style_props"
-    previous_args=("${STYLE_IDLE_ARGS[@]}")
-    phase_add PHASE_STYLE_MS "$phase_start"
-    phase_start="$(phase_now)"
-    if ! "$SKETCHYBAR_BIN" --set "space.$last_selected_space" "${previous_args[@]}" >/dev/null 2>&1; then
-      invalidate_style_state_cache
-      return 1
+    cached_space_style_props_into style_props "$previous_state"
+    remember_style_state "space.$last_selected_space" "$previous_state" "$style_props"
+    if [ "$previous_state" = "visible" ]; then
+      previous_args=("${STYLE_VISIBLE_ARGS[@]}")
+    else
+      previous_args=("${STYLE_IDLE_ARGS[@]}")
     fi
-    phase_add PHASE_APPLY_MS "$phase_start"
+    apply_args+=(--set "space.$last_selected_space" "${previous_args[@]}")
+    phase_add PHASE_STYLE_MS "$phase_start"
   fi
 
-  local focused_args=()
-  phase_start="$(phase_now)"
+  phase_begin phase_start
   init_cached_style_args
-  style_props="$(cached_space_style_props focused)"
+  cached_space_style_props_into style_props focused
   remember_style_state "$item" focused "$style_props"
   focused_args=("${STYLE_FOCUSED_ARGS[@]}")
+  apply_args+=(--set "$item" icon="$icon_value" "${focused_args[@]}")
   phase_add PHASE_STYLE_MS "$phase_start"
-  phase_start="$(phase_now)"
-  if ! "$SKETCHYBAR_BIN" --set "$item" icon="$icon_value" "${focused_args[@]}" >/dev/null 2>&1; then
-    invalidate_style_state_cache
+  phase_begin phase_start
+  if ! "$SKETCHYBAR_BIN" "${apply_args[@]}" >/dev/null 2>&1; then
+    invalidate_visual_recovery_state
     return 1
   fi
   phase_add PHASE_APPLY_MS "$phase_start"
-  write_ms_file "$LAST_SELECTED_SPACE_FILE" "$current_space_index"
+  if ! write_last_selected_context "$current_space_index" "$current_display_index"; then
+    invalidate_visual_recovery_state
+    return 1
+  fi
 
   record_perf "$START_MS" "1" "1" "$SPACE_VISUAL_PATH"
   return 0
@@ -747,6 +1022,7 @@ if [ "${SENDER:-}" = "forced" ]; then
 fi
 
 wait_for_topology_refresh
+wait_for_front_app_topology_refresh
 START_MS="$(now_ms)"
 
 load_state_space_maps() {
@@ -807,9 +1083,12 @@ load_space_item_lookup() {
 }
 
 ensure_app_glyph_cache_version
+ensure_file_lock_helper || true
 
 if ! acquire_visual_lock; then
-  exit 0
+  if ! wait_for_front_app_visual_lock; then
+    exit 0
+  fi
 fi
 
 if should_skip_front_app_refresh; then
@@ -827,30 +1106,33 @@ if refresh_single_visible_space_from_focus_context; then
   exit 0
 fi
 SPACE_VISUAL_PATH="full"
+if [ "${SENDER:-}" = "front_app_switched" ]; then
+  rm -f "$LAST_AUTHORITATIVE_REFRESH_FILE" >/dev/null 2>&1 || true
+fi
 
 [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ] || exit 0
 
 ALL_SPACES_DATA="$BARISTA_ALL_SPACES_DATA"
 if [ -z "$ALL_SPACES_DATA" ]; then
-  phase_start="$(phase_now)"
+  phase_begin phase_start
   ALL_SPACES_DATA="$(run_with_timeout 1 "$YABAI_BIN" -m query --spaces 2>/dev/null || true)"
   phase_add PHASE_SPACES_MS "$phase_start"
 fi
 [ -n "$ALL_SPACES_DATA" ] || exit 0
 
-phase_start="$(phase_now)"
+phase_begin phase_start
 load_space_item_lookup
 phase_add PHASE_LOOKUP_MS "$phase_start"
 
 [ "${#SPACE_ITEM_PRESENT[@]}" -gt 0 ] || exit 0
-phase_start="$(phase_now)"
+phase_begin phase_start
 load_state_space_maps
 phase_add PHASE_STATE_MS "$phase_start"
 
-phase_start="$(phase_now)"
+phase_begin phase_start
 if prefetch_visible_space_apps; then
   phase_add PHASE_APP_MS "$phase_start"
-  phase_start="$(phase_now)"
+  phase_begin phase_start
   prefetch_app_glyphs_for_loaded_spaces || true
   phase_add PHASE_GLYPH_MS "$phase_start"
 else
@@ -861,10 +1143,13 @@ declare -a FAST_ARGS=()
 spaces_count=0
 visible_count=0
 focused_space_index=""
+focused_display_index=""
+app_phase_start=0
+glyph_phase_start=0
 
-phase_start="$(phase_now)"
+phase_begin phase_start
 load_cached_space_icons
-while IFS=' ' read -r space_index _display is_visible has_focus space_type; do
+while IFS=' ' read -r space_index space_display is_visible has_focus space_type; do
   [ -n "$space_index" ] || continue
   item="space.$space_index"
   [ "${SPACE_ITEM_PRESENT[$space_index]-0}" = "1" ] || continue
@@ -878,11 +1163,11 @@ while IFS=' ' read -r space_index _display is_visible has_focus space_type; do
     icon_value="$default_icon"
   else
     if [ "$is_visible" = "true" ]; then
-      app_phase_start="$(phase_now)"
+      phase_begin app_phase_start
       app_name="$(resolve_visible_space_app "$space_index")"
       phase_add PHASE_APP_MS "$app_phase_start"
       if [ -n "$app_name" ]; then
-        glyph_phase_start="$(phase_now)"
+        phase_begin glyph_phase_start
         icon_value="$(resolve_app_glyph "$app_name")"
         phase_add PHASE_GLYPH_MS "$glyph_phase_start"
         if [ -n "$icon_value" ]; then
@@ -913,6 +1198,7 @@ while IFS=' ' read -r space_index _display is_visible has_focus space_type; do
 
   if [ "$has_focus" = "true" ]; then
     focused_space_index="$space_index"
+    focused_display_index="$space_display"
     FAST_ARGS+=(--set "$item" icon="$icon_value")
     append_style_args "$item" focused
   elif [ "$is_visible" = "true" ]; then
@@ -926,19 +1212,22 @@ done < <(printf '%s\n' "$ALL_SPACES_DATA" | "$JQ_BIN" -r 'sort_by(.display, .ind
 phase_add PHASE_LOOP_MS "$phase_start"
 
 [ ${#FAST_ARGS[@]} -gt 0 ] || exit 0
-phase_start="$(phase_now)"
+phase_begin phase_start
 if ! "$SKETCHYBAR_BIN" "${FAST_ARGS[@]}" >/dev/null 2>&1; then
   phase_add PHASE_APPLY_MS "$phase_start"
-  invalidate_style_state_cache
+  invalidate_visual_recovery_state
   exit 1
 fi
 phase_add PHASE_APPLY_MS "$phase_start"
-mark_sender_refresh
 
-if [ -n "$focused_space_index" ]; then
-  write_ms_file "$LAST_SELECTED_SPACE_FILE" "$focused_space_index"
+if [ -n "$focused_space_index" ] && [ -n "$focused_display_index" ]; then
+  if ! write_last_selected_context "$focused_space_index" "$focused_display_index"; then
+    invalidate_visual_recovery_state
+    exit 1
+  fi
 else
-  rm -f "$LAST_SELECTED_SPACE_FILE" >/dev/null 2>&1 || true
+  invalidate_selected_context
 fi
+mark_sender_refresh
 
 record_perf "$START_MS" "$spaces_count" "$visible_count"

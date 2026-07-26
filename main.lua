@@ -220,10 +220,17 @@ local STATS_BIN            = CONFIG_DIR .. "/bin/barista-stats.sh"
 local RUNTIME_CONTEXT_SCRIPT = SCRIPTS_DIR .. "/runtime_context.sh"
 local SPACE_VISUAL_AUTHORITATIVE_MARKER =
   CONFIG_DIR .. "/cache/space_visuals/last_authoritative_refresh_ms"
+local SPACE_VISUAL_SELECTED_CONTEXT =
+  CONFIG_DIR .. "/cache/space_visuals/last_selected_context"
+local SPACE_VISUAL_LEGACY_SELECTION =
+  CONFIG_DIR .. "/cache/space_visuals/last_selected_space"
 
--- A delayed startup fallback must only trust visual work from this reload.
--- Remove the previous runtime's cooldown marker before topology is scheduled.
+-- Startup must not combine a previous bar generation's selection context with
+-- a new authoritative marker. The first early active event will therefore
+-- perform a full visual pass until this runtime publishes its own context.
 os.remove(SPACE_VISUAL_AUTHORITATIVE_MARKER)
+os.remove(SPACE_VISUAL_SELECTED_CONTEXT)
+os.remove(SPACE_VISUAL_LEGACY_SELECTION)
 
 -- Yabai availability (cached)
 local yabai_available_cache = nil

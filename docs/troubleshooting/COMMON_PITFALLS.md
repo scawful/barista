@@ -9,7 +9,8 @@ When using `sbar.exec` or `os.execute` to run `sketchybar --subscribe` commands 
 
 ### Guidance
 - **Always use `sbar.add` or `sbar.default` within the `sbar.begin_config()` / `sbar.end_config()` block** for item creation.
-- **Use Barista's post-config queue**: Represent external startup work as layout `exec` or `post_config_call` actions. `main.lua` flushes them after `sbar.end_config()` and converts generated leading sleeps to native `sbar.delay` callbacks.
+- **Register custom events through Lua**: Use `sbar.add("event", name)` inside the config transaction instead of launching `sketchybar --add event` clients.
+- **Use Barista's post-config queue**: Represent external startup work as layout `exec` or `post_config_call` actions. `main.lua` completes synchronous stats/runtime-daemon work before flushing asynchronous clients after `sbar.end_config()`, converts generated leading sleeps to native `sbar.delay` callbacks, and does not call `os.execute` after that dispatch.
 - **Prefer Lua API**: Use the native Lua `subscribe` methods when available instead of calling the binary directly.
 
 ## 2. AWK Reserved Word Collisions

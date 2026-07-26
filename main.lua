@@ -218,6 +218,12 @@ local WIDGET_MANAGER_BIN   = compiled_script("widget_manager", "")
 local SPACE_VISUALS_SCRIPT = PLUGIN_DIR .. "/space_visuals.sh"
 local STATS_BIN            = CONFIG_DIR .. "/bin/barista-stats.sh"
 local RUNTIME_CONTEXT_SCRIPT = SCRIPTS_DIR .. "/runtime_context.sh"
+local SPACE_VISUAL_AUTHORITATIVE_MARKER =
+  CONFIG_DIR .. "/cache/space_visuals/last_authoritative_refresh_ms"
+
+-- A delayed startup fallback must only trust visual work from this reload.
+-- Remove the previous runtime's cooldown marker before topology is scheduled.
+os.remove(SPACE_VISUAL_AUTHORITATIVE_MARKER)
 
 -- Yabai availability (cached)
 local yabai_available_cache = nil
@@ -521,14 +527,18 @@ local right_layout_apply_duration_ms = 0
 local registry_duration_ms = 0
 sbar.begin_config()
 trace_startup("main:begin_config")
-shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event space_change >/dev/null 2>&1 || true")
-shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event space_active_refresh >/dev/null 2>&1 || true")
-shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event space_mode_refresh >/dev/null 2>&1 || true")
-shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event space_visual_refresh >/dev/null 2>&1 || true")
-shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event display_changed >/dev/null 2>&1 || true")
-shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event display_added >/dev/null 2>&1 || true")
-shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event display_removed >/dev/null 2>&1 || true")
-shell_utils.sketchybar_cli(SKETCHYBAR_BIN, "--add event task_state_changed >/dev/null 2>&1 || true")
+for _, event_name in ipairs({
+  "space_change",
+  "space_active_refresh",
+  "space_mode_refresh",
+  "space_visual_refresh",
+  "display_changed",
+  "display_added",
+  "display_removed",
+  "task_state_changed",
+}) do
+  sbar.add("event", event_name)
+end
 
 -- Global popup manager (invisible item that handles popup dismissal)
 sbar.add("item", "popup_manager", {
@@ -553,7 +563,7 @@ sbar.bar(bc.bar)
 
 -- Update external bar (yabai)
 if yabai_available() then
-  shell_utils.shell_exec(string.format("%s/update_external_bar.sh %d", SCRIPTS_DIR, bc.bar_height))
+  enqueue_post_config_command(string.format("%s/update_external_bar.sh %d", SCRIPTS_DIR, bc.bar_height))
 end
 
 -- Defaults
@@ -692,16 +702,6 @@ if not LUA_ONLY then
 end
 local config_build_duration_ms = runtime_startup.current_time_ms() - config_build_start_ms
 local config_build_wall_duration_ms = runtime_startup.wall_time_ms() - config_build_start_wall_ms
-local post_config_action_count = post_config_queue:flush({
-  exec = shell_utils.shell_exec,
-  exec_background = shell_utils.shell_exec_background,
-  delay = function(seconds, callback)
-    sbar.delay(seconds, callback)
-  end,
-  on_delay_error = report_native_delay_error,
-  on_action_error = report_post_config_action_error,
-})
-trace_startup("main:post_config_actions " .. tostring(post_config_action_count))
 local stats_flush_start_wall_ms = runtime_startup.wall_time_ms()
 runtime_startup.record_duration_events(STATS_BIN, {
   { name = "reload_prep_time", duration_ms = math.max(0, reload_prep_end_wall_ms - (RELOAD_START_MS or reload_prep_end_wall_ms)), trace_label = "main:reload_prep_ms" },
@@ -749,6 +749,21 @@ if shell_utils.file_exists(RUNTIME_CONTEXT_SCRIPT) then
 else
   runtime_daemon.stop_runtime_context_daemon({ trace = trace_startup })
 end
+
+-- SbarLua temporarily restores SIGCHLD's default disposition while
+-- os.execute() waits for its own child. Dispatch asynchronous sbar.exec work
+-- only after the synchronous stats/daemon startup work above, so completed
+-- post-config clients cannot become unreaped children during that window.
+local post_config_action_count = post_config_queue:flush({
+  exec = shell_utils.shell_exec,
+  exec_background = shell_utils.shell_exec_background,
+  delay = function(seconds, callback)
+    sbar.delay(seconds, callback)
+  end,
+  on_delay_error = report_native_delay_error,
+  on_action_error = report_post_config_action_error,
+})
+trace_startup("main:post_config_actions " .. tostring(post_config_action_count))
 
 post_config_queue:enqueue_command(runtime_startup.build_space_runtime_subscription(SPACE_POST_CONFIG_DELAY, SKETCHYBAR_BIN))
 post_config_queue:enqueue_command(runtime_startup.build_space_visual_refresh(

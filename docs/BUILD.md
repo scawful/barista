@@ -71,6 +71,7 @@ barista/
 - `system_info_widget` - System information widget
 - `system_info_popup_helper` - On-demand system-detail entrypoint built from the same source as `system_info_widget`
 - `perf_clock` - Framework-free realtime millisecond clock for spaces performance instrumentation
+- `file_lock` - Framework-free inherited-descriptor `flock(2)` bridge for race-free visual coalescing on macOS 13+
 - `space_manager` - Space management
 - `submenu_hover` - Submenu hover handling
 - `popup_anchor` - Popup anchoring

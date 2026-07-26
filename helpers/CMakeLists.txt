@@ -20,6 +20,7 @@ set(HELPER_SOURCES
   clock_widget.c
   system_info_widget.c
   perf_clock.c
+  file_lock.c
   space_manager.c
   submenu_hover.c
   popup_anchor.c
@@ -49,7 +50,7 @@ foreach(SOURCE ${HELPER_SOURCES})
   get_filename_component(NAME ${SOURCE} NAME_WE)
   add_executable(${NAME} ${SOURCE})
   
-  if(APPLE AND NOT NAME STREQUAL "perf_clock")
+  if(APPLE AND NOT NAME STREQUAL "perf_clock" AND NOT NAME STREQUAL "file_lock")
     target_link_libraries(${NAME} PRIVATE
       ${COREFOUNDATION_LIB}
       ${IOKIT_LIB}
@@ -63,6 +64,11 @@ foreach(SOURCE ${HELPER_SOURCES})
     if(NAME STREQUAL "system_info_widget")
       target_link_libraries(${NAME} PRIVATE ${SYSTEMCONFIGURATION_LIB})
     endif()
+  endif()
+
+  if(APPLE AND NAME STREQUAL "file_lock")
+    target_compile_options(${NAME} PRIVATE -mmacosx-version-min=13.0)
+    target_link_options(${NAME} PRIVATE -mmacosx-version-min=13.0)
   endif()
   
   # Set output to bin directory
@@ -154,6 +160,7 @@ install(TARGETS
   system_info_widget
   system_info_popup_helper
   perf_clock
+  file_lock
   space_manager
   submenu_hover
   popup_anchor

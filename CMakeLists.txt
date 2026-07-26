@@ -53,8 +53,40 @@ add_custom_target(sync_binaries ALL
     ${CMAKE_BINARY_DIR}/bin
     ${CMAKE_SOURCE_DIR}/bin
   COMMENT "Syncing binaries to bin/"
-  DEPENDS helpers
 )
+set(BARISTA_SYNC_BINARY_TARGETS
+  clock_widget
+  system_info_widget
+  system_info_popup_helper
+  perf_clock
+  file_lock
+  space_manager
+  submenu_hover
+  popup_anchor
+  popup_hover
+  popup_manager
+  popup_switch
+  popup_guard
+  icon_manager
+  state_manager
+  widget_manager
+  menu_renderer
+  menu_action
+  runtime_context_helper
+  space_visual_helper
+  volume_popup_helper
+  cpu_load
+  network_load
+)
+if(APPLE)
+  list(APPEND BARISTA_SYNC_BINARY_TARGETS
+    menus
+    barista_control_panel_app
+    icon_browser
+    help_center
+  )
+endif()
+add_dependencies(sync_binaries ${BARISTA_SYNC_BINARY_TARGETS})
 set(INSTALL_BIN_DIR "${CMAKE_INSTALL_PREFIX}/bin")
 set(INSTALL_CONFIG_DIR "${CMAKE_INSTALL_PREFIX}")
 

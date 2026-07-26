@@ -1,5 +1,44 @@
 # SketchyBar Configuration Changelog
 
+## July 26, 2026 - Cross-Display Space Focus and Shell Tail Reduction
+
+- Focused space refreshes now persist one versioned `space + display`
+  generation after a successful apply. A move within one display demotes the
+  previous space to idle; a move to another display keeps the previous space
+  visible-inactive. Missing, legacy, malformed, failed-apply, or
+  failed-publication state falls back to the full visual path instead of
+  publishing an incomplete authoritative refresh; the one-line context parser
+  also rejects unterminated trailing bytes.
+- Previous and current focused styles now travel in one SketchyBar request.
+  Front-app refreshes wait outside the visual lock while topology owns its
+  orchestration lock, then apply the latest event; a two-second bound fails
+  open for stale locks. Ordinary visual-lock contention uses the framework-free
+  `file_lock` helper's inherited-descriptor `flock(2)` bridge and keeps one
+  waiter for up to six seconds. That waiter re-reads live focus context and
+  releases its retry slot before sampling, so an event arriving after the
+  sample can queue next while additional contenders coalesce. A normal source
+  checkout can lazily compile the helper on macOS; Lua-only/restricted-work
+  installs instead use the Python standard library on the inherited descriptor
+  and never compile or execute the helper. Hosts without a safe lane-specific
+  backend fail closed instead of leaving a stale directory lock. Clean CMake
+  synchronization now depends on every binary producer before copying
+  `build/bin/` into the deployed `bin/`.
+  Reload also discards the prior selection generation, and hover restore
+  consumes the same persisted visible-inactive state.
+- Disabled phase accounting now assigns in the parent shell instead of opening
+  command-substitution subshells. Style property construction, root
+  resolution, and normal `space.*` state-file paths also stay in the parent
+  shell. This removes 61 targeted subshells from the normal nine-space,
+  two-visible full path while leaving opt-in phase metrics intact.
+- A 100-pair isolated release A/B compared the correctness-only implementation
+  with the same implementation plus the shell reductions. Median fell from
+  `72.87 ms` to `49.18 ms`, p95 from `77.46 ms` to `52.66 ms`, and the
+  optimized path won 100/100 pairs with identical SketchyBar arguments,
+  selected context, and style-state hashes. Artifact:
+  `/tmp/barista_space_visual_phase_style_release_ab_20260726.json`
+  (SHA-256
+  `9777c103c5bf76bf98da7c663cec1e7f86270f7c85e6ce011829fcc496f2ae07`).
+
 ## July 26, 2026 - Native Space Visual Capture and Startup Reaping
 
 - `space_visual_helper` now captures scoped Yabai queries with exact-argument

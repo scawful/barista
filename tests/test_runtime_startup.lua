@@ -11,12 +11,24 @@ run_test("main startup wiring: completes synchronous startup before async queue 
     1,
     true
   ))
+  local selected_context_reset_pos = assert(source:find(
+    "os.remove(SPACE_VISUAL_SELECTED_CONTEXT)",
+    marker_reset_pos,
+    true
+  ))
+  local legacy_selection_reset_pos = assert(source:find(
+    "os.remove(SPACE_VISUAL_LEGACY_SELECTION)",
+    selected_context_reset_pos,
+    true
+  ))
   local timing_pos = assert(source:find("local config_build_duration_ms", end_config_pos, true))
   local stats_pos = assert(source:find("runtime_startup.record_duration_events", end_config_pos, true))
   local daemon_pos = assert(source:find("runtime_daemon.ensure_runtime_context_daemon", end_config_pos, true))
   local flush_pos = assert(source:find("post_config_queue:flush", end_config_pos, true))
-  assert_true(marker_reset_pos < end_config_pos,
-    "startup should invalidate the previous runtime's authoritative visual marker")
+  assert_true(marker_reset_pos < selected_context_reset_pos
+      and selected_context_reset_pos < legacy_selection_reset_pos
+      and legacy_selection_reset_pos < end_config_pos,
+    "startup should invalidate the previous runtime's marker and selected-space generation")
   assert_true(end_config_pos < timing_pos and timing_pos < stats_pos
       and stats_pos < daemon_pos and daemon_pos < flush_pos,
     "main should commit config and finish synchronous stats/daemon work before async dispatch")

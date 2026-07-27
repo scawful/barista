@@ -90,7 +90,7 @@ These shortcuts work system-wide and don't conflict with common applications:
 
 #### Barista UI
 - `⌘⌥P` - Open Barista
-- `⌘⌥D` - Open the clock Task Focus popup, then refresh it asynchronously
+- `⌘⌥D` - Toggle the clock Task Focus popup through its live click owner
 - `⌘⌥N` - Capture a task (generated only when a task source is configured)
 - `⌘⌥/` - Toggle Control Center
 - `⌘⌥H` - Open Help Center
@@ -237,7 +237,7 @@ end
 Icons and shortcuts are automatically integrated into menu items. Shortcuts are displayed next to menu items:
 
 ```
-Open Task Focus     ⌘⌥D
+Toggle Task Focus   ⌘⌥D
 Capture Task        ⌘⌥N  (when configured)
 Reload SketchyBar   ⌘⌥R
 Open Barista        ⌘⌥P

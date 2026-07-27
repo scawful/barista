@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import datetime as dt
 import json
 import os
 from pathlib import Path
@@ -122,6 +123,68 @@ class TaskSnapshotTests(unittest.TestCase):
             self.run_snapshot("--source", source, "--output", output)
             replacement = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(replacement["focus"]["title"], "Replacement task")
+
+    def test_barista_fields_share_snapshot_process_and_render_focus_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "tasks.md"
+            output = root / "cache" / "snapshot.json"
+            state_file = root / "focus-state.json"
+            source.write_text(
+                """## Active
+- [ ] Current task with a title long enough to require compact rendering
+
+## Next
+- [ ] Follow-up
+
+## Waiting
+- [ ] Await review
+""",
+                encoding="utf-8",
+            )
+            started_at = dt.datetime(2000, 1, 1, tzinfo=dt.timezone.utc)
+            ends_at = started_at + dt.timedelta(minutes=25)
+            state_file.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "state": "active",
+                        "duration_minutes": 25,
+                        "started_at": started_at.isoformat().replace("+00:00", "Z"),
+                        "ends_at": ends_at.isoformat().replace("+00:00", "Z"),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = self.run_snapshot(
+                "--source",
+                source,
+                "--output",
+                output,
+                "--barista-fields",
+                "--focus-state-file",
+                state_file,
+            )
+
+            self.assertTrue(output.is_file())
+            self.assertEqual(
+                result.stdout.splitlines(),
+                [
+                    "bar\t3",
+                    "summary\t3 open · 1 active · 1 next",
+                    "focus\tFocus: Current task with a title long enough t…",
+                    "next\tNext: Follow-up",
+                    "waiting\tWaiting: Await review",
+                    "blocked\tBlocked: Clear",
+                    "timer\tFocus Session complete · start 25m",
+                ],
+            )
+            snapshot = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(
+                snapshot["focus"]["title"],
+                "Current task with a title long enough to require compact rendering",
+            )
 
     def test_syshelp_is_only_used_when_explicitly_selected(self):
         with tempfile.TemporaryDirectory() as temp_dir:

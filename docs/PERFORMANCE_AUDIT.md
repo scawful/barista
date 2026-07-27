@@ -27,16 +27,16 @@ collection, task snapshots, and space visuals run on explicit event paths.
 ### 0a. Calendar + Task Pulse Event Path (Verified)
 *   **Files:** `modules/items_right.lua`, `plugins/calendar.sh`, `plugins/task_pulse.sh`, `scripts/task_snapshot.py`, `scripts/task_focus.sh`, `scripts/task_capture.sh`, `main.lua`
 *   **Update:**
-    - the calendar popup header no longer has a periodic `update_freq`; clock clicks and `⌘⌥D` open immediately and refresh the popup asynchronously
+    - the calendar popup header no longer has a periodic `update_freq`; clock clicks and `⌘⌥D` use the same live exclusive popup owner, so another menu closes on switch and a second shortcut press dismisses the task surface
     - `plugins/calendar.sh` applies every calendar/task row in one batched SketchyBar invocation
     - one optional next-meeting row reads only a configured local TSV cache; Barista performs no auth, sync, or network calls
     - optional Task Pulse has no polling timer and is not created unless both `widgets.task_focus=true` and a task source are configured
     - its closed anchor renders only an open-count label; the popup owns bounded task detail and one local 25-minute focus-session toggle
     - focus-session state is deadline-derived from a private ignored cache file, with no resident timer process or extra bar widget
-    - Task Pulse refresh runs on click, `task_state_changed`, or `system_woke`
+    - Task Pulse refresh runs on click, `task_state_changed`, or `system_woke`; snapshot generation, focus-state derivation, and the seven bounded display fields now share one Python process before one batched SketchyBar apply
     - task capture emits `task_state_changed` after a successful syshelp write; external task tools can trigger the same event explicitly
     - task source/provider values are passed through quoted environment fields; committed defaults contain no task paths
-*   **Result:** closed task/calendar surfaces add no steady-state task parsing or popup-update work, while configured users still get immediate refresh after interaction or task mutation.
+*   **Result:** closed task/calendar surfaces add no steady-state task parsing or popup-update work, while configured users still get immediate refresh after interaction or task mutation. In a 60-pair frozen-source replay with one captured read-only syshelp payload, the bundled Task Pulse refresh median fell from `103.869 ms` to `50.746 ms` (`51.14%`) and p95 from `106.633 ms` to `51.969 ms`. The live configured-syshelp lane fell from `125.943 ms` to `74.151 ms` (`41.12%`) and p95 from `130.465 ms` to `76.906 ms`. Python starts dropped from three to one on the bundled path; explicit executable focus-provider overrides retain compatibility with two starts. Normalized snapshots and exact SketchyBar arguments matched in every lane and sample. Artifacts: `/tmp/barista_task_pulse_ab_20260727/artifacts/replay-release-54f4909.json` (SHA-256 `a3a2417c267ea61ea7fa340a8edfdd659d05d2f413055f38c62b2ec08916cc6c`), `/tmp/barista_task_pulse_ab_20260727/artifacts/live-release-54f4909.json` (SHA-256 `4484da316629844b5aef294d63cf3f2da39cffdadbd380976c044ac2c3567907`), and `/tmp/barista_task_pulse_ab_20260727/artifacts/process-count-release-54f4909.json` (SHA-256 `014c7f3cdfeccd274d0f6b492bcb97bc13549eb7183bb6f3d4f617950f693090`).
 
 ### 0b. Runtime Context Cache + Shared Front-App / Media Boundary (Verified)
 *   **Files:** `main.lua`, `modules/runtime_daemon.lua`, `scripts/runtime_context.sh`, `scripts/front_app_context.sh`, `scripts/media_control.sh`, `plugins/volume.sh`
@@ -489,7 +489,7 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
 3.  **Startup attribution:** topology and visual costs vary with the number of spaces, displays, and visible apps. Profile both paths instead of assuming topology is always dominant.
 4.  **Async I/O:** the current architecture is event-driven enough for daily use, but long-term migration to a fully async runtime remains the cleaner end state.
 5.  **Fully event-driven media state:** the producer is now adaptive and change-detected, but Spotify/Music do not expose a shared portable event stream. A future native event source could remove the remaining bounded idle probe without weakening Lua-only/work-machine portability.
-6.  **Visual shell overhead:** detailed phase samples still show avoidable style and phase-accounting subshell work after native app capture; optimize only with a paired end-to-end visual benchmark.
+6.  **Popup materialization cost:** initial open latency is now dominated by SketchyBar/WindowServer layout and scales with visible row count. Keep root menus shallow; direct native request dispatch can remove only the remaining bounded CLI-launch overhead and should be justified with a paired same-daemon benchmark.
 
 ## Shell Script Optimization Summary
 - **AWK Variable Naming**: Standardized to avoid collisions.

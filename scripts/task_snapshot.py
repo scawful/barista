@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,7 @@ from typing import Any, Iterable
 
 
 SNAPSHOT_VERSION = 1
+SCRIPT_DIR = Path(__file__).resolve().parent
 OPEN_STATES = ("ACTIVE", "NEXT", "WAITING", "BLOCKED", "TODO")
 CLOSED_STATES = ("DONE", "CANCELLED")
 ALL_STATES = OPEN_STATES + CLOSED_STATES
@@ -389,6 +391,121 @@ def encode_snapshot(snapshot: dict[str, Any]) -> str:
     return json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=False) + "\n"
 
 
+def compact_label(value: Any, limit: int = 40) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)] + "…"
+
+
+def snapshot_title(snapshot: dict[str, Any], key: str) -> str:
+    task = snapshot.get(key)
+    return compact_label(task.get("title")) if isinstance(task, dict) else ""
+
+
+def load_focus_status(
+    script_value: str,
+    state_file_value: str | None,
+) -> dict[str, Any]:
+    script_path = Path(script_value).expanduser()
+    if not script_path.is_file():
+        return {}
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "_barista_focus_session",
+            script_path,
+        )
+        if spec is None or spec.loader is None:
+            return {}
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        state_path = (
+            Path(state_file_value).expanduser()
+            if state_file_value
+            else module.default_state_path()
+        )
+        payload, health = module.read_state(state_path)
+        status = module.derive_status(payload, health, module.now_utc())
+        return status if isinstance(status, dict) else {}
+    except Exception:
+        return {}
+
+
+def parse_focus_status(value: str) -> dict[str, Any]:
+    try:
+        status = json.loads(value or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return status if isinstance(status, dict) else {}
+
+
+def build_barista_fields(
+    snapshot: dict[str, Any],
+    focus_status: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    counts = snapshot.get("counts")
+    counts = counts if isinstance(counts, dict) else {}
+    focus = snapshot_title(snapshot, "focus")
+    next_task = snapshot_title(snapshot, "next")
+    waiting = snapshot_title(snapshot, "waiting")
+    blocked = snapshot_title(snapshot, "blocked")
+    open_count = int(counts.get("open") or 0)
+    active_count = int(counts.get("active") or 0)
+    next_count = int(counts.get("next") or 0)
+    sources = [
+        source
+        for source in snapshot.get("sources", [])
+        if isinstance(source, dict)
+    ]
+    source_issue_count = sum(1 for source in sources if source.get("error"))
+    healthy_source_count = sum(
+        1
+        for source in sources
+        if source.get("exists", False) and not source.get("error")
+    )
+    source_unavailable = bool(sources) and healthy_source_count == 0
+
+    if source_unavailable:
+        bar_label = "Tasks !"
+    elif open_count > 0:
+        bar_label = str(open_count)
+    else:
+        bar_label = "Clear"
+
+    focus_status = focus_status if isinstance(focus_status, dict) else {}
+    if focus_status.get("active"):
+        timer_label = (
+            f"Focus Session: {int(focus_status.get('remaining_minutes') or 0)}m left"
+        )
+    elif focus_status.get("state") == "expired":
+        timer_label = "Focus Session complete · start 25m"
+    else:
+        timer_label = "Start 25m Focus"
+
+    if source_unavailable:
+        summary = "Task source unavailable"
+    else:
+        summary = f"{open_count} open · {active_count} active · {next_count} next"
+        if source_issue_count:
+            suffix = "issue" if source_issue_count == 1 else "issues"
+            summary += f" · {source_issue_count} source {suffix}"
+
+    return {
+        "bar": bar_label,
+        "summary": summary,
+        "focus": f"Focus: {focus or '—'}",
+        "next": f"Next: {next_task or '—'}",
+        "waiting": f"Waiting: {waiting or ('—' if source_unavailable else 'Clear')}",
+        "blocked": f"Blocked: {blocked or ('—' if source_unavailable else 'Clear')}",
+        "timer": timer_label,
+    }
+
+
+def encode_barista_fields(fields: dict[str, str]) -> str:
+    order = ("bar", "summary", "focus", "next", "waiting", "blocked", "timer")
+    return "".join(f"{key}\t{fields[key]}\n" for key in order)
+
+
 def atomic_write(path_value: str, content: str) -> None:
     path = Path(path_value).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -440,6 +557,31 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("BARISTA_SYSHELP_BIN") or "syshelp",
         help="syshelp executable path for the explicit syshelp provider",
     )
+    parser.add_argument(
+        "--barista-fields",
+        action="store_true",
+        help=(
+            "Print bounded Task Pulse fields as tab-separated rows; --output "
+            "still receives the JSON snapshot"
+        ),
+    )
+    parser.add_argument(
+        "--focus-session-script",
+        default=str(SCRIPT_DIR / "focus_session.py"),
+        help="Focus-session module used when rendering --barista-fields",
+    )
+    parser.add_argument(
+        "--focus-state-file",
+        default=os.environ.get("BARISTA_FOCUS_STATE_FILE"),
+        help="Optional focus-session state path for --barista-fields",
+    )
+    parser.add_argument(
+        "--focus-status-json",
+        help=(
+            "Precomputed focus status for --barista-fields; reserved for "
+            "compatible external focus-session providers"
+        ),
+    )
     return parser
 
 
@@ -455,8 +597,22 @@ def main(argv: list[str] | None = None) -> int:
         content = encode_snapshot(snapshot)
         if args.output and args.output != "-":
             atomic_write(args.output, content)
+        if args.barista_fields:
+            if args.focus_status_json is not None:
+                focus_status = parse_focus_status(args.focus_status_json)
+            else:
+                focus_status = load_focus_status(
+                    args.focus_session_script,
+                    args.focus_state_file,
+                )
+            sys.stdout.write(
+                encode_barista_fields(
+                    build_barista_fields(snapshot, focus_status),
+                )
+            )
         else:
-            sys.stdout.write(content)
+            if not args.output or args.output == "-":
+                sys.stdout.write(content)
     except (OSError, SnapshotError) as error:
         print(f"task_snapshot: {error}", file=sys.stderr)
         return 2

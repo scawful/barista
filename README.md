@@ -168,8 +168,9 @@ For quick workflow access, the generated skhd shortcuts include:
 
 - `⌘⌥T` to open a terminal window (Ghostty when installed, Terminal as fallback)
 - `⌘⌥Z` to launch `z3ed` in Ghostty
-- `⌘⌥D` to open the clock popup's local `Focus` / `Next` / `Waiting` /
-  `Blocked` task focus; configure its sources per machine
+- `⌘⌥D` to toggle the clock popup's local `Focus` / `Next` / `Waiting` /
+  `Blocked` task focus; it uses the clock's live popup owner, so switching from
+  another menu dismisses that menu and a second press closes the task surface
 
 ## Task Pulse
 
@@ -215,6 +216,9 @@ its absolute executable path. When a task source exists, generated skhd
 shortcuts also include `⌘⌥N` for conditional task capture. Successful syshelp
 capture and external task tools can trigger
 `task_state_changed`, which refreshes Task Pulse without adding a polling timer.
+Each refresh builds the normalized snapshot, derives focus-session status, and
+renders the bounded popup fields in one Python process before one batched
+SketchyBar apply.
 
 The existing clock popup can also show one next meeting from an explicitly
 configured local `menus.calendar.meeting_cache_file`. This is a read-only menu
@@ -377,7 +381,7 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **Process Batching:** Barista minimizes process forks. Space topology rebuilds stay batched, and the post-rebuild visual pass now runs once through `plugins/space_visuals.sh` instead of per-space `space_change` handlers.
 - **Widget Daemon:** `clock`, `system_info`, and `battery` can run as daemon-managed surfaces. The compiled daemon updates the clock on minute boundaries, system info every 10 seconds, and battery every 120 seconds; popup detail refresh still happens only on click.
 - **Native System Info Detail Refresh:** on default compiled setups, `widget_manager daemon` owns the 10-second compact CPU/memory anchor; daemon-disabled and portable setups retain `plugins/system_info.sh` plus the routine `system_info_widget` helper. Clicks toggle immediately and start `system_info_popup_helper popup_refresh` in the background. `modules/items_right.lua` sends the exact enabled subset of `cpu,mem,disk,net,swap,uptime,procs`; the helper gathers only those rows and applies them as one bounded SketchyBar Mach update. Actionable Top CPU replaces the redundant standalone Activity Monitor row while enabled; disabling Top CPU restores that direct action. Setting `system_info_items.actions=false` preserves every enabled metric, keeps Top CPU informational, and omits the Activity Monitor and System Settings launchers. The popup stays flat because a controlled five-versus-seven-row progressive-disclosure A/B found no measurable root-open improvement. Mach VM statistics use the same active+wired+compressed memory model as the anchor, SystemConfiguration discovers Wi-Fi interfaces without a hardware-list child, and the remaining bounded probes cover disk, route/optional SSID, and a compact system-wide top-process lookup. Missing helpers and native invocation, payload, or IPC failures use the strict `plugins/system_info.sh popup_refresh` fallback, while individual probe failures render safe placeholders. Lua-only mode explicitly ignores stale native binaries; see the performance audit for current phase attribution and artifacts.
-- **Event-driven task surfaces:** the closed calendar popup has no periodic header timer. Opening it via the clock or `⌘⌥D` refreshes on demand and applies all calendar rows in one SketchyBar call, while optional Task Pulse refreshes on click, `task_state_changed`, and `system_woke`.
+- **Event-driven task surfaces:** the closed calendar popup has no periodic header timer. Opening it via the clock or `⌘⌥D` routes through the same exclusive live click owner, refreshes on demand, and applies all calendar rows in one SketchyBar call. Optional Task Pulse refreshes on click, `task_state_changed`, and `system_woke`, with snapshot, focus status, and bounded field rendering combined into one Python process.
 - **Adaptive Runtime Context:** `scripts/runtime_context.sh` prefers the compiled `bin/runtime_context_helper` for front-app/focused-space work. The native helper reuses one focused-window snapshot per refresh, wakes on app/space/wake events, and retains a five-second safety refresh while preserving unchanged cache bytes. Front-app popup clicks toggle first, then `plugins/front_app.sh` calls the compiled helper directly with the resolved absolute yabai path for one fresh returned snapshot and applies all available anchor/detail updates in one SketchyBar request; helper-missing, failed, and explicit Lua-only paths retain the portable wrapper and discovery fallback. The portable media path uses one bounded player snapshot, probes less often when idle, and likewise avoids unchanged media/output publication.
 - **Batched Space Visual Helper:** full visual passes prefer `bin/space_visual_helper` for one helper-backed visible-space app lookup, then resolve missing app glyphs through one `app_icon.sh --batch` call before the single SketchyBar apply.
 - **Spaces Diff Path:** `plugins/simple_spaces.sh` now updates `space.*` incrementally for reorder and add/remove topology changes instead of dropping the full spaces stack in those cases.

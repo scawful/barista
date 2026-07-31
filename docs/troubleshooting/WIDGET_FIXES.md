@@ -188,6 +188,18 @@ sketchybar --reload
   binary falls back to the updated shell implementation instead of silently
   ignoring the switch command. A one-time `barista-popup-switch-v1` protocol
   check also rejects an incompatible `popup_switch` alias.
+- On macOS, the current compiled helper sends its bounded target-last vector
+  directly to the canonical SketchyBar Mach service. It keeps exact CLI
+  execution for custom binaries, unsupported platforms, oversized payloads, or
+  failures before an accepted send. It never retries after an accepted toggle,
+  even if the response times out or is malformed, because replay would toggle
+  the target twice.
+- SketchyBar's Mach shape is private upstream ABI. If popup switching regresses
+  after a SketchyBar update, run
+  `launchctl setenv BARISTA_POPUP_MACH_DISABLE 1` followed by
+  `./plugins/reload_sketchybar.sh` to force the stable CLI path in the restarted
+  launchd agent. Restore direct transport with
+  `launchctl unsetenv BARISTA_POPUP_MACH_DISABLE` and another supported reload.
 - The previous display-focus helper queried yabai on every click; stale
   authorization could block menu clicks or spawn macOS Developer Tools Access
   prompts. The switch helper reads only the precomputed popup registry.

@@ -9,6 +9,7 @@ NATIVE_LOG="${TMP_ROOT}/native.log"
 SHELL_LOG="${TMP_ROOT}/shell.log"
 FAKE_SKETCHYBAR="${TMP_ROOT}/sketchybar"
 NATIVE_MANAGER="${TMP_ROOT}/popup_manager"
+DISPATCH_TEST="${TMP_ROOT}/popup_manager_dispatch_test"
 
 cleanup() {
   rm -rf "${TMP_ROOT}"
@@ -29,6 +30,9 @@ chmod +x "${FAKE_SKETCHYBAR}"
 
 "${CC:-cc}" -std=c99 -Wall -Wextra -Werror \
   "${ROOT_DIR}/helpers/popup_manager.c" -o "${NATIVE_MANAGER}"
+"${CC:-cc}" -std=c99 -Wall -Wextra -Werror \
+  "${ROOT_DIR}/tests/test_popup_manager_dispatch.c" -o "${DISPATCH_TEST}"
+"${DISPATCH_TEST}"
 test "$("${NATIVE_MANAGER}" protocol)" = "barista-popup-switch-v1"
 test "$("${ROOT_DIR}/plugins/popup_manager.sh" protocol)" = "barista-popup-switch-v1"
 
@@ -68,6 +72,7 @@ run_manager() {
   shift
   : > "${LOG_FILE}"
   TMPDIR="${REGISTRY_DIR}" \
+    BAR_NAME="barista-popup-manager-test-$$" \
     BARISTA_SKETCHYBAR_BIN="${FAKE_SKETCHYBAR}" \
     BARISTA_TEST_SKETCHYBAR_LOG="${LOG_FILE}" \
     BARISTA_POPUP_TOPOLOGY_TOKEN="${BARISTA_POPUP_TOPOLOGY_TOKEN:-}" \

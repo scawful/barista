@@ -3,12 +3,20 @@
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#ifdef __APPLE__
+#include <bootstrap.h>
+#include <mach/mach.h>
+#include <mach/message.h>
+#endif
 
 /*
  * Global Popup Manager
@@ -40,6 +48,15 @@ static const size_t FALLBACK_SUBMENU_COUNT = sizeof(FALLBACK_SUBMENU_PARENTS) / 
 #define MAX_TOPOLOGY_NAMES 128
 #define MAX_TOPOLOGY_RELATIONS 512
 #define MAX_TOPOLOGY_NAME_LENGTH 127
+#define MAX_SKETCHYBAR_PAYLOAD_ARGUMENTS \
+  (MAX_TOPOLOGY_NAMES * 3 + MAX_TOPOLOGY_NAMES * 5 + 3)
+#define MAX_SKETCHYBAR_TOKEN_BYTES 1024
+#define MAX_SKETCHYBAR_PAYLOAD_BYTES (64 * 1024)
+
+#ifdef __APPLE__
+static const mach_msg_timeout_t MACH_SEND_TIMEOUT_MILLISECONDS = 50;
+static const mach_msg_timeout_t MACH_RECEIVE_TIMEOUT_MILLISECONDS = 100;
+#endif
 
 typedef struct {
   char **items;
@@ -61,6 +78,37 @@ typedef enum {
   MUTATION_SWITCH_ROOT,
   MUTATION_SWITCH_SUBMENU,
 } PopupMutation;
+
+typedef enum {
+  MACH_DISPATCH_NOT_SENT,
+  MACH_DISPATCH_CONFIRMED_SUCCESS,
+  MACH_DISPATCH_SENT_UNCONFIRMED,
+  MACH_DISPATCH_CONFIRMED_ERROR,
+} MachDispatchResult;
+
+typedef struct {
+  uint8_t bytes[MAX_SKETCHYBAR_PAYLOAD_BYTES];
+  size_t length;
+  size_t arguments;
+} SketchybarPayload;
+
+#ifdef __APPLE__
+struct barista_mach_message {
+  mach_msg_header_t header;
+  mach_msg_size_t descriptor_count;
+  mach_msg_ool_descriptor_t descriptor;
+};
+
+struct barista_mach_buffer {
+  struct barista_mach_message message;
+  mach_msg_trailer_t trailer;
+};
+#endif
+
+#ifdef BARISTA_POPUP_MANAGER_TESTING
+static MachDispatchResult (*mach_dispatch_test_hook)(const SketchybarPayload *) = NULL;
+static int (*cli_dispatch_test_hook)(const char *, char **, size_t, int) = NULL;
+#endif
 
 static NameList popup_items = {0};
 static NameList submenu_parents = {0};
@@ -354,6 +402,239 @@ static int append_set(char **argv, size_t *index, const char *name, const char *
   return 1;
 }
 
+static int environment_truthy(const char *value) {
+  if (!value || value[0] == '\0') return 0;
+  return strcmp(value, "1") == 0
+    || strcasecmp(value, "true") == 0
+    || strcasecmp(value, "yes") == 0
+    || strcasecmp(value, "on") == 0;
+}
+
+#if defined(__APPLE__) || defined(BARISTA_POPUP_MANAGER_TESTING)
+static int supported_bar_name(void) {
+  const char *bar_name = getenv("BAR_NAME");
+  return !bar_name || bar_name[0] == '\0' || strlen(bar_name) <= 128;
+}
+
+static int canonical_sketchybar_binary(const char *path, int explicitly_configured) {
+  if (!path || path[0] == '\0') return 0;
+  if (strcmp(path, "sketchybar") == 0) return !explicitly_configured;
+  static const char *known_paths[] = {
+    "/opt/homebrew/opt/sketchybar/bin/sketchybar",
+    "/opt/homebrew/bin/sketchybar",
+    "/usr/local/opt/sketchybar/bin/sketchybar",
+    "/usr/local/bin/sketchybar",
+  };
+  for (size_t i = 0; i < sizeof(known_paths) / sizeof(known_paths[0]); i++) {
+    if (strcmp(path, known_paths[i]) == 0) return 1;
+  }
+  return 0;
+}
+#endif
+
+static int mach_transport_eligible(const char *sketchybar, int explicitly_configured) {
+  if (environment_truthy(getenv("BARISTA_POPUP_MACH_DISABLE"))) return 0;
+#if !defined(__APPLE__) && !defined(BARISTA_POPUP_MANAGER_TESTING)
+  (void)sketchybar;
+  (void)explicitly_configured;
+  return 0;
+#else
+  return supported_bar_name()
+    && canonical_sketchybar_binary(sketchybar, explicitly_configured);
+#endif
+}
+
+static int build_sketchybar_payload(SketchybarPayload *payload,
+                                    char **argv,
+                                    size_t argc) {
+  if (!payload || !argv || argc <= 1) return 0;
+  memset(payload, 0, sizeof(*payload));
+
+  for (size_t i = 1; i < argc; i++) {
+    if (!argv[i]) return 0;
+    size_t token_length = strnlen(argv[i], MAX_SKETCHYBAR_TOKEN_BYTES + 1);
+    if (token_length > MAX_SKETCHYBAR_TOKEN_BYTES
+        || payload->arguments >= MAX_SKETCHYBAR_PAYLOAD_ARGUMENTS
+        || payload->length + token_length + 2 > sizeof(payload->bytes)) {
+      return 0;
+    }
+    memcpy(payload->bytes + payload->length, argv[i], token_length);
+    payload->length += token_length;
+    payload->bytes[payload->length++] = 0;
+    payload->arguments++;
+  }
+  payload->bytes[payload->length++] = 0;
+  return payload->length >= 2
+    && payload->bytes[payload->length - 1] == 0
+    && payload->bytes[payload->length - 2] == 0;
+}
+
+#ifdef __APPLE__
+static mach_port_t sketchybar_port(void) {
+  const char *bar_name = getenv("BAR_NAME");
+  if (!bar_name || bar_name[0] == '\0') {
+    bar_name = "sketchybar";
+  }
+  char service_name[160];
+  int written = snprintf(service_name, sizeof(service_name), "git.felix.%s", bar_name);
+  if (written < 0 || (size_t)written >= sizeof(service_name)) return MACH_PORT_NULL;
+
+  mach_port_t bootstrap_port = MACH_PORT_NULL;
+  if (task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, &bootstrap_port)
+      != KERN_SUCCESS) {
+    return MACH_PORT_NULL;
+  }
+  mach_port_t port = MACH_PORT_NULL;
+  kern_return_t result = bootstrap_look_up(bootstrap_port, service_name, &port);
+  mach_port_deallocate(mach_task_self(), bootstrap_port);
+  return result == KERN_SUCCESS ? port : MACH_PORT_NULL;
+}
+
+static int response_status(const void *bytes, size_t size) {
+  if (!bytes || size == 0 || size > MAX_SKETCHYBAR_PAYLOAD_BYTES) return -1;
+  const char *response = bytes;
+  if (memchr(response, '\0', size) == NULL) return -1;
+  return strstr(response, "[!]") == NULL ? 1 : 0;
+}
+#endif
+
+static MachDispatchResult dispatch_mach_payload(const SketchybarPayload *payload) {
+#ifdef BARISTA_POPUP_MANAGER_TESTING
+  if (mach_dispatch_test_hook) return mach_dispatch_test_hook(payload);
+#endif
+#ifdef __APPLE__
+  if (!payload || payload->length < 2
+      || payload->length > MAX_SKETCHYBAR_PAYLOAD_BYTES
+      || payload->arguments == 0
+      || payload->arguments > MAX_SKETCHYBAR_PAYLOAD_ARGUMENTS
+      || payload->bytes[payload->length - 1] != 0
+      || payload->bytes[payload->length - 2] != 0) {
+    return MACH_DISPATCH_NOT_SENT;
+  }
+
+  for (int attempt = 0; attempt < 2; attempt++) {
+    mach_port_t port = sketchybar_port();
+    if (port == MACH_PORT_NULL) continue;
+
+    mach_port_t response_port = MACH_PORT_NULL;
+    mach_port_name_t task = mach_task_self();
+    if (mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE, &response_port) != KERN_SUCCESS) {
+      mach_port_deallocate(task, port);
+      continue;
+    }
+    if (mach_port_insert_right(task,
+                               response_port,
+                               response_port,
+                               MACH_MSG_TYPE_MAKE_SEND) != KERN_SUCCESS) {
+      mach_port_mod_refs(task, response_port, MACH_PORT_RIGHT_RECEIVE, -1);
+      mach_port_deallocate(task, port);
+      continue;
+    }
+
+    struct barista_mach_message message = {0};
+    message.header.msgh_remote_port = port;
+    message.header.msgh_local_port = response_port;
+    message.header.msgh_id = response_port;
+    message.header.msgh_bits = MACH_MSGH_BITS_SET(
+      MACH_MSG_TYPE_COPY_SEND,
+      MACH_MSG_TYPE_MAKE_SEND,
+      0,
+      MACH_MSGH_BITS_COMPLEX);
+    message.header.msgh_size = sizeof(message);
+    message.descriptor_count = 1;
+    message.descriptor.address = (void *)payload->bytes;
+    message.descriptor.size = (mach_msg_size_t)payload->length;
+    message.descriptor.copy = MACH_MSG_VIRTUAL_COPY;
+    message.descriptor.deallocate = false;
+    message.descriptor.type = MACH_MSG_OOL_DESCRIPTOR;
+
+    mach_msg_return_t result = mach_msg(&message.header,
+                                        MACH_SEND_MSG | MACH_SEND_TIMEOUT,
+                                        sizeof(message),
+                                        0,
+                                        MACH_PORT_NULL,
+                                        MACH_SEND_TIMEOUT_MILLISECONDS,
+                                        MACH_PORT_NULL);
+    mach_port_deallocate(task, port);
+    if (result != MACH_MSG_SUCCESS) {
+      mach_port_mod_refs(task, response_port, MACH_PORT_RIGHT_RECEIVE, -1);
+      mach_port_deallocate(task, response_port);
+      continue;
+    }
+
+    struct barista_mach_buffer buffer = {0};
+    result = mach_msg(&buffer.message.header,
+                      MACH_RCV_MSG | MACH_RCV_TIMEOUT,
+                      0,
+                      sizeof(buffer),
+                      response_port,
+                      MACH_RECEIVE_TIMEOUT_MILLISECONDS,
+                      MACH_PORT_NULL);
+
+    MachDispatchResult dispatch_result = MACH_DISPATCH_SENT_UNCONFIRMED;
+    if (result == MACH_MSG_SUCCESS) {
+      mach_msg_ool_descriptor_t descriptor = buffer.message.descriptor;
+      if (buffer.message.descriptor_count == 1
+          && descriptor.type == MACH_MSG_OOL_DESCRIPTOR
+          && descriptor.address != NULL
+          && descriptor.size > 0
+          && descriptor.size <= MAX_SKETCHYBAR_PAYLOAD_BYTES) {
+        int status = response_status(descriptor.address, descriptor.size);
+        if (status > 0) dispatch_result = MACH_DISPATCH_CONFIRMED_SUCCESS;
+        else if (status == 0) dispatch_result = MACH_DISPATCH_CONFIRMED_ERROR;
+      }
+      mach_msg_destroy(&buffer.message.header);
+    }
+    mach_port_mod_refs(task, response_port, MACH_PORT_RIGHT_RECEIVE, -1);
+    mach_port_deallocate(task, response_port);
+
+    /* The target mutation ends in popup.drawing=toggle. Once the kernel accepts
+     * the message, retrying or exec fallback could toggle the target twice. */
+    return dispatch_result;
+  }
+#else
+  (void)payload;
+#endif
+  return MACH_DISPATCH_NOT_SENT;
+}
+
+static int run_sketchybar_cli(const char *sketchybar,
+                              char **argv,
+                              size_t argc,
+                              int replace_process) {
+#ifdef BARISTA_POPUP_MANAGER_TESTING
+  if (cli_dispatch_test_hook) {
+    return cli_dispatch_test_hook(sketchybar, argv, argc, replace_process);
+  }
+#else
+  (void)argc;
+#endif
+
+  if (replace_process) {
+    execvp(sketchybar, argv);
+    fprintf(stderr, "popup_manager: exec failed: %s\n", strerror(errno));
+    return 127;
+  }
+
+  pid_t pid = fork();
+  if (pid < 0) {
+    fprintf(stderr, "popup_manager: fork failed: %s\n", strerror(errno));
+    return 1;
+  }
+  if (pid == 0) {
+    execvp(sketchybar, argv);
+    _exit(127);
+  }
+
+  int status = 0;
+  while (waitpid(pid, &status, 0) < 0) {
+    if (errno == EINTR) continue;
+    fprintf(stderr, "popup_manager: waitpid failed: %s\n", strerror(errno));
+    return 1;
+  }
+  return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+}
+
 static int run_sketchybar(PopupMutation mutation, const char *target, int replace_process) {
   static const char *popup_off[] = {"popup.drawing=off"};
   static const char *submenu_off[] = {
@@ -372,7 +653,8 @@ static int run_sketchybar(PopupMutation mutation, const char *target, int replac
   }
 
   const char *sketchybar = getenv("BARISTA_SKETCHYBAR_BIN");
-  if (!sketchybar || sketchybar[0] == '\0') sketchybar = "sketchybar";
+  int explicitly_configured = sketchybar && sketchybar[0] != '\0';
+  if (!explicitly_configured) sketchybar = "sketchybar";
   size_t argc = 0;
   argv[argc++] = (char *)sketchybar;
 
@@ -405,33 +687,20 @@ static int run_sketchybar(PopupMutation mutation, const char *target, int replac
     return 0;
   }
 
-  if (replace_process) {
-    execvp(sketchybar, argv);
-    fprintf(stderr, "popup_manager: exec failed: %s\n", strerror(errno));
-    free(argv);
-    return 127;
+  if (mach_transport_eligible(sketchybar, explicitly_configured)) {
+    SketchybarPayload payload = {0};
+    if (build_sketchybar_payload(&payload, argv, argc)) {
+      MachDispatchResult result = dispatch_mach_payload(&payload);
+      if (result != MACH_DISPATCH_NOT_SENT) {
+        free(argv);
+        return result == MACH_DISPATCH_CONFIRMED_ERROR ? 1 : 0;
+      }
+    }
   }
 
-  pid_t pid = fork();
-  if (pid < 0) {
-    fprintf(stderr, "popup_manager: fork failed: %s\n", strerror(errno));
-    free(argv);
-    return 1;
-  }
-  if (pid == 0) {
-    execvp(sketchybar, argv);
-    _exit(127);
-  }
-
-  int status = 0;
-  while (waitpid(pid, &status, 0) < 0) {
-    if (errno == EINTR) continue;
-    fprintf(stderr, "popup_manager: waitpid failed: %s\n", strerror(errno));
-    free(argv);
-    return 1;
-  }
+  int status = run_sketchybar_cli(sketchybar, argv, argc, replace_process);
   free(argv);
-  return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+  return status;
 }
 
 static int dismiss_all_popups(void) {

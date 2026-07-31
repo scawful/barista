@@ -277,3 +277,32 @@ run_test("resolve_popup_switch: rejects a stale executable and accepts protocol 
   os.remove(scripts_dir .. "/popup_switch_protocol_probe.pl")
   os.execute(string.format("rmdir %q %q %q", bin_dir, scripts_dir, tmpdir))
 end)
+
+run_test("resolve_popup_switch: lua-only mode never probes a native helper", function()
+  local tmpdir = os.tmpname() .. "_barista_popup_switch_lua_only"
+  local bin_dir = tmpdir .. "/bin"
+  local helper = bin_dir .. "/popup_switch"
+  local marker = tmpdir .. "/probed"
+  local fallback = tmpdir .. "/plugins/popup_manager.sh"
+  os.execute(string.format("mkdir -p %q", bin_dir))
+
+  local file = assert(io.open(helper, "w"))
+  file:write(string.format(
+    "#!/bin/sh\nprintf touched > %q\nprintf '%%s\\n' barista-popup-switch-v1\n",
+    marker
+  ))
+  file:close()
+  assert(os.execute(string.format("chmod +x %q", helper)))
+
+  assert_equal(
+    binary_resolver.resolve_popup_switch(tmpdir, true, fallback),
+    fallback,
+    "Lua-only mode must retain the portable manager"
+  )
+  local marker_file = io.open(marker, "r")
+  assert_true(marker_file == nil, "Lua-only resolution must not probe native code")
+  if marker_file then marker_file:close() end
+
+  os.remove(helper)
+  os.execute(string.format("rmdir %q %q", bin_dir, tmpdir))
+end)

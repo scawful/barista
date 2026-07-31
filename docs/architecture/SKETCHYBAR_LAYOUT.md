@@ -123,6 +123,17 @@ while sibling and unrelated branches close. This preserves second-click closure
 while making a move from Front App or Music into Control Center dismiss the
 previous two-level surface.
 
+On macOS, the compiled helper serializes that exact vector as one bounded,
+double-NUL-terminated request to the canonical SketchyBar Mach service. It keeps
+the CLI path for custom binaries, unsupported platforms, oversized payloads,
+explicit `BARISTA_POPUP_MACH_DISABLE=1`, and transport failures that occur before
+the kernel accepts the message. Because the final operation is a toggle, an
+accepted send is at-most-once: a missing, malformed, or semantic-error reply is
+never retried or replayed through the CLI. Missing or malformed replies are
+treated as delivered; an explicit semantic error returns failure. This IPC shape
+is a private SketchyBar implementation detail; the exact argv and portable
+manager remain the stable compatibility boundary.
+
 Do not put yabai display-focus queries, detail refresh helpers, or plugin update
 controllers in this generic click path; those can make real mouse clicks look
 dropped even when script-only tests pass. `front_app`, `control_center`,

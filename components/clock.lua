@@ -70,20 +70,12 @@ function M.setup(config)
     color = (theme.YELLOW or theme.WHITE)
   })
 
-  table.insert(calendar_items, {
-    name = "clock.calendar.footer",
-    icon = "",
-    font_style = "Regular",
-    color = (theme.DARK_WHITE or theme.WHITE)
-  })
-
   for _, item in ipairs(calendar_items) do
     local is_header = item.name == "clock.calendar.header"
     local is_summary = item.name == "clock.calendar.summary"
-    local is_footer = item.name == "clock.calendar.footer"
 
     local item_font = config.font.numbers
-    if is_header or is_summary or is_footer then
+    if is_header or is_summary then
       item_font = config.font.text
     end
 
@@ -102,7 +94,7 @@ function M.setup(config)
       ["label.padding_left"] = 6,
       ["label.padding_right"] = 6,
       ["label.padding_top"] = (is_header or is_summary) and 4 or 1,
-      ["label.padding_bottom"] = (is_footer or is_summary) and 4 or 1,
+      ["label.padding_bottom"] = is_summary and 4 or 1,
       background = { drawing = false },
     }
     if item.script then

@@ -358,16 +358,12 @@ local function get_layout(ctx)
   table.insert(calendar_items, { name = "clock.calendar.tasks.next", icon = "", font_style = "Regular", color = tc("SKY") })
   table.insert(calendar_items, { name = "clock.calendar.tasks.waiting", icon = "", font_style = "Regular", color = tc("YELLOW") })
   table.insert(calendar_items, { name = "clock.calendar.tasks.blocked", icon = "", font_style = "Regular", color = tc("YELLOW") })
-  table.insert(calendar_items, { name = "clock.calendar.weekend", icon = "", font_style = "Regular", color = tc("SKY") })
-  table.insert(calendar_items, { name = "clock.calendar.progress", icon = "", font_style = "Regular", color = theme.DARK_WHITE or theme.WHITE })
-  table.insert(calendar_items, { name = "clock.calendar.footer", icon = "", font_style = "Regular", color = theme.DARK_WHITE or theme.WHITE })
 
   for _, item in ipairs(calendar_items) do
     local is_header = item.name == "clock.calendar.header"
     local is_summary = item.name == "clock.calendar.summary"
-    local is_footer = item.name == "clock.calendar.footer"
     local is_task_row = item.name:match("^clock%.calendar%.tasks%.") ~= nil
-    local is_text_row = item.text_row == true or is_header or is_summary or is_footer or is_task_row or item.name == "clock.calendar.weekend" or item.name == "clock.calendar.progress"
+    local is_text_row = item.text_row == true or is_header or is_summary or is_task_row
     local item_font = settings.font.numbers
     if is_text_row then item_font = settings.font.text end
     local opts = {

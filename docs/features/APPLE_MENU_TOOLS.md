@@ -10,7 +10,7 @@ Persistent AI work, sessions, provider/model routing, and agent behavior belong 
 
 - `Menu popup`: the full Apple menu opened from the bar.
 - `Popup section`: a grouped block of rows inside that menu.
-- `Legacy fly-out submenu`: an older hover-open nested popup still used by a few integrations.
+- `Child popup`: a click-only nested launcher group managed by the shared popup switch.
 
 Use `popup section` by default when talking about Apple-menu grouping.
 
@@ -134,7 +134,7 @@ script-only path and also writes the machine-local capability profile.
 - Missing tools are hidden unless `show_missing` is enabled.
 - Missing/blocked items open Barista Config so you can adjust paths or disable them.
 - Terminal-only custom tools are hidden unless `menus.apple.terminal` is enabled.
-- ChatGPT, Claude, and Cursor are direct app-bundle launchers only; they do not add shell, repo, or Finder rows.
+- LM Studio, ChatGPT, Claude, and Cursor remain app-bundle launchers only; when at least two are rendered, their existing rows move under the click-only `AI Apps` child. Zero or one stays direct, so sparse and work setups do not gain an empty navigation level.
 - Help Center and Icon Browser fall back to docs when binaries are missing; Sys Manual requires the app binary.
 - Shortcut glyphs are sourced from `modules/shortcuts.lua` (per-action) and rendered in the menu.
 - Hover styles can be overridden via `menus.apple.hover` or env vars:
@@ -145,6 +145,9 @@ script-only path and also writes the machine-local capability profile.
 - Top-level popups use the shared exclusive root switch; nested submenu rows use
   its child-only mode so opening another fly-out dismisses unrelated branches
   while preserving every containing fly-out and the Apple root.
+- Selecting a nested Apple action closes the child, its complete containing
+  fly-out chain, and the Apple root in one batched close after dispatching the
+  original action.
 - Zelda hacking now lives on the standalone left-bar Triforce popup, not inside the Apple menu.
 - Oracle-specific UI preferences live under `menus.oracle` in `state.json`, not under `menus.apple`.
 - The Triforce surface should stay shallow: use it for `Continue`, `Patch + Launch`, `Open Oracle Hub`, and ROM context, then do the deeper Oracle work in Oracle Hub.

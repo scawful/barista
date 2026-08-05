@@ -261,6 +261,18 @@ are ever removed.
   - `script = ".../popup_anchor"`
   - no `POPUP_OPEN_ON_ENTER=1` on `apple_menu`
   - no `env = { ... }` table on the `apple_menu` item
+- A populated Apps section keeps AFS Browser, Cortex, and Ghostty direct and
+  moves LM Studio, ChatGPT, Claude, and Cursor beneath the click-only
+  `menu.tools.ai_apps` row. The root drops from 15 drawing rows to 12; zero or
+  one rendered AI launcher remains direct.
+- Apple child actions close the complete containing chain plus `apple_menu` in
+  one batch. If an old child appears again after reopening the root, verify the
+  live topology lists `menu.tools.ai_apps` as a child rather than a root, then
+  reload through `plugins/reload_sketchybar.sh`.
+- Precomputed menus resolve `bin/menu_action` through the shared scripts table
+  or config fallbacks before rendering. Its stored command uses POSIX argument
+  quoting, so actions containing quoted app paths remain asynchronous without
+  corrupting `sketchybar --query` JSON.
 
 ### 9. Volume Popup Click Path
 **Current path**: generated `ui.toggle_then_refresh_async("volume", ...)` click script + `bin/volume_popup_helper` (compiled) / `plugins/volume.sh` (portable fallback)

@@ -124,6 +124,7 @@ run_test("apple_menu.prepare: expands approved app launchers and keeps Oracle ou
   local cursor_app = root .. "/apps/Cursor.app"
   local yaze_app = root .. "/apps/yaze.app"
   local mesen_run = root .. "/bin/mesen-run"
+  local menu_action = config_dir .. "/bin/menu_action"
 
   mkdir(config_dir .. "/bin")
   mkdir(code_dir .. "/lab")
@@ -137,12 +138,14 @@ run_test("apple_menu.prepare: expands approved app launchers and keeps Oracle ou
   mkdir(cursor_app)
   mkdir(yaze_app)
   write_file(config_dir .. "/bin/open_oracle_agent_manager.sh", "#!/bin/sh\nexit 0\n")
+  write_file(menu_action, "#!/bin/sh\nexit 0\n")
   write_file(studio_launcher, "#!/bin/sh\nexit 0\n")
   write_file(cortex_bin, "#!/bin/sh\nexit 0\n")
   write_file(mesen_run, "#!/bin/sh\nexit 0\n")
   chmod_x(studio_launcher)
   chmod_x(cortex_bin)
   chmod_x(mesen_run)
+  chmod_x(menu_action)
 
   local prepared = apple_menu.prepare(build_ctx(root, {
     paths = {
@@ -165,29 +168,126 @@ run_test("apple_menu.prepare: expands approved app launchers and keeps Oracle ou
     by_id[entry.id] = entry
   end
 
+  local ai_by_id = {}
+  local root_app_ids = {}
+  for _, entry in ipairs((by_id.ai_apps and by_id.ai_apps.items) or {}) do
+    ai_by_id[entry.id] = entry
+  end
+  for _, entry in ipairs(prepared.rendered or {}) do
+    if entry.section == "apps" then
+      table.insert(root_app_ids, entry.id)
+    end
+  end
+
   assert_true(by_id.afs_browser ~= nil, "AFS Browser should stay in the Apple menu apps section")
   assert_equal(by_id.afs_browser.label, "AFS Browser", "AFS Browser should stay labeled as the canonical AFS app")
   assert_true(by_id.afs_browser.action:find("afs%-browser%.app", 1, false) ~= nil, "AFS Browser row should open the app bundle")
   assert_true(by_id.cortex ~= nil, "Cortex should appear as an approved app launcher")
   assert_equal(by_id.cortex.label, "Cortex", "Cortex row label")
   assert_equal(by_id.cortex.action, string.format("%q", cortex_bin), "Cortex should launch the app binary directly")
-  assert_true(by_id.lm_studio ~= nil, "LM Studio should appear as an approved app launcher")
-  assert_equal(by_id.lm_studio.label, "LM Studio", "LM Studio row label")
-  assert_true(by_id.lm_studio.action:find("LM Studio%.app", 1, false) ~= nil, "LM Studio row should open the app bundle")
   assert_true(by_id.ghostty ~= nil, "Ghostty should appear as an approved app launcher")
   assert_equal(by_id.ghostty.label, "Ghostty", "Ghostty row label")
   assert_true(by_id.ghostty.action:find("Ghostty%.app", 1, false) ~= nil, "Ghostty row should open the app bundle")
-  assert_true(by_id.chatgpt ~= nil, "ChatGPT should appear as an approved app launcher")
-  assert_true(by_id.chatgpt.action:find("ChatGPT%.app", 1, false) ~= nil, "ChatGPT row should open the app bundle")
-  assert_true(by_id.claude ~= nil, "Claude should appear as an approved app launcher")
-  assert_true(by_id.claude.action:find("Claude%.app", 1, false) ~= nil, "Claude row should open the app bundle")
-  assert_true(by_id.cursor ~= nil, "Cursor should appear as an approved app launcher")
-  assert_true(by_id.cursor.action:find("Cursor%.app", 1, false) ~= nil, "Cursor row should open the app bundle")
+  assert_true(by_id.ai_apps ~= nil, "multiple AI launchers should collapse into one root submenu")
+  assert_equal(by_id.ai_apps.label, "AI Apps", "AI submenu label")
+  assert_equal(by_id.ai_apps.name, "menu.tools.ai_apps", "AI submenu should use a stable popup name")
+  assert_equal(by_id.ai_apps.submenu, true, "AI Apps should render as a child popup")
+  assert_equal(#by_id.ai_apps.items, 4, "AI submenu should preserve every available launcher")
+  assert_equal(
+    table.concat(root_app_ids, "|"),
+    "afs_browser|cortex|ghostty|ai_apps",
+    "the root should keep non-AI launchers direct and replace four AI rows with one child"
+  )
+  assert_true(ai_by_id.lm_studio ~= nil, "LM Studio should appear in the AI Apps submenu")
+  assert_equal(ai_by_id.lm_studio.label, "LM Studio", "LM Studio row label")
+  assert_true(ai_by_id.lm_studio.action:find("LM Studio%.app", 1, false) ~= nil, "LM Studio row should open the app bundle")
+  assert_true(ai_by_id.chatgpt ~= nil, "ChatGPT should appear in the AI Apps submenu")
+  assert_true(ai_by_id.chatgpt.action:find("ChatGPT%.app", 1, false) ~= nil, "ChatGPT row should open the app bundle")
+  assert_true(ai_by_id.claude ~= nil, "Claude should appear in the AI Apps submenu")
+  assert_true(ai_by_id.claude.action:find("Claude%.app", 1, false) ~= nil, "Claude row should open the app bundle")
+  assert_true(ai_by_id.cursor ~= nil, "Cursor should appear in the AI Apps submenu")
+  assert_true(ai_by_id.cursor.action:find("Cursor%.app", 1, false) ~= nil, "Cursor row should open the app bundle")
+  assert_nil(by_id.lm_studio, "grouped LM Studio should leave the root")
+  assert_nil(by_id.chatgpt, "grouped ChatGPT should leave the root")
+  assert_nil(by_id.claude, "grouped Claude should leave the root")
+  assert_nil(by_id.cursor, "grouped Cursor should leave the root")
   assert_nil(by_id.afs_studio, "AFS Studio should no longer appear in the Apple menu")
   assert_nil(by_id.afs_labeler, "missing AFS Labeler should not become a build action")
   assert_nil(by_id.oracle_agent_manager, "Oracle Hub should move out of the Apple menu")
   assert_nil(by_id.yaze, "Yaze should move out of the Apple menu")
   assert_nil(by_id.mesen_oos, "Mesen2 OoS should move out of the Apple menu")
+  assert_equal(prepared.menu_action, menu_action,
+    "prepare should resolve the menu-action helper even without a top-level override")
+
+  cleanup(root)
+end)
+
+run_test("apple_menu.prepare: one available AI launcher stays direct", function()
+  local root = make_temp_dir("apple_menu_prepare_single_ai")
+  local chatgpt_app = root .. "/apps/ChatGPT.app"
+
+  mkdir(root .. "/config")
+  mkdir(root .. "/code/lab")
+  mkdir(chatgpt_app)
+
+  local prepared = apple_menu.prepare(build_ctx(root, {
+    paths = {
+      chatgpt_app = chatgpt_app,
+    },
+  }))
+  local by_id = {}
+  for _, entry in ipairs(prepared.rendered or {}) do
+    by_id[entry.id] = entry
+  end
+
+  assert_true(by_id.chatgpt ~= nil, "a lone ChatGPT launcher should stay on the root")
+  assert_nil(by_id.ai_apps, "a lone AI launcher should not add another navigation level")
+
+  cleanup(root)
+end)
+
+run_test("apple_menu.prepare: project shortcut IDs cannot enter the AI Apps child", function()
+  local root = make_temp_dir("apple_menu_prepare_ai_id_collision")
+  local chatgpt_app = root .. "/apps/ChatGPT.app"
+  local claude_app = root .. "/apps/Claude.app"
+
+  mkdir(root .. "/config")
+  mkdir(root .. "/code/lab")
+  mkdir(chatgpt_app)
+  mkdir(claude_app)
+
+  local ctx = build_ctx(root, {
+    paths = {
+      chatgpt_app = chatgpt_app,
+      claude_app = claude_app,
+    },
+  })
+  ctx.state.menus.apps = {
+    enabled = true,
+    file = "data/missing-project-shortcuts.json",
+    items = {
+      {
+        id = "chatgpt",
+        label = "ChatGPT Project",
+        action = "echo project-chatgpt",
+        available = true,
+        section = "apps",
+      },
+    },
+  }
+
+  local prepared = apple_menu.prepare(ctx)
+  local by_name = {}
+  for _, entry in ipairs(prepared.rendered or {}) do
+    by_name[entry.name] = entry
+  end
+
+  assert_true(by_name["menu.tools.ai_apps"] ~= nil, "two base AI apps should still create the child")
+  assert_equal(#by_name["menu.tools.ai_apps"].items, 2, "only the two base launchers should enter AI Apps")
+  assert_equal(by_name["menu.tools.ai_apps"].items[1].name, "menu.tools.chatgpt", "base ChatGPT child")
+  assert_equal(by_name["menu.tools.ai_apps"].items[2].name, "menu.tools.claude", "base Claude child")
+  assert_true(by_name["menu.tools.project.chatgpt"] ~= nil,
+    "a colliding project shortcut ID should remain direct on the Apps root")
 
   cleanup(root)
 end)

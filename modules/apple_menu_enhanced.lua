@@ -27,6 +27,14 @@ local function shell_quote(value)
   return string.format("%q", tostring(value))
 end
 
+local function shell_arg(value)
+  value = tostring(value or "")
+  if value:match("^[%w_@%%+=:,./%-]+$") then
+    return value
+  end
+  return "'" .. value:gsub("'", "'\"'\"'") .. "'"
+end
+
 local function env_prefix(vars)
   local keys = {}
   for key, value in pairs(vars or {}) do
@@ -57,6 +65,48 @@ local function menu_label(label, shortcut)
     return string.format("%-16s %s", label, shortcut)
   end
   return label
+end
+
+local ai_app_names = {
+  ["menu.tools.lm_studio"] = true,
+  ["menu.tools.chatgpt"] = true,
+  ["menu.tools.claude"] = true,
+  ["menu.tools.cursor"] = true,
+}
+
+local function compact_ai_apps(rendered, theme)
+  local ai_apps = {}
+  local last_ai_app = nil
+  for _, entry in ipairs(rendered or {}) do
+    if entry.section == "apps" and ai_app_names[entry.name] then
+      table.insert(ai_apps, entry)
+      last_ai_app = entry
+    end
+  end
+  if #ai_apps < 2 then
+    return rendered
+  end
+
+  local compacted = {}
+  for _, entry in ipairs(rendered) do
+    if entry.section == "apps" and ai_app_names[entry.name] then
+      if entry == last_ai_app then
+        table.insert(compacted, {
+          id = "ai_apps",
+          name = "menu.tools.ai_apps",
+          label = "AI Apps",
+          icon = "󰚩",
+          icon_color = theme.GREEN,
+          section = "apps",
+          submenu = true,
+          items = ai_apps,
+        })
+      end
+    else
+      table.insert(compacted, entry)
+    end
+  end
+  return compacted
 end
 
 local function font_string(ctx, family, style, size)
@@ -191,12 +241,16 @@ local function afs_cli(afs_root, args)
 end
 
 local function resolve_menu_action(ctx, config_dir)
-  local candidates = {
-    ctx.menu_action,
-    config_dir and (config_dir .. "/bin/menu_action") or nil,
-    config_dir and (config_dir .. "/helpers/menu_action") or nil,
-    config_dir and (config_dir .. "/plugins/menu_action.sh") or nil,
-  }
+  local candidates = {}
+  local configured = ctx.menu_action or (ctx.scripts and ctx.scripts.menu_action)
+  if configured and configured ~= "" then
+    table.insert(candidates, configured)
+  end
+  if config_dir then
+    table.insert(candidates, config_dir .. "/bin/menu_action")
+    table.insert(candidates, config_dir .. "/helpers/menu_action")
+    table.insert(candidates, config_dir .. "/plugins/menu_action.sh")
+  end
   for _, candidate in ipairs(candidates) do
     if candidate and candidate ~= "" and path_is_executable(candidate) then
       return candidate
@@ -210,20 +264,31 @@ local function resolve_menu_action(ctx, config_dir)
   return nil
 end
 
-local function wrap_action(menu_action, popup_name, entry_name, action)
+local function wrap_action(menu_action, popup_names, entry_name, action, sketchybar_bin)
   if not action or action == "" then
     return ""
   end
+  local targets = type(popup_names) == "table" and popup_names or { popup_names }
   if menu_action and menu_action ~= "" then
+    if #targets > 1 then
+      local helper_action = string.format(
+        "MENU_ACTION_CMD=%s %s %s %s",
+        shell_arg(action),
+        menu_action,
+        shell_arg(entry_name),
+        shell_arg("")
+      )
+      return ui.close_after_all(targets, helper_action, { sketchybar_bin = sketchybar_bin })
+    end
     return string.format(
-      "MENU_ACTION_CMD=%q %s %q %q",
-      action,
+      "MENU_ACTION_CMD=%s %s %s %s",
+      shell_arg(action),
       menu_action,
-      entry_name or "",
-      popup_name or ""
+      shell_arg(entry_name),
+      shell_arg(targets[1])
     )
   end
-  return string.format("%s; sketchybar -m --set %s popup.drawing=off", action, popup_name or "")
+  return ui.close_after_all(targets, action, { sketchybar_bin = sketchybar_bin })
 end
 
 local function build_prepared(ctx)
@@ -664,7 +729,7 @@ local function build_prepared(ctx)
     popup_padding = popup_padding,
     hover_script_cmd = hover_script_cmd,
     menu_action = menu_action,
-    rendered = menu_model.rendered,
+    rendered = compact_ai_apps(menu_model.rendered, theme),
     sections = menu_model.sections,
   }
 end
@@ -842,7 +907,7 @@ function apple_menu.setup(ctx)
 
   local render_popup_items
 
-  local function add_item(popup_name, entry, parent_popup)
+  local function add_item(popup_name, entry, close_popups)
     local muted = entry.missing or entry.blocked
     local shortcut = entry.shortcut
     if (not shortcut or shortcut == "") and entry.shortcut_action and shortcuts and shortcuts.get_symbol then
@@ -863,7 +928,14 @@ function apple_menu.setup(ctx)
       local fallback = ctx.call_script and ctx.call_script(launcher, "--panel") or ""
       action = fallback
     end
-    local click_script = wrap_action(menu_action, parent_popup or popup_name, entry.name, action)
+    local action_popups = close_popups or { popup_name }
+    local click_script = wrap_action(
+      menu_action,
+      action_popups,
+      entry.name,
+      action,
+      ctx.SKETCHYBAR_BIN or ctx.sketchybar_bin
+    )
     local popup_config = nil
     local hover_enabled = entry.hover == true
       or (entry.hover ~= false and (
@@ -907,11 +979,15 @@ function apple_menu.setup(ctx)
       ctx.attach_hover(entry.name)
     end
     if popup_config then
-      render_popup_items(entry.name, entry.items, entry.name)
+      local child_close_popups = { entry.name }
+      for _, parent in ipairs(action_popups) do
+        table.insert(child_close_popups, parent)
+      end
+      render_popup_items(entry.name, entry.items, child_close_popups)
     end
   end
 
-  render_popup_items = function(popup_name, entries, parent_popup)
+  render_popup_items = function(popup_name, entries, close_popups)
     local section_index = 1
     for _, entry in ipairs(entries or {}) do
       if entry.type == "header" then
@@ -921,7 +997,7 @@ function apple_menu.setup(ctx)
         add_separator(popup_name, section_index)
         section_index = section_index + 1
       else
-        add_item(popup_name, entry, parent_popup)
+        add_item(popup_name, entry, close_popups)
       end
     end
   end

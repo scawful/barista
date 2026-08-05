@@ -123,6 +123,15 @@ while sibling and unrelated branches close. This preserves second-click closure
 while making a move from Front App or Music into Control Center dismiss the
 previous two-level surface.
 
+The enhanced Apple model applies the same rule without adding another bar
+widget. When at least two of LM Studio, ChatGPT, Claude, and Cursor are rendered,
+their existing launcher rows move beneath the click-only
+`menu.tools.ai_apps` child; a lone launcher remains direct. A child action runs
+through the existing asynchronous menu-action helper, then one batched close
+turns off the child, every containing Apple fly-out, and `apple_menu`. On the
+fully populated Personal model this keeps AFS Browser, Cortex, and Ghostty on a
+12-row root instead of the former 15-row root.
+
 On macOS, the compiled helper serializes that exact vector as one bounded,
 double-NUL-terminated request to the canonical SketchyBar Mach service. It keeps
 the CLI path for custom binaries, unsupported platforms, oversized payloads,

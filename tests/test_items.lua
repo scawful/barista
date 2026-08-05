@@ -941,8 +941,12 @@ local function test_items_right_layout()
   local volume_toggle = nil
   local volume_mute = nil
   local volume_startup_refresh = nil
+  local volume_popup_names = {}
   local battery_settings = nil
   for _, entry in ipairs(layout) do
+    if entry.type == "item" and entry.props.position == "popup.volume" then
+      table.insert(volume_popup_names, entry.name)
+    end
     if entry.type == "item" and entry.name == "volume.state" then
       volume_state = entry
     elseif entry.type == "item" and entry.name == "volume.output" then
@@ -971,6 +975,20 @@ local function test_items_right_layout()
   assert_true(volume_toggle.props.click_script:find("media_control%.sh playpause") ~= nil, "volume transport toggle should use the media helper")
   assert_true(volume_mute ~= nil, "volume popup should keep a mute toggle")
   assert_true(volume_mute.props.click_script:find("popup.drawing=off", 1, true) ~= nil, "volume popup actions should close the popup after execution")
+  assert_equal(table.concat(volume_popup_names, "|"), table.concat({
+    "volume.state",
+    "volume.output",
+    "volume.output.1",
+    "volume.output.2",
+    "volume.output.3",
+    "volume.output.4",
+    "volume.media",
+    "volume.transport.prev",
+    "volume.transport.toggle",
+    "volume.transport.next",
+    "volume.mute",
+    "volume.settings",
+  }, "|"), "volume popup should keep the compact ordered 12-row topology")
   assert_true(volume_startup_refresh ~= nil, "volume should subscribe after configuration")
   assert_true(volume_startup_refresh:find("NAME=volume SENDER=routine", 1, true) ~= nil, "volume subscription should perform one ordered native-capable startup refresh")
   assert_true(volume_startup_refresh:find("--trigger volume_change", 1, true) == nil, "volume startup should not race a separate synthetic event")

@@ -534,12 +534,6 @@ local function get_layout(ctx)
   table.insert(layout, { action = "attach_hover", name = "volume" })
 
   local add_vol = popup_items.make_add("volume", { hover_script = hover_script_cmd })
-  table.insert(layout, add_vol("volume.header", {
-    icon = "",
-    label = "Audio",
-    ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
-    background = { drawing = false },
-  }))
   table.insert(layout, add_vol("volume.state", {
     icon = "󰕾",
     label = "Volume: …",
@@ -566,13 +560,6 @@ local function get_layout(ctx)
     icon = "󰎈",
     label = "Now Playing: Nothing",
     ["label.font"] = font_small,
-    background = { drawing = false },
-  }))
-  table.insert(layout, add_vol("volume.sep0", {
-    icon = "",
-    label = "───────────────",
-    ["label.font"] = font_small,
-    ["label.color"] = "0x40cdd6f4",
     background = { drawing = false },
   }))
   local volume_actions = {

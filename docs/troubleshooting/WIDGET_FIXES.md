@@ -302,6 +302,11 @@ are ever removed.
   shell path.
 - `plugins/volume_click.sh` is only a compatibility wrapper for the same toggle-then-refresh behavior; the live item uses the generated direct click script.
 - The popup now surfaces output route, now-playing state, and transport controls through `scripts/media_control.sh`, plus mute and Sound settings.
+- The popup configures exactly 12 functional rows. The redundant `Audio` header
+  and decorative separator are not created, reducing the common no-route surface
+  from ten drawing rows to eight without moving actions into another menu. The
+  native helper never targeted those static rows, and the shell fallback no
+  longer sends an update to the removed header.
 - `scripts/media_control.sh` prefers the shared `scripts/runtime_context.sh` cache for player state and output routes, so the popup and output switch rows reuse the same runtime snapshot.
 - If `SwitchAudioSource` is not installed, the refresh skips output-route
   discovery and leaves those action rows hidden instead of regenerating an

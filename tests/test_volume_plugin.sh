@@ -148,6 +148,10 @@ grep -Fq -- '--set volume.state' "$LOG_FILE" || {
   echo "FAIL: the explicit popup fallback should run the shell refresh" >&2
   exit 1
 }
+if grep -Eq -- 'volume\.(header|sep0)' "$LOG_FILE"; then
+  echo "FAIL: the shell popup fallback should not target removed decorative rows" >&2
+  exit 1
+fi
 
 PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   NAME=volume \

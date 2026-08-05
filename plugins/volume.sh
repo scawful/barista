@@ -159,8 +159,6 @@ else
   COLOR="$LOW_COLOR"
 fi
 
-sketchybar --set volume.header label="Audio"
-
 STATE_LABEL="Volume: $LABEL"
 if [ "$MUTED" != "true" ]; then
   STATE_LABEL="Volume: ${VOLUME}%"

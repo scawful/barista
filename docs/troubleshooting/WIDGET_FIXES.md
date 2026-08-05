@@ -412,6 +412,14 @@ remain the event, hover, and portable fallback boundary.
 `clock_widget` uses the native time APIs for the routine clock label. Lua-only
 or helper-missing setups retain `plugins/clock.sh` without configuration edits.
 
+The click-only calendar surface is owned by `plugins/calendar.sh`, not the
+routine clock helper. It configures and updates the same ordered 14 rows in one
+batch: month/weekday headers, six grid rows, date/time summary, optional cached
+meeting, and four task summaries. Weekend countdown, month progress, and the
+week/day footer were intentionally retired; if any of those names reappear
+after an upgrade, verify the live runtime symlink and reload with
+`plugins/reload_sketchybar.sh` rather than adding placeholder rows.
+
 ### System Info: Routine vs. Popup
 
 `helpers/system_info_widget.c` builds two independently addressable binaries:

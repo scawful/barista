@@ -81,6 +81,34 @@ run_calendar() {
 
 run_calendar "$MEETING_CACHE"
 
+cat > "$TMP_DIR/expected-targets" <<'EOF'
+clock.calendar.header
+clock.calendar.weekdays
+clock.calendar.week1
+clock.calendar.week2
+clock.calendar.week3
+clock.calendar.week4
+clock.calendar.week5
+clock.calendar.week6
+clock.calendar.summary
+clock.calendar.meeting.next
+clock.calendar.tasks.today
+clock.calendar.tasks.next
+clock.calendar.tasks.waiting
+clock.calendar.tasks.blocked
+EOF
+cut -f1 "$LOG_FILE" > "$TMP_DIR/actual-targets"
+diff -u "$TMP_DIR/expected-targets" "$TMP_DIR/actual-targets" || {
+  echo "FAIL: calendar should update the exact ordered 14-row topology" >&2
+  exit 1
+}
+for removed_name in clock.calendar.weekend clock.calendar.progress clock.calendar.footer; do
+  if grep -Fq -- "$removed_name" "$LOG_FILE"; then
+    echo "FAIL: calendar should not target removed metadata row $removed_name" >&2
+    exit 1
+  fi
+done
+
 grep -Fq $'clock.calendar.tasks.today\t󰄱 Focus: Tune the menu popups' "$LOG_FILE" || {
   echo "FAIL: calendar should surface the normalized Focus task" >&2
   exit 1

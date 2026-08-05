@@ -37,9 +37,6 @@ declare -a CALENDAR_ITEMS=(
   "clock.calendar.tasks.next"
   "clock.calendar.tasks.waiting"
   "clock.calendar.tasks.blocked"
-  "clock.calendar.weekend"
-  "clock.calendar.progress"
-  "clock.calendar.footer"
 )
 
 mkdir -p "$TASK_CACHE_DIR"
@@ -256,29 +253,6 @@ else:
     lines.append(f"󰒭 Next: {next_task or '—'}".rstrip())
     lines.append(f"󰔟 Waiting: {waiting_task or 'Clear'}".rstrip())
     lines.append(f"󰅖 Blocked: {blocked_task or 'Clear'}".rstrip())
-
-# Weekend countdown
-weekday = today.weekday()  # Monday = 0
-days_until_weekend = (5 - weekday) % 7
-if days_until_weekend == 0:
-    weekend_line = "󰸗 Weekend is here"
-elif days_until_weekend == 1:
-    weekend_line = "󰸗 Weekend in 1 day"
-else:
-    weekend_line = f"󰸗 Weekend in {days_until_weekend} days"
-lines.append(weekend_line.rstrip())
-
-# Month progress
-days_in_month = calendar.monthrange(today.year, today.month)[1]
-days_left = days_in_month - today.day
-month_progress = round((today.day / days_in_month) * 100)
-lines.append(f"󰃭 {days_left} days left · {month_progress}% of month".rstrip())
-
-# Footer with week number and day of year
-week_num = today.isocalendar()[1]
-day_of_year = today.timetuple().tm_yday
-days_remaining = (datetime.date(today.year, 12, 31) - today).days
-lines.append(f"󰸗 Week {week_num:02d}  󰔛 Day {day_of_year:03d}/{days_remaining:03d}".rstrip())
 
 for entry in lines:
     print(entry)

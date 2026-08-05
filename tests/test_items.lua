@@ -1443,6 +1443,36 @@ local function test_items_right_task_focus_surface()
   assert_true(meeting.props["label.font"]:find("Inter:", 1, true) == 1,
     "cached meeting label should use the text font rather than the numbers font")
   assert_true(find_entry(layout, "clock.calendar.tasks.waiting") ~= nil, "calendar should expose a distinct waiting row")
+  local calendar_names = {}
+  for _, entry in ipairs(layout) do
+    if entry.type == "item" and entry.props.position == "popup.clock"
+        and entry.name:match("^clock%.calendar%.") ~= nil then
+      table.insert(calendar_names, entry.name)
+    end
+  end
+  assert_equal(table.concat(calendar_names, "|"), table.concat({
+    "clock.calendar.header",
+    "clock.calendar.weekdays",
+    "clock.calendar.week1",
+    "clock.calendar.week2",
+    "clock.calendar.week3",
+    "clock.calendar.week4",
+    "clock.calendar.week5",
+    "clock.calendar.week6",
+    "clock.calendar.summary",
+    "clock.calendar.meeting.next",
+    "clock.calendar.tasks.today",
+    "clock.calendar.tasks.next",
+    "clock.calendar.tasks.waiting",
+    "clock.calendar.tasks.blocked",
+  }, "|"), "calendar popup should keep the compact ordered 14-row topology")
+  for _, removed_name in ipairs({
+    "clock.calendar.weekend",
+    "clock.calendar.progress",
+    "clock.calendar.footer",
+  }) do
+    assert_true(find_entry(layout, removed_name) == nil, removed_name .. " should not be materialized")
+  end
 
   print("  items_right Task Pulse surface test passed!")
 end

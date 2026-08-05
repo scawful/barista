@@ -38,9 +38,8 @@ Window-manager status and controls now live in the active runtime path:
 
 ### clock.lua
 Clock widget with calendar popup displaying:
-- Current date/time
-- Calendar grid
-- Week summary
+- Month header and six-week calendar grid
+- Current date/time summary
 
 ### front_app.lua
 Front application display with app-specific popup menus.

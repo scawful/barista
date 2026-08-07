@@ -1,5 +1,23 @@
 # SketchyBar Configuration Changelog
 
+## August 6, 2026 - Batched Battery Popup Refresh
+
+- Routine battery-anchor ownership remains unchanged: compiled setups continue
+  to use `widget_manager`/the widget daemon, while Lua-only and restricted-work
+  setups retain the portable shell path.
+- A click still toggles immediately, then `plugins/battery.sh popup_refresh`
+  captures `pmset` once and `ioreg` once, parses both snapshots in-process, and
+  applies the anchor plus five detail rows as one ordered six-target/20-property
+  SketchyBar batch. No widget, timer, popup row, helper, or daemon was added.
+- A final-source preregistered read-only direct-query proxy A/B measured
+  baseline median/p95 at `68.981 / 85.697 ms` and the batched path at
+  `32.134 / 35.553 ms`, reductions of `53.42% / 58.51%` with 49/50 paired
+  wins. This benchmark does not measure live popup first-paint or live
+  SketchyBar `--set` latency. Artifact:
+  `/tmp/barista_battery_final_repo_ab_20260806/final-repo-battery-popup-ab-cad10ba-20260806.json`
+  (SHA-256
+  `7366ba3482e67511963b24f970f7149495ec707d8b9084ac3f974ad0da8e1ed2`).
+
 ## July 26, 2026 - Cross-Display Space Focus and Shell Tail Reduction
 
 - Focused space refreshes now persist one versioned `space + display`

@@ -24,6 +24,11 @@ collection, task snapshots, and space visuals run on explicit event paths.
     - reload now force-restarts the daemon so rebuilt helpers replace the running process instead of leaving stale code resident
 *   **Result:** steady-state right-side updates no longer depend on per-item timer scripts when the compiled runtime is available.
 
+#### Battery popup refresh (read-only proxy verified)
+*   **Files:** `modules/items_right.lua`, `plugins/battery.sh`
+*   **Update:** routine anchor ownership is unchanged. A click toggles first, then the portable shell path captures `pmset` once and `ioreg` once, parses both snapshots in-process, and applies the anchor plus five detail targets in one ordered six-target/20-property SketchyBar call. No widget, timer, popup row, native helper, or daemon was added, and the same path remains available to Lua-only/restricted-work setups.
+*   **Result:** the final-source preregistered run used four warmups plus 50 balanced pairs with real `pmset`/`ioreg` collection and a read-only direct-query proxy in place of live SketchyBar mutation. Baseline median/p95 was `68.981 / 85.697 ms`; the batched path measured `32.134 / 35.553 ms`, a `53.42% / 58.51%` reduction with 49/50 paired wins. This isolates shell collection/parsing and client-count savings; it is **not** a live popup first-paint or live `--set` latency measurement. Artifact: `/tmp/barista_battery_final_repo_ab_20260806/final-repo-battery-popup-ab-cad10ba-20260806.json` (SHA-256 `7366ba3482e67511963b24f970f7149495ec707d8b9084ac3f974ad0da8e1ed2`).
+
 ### 0a. Calendar + Task Pulse Event Path (Verified)
 *   **Files:** `modules/items_right.lua`, `plugins/calendar.sh`, `plugins/task_pulse.sh`, `scripts/task_snapshot.py`, `scripts/task_focus.sh`, `scripts/task_capture.sh`, `main.lua`
 *   **Update:**

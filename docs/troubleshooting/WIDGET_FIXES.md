@@ -319,6 +319,21 @@ are ever removed.
   toggle immediately and refresh detail state asynchronously; it adds no new
   widget or polling timer.
 
+### 9a. Battery Popup Click Path
+**Current path**: generated `ui.toggle_then_refresh_async("battery", ...)` click script + portable `plugins/battery.sh popup_refresh`
+- Routine anchor updates remain owned by `widget_manager`/the widget daemon when
+  enabled, with the existing shell path retained for Lua-only and restricted
+  work setups.
+- Click toggles the popup immediately, then launches detail refresh in the
+  background. The refresh captures `pmset` once and `ioreg` once and parses both
+  snapshots in-process instead of starting a parsing pipeline per field.
+- One ordered SketchyBar call updates exactly six mutable targets: the anchor,
+  then status, time, power, cycle, and health. The batch carries 20 properties;
+  the static header and Battery Settings action are not refresh targets.
+- This optimization adds no widget, timer, row, native helper, or daemon. If the
+  anchor updates but details do not, inspect `plugins/battery.sh popup_refresh`
+  and the shared asynchronous click owner rather than the routine helper.
+
 ### 10. Front App Context Fallback
 **Current path**: `plugins/front_app.sh` + `bin/runtime_context_helper` + portable context scripts
 - `front_app` no longer relies only on `yabai --windows --window` for popup state/location.

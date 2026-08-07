@@ -83,6 +83,7 @@ lint_candidates=(
   scripts/task_capture.sh
   scripts/task_focus.sh
   plugins/calendar.sh
+  plugins/battery.sh
   plugins/task_pulse.sh
   bin/open_control_panel.sh
   bin/barista-debug
@@ -169,6 +170,7 @@ bash tests/test_reload_sketchybar.sh >/dev/null
 bash tests/test_runtime_context_daemon_exec.sh >/dev/null
 bash tests/test_runtime_context_media_efficiency.sh >/dev/null
 bash tests/test_runtime_context_helper_publication.sh >/dev/null
+bash tests/test_battery.sh >/dev/null
 bash tests/test_volume_plugin.sh >/dev/null
 bash tests/test_volume_popup_helper.sh >/dev/null
 bash tests/test_system_info_memory.sh >/dev/null

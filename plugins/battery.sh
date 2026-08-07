@@ -5,7 +5,9 @@
 
 set -euo pipefail
 
-_d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
+_d="${0%/*}"; [ -z "$_d" ] && _d="."
+# shellcheck source=plugins/lib/common.sh
+[ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
 
 if [ -z "${NAME:-}" ]; then
   NAME="battery"
@@ -40,16 +42,44 @@ if [ "$ACTIONS_ARG" != "popup_refresh" ] && [ -n "$BATTERY_FAST_BIN" ] && [ -x "
   exec "$BATTERY_FAST_BIN" update battery
 fi
 
+trim_whitespace() {
+  local value="${1:-}"
+  local destination="$2"
+  value="${value//$'\t'/ }"
+  while [[ "$value" == *"  "* ]]; do
+    value="${value//  / }"
+  done
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf -v "$destination" '%s' "$value"
+}
+
 PMSET_OUTPUT="$(pmset -g batt)"
-POWER_SOURCE="$(echo "$PMSET_OUTPUT" | head -1 | sed -E "s/.*'([^']+)'.*/\1/")"
-BATTERY_LINE="$(echo "$PMSET_OUTPUT" | tail -1)"
-PERCENTAGE="$(echo "$BATTERY_LINE" | grep -Eo "\d+%" | head -1 | cut -d% -f1)"
-STATUS_RAW="$(echo "$BATTERY_LINE" | awk -F';' '{print $2}' | xargs)"
-TIME_RAW="$(echo "$BATTERY_LINE" | awk -F';' '{print $3}' | xargs)"
+POWER_SOURCE=""
+BATTERY_LINE=""
+PERCENTAGE=""
+power_re="^Now[[:space:]]+drawing[[:space:]]+from[[:space:]]+'([^']+)'"
+percentage_re='([0-9]+)%'
+while IFS= read -r line || [ -n "$line" ]; do
+  if [[ "$line" =~ $power_re ]]; then
+    POWER_SOURCE="${BASH_REMATCH[1]}"
+  fi
+  if [[ "$line" =~ $percentage_re ]]; then
+    BATTERY_LINE="$line"
+    PERCENTAGE="${BASH_REMATCH[1]}"
+  fi
+done <<< "$PMSET_OUTPUT"
 
 if [ -z "$PERCENTAGE" ]; then
-  exit 0
+  # Match the current set -e pipeline behavior when pmset has no percentage.
+  exit 1
 fi
+
+STATUS_RAW=""
+TIME_RAW=""
+IFS=';' read -r _ STATUS_RAW TIME_RAW _ <<< "$BATTERY_LINE"
+trim_whitespace "$STATUS_RAW" STATUS_RAW
+trim_whitespace "$TIME_RAW" TIME_RAW
 
 STATUS="On Battery"
 if [ "$STATUS_RAW" = "charging" ] || [ "$POWER_SOURCE" = "AC Power" ]; then
@@ -61,15 +91,43 @@ fi
 TIME_LABEL=""
 TIME_KIND=""
 if [ -n "$TIME_RAW" ]; then
-  if echo "$TIME_RAW" | grep -qi "finishing charge"; then
+  shopt -s nocasematch
+  if [[ "$TIME_RAW" =~ finishing[[:space:]]+charge ]]; then
     TIME_KIND="Until Full"
-  elif echo "$TIME_RAW" | grep -qi "remaining"; then
+  elif [[ "$TIME_RAW" =~ remaining ]]; then
     TIME_KIND="Remaining"
   fi
-  if ! echo "$TIME_RAW" | grep -qi "no estimate"; then
-    TIME_LABEL=$(echo "$TIME_RAW" | sed -E 's/present: (true|false)//Ig; s/remaining//Ig; s/finishing charge//Ig; s/^[[:space:]]+//; s/[[:space:]]+$//')
-    TIME_LABEL=$(echo "$TIME_LABEL" | xargs 2>/dev/null || true)
+  if [[ ! "$TIME_RAW" =~ no[[:space:]]+estimate ]]; then
+    read -r -a time_words <<< "$TIME_RAW" || true
+    filtered_words=()
+    for ((word_index = 0; word_index < ${#time_words[@]}; word_index++)); do
+      word="${time_words[$word_index]}"
+      if [[ "$word" == remaining ]]; then
+        continue
+      fi
+      if [[ "$word" == finishing ]] \
+          && [ $((word_index + 1)) -lt ${#time_words[@]} ] \
+          && [[ "${time_words[$((word_index + 1))]}" == charge ]]; then
+        word_index=$((word_index + 1))
+        continue
+      fi
+      if [[ "$word" == present: ]]; then
+        if [ $((word_index + 1)) -lt ${#time_words[@]} ] \
+            && { [[ "${time_words[$((word_index + 1))]}" == true ]] \
+              || [[ "${time_words[$((word_index + 1))]}" == false ]]; }; then
+          word_index=$((word_index + 1))
+        fi
+        continue
+      fi
+      if [[ "$word" == present:true ]] || [[ "$word" == present:false ]]; then
+        continue
+      fi
+      filtered_words+=("$word")
+    done
+    TIME_LABEL="${filtered_words[*]:-}"
+    trim_whitespace "$TIME_LABEL" TIME_LABEL
   fi
+  shopt -u nocasematch
 fi
 if [ "$STATUS" = "Charging" ] && [ -n "$TIME_LABEL" ] && [ "$TIME_KIND" = "Remaining" ]; then
   TIME_KIND="Until Full"
@@ -116,11 +174,29 @@ case "$LABEL_MODE" in
 esac
 
 BATTERY_INFO="$(ioreg -rc AppleSmartBattery 2>/dev/null || true)"
-CYCLE_COUNT="$(echo "$BATTERY_INFO" | awk -F'= ' '/^[[:space:]]*"CycleCount" =/ {gsub(/[^0-9]/,"",$2); print $2; exit}')"
-HEALTH_STATUS="$(echo "$BATTERY_INFO" | awk -F'= ' '/^[[:space:]]*"BatteryHealth" =/ {gsub(/[" ]/,"",$2); print $2; exit}')"
-MAX_CAPACITY="$(echo "$BATTERY_INFO" | awk -F'= ' '/^[[:space:]]*"MaxCapacity" =/ {gsub(/[^0-9]/,"",$2); print $2; exit}')"
-RAW_MAX_CAPACITY="$(echo "$BATTERY_INFO" | awk -F'= ' '/^[[:space:]]*"AppleRawMaxCapacity" =/ {gsub(/[^0-9]/,"",$2); print $2; exit}')"
-DESIGN_CAPACITY="$(echo "$BATTERY_INFO" | awk -F'= ' '/^[[:space:]]*"DesignCapacity" =/ {gsub(/[^0-9]/,"",$2); print $2; exit}')"
+CYCLE_COUNT=""
+HEALTH_STATUS=""
+MAX_CAPACITY=""
+RAW_MAX_CAPACITY=""
+DESIGN_CAPACITY=""
+cycle_re='^[[:space:]]*"CycleCount"[[:space:]]*=[[:space:]]*([0-9]+)'
+health_re='^[[:space:]]*"BatteryHealth"[[:space:]]*=[[:space:]]*"([^"]*)"'
+max_re='^[[:space:]]*"MaxCapacity"[[:space:]]*=[[:space:]]*([0-9]+)'
+raw_max_re='^[[:space:]]*"AppleRawMaxCapacity"[[:space:]]*=[[:space:]]*([0-9]+)'
+design_re='^[[:space:]]*"DesignCapacity"[[:space:]]*=[[:space:]]*([0-9]+)'
+while IFS= read -r line || [ -n "$line" ]; do
+  if [ -z "$CYCLE_COUNT" ] && [[ "$line" =~ $cycle_re ]]; then
+    CYCLE_COUNT="${BASH_REMATCH[1]}"
+  elif [ -z "$HEALTH_STATUS" ] && [[ "$line" =~ $health_re ]]; then
+    HEALTH_STATUS="${BASH_REMATCH[1]// /}"
+  elif [ -z "$RAW_MAX_CAPACITY" ] && [[ "$line" =~ $raw_max_re ]]; then
+    RAW_MAX_CAPACITY="${BASH_REMATCH[1]}"
+  elif [ -z "$MAX_CAPACITY" ] && [[ "$line" =~ $max_re ]]; then
+    MAX_CAPACITY="${BASH_REMATCH[1]}"
+  elif [ -z "$DESIGN_CAPACITY" ] && [[ "$line" =~ $design_re ]]; then
+    DESIGN_CAPACITY="${BASH_REMATCH[1]}"
+  fi
+done <<< "$BATTERY_INFO"
 
 HEALTH_PCT=""
 HEALTH_BASE=""
@@ -130,7 +206,15 @@ elif [ -n "$MAX_CAPACITY" ] && [ "$MAX_CAPACITY" -gt 100 ] 2>/dev/null; then
   HEALTH_BASE="$MAX_CAPACITY"
 fi
 if [ -n "$HEALTH_BASE" ] && [ -n "$DESIGN_CAPACITY" ] && [ "$DESIGN_CAPACITY" -gt 0 ] 2>/dev/null; then
-  HEALTH_PCT="$(awk -v max="$HEALTH_BASE" -v design="$DESIGN_CAPACITY" 'BEGIN {printf "%.0f", (max / design) * 100}')"
+  # Preserve macOS awk's round-to-even %.0f behavior without another process.
+  health_numerator=$((HEALTH_BASE * 100))
+  HEALTH_PCT=$((health_numerator / DESIGN_CAPACITY))
+  health_remainder=$((health_numerator % DESIGN_CAPACITY))
+  if [ $((health_remainder * 2)) -gt "$DESIGN_CAPACITY" ] \
+      || { [ $((health_remainder * 2)) -eq "$DESIGN_CAPACITY" ] \
+        && [ $((HEALTH_PCT % 2)) -ne 0 ]; }; then
+    HEALTH_PCT=$((HEALTH_PCT + 1))
+  fi
 fi
 
 if [ -n "$HEALTH_PCT" ]; then
@@ -164,35 +248,16 @@ if [ -n "$HEALTH_PCT" ] && [ "$HEALTH_PCT" -lt 60 ] 2>/dev/null; then
   HEALTH_COLOR="$RED_COLOR"
 fi
 
-sketchybar --set "$NAME" icon="$ICON" label="$LABEL" label.drawing="$LABEL_DRAWING" icon.color="$COLOR" label.color="$COLOR"
-
-sketchybar --set battery.status \
-  label="${STATUS}" \
-  icon="󰁹" \
-  icon.color="$COLOR"
-
-sketchybar --set battery.time \
-  label="$TIME_DISPLAY_LABEL" \
-  icon="󰥔" \
-  icon.color="$BLUE_COLOR"
-
 POWER_LABEL="${POWER_SOURCE:-Unknown}"
 case "$POWER_SOURCE" in
   "AC Power") POWER_LABEL="AC" ;;
   "Battery Power") POWER_LABEL="Battery" ;;
 esac
 
-sketchybar --set battery.power \
-  label="${POWER_LABEL}" \
-  icon="" \
-  icon.color="$BLUE_COLOR"
-
-sketchybar --set battery.cycle \
-  label="${CYCLE_COUNT:-—} cycles" \
-  icon="󰑓" \
-  icon.color="$BLUE_COLOR"
-
-sketchybar --set battery.health \
-  label="$HEALTH_LABEL" \
-  icon="󰓽" \
-  icon.color="$HEALTH_COLOR"
+sketchybar \
+  --set "$NAME" icon="$ICON" label="$LABEL" label.drawing="$LABEL_DRAWING" icon.color="$COLOR" label.color="$COLOR" \
+  --set battery.status label="${STATUS}" icon="󰁹" icon.color="$COLOR" \
+  --set battery.time label="$TIME_DISPLAY_LABEL" icon="󰥔" icon.color="$BLUE_COLOR" \
+  --set battery.power label="${POWER_LABEL}" icon="" icon.color="$BLUE_COLOR" \
+  --set battery.cycle label="${CYCLE_COUNT:-—} cycles" icon="󰑓" icon.color="$BLUE_COLOR" \
+  --set battery.health label="$HEALTH_LABEL" icon="󰓽" icon.color="$HEALTH_COLOR"

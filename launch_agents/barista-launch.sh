@@ -1,11 +1,10 @@
 #!/bin/bash
 # Barista supervisor script for SketchyBar, Yabai, and skhd.
-# Canonical copy: ~/src/lab/barista/launch_agents/barista-launch.sh
-# When ~/.config/sketchybar is a symlink to lab/barista, the plist runs this via $HOME/.config/sketchybar/launch_agents/barista-launch.sh
+# The installer renders the active runtime path into the LaunchAgent.
 
 set -euo pipefail
 
-CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
+CONFIG_DIR="${BARISTA_CONFIG_DIR:-${CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/sketchybar}}"
 HELPER="${BARISTA_AGENT_HELPER:-$CONFIG_DIR/helpers/launch_agent_manager.sh}"
 DOMAIN="gui/$(id -u)"
 # Default to the current yabai label when installed, but keep the legacy label as fallback.
@@ -20,7 +19,16 @@ fi
 SKHD_LABEL="${BARISTA_SKHD_LABEL:-com.koekeishiya.skhd}"
 AGENTS=("$SKETCHYBAR_LABEL" "$YABAI_LABEL" "$SKHD_LABEL")
 
-HOMEBREW_PREFIX="${HOMEBREW_PREFIX:-/opt/homebrew}"
+if [ -z "${HOMEBREW_PREFIX:-}" ] && command -v brew >/dev/null 2>&1; then
+  HOMEBREW_PREFIX="$(brew --prefix)"
+fi
+if [ -z "${HOMEBREW_PREFIX:-}" ]; then
+  if [ "$(uname -m)" = "arm64" ]; then
+    HOMEBREW_PREFIX="/opt/homebrew"
+  else
+    HOMEBREW_PREFIX="/usr/local"
+  fi
+fi
 DEFAULT_PATH="${HOMEBREW_PREFIX}/bin:${HOMEBREW_PREFIX}/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
 PYTHON_PATH=""
 if [ -d "${HOMEBREW_PREFIX}/opt/python@3.14/bin" ]; then
@@ -30,10 +38,21 @@ if [ -n "$PYTHON_PATH" ]; then
   DEFAULT_PATH="${PYTHON_PATH}:${DEFAULT_PATH}"
 fi
 
-export PATH="${BARISTA_PATH:-$DEFAULT_PATH}"
+if [ -n "${BARISTA_PATH:-}" ]; then
+  export PATH="$BARISTA_PATH"
+elif [ -n "${PATH:-}" ]; then
+  export PATH="${PATH}:${DEFAULT_PATH}"
+else
+  export PATH="$DEFAULT_PATH"
+fi
+export BARISTA_CONFIG_DIR="$CONFIG_DIR"
 
 if command -v launchctl >/dev/null 2>&1; then
   launchctl setenv PATH "$PATH" >/dev/null 2>&1 || true
+  launchctl setenv BARISTA_CONFIG_DIR "$BARISTA_CONFIG_DIR" >/dev/null 2>&1 || true
+  if [ -n "${BARISTA_CODE_DIR:-}" ]; then
+    launchctl setenv BARISTA_CODE_DIR "$BARISTA_CODE_DIR" >/dev/null 2>&1 || true
+  fi
 fi
 
 log() {

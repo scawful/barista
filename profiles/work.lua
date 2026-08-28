@@ -17,7 +17,6 @@ profile.integrations = {
   emacs = true,       -- Keep Emacs for org-mode
   halext = false,     -- Keep unfinished halext integration opt-in
   journal = false,    -- Hide personal journal at work
-  nerv = false,       -- Hide NERV at work
 }
 
 -- Window manager mode (expects yabai/skhd on work machines)

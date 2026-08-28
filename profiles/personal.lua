@@ -20,7 +20,6 @@ profile.integrations = {
   emacs = true,       -- Personal Emacs org-mode workflows
   halext = false,     -- halext-org (when ready)
   journal = true,     -- Journal/org-mode capture + inbox
-  nerv = true,        -- NERV transfer queue status
   halext_org = true,  -- Halext-org dashboard widget
   workspace = true,   -- Workspace status
 }

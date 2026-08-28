@@ -605,7 +605,8 @@ configure_panel_mode() {
       set_panel_preference tui
       ;;
     imgui)
-      if [ -x "$HOME/src/lab/barista_config/build/barista_config" ] || command -v barista_config >/dev/null 2>&1; then
+      if command -v barista_config >/dev/null 2>&1 \
+        || { [ -n "${BARISTA_CONFIG_APP:-}" ] && [ -x "$BARISTA_CONFIG_APP" ]; }; then
         set_panel_preference imgui
       else
         note_warn "barista_config binary not found; leaving current preference"

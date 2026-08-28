@@ -10,7 +10,7 @@ Barista is a curated configuration for [SketchyBar](https://github.com/FelixKrat
 - **Task Pulse**: Optional, local-first task status and capture actions without committing personal task paths.
 - **Profile variants**: Switch between Minimal, Cozy, Personal, Work, and Restricted Work modes.
 - **Modular Architecture**: Lua-based configuration system decomposed for high performance and testability.
-- **Integrations**: Optional support for Yabai (tiling), Skhd (hotkeys), Journal (org-mode capture/inbox), NERV (transfer queue + host monitoring), and Halext. Integrations are toggled per profile or machine.
+- **Integrations**: Optional support for Yabai (tiling), Skhd (hotkeys), Journal (org-mode capture/inbox), Halext, and machine-local interface extensions. Integrations are toggled per profile or machine.
 
 ## Product Boundary
 
@@ -28,17 +28,24 @@ Barista may launch local workflow tools through opt-in interface extensions, but
 To install Barista and its dependencies:
 
 ```bash
-# Clone the repo
-git clone https://github.com/scawful/barista.git ~/.local/share/barista
+# Clone anywhere your machine permits
+git clone https://github.com/scawful/barista.git
+cd barista
 
-# Run the installer
-~/.local/share/barista/scripts/install.sh
+# Work Mac: safe copy install, dependency setup, login agent, and first start
+./scripts/bootstrap_machine.sh \
+  --profile work \
+  --install-dependencies \
+  --launch-agent \
+  --reload
 ```
 
-The installer will guide you through:
-1. Installing dependencies (SketchyBar, Lua, Fonts).
-2. Choosing a **Profile** (see below).
-3. Configuring **Yabai/Skhd** (optional).
+The bootstrap uses `${BARISTA_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/sketchybar}`
+as the runtime, backs up an existing runtime only when `--replace` is explicit,
+and keeps machine state in ignored local files. Run
+`./scripts/bootstrap_machine.sh --help` for copy, symlink, restricted-work, and
+dry-run modes. The older guided full builder remains available as
+`./scripts/install.sh`.
 
 ## Profiles
 
@@ -111,19 +118,33 @@ serialized and health-checked against `front_app`.
 
 ## Source universe: runtime and overlay
 
-**Recommended:** Make the SketchyBar runtime a symlink to the Barista repo so edits are live:
+Use either a copied runtime (best for a work laptop) or an explicit symlink for
+live development. Neither mode assumes where the source checkout lives:
 
 ```bash
-# If ~/.config/sketchybar already exists, back it up first
-mv ~/.config/sketchybar ~/.config/sketchybar.bak
-ln -s ~/src/lab/barista ~/.config/sketchybar
+./scripts/bootstrap_machine.sh --profile work
+./scripts/bootstrap_machine.sh --profile personal --link --replace
+./scripts/bootstrap_machine.sh \
+  --profile work \
+  --code-dir /path/to/company/source \
+  --bin-dir /path/to/company/bin \
+  --launch-agent
 ```
 
-**Personal overlay:** For per-machine additions (e.g. Oracle of Secrets integration, workflow shortcuts), use the overlay in `~/src/config/dotfiles/sketchybar-overlay/`. Apply it with:
-`~/src/config/dotfiles/scripts/apply_sketchybar_overlay.sh`
-Optionally pass the target dir (default: `~/.config/sketchybar`). If the runtime is a symlink to lab/barista, the overlay is written into the repo. See `config/dotfiles/sketchybar-overlay/README.md`.
+`--code-dir` records the machine's source root in `state.paths.code_dir` and
+exports it to the login agent. Repeat `--bin-dir` for internal executable
+directories that are not in the standard macOS/Homebrew `PATH`. Neither flag
+changes another machine's configuration.
 
-**Skhd and yabai_control:** Space/layout keybindings in skhd call `yabai_control.sh`. To support both "Barista deploy" and "dotfiles-only" setups, use the wrapper: `~/.local/bin/yabai_control_wrapper.sh` (from `config/dotfiles/bin/yabai_control_wrapper.sh`). Ensure that wrapper is on your PATH and installed (e.g. dotfiles link `bin/` to `~/.local/bin`).
+**Machine-local additions:** Put local app paths, commands, and company tools in
+the ignored `data/interface_extensions.local.json`, `data/work_apps.local.json`,
+`data/workflow_shortcuts.local.json`, or `data/machine.local.json` files. The
+repository does not require a dotfiles checkout or a particular internal-tools
+directory.
+
+**Skhd and yabai_control:** Space/layout keybindings use Barista's installed
+`scripts/yabai_control.sh`. A dotfiles wrapper may delegate to it, but is not a
+runtime dependency.
 For shortcut health, run `~/.config/sketchybar/scripts/yabai_control.sh doctor`
 to list loaded skhd files, verify the generated Barista shortcut include, and
 flag duplicate bindings. For a full shortcut map, run
@@ -134,7 +155,10 @@ targets. For window-rule drift, run
 apps should default to `manage=off sub-layer=normal`, with topmost kept as an
 explicit manual action.
 
-**LaunchAgents:** The single place to edit the Barista orchestrator (SketchyBar + yabai + skhd at login) is `lab/barista/launch_agents/`. See [launch_agents/README.md](launch_agents/README.md). Recommended: use either this LaunchAgent or `brew services` for the three daemons, not both.
+**LaunchAgents:** Templates live in `launch_agents/`; `bin/install-launch-agent`
+renders the current runtime path and Homebrew prefix. See
+[launch_agents/README.md](launch_agents/README.md). Use either this orchestrator
+or `brew services` for the three daemons, not both.
 
 ## Zelda Workbench
 
@@ -201,7 +225,7 @@ profile:
   "menus": {
     "calendar": {
       "task_provider": "files",
-      "task_sources": ["~/src/folio/tasks/active.md"]
+      "task_sources": ["/path/to/tasks.md"]
     }
   }
 }

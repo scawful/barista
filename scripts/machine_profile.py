@@ -387,6 +387,12 @@ def run_apply(args: argparse.Namespace) -> int:
     if variant == "work":
         apply_work_privacy_boundary(state)
 
+    if args.code_dir:
+        code_dir = expand_path(args.code_dir, state_file)
+        if code_dir is None:
+            raise SystemExit("code directory could not be resolved")
+        ensure_dict(state, "paths")["code_dir"] = str(code_dir)
+
     apps_file = apply_work_apps_if_requested(
         state,
         state_file,
@@ -413,6 +419,8 @@ def run_apply(args: argparse.Namespace) -> int:
         print(f"machine_profile.report.state_profile={payload['state_profile']}")
         print(f"machine_profile.report.state_file={state_file}")
         print(f"machine_profile.report.machine_file={machine_file}")
+        if args.code_dir:
+            print(f"machine_profile.report.code_dir={state['paths']['code_dir']}")
         print(f"machine_profile.report.dry_run={int(args.dry_run)}")
         if apps_file:
             print(f"machine_profile.report.work_apps_file={apps_file}")
@@ -489,6 +497,11 @@ def main(argv: list[str] | None = None) -> int:
     apply_parser.add_argument("--window-manager", default="", help="override window-manager mode for this machine")
     apply_parser.add_argument("--panel-mode", default="", help="override preferred control panel mode")
     apply_parser.add_argument("--domain", "--work-domain", default="", help="Google Workspace domain")
+    apply_parser.add_argument(
+        "--code-dir",
+        default="",
+        help="optional machine-local source root stored in state.paths.code_dir",
+    )
     apply_parser.add_argument("--from-file", "--work-apps-file", default="", help="JSON array of work app rows")
     apply_parser.add_argument("--work-apps-out-file", "--apps-out-file", default="data/work_apps.local.json")
     apply_parser.add_argument("--write-work-apps", action="store_true", help="write work app rows even without a domain")

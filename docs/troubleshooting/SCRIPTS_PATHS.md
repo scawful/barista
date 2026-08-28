@@ -47,20 +47,21 @@
 - Space switching requires the Yabai scripting addition for full functionality.
 - `space-prev/next` fall back to AppleScript when the scripting addition is missing.
 - Use Control Panel → Debug to run Yabai Doctor or restart shortcuts.
-- skhd requires `.load "/Users/<user>/.config/skhd/barista_shortcuts.conf"` with double quotes.
+- skhd requires an absolute `.load "/path/to/barista_shortcuts.conf"` entry with double quotes.
 - skhd parse errors are logged in `/tmp/skhd_<user>.err.log`.
 
-## Dotfiles Wrapper Pattern (Recommended)
+## Optional wrapper pattern
 
-Symlinking `~/.skhdrc` or `~/.yabairc` to dotfiles paths is brittle when repo paths move.
-Use a local wrapper file that `.load`s or `source`s your dotfiles instead.
+Symlinking `~/.skhdrc` or `~/.yabairc` directly to another checkout is brittle
+when repository paths move. Use a machine-local wrapper only when you need to
+compose Barista with another configuration.
 
 ### skhd wrapper
 
 ```
 # ~/.config/skhd/skhdrc
-.load "/Users/<user>/.config/skhd/barista_shortcuts.conf"
-.load "/Users/<user>/src/config/dotfiles/.config/skhd/skhdrc"
+.load "/path/to/barista_shortcuts.conf"
+.load "/path/to/optional/company-or-personal-skhdrc"
 ```
 
 ### yabai wrapper
@@ -68,10 +69,11 @@ Use a local wrapper file that `.load`s or `source`s your dotfiles instead.
 ```
 # ~/.config/yabai/yabairc
 #!/usr/bin/env sh
-DOTFILES="$HOME/src/config/dotfiles/.config/yabai/yabairc"
-if [ -f "$DOTFILES" ]; then
-  . "$DOTFILES"
+BASE_YABAIRC="${BARISTA_BASE_YABAIRC:-}"
+if [ -n "$BASE_YABAIRC" ] && [ -f "$BASE_YABAIRC" ]; then
+  . "$BASE_YABAIRC"
 fi
 ```
 
-Keep `~/.skhdrc` and `~/.yabairc` as symlinks to the local wrapper files, not to dotfiles.
+Keep `~/.skhdrc` and `~/.yabairc` as symlinks to the local wrapper files, not
+to another repository.

@@ -44,6 +44,19 @@ run_test("tool_locator.resolve_code_dir: explicit code_dir wins", function()
   cleanup(root)
 end)
 
+run_test("tool_locator.resolve_code_dir: state path is never replaced by a conventional fallback", function()
+  local root = make_temp_dir("locator_state_code")
+  local state_code = root .. "/company-checkout"
+  mkdir(state_code)
+
+  local result = locator.resolve_code_dir({
+    state = { paths = { code_dir = state_code } },
+  })
+
+  assert_equal(result, state_code, "state code_dir")
+  cleanup(root)
+end)
+
 run_test("tool_locator.load_state: reads state.json", function()
   local root = make_temp_dir("locator_state")
   write_file(root .. "/state.json", [[{"modes":{"runtime_backend":"lua"},"integrations":{"yaze":{"enabled":true}}}]])

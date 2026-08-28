@@ -19,12 +19,15 @@ app that needs approval.
 ## Fresh Setup
 
 ```bash
-cd ~/src/lab/barista
+cd /path/to/barista
 
-./scripts/setup_machine.sh \
-  --yes \
-  --restricted-work \
-  --domain yourcompany.com
+./scripts/bootstrap_machine.sh \
+  --profile restricted-work \
+  --domain yourcompany.com \
+  --code-dir /path/to/company/source \
+  --bin-dir /path/to/company/bin \
+  --launch-agent \
+  --reload
 
 ./scripts/barista-doctor.sh --fix --report
 ./scripts/barista-debug.sh --lua-only --reload
@@ -33,13 +36,13 @@ cd ~/src/lab/barista
 ## Update Existing Install
 
 ```bash
-cd ~/.config/sketchybar
-./bin/barista-update --yes --target origin/main --skip-restart
+cd /path/to/barista
+git pull --ff-only
 
-./scripts/setup_machine.sh \
-  --yes \
-  --restricted-work \
-  --domain yourcompany.com
+./scripts/bootstrap_machine.sh \
+  --profile restricted-work \
+  --domain yourcompany.com \
+  --replace
 
 ./scripts/barista-doctor.sh --fix --report
 ./scripts/barista-debug.sh --lua-only --reload --logs
@@ -129,6 +132,9 @@ This preserves valid configured fonts and only repairs missing families.
 - Interface extensions are optional and script-backed. Keep personal packs off
   work machines unless a local `data/interface_extensions.local.json` is
   intentionally installed.
+- `--code-dir` and repeatable `--bin-dir` values are machine-local. Use them
+  for company checkout and internal-tool conventions instead of changing
+  committed scripts or assuming a `$HOME/src` layout.
 - If you later want compiled helpers again, run:
 
 ```bash

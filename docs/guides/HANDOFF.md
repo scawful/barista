@@ -1,7 +1,7 @@
 # Barista Handoff
 
-Last updated: 2026-04-06
-Scope: active runtime for `/Users/scawful/src/lab/barista`
+Last updated: 2026-08-28
+Scope: the Barista checkout and the runtime selected by `BARISTA_CONFIG_DIR`
 
 ## What Barista Owns
 
@@ -13,9 +13,10 @@ Barista is the ambient macOS bar layer.
 
 ## Runtime Assumptions
 
-Recommended live setup:
+Supported live setups:
 
-- `~/.config/sketchybar -> /Users/scawful/src/lab/barista`
+- a copied runtime created by `scripts/bootstrap_machine.sh` (recommended for work Macs)
+- a development symlink created with `scripts/bootstrap_machine.sh --link`
 - `skhd` and yabai window actions route through `scripts/yabai_control.sh`
 - the active docs path for Apple-menu handoff notes is this file:
   - `docs/guides/HANDOFF.md`
@@ -32,7 +33,7 @@ sketchybar --query <item>
 
 Use raw `sketchybar --reload` only when intentionally measuring reload behavior.
 
-## Active Runtime Path
+## Runtime ownership
 
 Main ownership:
 

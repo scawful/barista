@@ -2,11 +2,13 @@
 
 set -euo pipefail
 
-MOUNTS_TOOL_DEFAULT="$HOME/src/tools/mounts/mounts"
-MOUNTS_TOOL="${BARISTA_MOUNTS_TOOL:-$MOUNTS_TOOL_DEFAULT}"
+MOUNTS_TOOL="${BARISTA_MOUNTS_TOOL:-}"
+if [ -z "$MOUNTS_TOOL" ] && command -v mounts >/dev/null 2>&1; then
+  MOUNTS_TOOL="$(command -v mounts)"
+fi
 
-TARGET_HOST="${BARISTA_MOUNT_HOST:-halext-nj}"
-TARGET_PATH="${BARISTA_MOUNT_PATH:-/home/halext}"
+TARGET_HOST="${BARISTA_MOUNT_HOST:-}"
+TARGET_PATH="${BARISTA_MOUNT_PATH:-}"
 
 print_usage() {
   cat <<'USAGE'
@@ -20,7 +22,10 @@ Commands:
   barista          Print Barista-related process family
   runaways         Flag hot/stale Barista plugin processes
   cleanup-runaways Dry-run targeted cleanup; pass --yes to kill flagged PIDs
-  cleanup-mounts   Kill stale sshfs/macfuse mount processes (when not mounted)
+  cleanup-mounts   Dry-run cleanup for one explicitly configured SSHFS target
+
+Set BARISTA_MOUNT_HOST and BARISTA_MOUNT_PATH before cleanup-mounts.
+Pass --yes to send TERM to the exact matching SSHFS processes.
 USAGE
 }
 
@@ -250,6 +255,12 @@ cleanup_runaways() {
 }
 
 cleanup_mounts() {
+  local confirm="${1:-}"
+  if [ -z "$TARGET_HOST" ] || [ -z "$TARGET_PATH" ]; then
+    echo "cleanup-mounts requires BARISTA_MOUNT_HOST and BARISTA_MOUNT_PATH." >&2
+    return 2
+  fi
+
   local mounted=""
   if [ -x "$MOUNTS_TOOL" ]; then
     mounted=$("$MOUNTS_TOOL" status 2>/dev/null | awk '$2 == "mounted" {print $1}' | tr '\n' ' ' | sed 's/ $//')
@@ -261,22 +272,44 @@ cleanup_mounts() {
     return 1
   fi
 
-  local sshfs_pids
-  sshfs_pids=$(pgrep -f "sshfs ${TARGET_HOST}:${TARGET_PATH}" || true)
+  local sshfs_pids target_spec
+  target_spec="${TARGET_HOST}:${TARGET_PATH}"
+  if [ -n "${BARISTA_SSHFS_PROCESS_SNAPSHOT:-}" ] && [ -f "$BARISTA_SSHFS_PROCESS_SNAPSHOT" ]; then
+    sshfs_pids=$(awk -v target="$target_spec" '
+      index($0, "sshfs") {
+        pid=$1
+        for (i = 2; i <= NF; i++) {
+          if ($i == target) {
+            print pid
+            break
+          }
+        }
+      }
+    ' "$BARISTA_SSHFS_PROCESS_SNAPSHOT")
+  else
+    sshfs_pids=$(ps -axo pid=,command= 2>/dev/null | awk -v target="$target_spec" '
+      index($0, "sshfs") {
+        pid=$1
+        for (i = 2; i <= NF; i++) {
+          if ($i == target) {
+            print pid
+            break
+          }
+        }
+      }
+    ')
+  fi
   if [ -n "$sshfs_pids" ]; then
-    echo "$sshfs_pids" | xargs -n 1 kill -9 || true
-    echo "Killed sshfs processes for ${TARGET_HOST}:${TARGET_PATH}."
+    if [ "$confirm" != "--yes" ]; then
+      echo "Dry run: would terminate SSHFS processes for ${TARGET_HOST}:${TARGET_PATH}:"
+      printf '%s\n' "$sshfs_pids"
+      echo "Re-run with: process_manager.sh cleanup-mounts --yes"
+      return 0
+    fi
+    printf '%s\n' "$sshfs_pids" | xargs -n 1 kill
+    echo "Terminated SSHFS processes for ${TARGET_HOST}:${TARGET_PATH}."
   else
     echo "No sshfs processes found for ${TARGET_HOST}:${TARGET_PATH}."
-  fi
-
-  local macfuse_pids
-  macfuse_pids=$(ps -axo pid,comm | awk '$2 == "(mount_macfuse)" {print $1}')
-  if [ -n "$macfuse_pids" ]; then
-    echo "$macfuse_pids" | xargs -n 1 kill -9 || true
-    echo "Killed mount_macfuse processes (no mounts active)."
-  else
-    echo "No mount_macfuse processes found." 
   fi
 
   return 0
@@ -289,7 +322,7 @@ case "${1:-}" in
   label)
     if top_line=$(read_top_cpu); then
       if [ -n "$top_line" ]; then
-        read -r pid cpu mem name <<<"$top_line"
+        read -r _pid cpu _mem name <<<"$top_line"
         printf 'Top CPU: %s %s%%' "$name" "$cpu"
         exit 0
       fi
@@ -312,7 +345,7 @@ case "${1:-}" in
     cleanup_runaways "${2:-}"
     ;;
   cleanup-mounts|cleanup)
-    cleanup_mounts
+    cleanup_mounts "${2:-}"
     ;;
   *)
     print_usage

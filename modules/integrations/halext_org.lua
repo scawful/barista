@@ -2,6 +2,7 @@
 -- Polls summary endpoint and shows task/event counts in the bar
 
 local halext_org = {}
+local locator = require("tool_locator")
 
 local json_ok, json = pcall(require, "helpers.lib.json")
 if not json_ok then
@@ -9,13 +10,16 @@ if not json_ok then
 end
 
 local HOME = os.getenv("HOME") or ""
-local AUTH_FILE = HOME .. "/.config/halext/auth.json"
-local CACHE_FILE = HOME .. "/.cache/barista/halext-org-summary.json"
-local FOCUS_CACHE_FILE = HOME .. "/.cache/barista/halext-org-focus.json"
-local MOMENTUM_CACHE_FILE = HOME .. "/.cache/barista/halext-org-momentum.json"
+local CONFIG_HOME = os.getenv("XDG_CONFIG_HOME") or (HOME .. "/.config")
+local CACHE_HOME = os.getenv("XDG_CACHE_HOME") or (HOME .. "/.cache")
+local CACHE_DIR = os.getenv("BARISTA_CACHE_DIR") or (CACHE_HOME .. "/barista")
+local AUTH_FILE = os.getenv("BARISTA_HALEXT_AUTH_FILE") or (CONFIG_HOME .. "/halext/auth.json")
+local CACHE_FILE = CACHE_DIR .. "/halext-org-summary.json"
+local FOCUS_CACHE_FILE = CACHE_DIR .. "/halext-org-focus.json"
+local MOMENTUM_CACHE_FILE = CACHE_DIR .. "/halext-org-momentum.json"
 local CACHE_TTL = 300  -- 5 minutes
 local FOCUS_CACHE_TTL = 30  -- 30 seconds for active focus
-local BASE_URL = "https://org.halext.org/api"
+local BASE_URL = os.getenv("BARISTA_HALEXT_ORG_URL") or "https://org.halext.org/api"
 
 local function path_exists(path)
   if not path or path == "" then return false end
@@ -35,7 +39,7 @@ local function exec(cmd)
 end
 
 local function ensure_cache_dir()
-  os.execute("mkdir -p " .. HOME .. "/.cache/barista")
+  os.execute(string.format("mkdir -p %q", CACHE_DIR))
 end
 
 local function get_auth_token()
@@ -344,13 +348,17 @@ function halext_org.create_menu_items(ctx)
       })
     end
 
-    if summary.nerv_hosts_online ~= nil then
+    local hosts_online = summary.hosts_online
+    if hosts_online == nil then
+      hosts_online = summary.nerv_hosts_online
+    end
+    if hosts_online ~= nil then
       table.insert(items, {
         type = "item",
-        name = "halext_org.nerv",
+        name = "halext_org.hosts",
         icon = "󰈀",
-        label = string.format("NERV Hosts Online: %d", summary.nerv_hosts_online),
-        icon_color = summary.nerv_hosts_online > 0 and "0xffa6e3a1" or "0xfff38ba8",
+        label = string.format("Hosts Online: %d", hosts_online),
+        icon_color = hosts_online > 0 and "0xffa6e3a1" or "0xfff38ba8",
       })
     end
   end
@@ -373,13 +381,16 @@ function halext_org.create_menu_items(ctx)
     action = "open -a EchoFlow",
   })
 
-  table.insert(items, {
-    type = "item",
-    name = "halext_org.sync",
-    icon = "󰓦",
-    label = "Sync Org Tasks",
-    action = "python3 " .. HOME .. "/src/tools/org-sync/org-halext-sync.py sync --verbose",
-  })
+  local sync_bin = os.getenv("BARISTA_ORG_SYNC_BIN") or locator.command_path("org-halext-sync")
+  if sync_bin and sync_bin ~= "" then
+    table.insert(items, {
+      type = "item",
+      name = "halext_org.sync",
+      icon = "󰓦",
+      label = "Sync Org Tasks",
+      action = string.format("%q sync --verbose", sync_bin),
+    })
+  end
 
   return items
 end

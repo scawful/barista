@@ -23,7 +23,14 @@ _d="${0%/*}"
 NAME="${NAME:-afs_approvals}"
 ACTION="${1:-refresh}"
 REQUEST_ID="${2:-}"
-APPROVALS_FILE="${AFS_APPROVALS_FILE:-$HOME/.config/afs/agents/approvals.json}"
+# Same resolution as afs.runtime_paths.default_config_root():
+# AFS_CONFIG_HOME, else $XDG_CONFIG_HOME/afs, else ~/.config/afs.
+if [ -n "${AFS_CONFIG_HOME:-}" ]; then
+  AFS_CONFIG_DIR="$AFS_CONFIG_HOME"
+else
+  AFS_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/afs"
+fi
+APPROVALS_FILE="${AFS_APPROVALS_FILE:-$AFS_CONFIG_DIR/agents/approvals.json}"
 REVIEWER="${BARISTA_AFS_REVIEWER:-${_d}/../bin/afs-approvals-review}"
 MAX_ROWS="${BARISTA_AFS_APPROVALS_ROWS:-5}"
 SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-${SKETCHYBAR_BIN:-}}"

@@ -6,6 +6,7 @@ When `~/.config/sketchybar` is a symlink to `~/src/lab/barista`, the plist runs 
 
 - **dev.barista.control.plist** — Install to `~/Library/LaunchAgents/` to start all three at login.
 - **barista-launch.sh** — Script that starts/stops/restarts the three services. Uses `CONFIG_DIR` (default `~/.config/sketchybar`) and `helpers/launch_agent_manager.sh` from that dir.
+- **com.scawful.afs-missions.plist** — Nightly (03:00) run of the AFS mission runner. Results land in `~/src/lab/.context/scratchpad/missions/*/result.json`; anything needing a decision shows on the `afs_approvals` badge. Install/remove commands are in the plist comment.
 - **dev.barista.mouse-buttons.plist** — Optional local mouse mapper for Logitech M575 middle/back/forward buttons when vendor daemons are unreliable.
 
 **Install:** Use the install script from this repo (e.g. `bin/install_barista_agent.sh` if present) or manually copy the plist to `~/Library/LaunchAgents/` and ensure the plist’s path points to this script (when runtime is symlinked, it will).

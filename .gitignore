@@ -9,6 +9,7 @@ bin/*
 !bin/barista-debug
 !bin/barista-update
 !bin/install-launch-agent
+!bin/afs-approvals-review
 gui/bin/
 build/
 *.o

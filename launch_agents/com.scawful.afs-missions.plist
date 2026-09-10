@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Nightly AFS mission runner. Runs every TOML mission under
+         ~/src/lab/.context/scratchpad/missions/ once, at 03:00. Anything a
+         mission wants to actually do (push, delete, write) lands in the
+         approvals queue and shows up on the Barista afs_approvals badge.
+         Install:  cp launch_agents/com.scawful.afs-missions.plist ~/Library/LaunchAgents/
+                   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.scawful.afs-missions.plist
+         Run now:  launchctl kickstart -k gui/$(id -u)/com.scawful.afs-missions
+         Remove:   launchctl bootout gui/$(id -u)/com.scawful.afs-missions -->
+    <key>Label</key>
+    <string>com.scawful.afs-missions</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/scawful/src/lab/afs/.venv/bin/python</string>
+        <string>-m</string>
+        <string>afs.agents.mission_runner</string>
+        <string>--context-root</string>
+        <string>/Users/scawful/src/lab/.context</string>
+        <string>--quiet</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/scawful/src/lab/afs</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>AFS_ROOT</key>
+        <string>/Users/scawful/src/lab/afs</string>
+    </dict>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>Nice</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>/tmp/afs-missions.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/afs-missions.err.log</string>
+</dict>
+</plist>

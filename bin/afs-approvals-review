@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""Review pending AFS agent-gate approvals from a terminal.
+
+Barista opens this when you click the approvals badge. It lists what is
+waiting, you pick a row and say approve or reject, then the real decision
+runs through ``afs approvals approve|reject --request-id ...``, which still
+asks you to re-type the ``agent:action`` token on this tty. That prompt is the
+security boundary; this script only saves you the lookup and the typing of ids.
+
+Usage: afs-approvals-review [--request-id gate_...] [--afs-root DIR]
+Env:   AFS_ROOT (afs checkout), AFS_APPROVALS_FILE (custom queue path),
+       BARISTA_AFS_REVIEW_CMD (test seam: command prefix instead of python -m afs)
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+
+
+def find_afs_root(explicit: str | None) -> Path | None:
+    candidates = [explicit, os.environ.get("AFS_ROOT")]
+    home = Path.home()
+    candidates += [str(home / "src" / "lab" / "afs"), str(home / "src" / "afs")]
+    for cand in candidates:
+        if cand and (Path(cand).expanduser() / "src" / "afs").is_dir():
+            return Path(cand).expanduser()
+    return None
+
+
+def afs_command(root: Path | None) -> list[str]:
+    override = os.environ.get("BARISTA_AFS_REVIEW_CMD")
+    if override:
+        return shlex.split(override)
+    if root is None:
+        sys.exit("afs checkout not found; set AFS_ROOT=/path/to/afs")
+    # Same rule as afs/scripts/afs: the checkout's venv when it exists,
+    # otherwise whatever python3 is running this script.
+    venv_python = root / ".venv" / "bin" / "python"
+    python = str(venv_python) if venv_python.exists() else sys.executable
+    return [python, "-m", "afs"]
+
+
+def run_afs(root: Path | None, *args: str, capture: bool = False) -> subprocess.CompletedProcess:
+    env = dict(os.environ)
+    if root is not None:
+        env["AFS_ROOT"] = str(root)
+        env["PYTHONPATH"] = str(root / "src") + (
+            os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
+        )
+    approvals_file = os.environ.get("AFS_APPROVALS_FILE")
+    extra = ["--approvals-file", approvals_file] if approvals_file else []
+    cmd = afs_command(root) + ["approvals", *extra, *args]
+    return subprocess.run(
+        cmd,
+        cwd=str(root) if root is not None else None,
+        env=env,
+        text=True,
+        capture_output=capture,
+        check=False,
+    )
+
+
+def pending(root: Path | None) -> list[dict]:
+    result = run_afs(root, "list", "--json", capture=True)
+    if result.returncode != 0:
+        sys.stderr.write(result.stderr or "afs approvals list failed\n")
+        return []
+    try:
+        rows = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return []
+    rows = [r for r in rows if r.get("status", "pending") == "pending"]
+    rows.sort(key=lambda r: r.get("timestamp", ""))
+    return rows
+
+
+def show(rows: list[dict]) -> None:
+    if not rows:
+        print("Nothing pending.")
+        return
+    print(f"{len(rows)} pending approval(s):\n")
+    for i, r in enumerate(rows, 1):
+        when = (r.get("timestamp") or "")[:10]
+        print(f"  {i:>2}. {r.get('agent','?')}  {r.get('action','?')}  [{when}]  {r.get('request_id','')}")
+        detail = (r.get("detail") or "").strip()
+        if detail:
+            print(f"      {detail}")
+    print()
+
+
+def ask(prompt: str) -> str:
+    try:
+        return input(prompt).strip()
+    except EOFError:
+        return "q"
+
+
+def decide(root: Path | None, row: dict, verb: str) -> None:
+    because = ask(f"{verb} {row.get('request_id')} — because: ")
+    if not because:
+        print("A rationale is required; nothing changed.")
+        return
+    # Inherits this tty: the CLI prints the token prompt and reads the answer.
+    run_afs(root, verb, "--request-id", row.get("request_id", ""), "--because", because)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--request-id", help="Start with this request selected.")
+    parser.add_argument("--afs-root", help="Path to the afs checkout.")
+    args = parser.parse_args(argv)
+
+    root = find_afs_root(args.afs_root)
+    if root is None and not os.environ.get("BARISTA_AFS_REVIEW_CMD"):
+        sys.exit("afs checkout not found; set AFS_ROOT=/path/to/afs")
+
+    preselect = args.request_id
+    while True:
+        rows = pending(root)
+        show(rows)
+        if not rows:
+            return 0
+        if preselect:
+            match = [r for r in rows if r.get("request_id") == preselect]
+            preselect = None
+            if match:
+                row = match[0]
+                verb = ask(f"Selected {row.get('request_id')}. approve / reject / skip: ").lower()
+                if verb in ("approve", "a"):
+                    decide(root, row, "approve")
+                    continue
+                if verb in ("reject", "r"):
+                    decide(root, row, "reject")
+                    continue
+        answer = ask("approve N | reject N | q: ").lower()
+        if answer in ("q", "quit", ""):
+            return 0
+        parts = answer.split()
+        if len(parts) != 2 or not parts[1].isdigit() or not 1 <= int(parts[1]) <= len(rows):
+            print("Type `approve 2`, `reject 1`, or `q`.")
+            continue
+        verb = {"a": "approve", "approve": "approve", "r": "reject", "reject": "reject"}.get(parts[0])
+        if verb is None:
+            print("Type `approve 2`, `reject 1`, or `q`.")
+            continue
+        decide(root, rows[int(parts[1]) - 1], verb)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

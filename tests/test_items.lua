@@ -1477,12 +1477,117 @@ local function test_items_right_task_focus_surface()
   print("  items_right Task Pulse surface test passed!")
 end
 
+local function test_items_right_afs_approvals_widget()
+  print("Testing items_right AFS approvals widget...")
+
+  local function build_layout(widgets)
+    local mock_ctx = {
+      settings = {
+        font = {
+          text = "Inter",
+          numbers = "Inter",
+          icon = "Symbols Nerd Font",
+          style_map = { Regular = "Regular", Bold = "Bold", Semibold = "Semibold" },
+          sizes = { small = 12, text = 14, icon = 16, numbers = 14 }
+        }
+      },
+      theme = { WHITE = "0xffffffff", GREEN = "0xffa6e3a1", YELLOW = "0xfff9e2af", RED = "0xfff38ba8", BLUE = "0xff89b4fa", LAVENDER = "0xffb4befe", TEAL = "0xff94e2d5", bar = { bg = "0xff1e1e2e" } },
+      state = {
+        appearance = { widget_scale = 1.0, bar_height = 28, corner_radius = 6 },
+        widgets = widgets,
+      },
+      font_string = function(f, s, sz) return string.format("%s:%s:%0.1f", f, s, sz) end,
+      CONFIG_DIR = "/tmp/config",
+      CODE_DIR = "/tmp/code",
+      PLUGIN_DIR = "/tmp/plugins",
+      SCRIPTS_DIR = "/tmp/scripts",
+      widget_height = 22,
+      popup_background = function() return { drawing = true } end,
+      hover_script_cmd = "hover.sh",
+      popup_toggle_action = function() return "toggle.sh" end,
+      POST_CONFIG_DELAY = 0.1,
+      SKETCHYBAR_BIN = "sketchybar",
+      group_bg_color = "0x44000000",
+      group_border_color = "0xffffffff",
+      group_border_width = 1,
+      group_corner_radius = 4,
+      icon_for = function(_, d) return d end,
+      state_module = { get_icon = function() return "" end },
+      env_prefix = function() return "" end,
+      call_script = function(path, ...)
+        local parts = { path }
+        for _, arg in ipairs({ ... }) do table.insert(parts, tostring(arg)) end
+        return table.concat(parts, " ")
+      end,
+      compiled_script = function(_, fallback) return fallback end,
+      widget_daemon_enabled = false,
+      hover_color = "0x44ffffff",
+      hover_animation_curve = "ease_out",
+      hover_animation_duration = 10,
+    }
+    mock_ctx.widget_factory = widgets_module.create_factory(
+      { add = function() end, set = function() end },
+      mock_ctx.theme,
+      mock_ctx.settings,
+      mock_ctx.state,
+      { widget_height = mock_ctx.widget_height }
+    )
+    return items_right.get_layout(mock_ctx)
+  end
+
+  local function entries_by_name(layout)
+    local map = {}
+    for _, entry in ipairs(layout) do
+      if entry.type == "item" and entry.name then map[entry.name] = entry end
+    end
+    return map
+  end
+
+  -- Off by default: nothing about approvals reaches the bar.
+  local off = entries_by_name(build_layout({}))
+  assert_true(off["afs_approvals"] == nil, "afs_approvals must stay out of the layout unless enabled")
+  assert_true(off["afs_approvals.review"] == nil, "afs_approvals popup rows must stay out when disabled")
+
+  -- Enabled: hidden badge driven by the plugin, plus a fixed popup topology.
+  local layout = build_layout({ afs_approvals = true })
+  local on = entries_by_name(layout)
+  local badge = on["afs_approvals"]
+  assert_true(badge ~= nil, "afs_approvals badge should render when enabled")
+  assert_true(badge.props.drawing == false, "badge starts hidden; the plugin shows it when something is pending")
+  assert_true(badge.props.script == "/tmp/plugins/afs_approvals.sh", "badge should be driven by plugins/afs_approvals.sh")
+  assert_true(badge.props.update_freq == 60, "badge should poll the approvals queue every 60s")
+  assert_true(on["afs_approvals.header"] ~= nil, "popup header row should exist")
+  assert_true(on["afs_approvals.summary"] ~= nil, "popup summary row should exist")
+  for row = 1, 5 do
+    local entry = on["afs_approvals.row." .. row]
+    assert_true(entry ~= nil, "popup row " .. row .. " should exist for the plugin to fill")
+    assert_true(entry.props.drawing == false, "popup row " .. row .. " starts hidden")
+  end
+  local review = on["afs_approvals.review"]
+  assert_true(review ~= nil, "review row should exist")
+  assert_true(
+    review.props.click_script:find("/tmp/plugins/afs_approvals.sh review", 1, true) ~= nil,
+    "review row should call the plugin's review action"
+  )
+
+  local subscribed_woke = false
+  for _, entry in ipairs(layout) do
+    if entry.action == "exec" and type(entry.cmd) == "string"
+      and entry.cmd:find("--subscribe afs_approvals system_woke", 1, true) then
+      subscribed_woke = true
+    end
+  end
+  assert_true(subscribed_woke, "badge should refresh after wake")
+  print("  items_right AFS approvals widget test passed!")
+end
+
 test_items_left_layout()
 test_items_left_without_yabai()
 test_items_left_control_center_custom_name()
 test_items_left_integration_models_and_anchor_order()
 test_items_right_layout()
 test_items_right_lmstudio_extension_rows()
+test_items_right_afs_approvals_widget()
 test_items_right_task_focus_surface()
 
 print("\nAll item layout tests passed!")

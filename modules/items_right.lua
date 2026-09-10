@@ -184,6 +184,85 @@ local function get_layout(ctx)
     }))
   end
 
+  -- AFS approvals badge: agent-gate requests waiting for a human.
+  -- The plugin hides the item while nothing is pending, so seeing it at all
+  -- is the notification. Rows open bin/afs-approvals-review in a terminal;
+  -- the decision itself still runs through `afs approvals approve|reject`.
+  local afs_approvals_enabled = type(state.widgets) == "table" and state.widgets.afs_approvals == true
+  if afs_approvals_enabled then
+    local afs_approvals_script = PLUGIN_DIR .. "/afs_approvals.sh"
+    local afs_approvals_rows = 5
+    table.insert(layout, factory.create_item("afs_approvals", {
+      position = "right",
+      drawing = false,
+      icon = {
+        string = "󰡁",
+        color = tc("YELLOW", "WHITE"),
+        padding_left = 6,
+        padding_right = 4,
+      },
+      label = {
+        string = "",
+        color = tc("SUBTEXT1", "WHITE"),
+        padding_left = 2,
+        padding_right = 8,
+        font = font_small,
+      },
+      update_freq = 60,
+      script = afs_approvals_script,
+      click_script = ui.toggle_then_refresh_async("afs_approvals", afs_approvals_script, popup_toggle_options),
+      background = {
+        color = theme.BG_SEC_COLR or "0x18313a46",
+        corner_radius = math.max(group_corner_radius, 4),
+        height = widget_height,
+      },
+      popup = {
+        align = "right",
+        background = popup_background(),
+      },
+    }))
+    table.insert(right_group_children, "afs_approvals")
+    table.insert(layout, { action = "subscribe_popup_autoclose", name = "afs_approvals" })
+    table.insert(layout, { action = "attach_hover", name = "afs_approvals" })
+    table.insert(layout, { action = "exec", cmd = string.format("sleep %.1f; %s --subscribe afs_approvals system_woke", POST_CONFIG_DELAY, SKETCHYBAR_BIN) })
+
+    local add_approval = popup_items.make_add("afs_approvals", { hover_script = hover_script_cmd })
+    table.insert(layout, add_approval("afs_approvals.header", {
+      icon = "󰡁",
+      label = "AFS approvals",
+      ["label.font"] = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small),
+      background = { drawing = false },
+    }))
+    table.insert(layout, add_approval("afs_approvals.summary", {
+      icon = "󰋼",
+      label = "Nothing pending",
+      ["label.font"] = font_small,
+      background = { drawing = false },
+    }))
+    for row = 1, afs_approvals_rows do
+      -- Label and click_script are filled in by the plugin on each refresh.
+      table.insert(layout, add_approval("afs_approvals.row." .. row, {
+        drawing = false,
+        icon = "󰄬",
+        label = "",
+        ["label.font"] = font_small,
+      }))
+    end
+    table.insert(layout, add_approval("afs_approvals.sep0", {
+      icon = "",
+      label = "───────────────",
+      ["label.font"] = font_small,
+      ["label.color"] = "0x40cdd6f4",
+      background = { drawing = false },
+    }))
+    table.insert(layout, add_approval("afs_approvals.review", {
+      icon = "󰆍",
+      label = "Review in terminal",
+      click_script = close_popup_after("afs_approvals", build_script_action(afs_approvals_script, "review")),
+      ["label.font"] = font_small,
+    }))
+  end
+
   local calendar_state = type(state.menus) == "table" and type(state.menus.calendar) == "table"
     and state.menus.calendar
     or {}

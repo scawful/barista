@@ -11,6 +11,7 @@ Barista is a curated configuration for [SketchyBar](https://github.com/FelixKrat
 - **Profile variants**: Switch between Minimal, Cozy, Personal, Work, and Restricted Work modes.
 - **Modular Architecture**: Lua-based configuration system decomposed for high performance and testability.
 - **Integrations**: Optional support for Yabai (tiling), Skhd (hotkeys), Journal (org-mode capture/inbox), NERV (transfer queue + host monitoring), and Halext. Integrations are toggled per profile or machine.
+- **AFS approvals badge**: Shows how many AFS agent-gate requests wait for you (`~/.config/afs/agents/approvals.json`), hidden while the count is 0. Click a row to review it in a terminal; the decision still goes through `afs approvals approve|reject`, which asks you to re-type the token. Enable with `widgets.afs_approvals = true` (on in the Personal profile).
 
 ## Product Boundary
 

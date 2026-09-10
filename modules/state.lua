@@ -33,6 +33,7 @@ local default_state = {
     volume = true,
     battery = true,
     task_focus = false,
+    afs_approvals = false,
   },
   appearance = {
     theme = "default",

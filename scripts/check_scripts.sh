@@ -152,6 +152,8 @@ printf '{}' > "$tmp_state"
 bash tests/test_task_actions.sh >/dev/null
 bash tests/test_task_focus.sh >/dev/null
 bash tests/test_task_pulse.sh >/dev/null
+bash tests/test_afs_approvals.sh >/dev/null
+"$python_bin" tests/test_afs_approvals_review.py >/dev/null
 bash tests/test_calendar_tasks.sh >/dev/null
 bash tests/test_generate_shortcuts.sh >/dev/null
 bash tests/test_popup_anchor.sh >/dev/null

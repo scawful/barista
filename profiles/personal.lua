@@ -56,6 +56,7 @@ profile.appearance = {
 -- Widget configuration
 profile.widgets = {
   lmstudio = true,
+  afs_approvals = true,   -- badge for pending AFS agent-gate approvals (hidden when 0)
   clock = true,
   battery = true,
   network = true,

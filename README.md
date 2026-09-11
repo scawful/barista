@@ -153,7 +153,9 @@ skhd binding by source file and flags raw yabai commands or missing script
 targets. For window-rule drift, run
 `~/.config/sketchybar/scripts/yabai_control.sh rules-audit`; unmanaged utility
 apps should default to `manage=off sub-layer=normal`, with topmost kept as an
-explicit manual action.
+explicit manual action. Yaze is an intentional `sub-layer=below` exception:
+its ImGui utility windows remain unmanaged while the main editor stacks with
+tiled windows instead of staying in front of them.
 
 **LaunchAgents:** Templates live in `launch_agents/`; `bin/install-launch-agent`
 renders the current runtime path and Homebrew prefix. See

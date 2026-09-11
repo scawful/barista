@@ -1480,7 +1480,7 @@ rules_expected_json() {
   {"label":"About This Mac","app":"System Information","title":"About This Mac","sub_layer":"normal"},
   {"label":"Emacs","app":"^Emacs$","sub_layer":"normal"},
   {"label":"Mesen","app":"^(Mesen|Mesen2.*)$","sub_layer":"normal"},
-  {"label":"Yaze","app":"^Yaze$","sub_layer":"normal"},
+  {"label":"Yaze","app":"^Yaze$","sub_layer":"below"},
   {"label":"Oracle manager","app":"^oracle_manager_gui$","sub_layer":"normal"},
   {"label":"Alfred","app":"^Alfred$","sub_layer":"normal"},
   {"label":"Raycast","app":"^Raycast$","sub_layer":"normal"},
@@ -1548,8 +1548,14 @@ def rule_matches_expected(rule, item):
         return False
     return True
 
-def is_unmanaged_normal(rule):
-    return rule.get("manage") is False and rule.get("sub-layer") == "normal"
+def expected_sub_layer(item):
+    return item.get("sub_layer") or "normal"
+
+def is_expected_unmanaged_rule(rule, item):
+    return (
+        rule.get("manage") is False
+        and rule.get("sub-layer") == expected_sub_layer(item)
+    )
 
 def window_matches_rule(window, rule):
     app_pattern = rule.get("app") or ""
@@ -1577,16 +1583,22 @@ for item in expected:
             "message": f"missing expected unmanaged-normal rule: {item.get('label')}",
         })
         continue
-    if not any(is_unmanaged_normal(rule) for rule in matching):
+    if not any(is_expected_unmanaged_rule(rule, item) for rule in matching):
+        layer = expected_sub_layer(item)
         findings.append({
             "severity": "error",
             "type": "rule-without-normal",
             "label": item.get("label"),
             "app": item.get("app"),
-            "message": f"expected rule is not manage=off sub-layer=normal: {item.get('label')}",
+            "message": f"expected rule is not manage=off sub-layer={layer}: {item.get('label')}",
         })
 
-unmanaged_normal_rules = [rule for rule in rules if is_unmanaged_normal(rule)]
+expected_unmanaged_rules = [
+    (rule, item)
+    for item in expected
+    for rule in rules
+    if rule_matches_expected(rule, item) and is_expected_unmanaged_rule(rule, item)
+]
 for window in windows:
     if window.get("is-minimized") is True:
         continue
@@ -1601,8 +1613,19 @@ for window in windows:
             "title": window.get("title", ""),
             "message": "window is manually topmost/above",
         })
-    if any(window_matches_rule(window, rule) for rule in unmanaged_normal_rules):
-        if sub_layer not in ("normal", "auto", "above"):
+    matching_expected = [
+        (rule, item)
+        for rule, item in expected_unmanaged_rules
+        if window_matches_rule(window, rule)
+    ]
+    if matching_expected:
+        allowed_layers = {
+            expected_sub_layer(item) for _, item in matching_expected
+        } | {"auto", "above"}
+        if sub_layer not in allowed_layers:
+            expected_layers = "/".join(sorted(
+                {expected_sub_layer(item) for _, item in matching_expected}
+            ))
             findings.append({
                 "severity": "warn",
                 "type": "live-policy-mismatch",
@@ -1610,7 +1633,7 @@ for window in windows:
                 "app": window.get("app", ""),
                 "title": window.get("title", ""),
                 "sub_layer": sub_layer,
-                "message": "live unmanaged utility window is not normal",
+                "message": f"live unmanaged utility window is not {expected_layers}",
             })
 
 family_hints = [
@@ -1624,7 +1647,10 @@ for window in windows:
     if window.get("is-minimized") is True:
         continue
     app = window.get("app") or ""
-    if not app or any(window_matches_rule(window, rule) for rule in unmanaged_normal_rules):
+    if not app or any(
+        window_matches_rule(window, rule)
+        for rule, _ in expected_unmanaged_rules
+    ):
         continue
     for family, pattern in family_hints:
         if pattern.search(app):

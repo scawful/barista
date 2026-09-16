@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HELPER_SOURCE="$ROOT_DIR/helpers/popup_hover.c"
+SHELL_SCRIPT="$ROOT_DIR/plugins/popup_hover.sh"
 TMP_DIR="$(mktemp -d)"
 BIN_DIR="$TMP_DIR/bin"
 HELPER_BIN="$TMP_DIR/popup_hover"
@@ -50,10 +51,12 @@ assert_arg() {
 run_helper() {
   env -i \
     PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    HOME="$TMP_DIR" \
+    CONFIG_DIR="$TMP_DIR" \
     TMPDIR="$TMP_DIR" \
     BARISTA_POPUP_HOVER_TEST_LOG="$LOG_FILE" \
     "$@" \
-    "$HELPER_BIN"
+    "${TARGET_BIN:-$HELPER_BIN}"
 }
 
 run_helper \
@@ -114,5 +117,51 @@ assert_arg 4 "background.color=0x40fedcba"
   echo "FAIL: hostile NAME must not reach shell interpolation" >&2
   exit 1
 }
+
+for TARGET_BIN in "$HELPER_BIN" "$SHELL_SCRIPT"; do
+  run_helper NAME="popup.row" SENDER="mouse.entered" \
+    POPUP_HOVER_COLOR="0x40123456" \
+    POPUP_HOVER_ANIMATION_CURVE="linear" POPUP_HOVER_ANIMATION_DURATION="3"
+  assert_arg 1 "--animate"
+  assert_arg 2 "linear"
+  assert_arg 3 "3"
+  assert_arg 7 "background.color=0x40123456"
+
+  run_helper NAME="popup.row" SENDER="mouse.entered" \
+    POPUP_HOVER_ANIMATION_CURVE="sin" POPUP_HOVER_ANIMATION_DURATION="0"
+  assert_arg 1 "--set"
+  assert_arg 2 "popup.row"
+  assert_arg 3 "background.drawing=on"
+
+  run_helper NAME="popup.row" SENDER="mouse.exited" \
+    POPUP_HOVER_ANIMATION_CURVE="sin" POPUP_HOVER_ANIMATION_DURATION="3"
+  assert_arg 1 "--set"
+  assert_arg 3 "background.drawing=off"
+
+  run_helper NAME="popup.row" SENDER="mouse.exited" \
+    POPUP_HOVER_EXIT_CURVE="linear" POPUP_HOVER_EXIT_DURATION="2"
+  assert_arg 1 "--animate"
+  assert_arg 2 "linear"
+  assert_arg 3 "2"
+
+  run_helper NAME="popup.row" SENDER="mouse.exited" POPUP_HOVER_EXIT_DURATION="2"
+  assert_arg 1 "--set"
+
+  printf 'new.root' > "$PARENT_FILE"
+  run_helper NAME="old.row" SENDER="mouse.exited" SUBMENU_PARENT="old.root" \
+    POPUP_HOVER_EXIT_CURVE="linear" POPUP_HOVER_EXIT_DURATION="0"
+  assert_arg 1 "--set"
+  [[ "$(cat "$PARENT_FILE")" == "new.root" ]] || {
+    echo "FAIL: an exiting popup row must not replace the active parent ($TARGET_BIN)" >&2
+    exit 1
+  }
+
+  : > "$LOG_FILE"
+  run_helper NAME="popup.row" SENDER="forced" SUBMENU_PARENT="old.root"
+  [[ ! -s "$LOG_FILE" && "$(cat "$PARENT_FILE")" == "new.root" ]] || {
+    echo "FAIL: unrelated events must not change hover state ($TARGET_BIN)" >&2
+    exit 1
+  }
+done
 
 printf 'test_popup_hover.sh: ok\n'

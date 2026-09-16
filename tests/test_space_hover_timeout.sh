@@ -47,7 +47,10 @@ PATH="$BIN_DIR:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
   BARISTA_HOVER_TIMEOUT="0.01" \
   "$SCRIPT"
 
-sleep 0.05
+for _ in {1..100}; do
+  grep -Fq -- 'background.color=0x18313a46' "$LOG_FILE" && break
+  sleep 0.01
+done
 
 if ! grep -Fq -- 'background.drawing=on' "$LOG_FILE"; then
   echo "FAIL: space hover should highlight immediately" >&2

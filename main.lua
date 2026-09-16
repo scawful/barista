@@ -370,7 +370,7 @@ local hover_script_cmd = shell_utils.env_prefix({
   POPUP_HOVER_ANIMATION_DURATION = tostring(bc.hover_animation_duration),
 }) .. HOVER_SCRIPT
 
-local fast_hover_duration = math.max(1, math.min(tonumber(bc.hover_animation_duration) or 8, 3))
+local fast_hover_duration = bc.fast_hover_duration
 local triforce_hover_script_cmd = shell_utils.env_prefix({
   POPUP_HOVER_COLOR              = tostring(bc.hover_color),
   POPUP_HOVER_BORDER_COLOR       = tostring(bc.hover_border_color),

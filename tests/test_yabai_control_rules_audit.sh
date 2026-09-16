@@ -4,11 +4,13 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="$ROOT_DIR/scripts/yabai_control.sh"
+YABAIRC="$ROOT_DIR/extras/yabai/yabairc"
 TMP_DIR="$(mktemp -d)"
 BIN_DIR="$TMP_DIR/bin"
 EXPECTED_JSON='[
   {"label":"Finder","app":"^Finder$","sub_layer":"normal"},
   {"label":"Barista","app":"^Barista$","sub_layer":"normal"},
+  {"label":"Yaze","app":"^Yaze$","sub_layer":"below"},
   {"label":"Cortex","app":"^Cortex$","sub_layer":"normal"}
 ]'
 
@@ -16,6 +18,11 @@ cleanup() {
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
+
+grep -Fq 'yabai -m rule --add app="^Yaze$" manage=off sub-layer=below' "$YABAIRC" || {
+  echo "FAIL: shipped yabairc must keep Yaze below unrelated windows" >&2
+  exit 1
+}
 
 mkdir -p "$BIN_DIR"
 
@@ -27,7 +34,8 @@ case "$*" in
     cat <<'JSON'
 [
   {"app":"^Finder$","title":"","manage":false,"sub-layer":"below"},
-  {"app":"^Barista$","title":"","manage":false,"sub-layer":"normal"}
+  {"app":"^Barista$","title":"","manage":false,"sub-layer":"normal"},
+  {"app":"^Yaze$","title":"","manage":false,"sub-layer":"below"}
 ]
 JSON
     ;;
@@ -37,7 +45,8 @@ JSON
   {"id":1,"app":"Barista","title":"Settings","sub-layer":"below","layer":"normal","is-minimized":false},
   {"id":2,"app":"ghostty","title":"","sub-layer":"above","layer":"normal","is-minimized":false},
   {"id":3,"app":"Cortex Helper","title":"hello","sub-layer":"normal","layer":"normal","is-minimized":false},
-  {"id":4,"app":"Oracle Helper","title":"","sub-layer":"normal","layer":"normal","is-minimized":true}
+  {"id":4,"app":"Oracle Helper","title":"","sub-layer":"normal","layer":"normal","is-minimized":true},
+  {"id":5,"app":"Yaze","title":"Yet Another Zelda3 Editor","sub-layer":"below","layer":"normal","is-minimized":false}
 ]
 JSON
     ;;
@@ -65,7 +74,7 @@ set -e
   printf '%s\n' "$TEXT_OUTPUT" >&2
   exit 1
 }
-printf '%s\n' "$TEXT_OUTPUT" | grep -Fq 'expected unmanaged rules: 2/3 present' || {
+printf '%s\n' "$TEXT_OUTPUT" | grep -Fq 'expected unmanaged rules: 3/4 present' || {
   echo "FAIL: expected-rule count missing" >&2
   printf '%s\n' "$TEXT_OUTPUT" >&2
   exit 1
@@ -104,6 +113,7 @@ assert summary["errors"] == 2, summary
 assert summary["warnings"] == 2, summary
 assert summary["info"] == 1, summary
 assert {"missing-rule", "rule-without-normal", "live-policy-mismatch", "manual-topmost", "app-variant-review"} <= types
+assert not any(item.get("label") == "Yaze" for item in payload["findings"]), payload
 PY
 
 printf 'test_yabai_control_rules_audit.sh: ok\n'

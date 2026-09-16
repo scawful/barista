@@ -8,6 +8,7 @@ _d="${0%/*}"
 STATE_DIR="${TMPDIR:-/tmp}/sketchybar_popup_state"
 mkdir -p "$STATE_DIR"
 STATE_FILE="$STATE_DIR/${NAME}.state"
+POPUP_ANCHOR_STATE_FILE="$STATE_FILE"
 DELAY="${POPUP_CLOSE_DELAY:-0.18}"
 OPEN_ON_ENTER="${POPUP_OPEN_ON_ENTER:-0}"
 
@@ -18,12 +19,12 @@ case "${SENDER:-}" in
     fi
     ;;
   "mouse.entered")
-    hover_token >"$STATE_FILE"
     if [ -n "${NAME:-}" ]; then
-      highlight_with_timeout "$NAME" "$(anchor_hover_props)" "$(anchor_idle_props)"
-    fi
-    if [ "$OPEN_ON_ENTER" = "1" ] && [ -n "${NAME:-}" ]; then
-      sketchybar --set "$NAME" popup.drawing=on
+      hover_props="$(anchor_hover_props)"
+      if [ "$OPEN_ON_ENTER" = "1" ]; then
+        hover_props="$hover_props popup.drawing=on"
+      fi
+      highlight_with_timeout "$NAME" "$hover_props" "$(anchor_idle_props)"
     fi
     ;;
   "mouse.exited")
@@ -41,13 +42,14 @@ case "${SENDER:-}" in
     fi
     (
       sleep "$DELAY"
+      hover_acquire_lock "$NAME" 0 || exit 0
       current=""
       if [ -f "$STATE_FILE" ]; then
         IFS= read -r current < "$STATE_FILE" || true
       fi
-      if [ "$current" = "$token" ] && [ -n "${NAME:-}" ]; then
+      if [ -n "$token" ] && [ "$current" = "$token" ] && [ -n "${NAME:-}" ]; then
         # shellcheck disable=SC2046,SC2086
-        sketchybar --set "$NAME" popup.drawing=off $(anchor_idle_props)
+        hover_dispatch --set "$NAME" popup.drawing=off $(anchor_idle_props)
       fi
     ) &
     ;;

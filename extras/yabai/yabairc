@@ -50,8 +50,10 @@ yabai -m rule --add label="About This Mac" app="System Information" title="About
 
 # Apps that behave better floating
 yabai -m rule --add app="^(Mesen|Mesen2.*)$" manage=off
-# yaze: manage=off to float, but NO sub-layer=above (was blocking other windows)
-yabai -m rule --add app="^Yaze$" manage=off
+# Yaze uses ImGui utility windows, so keep it unmanaged while matching the
+# tiled-window sub-layer. This prevents the main editor from staying above
+# unrelated windows.
+yabai -m rule --add app="^Yaze$" manage=off sub-layer=below
 yabai -m rule --add app="^oracle_manager_gui$" manage=off
 yabai -m rule --add app="^Alfred$" manage=off
 yabai -m rule --add app="^Raycast$" manage=off

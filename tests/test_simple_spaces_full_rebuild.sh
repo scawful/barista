@@ -114,6 +114,10 @@ if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "bar" ]; then
     printf '{"height":28,"items":["front_app","front_app_divider","space.99","space_creator.9"]}\n'
     exit 0
   fi
+  if [ "\${BARISTA_TEST_PRESENT_BAR:-0}" = "1" ]; then
+    printf '{"height":28,"items":["front_app","front_app_divider","space.1","space.2","space_creator"]}\n'
+    exit 0
+  fi
   printf '{"height":28,"items":["front_app","front_app_divider"]}\n'
   exit 0
 fi
@@ -296,8 +300,16 @@ sed -n '3p' "$LOG_FILE" | grep -Fq -- "--add space space.1" || {
 : > "$QUERY_LOG"
 : > "$MUTATION_COUNT_FILE"
 : > "$MUTATION_RETRY_MARKER_LOG"
+# Repairs must re-enter refresh_spaces serialization and discard the failed
+# snapshot: the displays may have changed again while the client was down.
+ln -s "$ROOT_DIR/plugins/refresh_spaces.sh" "$CONFIG_DIR/plugins/refresh_spaces.sh"
+ln -s "$ROOT_DIR/plugins/simple_spaces.sh" "$CONFIG_DIR/plugins/simple_spaces.sh"
+ln -s "$ROOT_DIR/plugins/lib" "$CONFIG_DIR/plugins/lib"
+mkdir "$CONFIG_DIR/.refresh_spaces.lock"
 if PATH="$BIN_DIR:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
   BARISTA_TEST_FAIL_ALL_MUTATIONS=1 \
+  BARISTA_REASON=space_changed \
+  BARISTA_ALL_SPACES_DATA='[{"display":9,"index":99,"is-visible":true,"has-focus":true}]' \
   BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
   BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
   BARISTA_JQ_BIN="$BIN_DIR/jq" \
@@ -307,6 +319,12 @@ if PATH="$BIN_DIR:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
   echo "FAIL: an unavailable SketchyBar client should fail the topology apply" >&2
   exit 1
 fi
+sleep 0.35
+if [ "$(wc -l < "$MUTATION_COUNT_FILE" | tr -d ' ')" != "3" ]; then
+  echo "FAIL: delayed topology repair must wait for the refresh owner lock" >&2
+  exit 1
+fi
+rmdir "$CONFIG_DIR/.refresh_spaces.lock"
 for _ in {1..40}; do
   mutation_count="$(wc -l < "$MUTATION_COUNT_FILE" | tr -d ' ')"
   if [ "$mutation_count" -ge 6 ]; then
@@ -318,11 +336,37 @@ if [ "$(wc -l < "$MUTATION_COUNT_FILE" | tr -d ' ')" != "6" ]; then
   echo "FAIL: initial and one repair attempt should each stop after combined, cleanup, and reconstruction failures" >&2
   exit 1
 fi
+if tail -n 1 "$LOG_FILE" | grep -Fq -- '--add space space.99'; then
+  echo "FAIL: delayed topology repair must discard its inherited stale spaces payload" >&2
+  exit 1
+fi
+tail -n 1 "$LOG_FILE" | grep -Fq -- '--add space space.1' || {
+  echo "FAIL: delayed topology repair must use the current display topology" >&2
+  exit 1
+}
 if [ "$(sed -n '1,3p' "$MUTATION_RETRY_MARKER_LOG" | grep -Fxc '0')" != "3" ] \
   || [ "$(sed -n '4,6p' "$MUTATION_RETRY_MARKER_LOG" | grep -Fxc '1')" != "3" ]; then
   echo "FAIL: topology apply repair should run exactly once with its retry marker" >&2
   exit 1
 fi
+
+# After the one bounded repair fails, the next genuine focus event must repair
+# partial topology even when the last successful focus caches still exist.
+mkdir -p "$CONFIG_DIR/cache/space_visuals"
+printf '1|1-1,1-2' > "$CONFIG_DIR/.spaces_cache"
+printf '1:1' > "$CONFIG_DIR/.spaces_active_cache"
+printf 'space.1\nspace.2\n' > "$CONFIG_DIR/cache/space_visuals/space_items"
+: > "$LOG_FILE"
+BARISTA_REASON=space_changed BARISTA_TEST_PRESENT_BAR=1 \
+  BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
+  BARISTA_YABAI_BIN="$BIN_DIR/yabai" BARISTA_JQ_BIN="$BIN_DIR/jq" \
+  CONFIG_DIR="$CONFIG_DIR" "$CONFIG_DIR/plugins/refresh_spaces.sh"
+grep -Fq -- '--add space space.1' "$LOG_FILE" || {
+  echo 'FAIL: the next focus event must recover topology after the bounded apply retry fails' >&2; exit 1;
+}
+[ ! -f "$CONFIG_DIR/cache/space_topology_dirty" ] || {
+  echo 'FAIL: successful topology recovery must clear the failed-apply marker' >&2; exit 1;
+}
 
 : > "$CLOCK_LOG"
 cat > "$BIN_DIR/bad_perf_clock" <<'EOF'

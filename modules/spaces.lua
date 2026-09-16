@@ -18,7 +18,7 @@ local function create(CONFIG_DIR, PLUGIN_DIR, SKETCHYBAR_BIN, YABAI_BIN, shell_e
   end
 
   local function get_associated_displays()
-    local function read_display_list(cmd)
+    local function parse_display_query(cmd, pattern)
       local handle = io.popen(cmd)
       if not handle then
         return nil
@@ -26,11 +26,8 @@ local function create(CONFIG_DIR, PLUGIN_DIR, SKETCHYBAR_BIN, YABAI_BIN, shell_e
       local output = handle:read("*a") or ""
       handle:close()
       local targets = {}
-      for line in output:gmatch("[^\r\n]+") do
-        local num = tonumber(line)
-        if num then
-          table.insert(targets, tostring(num))
-        end
+      for num in output:gmatch(pattern) do
+        table.insert(targets, tostring(num))
       end
       if #targets == 0 then
         return nil
@@ -38,13 +35,19 @@ local function create(CONFIG_DIR, PLUGIN_DIR, SKETCHYBAR_BIN, YABAI_BIN, shell_e
       return table.concat(targets, ",")
     end
 
-    local list = read_display_list(string.format([[ %s --query displays 2>/dev/null | jq -r '.[]."arrangement-id"' ]], SKETCHYBAR_BIN))
+    local list = parse_display_query(
+      string.format([[ %s --query displays 2>/dev/null ]], SKETCHYBAR_BIN),
+      [["arrangement%-id"%s*:%s*(%d+)]]
+    )
     if list then
       return list
     end
 
     if yabai_available() and YABAI_BIN then
-      list = read_display_list(string.format([[ %s -m query --displays 2>/dev/null | jq -r '.[].index' ]], YABAI_BIN))
+      list = parse_display_query(
+        string.format([[ %s -m query --displays 2>/dev/null ]], YABAI_BIN),
+        [["index"%s*:%s*(%d+)]]
+      )
       if list then
         return list
       end

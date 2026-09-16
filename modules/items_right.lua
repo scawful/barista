@@ -46,6 +46,12 @@ local function get_layout(ctx)
     popup_manager_script = ctx.popup_manager_script,
     popup_topology_token = ctx.popup_topology_token,
   }
+  local hover_env = env_prefix({
+    BARISTA_SKETCHYBAR_BIN = SKETCHYBAR_BIN,
+    BARISTA_HOVER_COLOR = tostring(hover_color),
+    BARISTA_HOVER_ANIMATION_CURVE = tostring(hover_animation_curve),
+    BARISTA_HOVER_ANIMATION_DURATION = tostring(hover_animation_duration),
+  })
   local function close_popup_after(item_name, command)
     return ui.close_after(item_name, command, { sketchybar_bin = SKETCHYBAR_BIN })
   end
@@ -102,7 +108,7 @@ local function get_layout(ctx)
         font = font_small,
       },
       update_freq = 20,
-      script = lmstudio_script,
+      script = hover_env .. shell_quote(lmstudio_script),
       click_script = ui.toggle_then_refresh_async("lmstudio", lmstudio_script, popup_toggle_options),
       background = {
         color = theme.BG_SEC_COLR or "0x18313a46",
@@ -209,7 +215,7 @@ local function get_layout(ctx)
         font = font_small,
       },
       update_freq = 60,
-      script = afs_approvals_script,
+      script = hover_env .. shell_quote(afs_approvals_script),
       click_script = ui.toggle_then_refresh_async("afs_approvals", afs_approvals_script, popup_toggle_options),
       background = {
         color = theme.BG_SEC_COLR or "0x18313a46",
@@ -286,7 +292,7 @@ local function get_layout(ctx)
   -- Clock
   table.insert(layout, factory.create_clock({
     icon = icon_for("clock", "󰥔"),
-    script = compiled_script("clock_widget", PLUGIN_DIR .. "/clock.sh"),
+    script = compiled_script("clock_widget", hover_env .. shell_quote(PLUGIN_DIR .. "/clock.sh")),
     update_freq = widget_daemon_enabled and false or 30,
     daemon_managed = widget_daemon_enabled,
     click_script = ui.toggle_then_refresh_async("clock", calendar_script, popup_toggle_options),

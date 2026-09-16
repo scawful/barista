@@ -99,7 +99,13 @@ function compute(state, theme, state_module, associated_displays, detected_displ
   local hover_border_color = state_module.get_appearance(state, "hover_border_color", "0x60cdd6f4")
   local hover_border_width = tonumber(state_module.get_appearance(state, "hover_border_width", 1)) or 1
   local hover_animation_curve = state_module.get_appearance(state, "hover_animation_curve", "sin")
-  local hover_animation_duration = tonumber(state_module.get_appearance(state, "hover_animation_duration", 12)) or 12
+  local hover_animation_duration = tonumber(state_module.get_appearance(state, "hover_animation_duration", 8)) or 8
+  -- SketchyBar expects whole frame counts; zero selects an immediate update.
+  if hover_animation_duration ~= hover_animation_duration or math.abs(hover_animation_duration) == math.huge then
+    hover_animation_duration = 8
+  end
+  hover_animation_duration = math.max(0, math.floor(hover_animation_duration))
+  local fast_hover_duration = math.min(hover_animation_duration, 3)
   local submenu_hover_color = state_module.get_appearance(state, "submenu_hover_color", "0x80cba6f7")
   local submenu_idle_color = state_module.get_appearance(state, "submenu_idle_color", "0x00000000")
   local submenu_close_delay = tonumber(state_module.get_appearance(state, "submenu_close_delay", 0.25)) or 0.25
@@ -236,6 +242,7 @@ function compute(state, theme, state_module, associated_displays, detected_displ
     hover_border_width = hover_border_width,
     hover_animation_curve = hover_animation_curve,
     hover_animation_duration = hover_animation_duration,
+    fast_hover_duration = fast_hover_duration,
     submenu_hover_color = submenu_hover_color,
     submenu_idle_color = submenu_idle_color,
     submenu_close_delay = submenu_close_delay,

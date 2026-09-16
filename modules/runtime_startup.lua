@@ -21,6 +21,31 @@ local function read_wall_time_ms(commands, opts)
 end
 
 function runtime_startup.wall_time_ms(opts)
+  opts = opts or {}
+  if opts.popen == nil then
+    local clock_bin = opts.clock_bin or os.getenv("BARISTA_PERF_CLOCK_BIN")
+    if not clock_bin then
+      local config_dir = os.getenv("BARISTA_CONFIG_DIR") or ((os.getenv("HOME") or "") .. "/.config/sketchybar")
+      local candidate = config_dir .. "/bin/perf_clock"
+      local f = io.open(candidate, "r")
+      if f then
+        f:close()
+        clock_bin = candidate
+      end
+    end
+    if clock_bin then
+      local handle = io.popen(string.format("%s ms 2>/dev/null", clock_bin))
+      if handle then
+        local value = (handle:read("*a") or ""):gsub("%s+", "")
+        handle:close()
+        local numeric = tonumber(value)
+        if numeric then
+          return numeric
+        end
+      end
+    end
+  end
+
   return read_wall_time_ms({
     [[perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)']],
     [[python3 - <<'PY'

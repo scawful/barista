@@ -19,6 +19,11 @@ case "$SENDER" in
     fi
     ;;
   "mouse.exited")
+    ANIMATION_DURATION=0
+    if [ -n "${POPUP_HOVER_EXIT_CURVE:-}" ] && [ -n "${POPUP_HOVER_EXIT_DURATION:-}" ]; then
+      ANIMATION_CURVE="$POPUP_HOVER_EXIT_CURVE"
+      ANIMATION_DURATION="$POPUP_HOVER_EXIT_DURATION"
+    fi
     animate_set "$NAME" background.drawing=off background.border_width=0
     ;;
 esac

@@ -146,6 +146,19 @@ Common keys:
 
 Menu popup rows are separate from the bar now: `menu_item_height`, `menu_header_height`, and `menu_padding` control popup density without changing the bar height.
 
+`hover_animation_duration` uses whole frames at 60 Hz (default `8`, about
+133 ms). `0` selects immediate popup-row, anchor, and space-creation highlights,
+including the fast Triforce path. Negative values become `0`; fractional values round down;
+invalid or non-finite values use `8`. Space selection and submenu visibility
+keep their existing event behavior.
+
+On a DisplayLink or other multi-monitor setup, an optional lower-effects
+configuration is `"blur_radius": 0` and `"hover_animation_duration": 0` inside
+`appearance`. These are explicit per-machine choices; Barista does not infer
+connection type from monitor names or disable effects automatically. Merge
+these keys into the existing local file, then use
+`./plugins/reload_sketchybar.sh`. Restore your prior values to undo the change.
+
 Barista's normal top placement keeps `bar_y_offset` explicit. The live default
 is `0`; do not introduce implicit offset behavior when debugging popup clicks.
 

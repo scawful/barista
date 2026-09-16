@@ -125,6 +125,10 @@ function ui.anchor_hover_env(ctx, opts)
   if ctx and ctx.hover_animation_duration then
     env.BARISTA_HOVER_ANIMATION_DURATION = tostring(ctx.hover_animation_duration)
   end
+  local scripts_dir = ctx and (ctx.SCRIPTS_DIR or ctx.scripts_dir or (ctx.paths and ctx.paths.scripts_dir))
+  if scripts_dir and scripts_dir ~= "" then
+    env.BARISTA_SCRIPTS_DIR = tostring(scripts_dir)
+  end
   return merge(env, opts.env)
 end
 

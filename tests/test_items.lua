@@ -1140,6 +1140,16 @@ end
 local function test_items_right_lmstudio_extension_rows()
   print("Testing items_right LM Studio extension rows...")
 
+  local checked_hover_scripts = {}
+  local function check_hover_settings(name, script)
+    checked_hover_scripts[name] = true
+    assert_true(script:find("BARISTA_HOVER_ANIMATION_DURATION='0'", 1, true) ~= nil,
+      name .. " should forward zero hover duration to the shell handler")
+    assert_true(script:find("BARISTA_HOVER_COLOR='0x44ffffff'", 1, true) ~= nil,
+      name .. " should forward the configured hover color")
+    assert_true(script:find("BARISTA_SKETCHYBAR_BIN='sketchybar'", 1, true) ~= nil,
+      name .. " should preserve the resolved SketchyBar binary")
+  end
   local mock_ctx = {
     settings = {
       font = {
@@ -1153,7 +1163,7 @@ local function test_items_right_lmstudio_extension_rows()
     theme = { WHITE = "0xffffffff", GREEN = "0xffa6e3a1", YELLOW = "0xfff9e2af", RED = "0xfff38ba8", BLUE = "0xff89b4fa", LAVENDER = "0xffb4befe", TEAL = "0xff94e2d5", bar = { bg = "0xff1e1e2e" } },
     state = {
       appearance = { widget_scale = 1.0, bar_height = 28, corner_radius = 6 },
-      widgets = { lmstudio = true },
+      widgets = { lmstudio = true, afs_approvals = true },
       machine = { menu_packs = { "personal" } },
       menus = {
         extensions = {
@@ -1186,17 +1196,20 @@ local function test_items_right_lmstudio_extension_rows()
     group_corner_radius = 4,
     icon_for = function(_, d) return d end,
     state_module = { get_icon = function() return "" end },
-    env_prefix = function() return "" end,
+    env_prefix = shell_utils.env_prefix,
     call_script = function(path, ...)
       local parts = { path }
       for _, arg in ipairs({ ... }) do table.insert(parts, tostring(arg)) end
       return table.concat(parts, " ")
     end,
-    compiled_script = function(_, fallback) return fallback end,
+    compiled_script = function(name, fallback)
+      if name == "clock_widget" then check_hover_settings("clock", fallback) end
+      return fallback
+    end,
     widget_daemon_enabled = false,
     hover_color = "0x44ffffff",
     hover_animation_curve = "ease_out",
-    hover_animation_duration = 10,
+    hover_animation_duration = 0,
   }
   mock_ctx.widget_factory = widgets_module.create_factory(
     { add = function() end, set = function() end },
@@ -1211,6 +1224,9 @@ local function test_items_right_lmstudio_extension_rows()
   local found_extension = false
   local found_scawfulbot_default = false
   for _, entry in ipairs(layout) do
+    if entry.type == "item" and (entry.name == "lmstudio" or entry.name == "afs_approvals") then
+      check_hover_settings(entry.name, entry.props.script)
+    end
     if entry.type == "item" and entry.name == "lmstudio" then
       found_lmstudio = true
     elseif entry.type == "item" and entry.name == "lmstudio.extension.local_model" then
@@ -1220,6 +1236,8 @@ local function test_items_right_lmstudio_extension_rows()
     end
   end
   assert_true(found_lmstudio, "lmstudio should render when explicitly enabled")
+  assert_true(checked_hover_scripts.clock and checked_hover_scripts.afs_approvals,
+    "clock fallback and enabled AFS approvals should receive hover settings")
   assert_true(found_extension, "lmstudio extension row should render")
   assert_true(not found_scawfulbot_default, "personal model rows should not be hardcoded by default")
   print("  items_right LM Studio extension test passed!")
@@ -1554,7 +1572,7 @@ local function test_items_right_afs_approvals_widget()
   local badge = on["afs_approvals"]
   assert_true(badge ~= nil, "afs_approvals badge should render when enabled")
   assert_true(badge.props.drawing == false, "badge starts hidden; the plugin shows it when something is pending")
-  assert_true(badge.props.script == "/tmp/plugins/afs_approvals.sh", "badge should be driven by plugins/afs_approvals.sh")
+  assert_equal(badge.props.script, "'/tmp/plugins/afs_approvals.sh'", "badge should be driven by the quoted approvals plugin path")
   assert_true(badge.props.update_freq == 60, "badge should poll the approvals queue every 60s")
   assert_true(on["afs_approvals.header"] ~= nil, "popup header row should exist")
   assert_true(on["afs_approvals.summary"] ~= nil, "popup summary row should exist")

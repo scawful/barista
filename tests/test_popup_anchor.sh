@@ -34,6 +34,8 @@ chmod +x "$BIN_DIR/custom-sketchybar"
 
 run_target_checks() {
   local target="$1"
+  local BARISTA_HOVER_TIMEOUT="0"
+  export BARISTA_HOVER_TIMEOUT
   : > "$LOG_FILE"
 
   PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
@@ -125,6 +127,84 @@ run_target_checks() {
 
   if ! grep -Fq -- $'custom\t--animate sin 12 --set apple_menu' "$LOG_FILE"; then
     echo "FAIL: popup anchor should honor BARISTA_SKETCHYBAR_BIN ($target)" >&2
+    exit 1
+  fi
+
+  : > "$LOG_FILE"
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    TMPDIR="$TMP_DIR" \
+    NAME="apple_menu" \
+    SENDER="mouse.entered" \
+    POPUP_HOVER_COLOR="0x40543210" \
+    POPUP_HOVER_ANIMATION_CURVE="linear" \
+    POPUP_HOVER_ANIMATION_DURATION="3" \
+    "$target"
+
+  if ! grep -Fq -- '--animate linear 3 --set apple_menu background.drawing=on background.color=0x40543210' "$LOG_FILE"; then
+    echo "FAIL: popup anchor should honor popup animation and color overrides ($target)" >&2
+    exit 1
+  fi
+
+  : > "$LOG_FILE"
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    TMPDIR="$TMP_DIR" \
+    NAME="apple_menu" \
+    SENDER="mouse.entered" \
+    BARISTA_HOVER_ANIMATION_DURATION="0" \
+    POPUP_HOVER_ANIMATION_DURATION="3" \
+    "$target"
+
+  if grep -Fq -- '--animate' "$LOG_FILE" || ! grep -Fq -- '--set apple_menu background.drawing=on' "$LOG_FILE"; then
+    echo "FAIL: zero Barista duration should override popup duration and set directly ($target)" >&2
+    exit 1
+  fi
+
+  # The exited event must invalidate its pending enter timer. Otherwise the
+  # timer emits another idle update after the immediate exit restore.
+  : > "$LOG_FILE"
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    TMPDIR="$TMP_DIR" NAME="apple_menu" SENDER="mouse.entered" \
+    POPUP_OPEN_ON_ENTER=1 "$target"
+  if [ "$(wc -l < "$LOG_FILE" | tr -d ' ')" != 1 ] || ! grep -Fq 'popup.drawing=on' "$LOG_FILE"; then
+    echo "FAIL: hover-open must share the bounded highlight dispatch ($target)" >&2
+    exit 1
+  fi
+  : > "$LOG_FILE"
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    TMPDIR="$TMP_DIR" NAME="apple_menu" SENDER="mouse.entered" \
+    BARISTA_HOVER_TIMEOUT="0.15" "$target"
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    TMPDIR="$TMP_DIR" NAME="apple_menu" SENDER="mouse.exited" "$target"
+  sleep 0.3
+  if [[ "$(wc -l < "$LOG_FILE" | tr -d ' ')" != "2" ]]; then
+    echo "FAIL: popup anchor exit should cancel the pending highlight restore ($target)" >&2
+    cat "$LOG_FILE" >&2
+    exit 1
+  fi
+
+  : > "$LOG_FILE"
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    TMPDIR="$TMP_DIR" NAME="apple_menu" SENDER="mouse.entered" \
+    BARISTA_HOVER_TIMEOUT="0.15" "$target"
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    TMPDIR="$TMP_DIR" NAME="apple_menu" SENDER="mouse.entered" "$target"
+  sleep 0.3
+  if [[ "$(wc -l < "$LOG_FILE" | tr -d ' ')" != "2" ]]; then
+    echo "FAIL: an earlier timer must not clear a newer anchor hover ($target)" >&2
+    cat "$LOG_FILE" >&2
+    exit 1
+  fi
+
+  # A local exit followed by a global exit must still support the optional
+  # close-on-global-exit contract after invalidating the highlight timer.
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    TMPDIR="$TMP_DIR" NAME="apple_menu" SENDER="mouse.exited" "$target"
+  PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    TMPDIR="$TMP_DIR" NAME="apple_menu" SENDER="mouse.exited.global" \
+    POPUP_CLOSE_DELAY="0" "$target"
+  sleep 0.05
+  if ! grep -Fq -- 'popup.drawing=off' "$LOG_FILE"; then
+    echo "FAIL: global exit should still close after local exit ($target)" >&2
     exit 1
   fi
 }

@@ -7,6 +7,13 @@
 static double RESET_DELAY = 0.04;
 static const char *DEFAULT_HILITE = "0x60cba6f7";
 
+static const char* sketchybar_bin(void) {
+  const char* val = getenv("BARISTA_SKETCHYBAR_BIN");
+  if (val && *val) return val;
+  val = getenv("SKETCHYBAR_BIN");
+  return (val && *val) ? val : "sketchybar";
+}
+
 static void run_cmd(const char *fmt, ...) {
   char buffer[1024];
   va_list args;
@@ -32,7 +39,7 @@ static void reset_background_async(const char *item) {
     if (RESET_DELAY > 0.0) {
       usleep((useconds_t)(RESET_DELAY * 1000000.0));
     }
-    run_cmd("sketchybar --set %s background.drawing=off", item);
+    run_cmd("%s --set %s background.drawing=off", sketchybar_bin(), item);
     _exit(0);
   }
 }
@@ -55,15 +62,18 @@ int main(int argc, char *argv[]) {
     if (parsed > 0.0) RESET_DELAY = parsed;
   }
 
-  if (item && item[0] != '\0') {
-    run_cmd("sketchybar --set %s background.drawing=on background.color=%s", item, highlight);
+  const char *sbar = sketchybar_bin();
+  if (item && item[0] != '\0' && popup && popup[0] != '\0') {
+    run_cmd("%s -m --set %s background.drawing=on background.color=%s --set %s popup.drawing=off",
+            sbar, item, highlight, popup);
+  } else if (item && item[0] != '\0') {
+    run_cmd("%s -m --set %s background.drawing=on background.color=%s",
+            sbar, item, highlight);
+  } else if (popup && popup[0] != '\0') {
+    run_cmd("%s -m --set %s popup.drawing=off", sbar, popup);
   }
 
   run_async(command ? command : "");
-
-  if (popup && popup[0] != '\0') {
-    run_cmd("sketchybar -m --set %s popup.drawing=off", popup);
-  }
   reset_background_async(item);
 
   return 0;

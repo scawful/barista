@@ -55,7 +55,11 @@ static int exec_sketchybar(const char* name,
 
 int main(void) {
     const char *name = getenv("NAME");
-    if (!name) return 0;
+    if (!name || !*name) return 0;
+
+    const char *sender = get("SENDER", "mouse.entered");
+    int entering = !strcmp(sender, "mouse.entered");
+    if (!entering && strcmp(sender, "mouse.exited")) return 0;
 
     const char *tmp = get("TMPDIR", "/tmp");
     char path[PATH_MAX];
@@ -63,22 +67,21 @@ int main(void) {
     mkdir(path, 0700);
 
     const char *parent = getenv("SUBMENU_PARENT");
-    if (parent && *parent) {
+    if (entering && parent && *parent) {
         char p_path[PATH_MAX];
         snprintf(p_path, sizeof(p_path), "%s/active_parent", path);
         FILE *fp = fopen(p_path, "w");
         if (fp) { fputs(parent, fp); fclose(fp); }
     }
 
-    const char *sender = get("SENDER", "mouse.entered");
     const char *enter_curve = getenv("POPUP_HOVER_ANIMATION_CURVE");
     const char *enter_dur = getenv("POPUP_HOVER_ANIMATION_DURATION");
     const char *exit_curve = getenv("POPUP_HOVER_EXIT_CURVE");
     const char *exit_dur = getenv("POPUP_HOVER_EXIT_DURATION");
-    int enter_anim = (enter_curve && *enter_curve && enter_dur && *enter_dur);
-    int exit_anim = (exit_curve && *exit_curve && exit_dur && *exit_dur);
+    int enter_anim = (enter_curve && *enter_curve && enter_dur && atoi(enter_dur) > 0);
+    int exit_anim = (exit_curve && *exit_curve && exit_dur && atoi(exit_dur) > 0);
 
-    if (!strcmp(sender, "mouse.entered")) {
+    if (entering) {
         const char *color = get("POPUP_HOVER_COLOR", "0x40f5c2e7");
         const char *brd = get("POPUP_HOVER_BORDER_COLOR", "0x60cdd6f4");
         const char *width = getenv("POPUP_HOVER_BORDER_WIDTH");

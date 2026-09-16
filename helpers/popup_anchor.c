@@ -7,13 +7,48 @@
 #include <limits.h>
 #include <sys/time.h>
 #include <sys/wait.h>
+#include <sys/file.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <signal.h>
+#include <time.h>
 
 static double CLOSE_DELAY = 0.18;
 static double HOVER_TIMEOUT = 0.55;
 static int OPEN_ON_ENTER = 0;
 static char state_dir[PATH_MAX];
 static char state_path[PATH_MAX];
+static char shell_popup_state_path[PATH_MAX];
 static char parent_state_path[PATH_MAX];
+static char hover_state_path[PATH_MAX];
+static char hover_lock_path[PATH_MAX];
+static int hover_lock_fd = -1;
+
+static double monotonic_seconds(void) {
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  return (double)now.tv_sec + (double)now.tv_nsec / 1000000000.0;
+}
+
+static void release_hover_lock(void) {
+  if (hover_lock_fd >= 0) close(hover_lock_fd);
+  hover_lock_fd = -1;
+}
+
+static int acquire_hover_lock(int wait_ms) {
+  hover_lock_fd = open(hover_lock_path, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+  if (hover_lock_fd < 0) return 0;
+  double deadline = monotonic_seconds() + (double)wait_ms / 1000.0;
+  while (flock(hover_lock_fd, LOCK_EX | LOCK_NB) != 0) {
+    if ((errno != EWOULDBLOCK && errno != EAGAIN && errno != EINTR)
+        || wait_ms == 0 || monotonic_seconds() >= deadline) {
+      release_hover_lock();
+      return 0;
+    }
+    usleep(1000);
+  }
+  return 1;
+}
 
 static const char *sketchybar_bin(void) {
   const char *value = getenv("BARISTA_SKETCHYBAR_BIN");
@@ -25,12 +60,52 @@ static const char *sketchybar_bin(void) {
 static void ensure_dir(const char *path) {
   struct stat st;
   if (stat(path, &st) == -1) {
-    mkdir(path, 0700);
+    char parent[PATH_MAX];
+    if (snprintf(parent, sizeof(parent), "%s", path) >= (int)sizeof(parent)) return;
+    for (char *p = parent + 1; *p; p++) {
+      if (*p != '/') continue;
+      *p = '\0';
+      mkdir(parent, 0700);
+      *p = '/';
+    }
+    mkdir(parent, 0700);
   }
 }
 
 static void set_state_path(const char *name) {
   snprintf(state_path, sizeof(state_path), "%s/%s.anchor", state_dir, name ? name : "item");
+  snprintf(shell_popup_state_path, sizeof(shell_popup_state_path), "%s/%s.state", state_dir, name ? name : "item");
+  char key[PATH_MAX];
+  size_t length = 0;
+  int invalid = 0;
+  int needs_sanitize = 0;
+  for (const unsigned char *p = (const unsigned char *)name; *p; p++) {
+    if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')
+          || (*p >= '0' && *p <= '9') || *p == '.' || *p == '_' || *p == '-')) {
+      needs_sanitize = 1;
+      break;
+    }
+  }
+  for (const unsigned char *p = (const unsigned char *)name; *p && length + 1 < sizeof(key); p++) {
+    int allowed = (*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z')
+        || (*p >= '0' && *p <= '9') || *p == '.' || *p == '_' || *p == '-';
+    char value = allowed ? (char)*p : '_';
+    // The shell's rare-name tr -cs path squeezes existing underscores too.
+    if ((allowed || !invalid) && !(needs_sanitize && value == '_'
+          && length > 0 && key[length - 1] == '_')) key[length++] = value;
+    invalid = !allowed;
+  }
+  key[length] = '\0';
+  const char *directory = getenv("BARISTA_HOVER_STATE_DIR");
+  char default_directory[PATH_MAX];
+  if (!directory || !*directory) {
+    const char *tmp = getenv("TMPDIR");
+    snprintf(default_directory, sizeof(default_directory), "%s/sketchybar_hover_state", tmp && *tmp ? tmp : "/tmp");
+    directory = default_directory;
+  }
+  ensure_dir(directory);
+  snprintf(hover_state_path, sizeof(hover_state_path), "%s/%s.state", directory, key);
+  snprintf(hover_lock_path, sizeof(hover_lock_path), "%s/%s.apply.lock", directory, key);
 }
 
 static int run_process(char *const argv[]) {
@@ -39,13 +114,26 @@ static int run_process(char *const argv[]) {
     return -1;
   }
   if (pid == 0) {
+    release_hover_lock();
+    setpgid(0, 0);
     execvp(argv[0], argv);
     _exit(127);
   }
 
+  setpgid(pid, pid);
   int status = 0;
-  if (waitpid(pid, &status, 0) < 0) {
-    return -1;
+  double deadline = monotonic_seconds() + 0.5;
+  while (1) {
+    pid_t waited = waitpid(pid, &status, WNOHANG);
+    if (waited == pid) break;
+    if (waited < 0 && errno != EINTR) return -1;
+    if (monotonic_seconds() >= deadline) {
+      kill(-pid, SIGKILL);
+      kill(pid, SIGKILL);
+      while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+      return 124;
+    }
+    usleep(1000);
   }
   if (WIFEXITED(status)) {
     return WEXITSTATUS(status);
@@ -167,14 +255,14 @@ static int run_sketchybar_set(const char *name, const char *const props[], size_
 
 static void animate_set_item(const char *name, const char *const props[], size_t prop_count) {
   if (!name || !props || prop_count == 0) return;
-  if (run_sketchybar_set(name, props, prop_count, 1) != 0) {
+  if (atoi(animation_duration()) <= 0) {
+    run_sketchybar_set(name, props, prop_count, 0);
+    return;
+  }
+  int status = run_sketchybar_set(name, props, prop_count, 1);
+  if (status != 0 && status != 124) {
     run_sketchybar_set(name, props, prop_count, 0);
   }
-}
-
-static void set_popup_visible(const char *name, int visible) {
-  const char *props[] = { visible ? "popup.drawing=on" : "popup.drawing=off" };
-  run_sketchybar_set(name, props, 1, 0);
 }
 
 static void clear_highlight(const char *name) {
@@ -221,6 +309,14 @@ static void write_token(const char *token) {
   fclose(fp);
 }
 
+static void write_event_token(char *token, size_t size) {
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  snprintf(token, size, "%lld%06ld-%ld", (long long)tv.tv_sec,
+           (long)tv.tv_usec, (long)getpid());
+  write_token(token);
+}
+
 static int read_token(char *buffer, size_t size) {
   FILE *fp = fopen(state_path, "r");
   if (!fp) return 0;
@@ -247,9 +343,15 @@ static int parent_matches(const char *name) {
 }
 
 static void schedule_close(const char *name, const char *token) {
+  if (CLOSE_DELAY <= 0.0) {
+    close_popup_and_clear(name);
+    return;
+  }
   pid_t pid = fork();
   if (pid != 0) return;
+  release_hover_lock();
   usleep((useconds_t)(CLOSE_DELAY * 1000000.0));
+  if (!acquire_hover_lock(0)) _exit(0);
   char current[256];
   if (read_token(current, sizeof(current)) && strcmp(current, token) == 0) {
     close_popup_and_clear(name);
@@ -261,7 +363,9 @@ static void schedule_highlight_clear(const char *name, const char *token) {
   if (HOVER_TIMEOUT <= 0.0) return;
   pid_t pid = fork();
   if (pid != 0) return;
+  release_hover_lock();
   usleep((useconds_t)(HOVER_TIMEOUT * 1000000.0));
+  if (!acquire_hover_lock(0)) _exit(0);
   char current[256];
   if (read_token(current, sizeof(current)) && strcmp(current, token) == 0) {
     clear_highlight(name);
@@ -293,18 +397,23 @@ int main(void) {
   }
   set_state_path(name);
   const char *sender = getenv("SENDER");
+  if (sender && strcmp(sender, "mouse.entered") != 0
+      && strcmp(sender, "mouse.exited") != 0
+      && strcmp(sender, "mouse.exited.global") != 0) return 0;
+  if (!acquire_hover_lock(1200)) return 0;
+  // A shell event and a native event share one lock; cancel the other backend's
+  // generation before applying this event so old timers cannot cross a reload.
+  unlink(hover_state_path);
+  unlink(shell_popup_state_path);
 
   if (!sender || strcmp(sender, "mouse.entered") == 0) {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
     char token[64];
     char color_prop[64];
     char border_width_prop[64];
     char border_color_prop[64];
-    const char *props[4];
+    const char *props[5];
     size_t prop_count = 2;
-    snprintf(token, sizeof(token), "%lld%06ld", (long long)tv.tv_sec, (long)tv.tv_usec);
-    write_token(token);
+    write_event_token(token, sizeof(token));
     snprintf(color_prop, sizeof(color_prop), "background.color=%s", hover_color());
     props[0] = "background.drawing=on";
     props[1] = color_prop;
@@ -314,15 +423,16 @@ int main(void) {
       props[prop_count++] = border_width_prop;
       props[prop_count++] = border_color_prop;
     }
+    if (OPEN_ON_ENTER) props[prop_count++] = "popup.drawing=on";
     animate_set_item(name, props, prop_count);
     schedule_highlight_clear(name, token);
-    if (OPEN_ON_ENTER) {
-      set_popup_visible(name, 1);
-    }
     return 0;
   }
 
   if (strcmp(sender, "mouse.exited") == 0) {
+    char token[64];
+    // Invalidate the enter timer while retaining state for a later global exit.
+    write_event_token(token, sizeof(token));
     clear_highlight(name);
     return 0;
   }
@@ -332,11 +442,14 @@ int main(void) {
       return 0;
     }
     char token[256];
-    if (!read_token(token, sizeof(token))) {
-      return 0;
+    if (!read_token(token, sizeof(token))) return 0;
+    write_event_token(token, sizeof(token));
+    if (CLOSE_DELAY <= 0.0) {
+      close_popup_and_clear(name);
+    } else {
+      clear_highlight(name);
+      schedule_close(name, token);
     }
-    clear_highlight(name);
-    schedule_close(name, token);
     return 0;
   }
 

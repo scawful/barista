@@ -133,7 +133,9 @@ skhd binding by source file and flags raw yabai commands or missing script
 targets. For window-rule drift, run
 `~/.config/sketchybar/scripts/yabai_control.sh rules-audit`; unmanaged utility
 apps should default to `manage=off sub-layer=normal`, with topmost kept as an
-explicit manual action.
+explicit manual action. Yaze is an intentional `sub-layer=below` exception:
+its ImGui utility windows remain unmanaged while the main editor stacks with
+tiled windows instead of staying in front of them.
 
 **LaunchAgents:** The single place to edit the Barista orchestrator (SketchyBar + yabai + skhd at login) is `lab/barista/launch_agents/`. See [launch_agents/README.md](launch_agents/README.md). Recommended: use either this LaunchAgent or `brew services` for the three daemons, not both.
 
@@ -378,7 +380,7 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
   --skip-restart
 ```
 
-- **Hover animation:** In `state.json` or in `modules/state.lua` defaults, `hover_animation_duration` (default 8) and `hover_animation_curve` (default `sin`) control popup hover speed. Lower duration (e.g. 6) for even snappier feel.
+- **Hover animation:** In `state.json` or in `modules/state.lua` defaults, `hover_animation_duration` (default 8) and `hover_animation_curve` (default `sin`) control popup hover speed. Duration is a frame count at 60 Hz; use `0` for immediate popup/anchor highlights. Both compiled and shell helpers honor this setting, including display-scoped space creation chips and the fast Triforce hover path. For a DisplayLink setup, `appearance.blur_radius = 0` is also available as an explicit visual tradeoff. See [multi-monitor performance checks](docs/PERFORMANCE_AUDIT.md#multi-monitor-and-displaylink-checks) before comparing CPU or latency.
 - **Process Batching:** Barista minimizes process forks. Space topology rebuilds stay batched, and the post-rebuild visual pass now runs once through `plugins/space_visuals.sh` instead of per-space `space_change` handlers.
 - **Widget Daemon:** `clock`, `system_info`, and `battery` can run as daemon-managed surfaces. The compiled daemon updates the clock on minute boundaries, system info every 10 seconds, and battery every 120 seconds; popup detail refresh still happens only on click.
 - **Batched Battery Detail Refresh:** routine battery-anchor ownership remains with `widget_manager` or the existing shell fallback. A click toggles the popup immediately, then portable `plugins/battery.sh popup_refresh` captures `pmset` once and `ioreg` once, parses both snapshots in-process, and applies the anchor plus five detail rows as one ordered six-target/20-property SketchyBar batch. This changes no widget, timer, row, helper, or daemon and keeps Lua-only/restricted-work compatibility; the performance audit records the read-only proxy benchmark separately from live first-paint latency.

@@ -1,24 +1,29 @@
 -- workspace.lua - Workspace Integration for Barista
--- Provides ~/src workspace status for menu bar display
+-- Provides configurable workspace status for menu bar display
 
 local workspace = {}
 local json = require("json")
 
 local HOME = os.getenv("HOME")
-local WS_ROOT = os.getenv("WS_ROOT") or HOME .. "/src"
-local WS_CACHE_DIR = HOME .. "/.workspace/cache"
-local BARISTA_CACHE = HOME .. "/.config/sketchybar/cache"
+local CONFIG_HOME = os.getenv("XDG_CONFIG_HOME") or (HOME .. "/.config")
+local CACHE_HOME = os.getenv("XDG_CACHE_HOME") or (HOME .. "/.cache")
+local WS_ROOT = os.getenv("BARISTA_WORKSPACE_ROOT")
+  or os.getenv("WS_ROOT")
+  or os.getenv("BARISTA_CODE_DIR")
+  or (HOME .. "/src")
+local WS_CACHE_DIR = os.getenv("BARISTA_WORKSPACE_CACHE_DIR") or (CACHE_HOME .. "/barista/workspace")
+local BARISTA_CACHE = os.getenv("BARISTA_CACHE_DIR") or (CONFIG_HOME .. "/sketchybar/cache")
 local DIRTY_CACHE = WS_CACHE_DIR .. "/dirty.txt"
 local PROJECTS_CACHE = WS_CACHE_DIR .. "/projects.json"
 local CACHE_TTL = 300 -- 5 minutes
 
--- Ensure cache directories exist
-os.execute("mkdir -p " .. WS_CACHE_DIR)
-os.execute("mkdir -p " .. BARISTA_CACHE)
-
 local function shell_quote(value)
   return string.format("%q", tostring(value))
 end
+
+-- Ensure cache directories exist
+os.execute("mkdir -p " .. shell_quote(WS_CACHE_DIR))
+os.execute("mkdir -p " .. shell_quote(BARISTA_CACHE))
 
 local function open_terminal(command)
   if not command or command == "" then
@@ -46,7 +51,7 @@ local function is_cache_valid(cache_file, ttl)
   if not file then return false end
   file:close()
 
-  local stat_cmd = "stat -f %m " .. cache_file .. " 2>/dev/null"
+  local stat_cmd = "stat -f %m " .. shell_quote(cache_file) .. " 2>/dev/null"
   local handle = io.popen(stat_cmd)
   local timestamp = handle:read("*a")
   handle:close()
@@ -101,8 +106,8 @@ local function get_repo_status(repo_path)
   if not check then return nil end
   check:close()
 
-  local branch = exec("git -C " .. full_path .. " branch --show-current 2>/dev/null"):gsub("%s+$", "")
-  local dirty = exec("git -C " .. full_path .. " status --porcelain 2>/dev/null | wc -l"):gsub("%s+$", "")
+  local branch = (exec("git -C " .. shell_quote(full_path) .. " branch --show-current 2>/dev/null") or ""):gsub("%s+$", "")
+  local dirty = (exec("git -C " .. shell_quote(full_path) .. " status --porcelain 2>/dev/null | wc -l") or ""):gsub("%s+$", "")
 
   return {
     name = repo_path:match("[^/]+$"),
@@ -117,14 +122,14 @@ function workspace.scan_dirty_repos()
   local dirty_repos = {}
 
   for _, bucket in ipairs(BUCKETS) do
-    local find_cmd = "find " .. bucket.path .. " -maxdepth 2 -type d -name '.git' 2>/dev/null"
+    local find_cmd = "find " .. shell_quote(bucket.path) .. " -maxdepth 2 -type d -name '.git' 2>/dev/null"
     local result = exec(find_cmd)
 
     if result then
       for git_dir in result:gmatch("[^\n]+") do
         local repo_path = git_dir:match("(.+)/.git$")
         if repo_path then
-          local dirty = exec("git -C " .. repo_path .. " status --porcelain 2>/dev/null | wc -l"):gsub("%s+$", "")
+          local dirty = (exec("git -C " .. shell_quote(repo_path) .. " status --porcelain 2>/dev/null | wc -l") or ""):gsub("%s+$", "")
           local count = tonumber(dirty) or 0
           if count > 0 then
             local name = repo_path:match("[^/]+$")
@@ -325,7 +330,7 @@ end
 function workspace.jump_to_project(project_name)
   for _, proj in ipairs(KEY_PROJECTS) do
     if proj.name == project_name then
-      os.execute(string.format("open -a Terminal '%s/%s'", WS_ROOT, proj.path))
+      os.execute("open -a Terminal " .. shell_quote(WS_ROOT .. "/" .. proj.path))
       return true
     end
   end
@@ -334,8 +339,8 @@ end
 
 -- Clear caches
 function workspace.clear_cache()
-  os.execute("rm -f " .. DIRTY_CACHE)
-  os.execute("rm -f " .. PROJECTS_CACHE)
+  os.execute("rm -f " .. shell_quote(DIRTY_CACHE))
+  os.execute("rm -f " .. shell_quote(PROJECTS_CACHE))
   if command_exists("syshelp") then
     os.execute("syshelp wsrefresh")
   elseif command_exists("ws") then

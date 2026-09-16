@@ -381,9 +381,9 @@ end)
 run_test("runtime_startup.build_space_visual_refresh: triggers one delayed authoritative refresh", function()
   local command = runtime_startup.build_space_visual_refresh(
     0.8,
-    "/Users/scawful/.config/sketchybar/plugins/space_visuals.sh",
-    "/Users/scawful/.config/sketchybar",
-    "/Users/scawful/.config/sketchybar/scripts",
+    "/Users/example/.config/sketchybar/plugins/space_visuals.sh",
+    "/Users/example/.config/sketchybar",
+    "/Users/example/.config/sketchybar/scripts",
     true
   )
   assert_true(command:find("sleep 0%.8;", 1) ~= nil, "command should include sync delay")

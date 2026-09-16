@@ -61,7 +61,7 @@ menus.apple.custom = [
       { "label": "Workbench", "command": "/Users/you/bin/my-workbench" },
       { "type": "separator" },
       { "type": "header", "label": "Docs" },
-      { "label": "Runbook", "path": "~/src/project/RUNBOOK.md" }
+      { "label": "Runbook", "path": "/path/to/project/RUNBOOK.md" }
     ]
   }
 ]

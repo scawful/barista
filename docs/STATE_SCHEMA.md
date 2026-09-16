@@ -57,7 +57,7 @@
     },
     "calendar": {
       "task_provider": "files",
-      "task_sources": ["~/src/folio/tasks/active.md"]
+      "task_sources": ["/path/to/tasks.md"]
     },
     "extensions": {
       "enabled": true,

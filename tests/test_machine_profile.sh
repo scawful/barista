@@ -112,6 +112,7 @@ python3 "$SCRIPT" apply \
   --variant work \
   --state "$WORK_STATE" \
   --machine-file "$WORK_MACHINE" \
+  --code-dir "$TMP_DIR/company-checkout" \
   --skip-work-apps \
   --report \
   --no-reload >"$TMP_DIR/work.report"
@@ -126,6 +127,7 @@ machine = json.loads(pathlib.Path(sys.argv[2]).read_text())
 assert state["profile"] == "work"
 assert machine["profile_variant"] == "work"
 assert machine["restricted"] is False
+assert state["paths"]["code_dir"] == str(pathlib.Path(sys.argv[1]).parent / "company-checkout")
 for name in ("oracle", "music", "journal", "nerv", "yaze", "halext", "halext_org", "workspace"):
     assert state["integrations"][name]["enabled"] is False
 assert state["integrations"]["oracle"]["label"] == "keep-oracle"

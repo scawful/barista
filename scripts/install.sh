@@ -15,8 +15,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-INSTALL_DIR="${HOME}/.config/sketchybar"
-REPO_URL="https://github.com/scawful/barista"
+INSTALL_DIR="${BARISTA_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/sketchybar}"
+REPO_URL="https://github.com/scawful/barista.git"
 window_manager_mode=""
 
 echo_info() {

@@ -124,8 +124,18 @@ cd ~/.config/sketchybar
 
 ### Install a New Work Computer:
 
-Run `./scripts/install.sh` and select Work when prompted. The installer owns
-dependencies, the initial build, service configuration, and startup.
+Use the portable bootstrap and provide machine-local paths only when needed:
+
+```bash
+./scripts/bootstrap_machine.sh \
+  --profile work \
+  --code-dir /path/to/company/source \
+  --bin-dir /path/to/company/bin \
+  --launch-agent
+```
+
+The code root is persisted in ignored machine state, and executable-directory
+overrides are rendered into the local LaunchAgent rather than committed.
 
 ### Apply Work Defaults to an Existing Runtime:
 
@@ -139,7 +149,8 @@ dependencies, the initial build, service configuration, and startup.
   --report
 ```
 
-Work setup explicitly disables personal Oracle/Music/Journal/NERV/Yaze state,
+Work setup explicitly disables personal Oracle/Music/Journal/Yaze state and
+removes legacy NERV flags,
 sets the task provider to `files`, clears task, syshelp, and meeting-cache
 paths, removes stale generated task-capture bindings, and leaves Task Pulse
 off. Halext is an opt-in local integration, not a Work-profile requirement.
@@ -198,7 +209,7 @@ end
 - ✅ ROM hacking (Yaze integration)
 - ✅ Personal Emacs workflows
 - ✅ Custom space icons
-- ✅ Specific paths (~/src/yaze, ~/src/docs)
+- ✅ Specific paths (/path/to/yaze, /path/to/docs)
 
 ### Work (profiles/work.lua)
 - ❌ No ROM hacking

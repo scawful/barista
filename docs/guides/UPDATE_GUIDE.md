@@ -29,13 +29,12 @@ Keep Barista current with safe backups and minimal downtime. Choose the path tha
 2) Verify: `sketchybar --reload` (also `yabai -m query --spaces` / `skhd --reload` if running)
 
 ## Repo Deploy Workflow (Separate Source Repo)
-If you keep Barista in a repo (for example in `~/src/lab/barista`) and deploy into `~/.config/sketchybar`:
+If you keep Barista in a separate source checkout and deploy into the runtime selected by `BARISTA_CONFIG_DIR`:
 
 1) Deploy:
-   - `./scripts/update_repo.sh`
-   - `./scripts/deploy.sh`
-   - Optional: `./scripts/deploy.sh --note "Space fixes + menu updates"`
-   - Overrides: `BARISTA_SOURCE_DIR=/path/to/repo BARISTA_CONFIG_DIR=~/.config/sketchybar`
+   - `git pull --ff-only`
+   - `./scripts/bootstrap_machine.sh --profile work --replace`
+   - Override the runtime with `BARISTA_CONFIG_DIR=/approved/path/sketchybar`.
 2) Check deploy version:
    - `./scripts/deploy_info.sh`
 3) Backups:

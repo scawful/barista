@@ -18,7 +18,6 @@ profile.integrations = {
   oracle = false,
   music = false,
   journal = false,
-  nerv = false,
   halext_org = false,
 }
 

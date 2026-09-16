@@ -20,7 +20,7 @@ Multiple critical icons fail to render due to empty string definitions in the ic
 
 The issue stems from a mismatch between two icon libraries:
 
-#### File: `/Users/scawful/src/sketchybar/modules/icons.lua`
+#### File: `/path/to/barista/modules/icons.lua`
 
 **Lines with Empty Icon Definitions:**
 - Line 9: `apple = ""` (should display Apple logo)
@@ -36,7 +36,7 @@ The issue stems from a mismatch between two icon libraries:
 
 These are defined in the `icons.categories.system` table and other categories, but contain empty strings instead of Nerd Font glyphs.
 
-#### File: `/Users/scawful/src/sketchybar/modules/icon_manager.lua`
+#### File: `/path/to/barista/modules/icon_manager.lua`
 
 **Status**: Has correct icon definitions with fallback support (lines 19-167)
 
@@ -137,7 +137,7 @@ The front app detection correctly identifies the frontmost application, but disp
 
 ### Root Cause Analysis
 
-#### File: `/Users/scawful/src/sketchybar/plugins/front_app.sh`
+#### File: `/path/to/barista/plugins/front_app.sh`
 
 **Current Behavior (lines 1-29)**:
 ```bash
@@ -174,7 +174,7 @@ sketchybar --set front_app.menu.header label="App Controls · $APP_NAME" >/dev/n
 **The Issue**:
 When a user launches the config_menu_v2 control panel (which happens via apple_menu.sh), the macOS system reports it as the frontmost application. The script correctly detects it and displays it. However, users expect to see the application that was previously active BEHIND the control panel, not the control panel itself.
 
-#### File: `/Users/scawful/src/sketchybar/plugins/apple_menu.sh` (lines 1-20)
+#### File: `/path/to/barista/plugins/apple_menu.sh` (lines 1-20)
 
 ```bash
 PANEL_BIN="${GUI_DIR}/bin/config_menu_v2"
@@ -194,7 +194,7 @@ launch_panel() {
 
 The control panel is launched as a background process (`&`), but it becomes frontmost because it's a GUI application.
 
-#### Related File: `/Users/scawful/src/sketchybar/plugins/halext_menu.sh`
+#### Related File: `/path/to/barista/plugins/halext_menu.sh`
 
 Similar issue exists here (line 44-45):
 ```bash
@@ -302,7 +302,7 @@ Submenus in the Apple menu may have issues with nested submenu support and hover
 
 ### Analysis of Current Implementation
 
-#### File: `/Users/scawful/src/sketchybar/helpers/submenu_hover.c`
+#### File: `/path/to/barista/helpers/submenu_hover.c`
 
 **Current Features Implemented**:
 
@@ -389,7 +389,7 @@ static const char *SUBMENUS[] = {
 
 1. **Build and Run**:
    ```bash
-   cd /Users/scawful/src/sketchybar/helpers
+   cd /path/to/barista/helpers
    make submenu_hover
    ```
 
@@ -438,7 +438,7 @@ The control panel (config_menu_v2) is functional but missing several key feature
 
 ### Current Status
 
-#### File: `/Users/scawful/src/sketchybar/gui/config_menu_v2.m`
+#### File: `/path/to/barista/gui/config_menu_v2.m`
 
 **Currently Implemented Features** (lines 1-150 analyzed):
 - Configuration state management (ConfigurationManager class)
@@ -447,7 +447,7 @@ The control panel (config_menu_v2) is functional but missing several key feature
 - SketchyBar reload functionality
 
 **Build Status**:
-File: `/Users/scawful/src/sketchybar/gui/Makefile` (lines 1-42)
+File: `/path/to/barista/gui/Makefile` (lines 1-42)
 ```makefile
 all: $(BIN_CONFIG) $(BIN_CONFIG_V2) $(BIN_ICONS) $(BIN_HELP)
 
@@ -458,7 +458,7 @@ $(BIN_CONFIG_V2): $(SRC_CONFIG_V2)
 clean:
 	rm -rf $(BIN_DIR)
 ```
-- Currently builds successfully to `/Users/scawful/src/sketchybar/gui/bin/config_menu_v2`
+- Currently builds successfully to `/path/to/barista/gui/bin/config_menu_v2`
 - Binary timestamp: Nov 17 09:29 (recently built)
 - No known build failures
 
@@ -467,7 +467,7 @@ clean:
 #### 1. Theme Switching Capability (High Priority)
 
 **Current State**:
-- Themes exist in `/Users/scawful/src/sketchybar/themes/` (mocha, caramel, white_coffee, etc.)
+- Themes exist in `/path/to/barista/themes/` (mocha, caramel, white_coffee, etc.)
 - No UI in control panel to switch themes
 - Must be done via configuration files or scripts
 
@@ -488,7 +488,7 @@ clean:
 #### 2. Keyboard Shortcut Configuration (Medium Priority)
 
 **Current State**:
-- Shortcuts module exists at `/Users/scawful/src/sketchybar/modules/shortcuts.lua`
+- Shortcuts module exists at `/path/to/barista/modules/shortcuts.lua`
 - shortcuts.lua is loaded in main.lua (line 20)
 - No UI to configure keyboard shortcuts
 - Shortcuts are hardcoded in scripts
@@ -510,7 +510,7 @@ clean:
 #### 3. Icon Management and Preview (Medium Priority)
 
 **Current State**:
-- Icon browser exists at `/Users/scawful/src/sketchybar/gui/bin/icon_browser`
+- Icon browser exists at `/path/to/barista/gui/bin/icon_browser`
 - icon_manager.lua provides icon access (line 19 of main.lua)
 - Icon library functions: `icons.search()`, `icons.get_all()` (modules/icons.lua lines 289-325)
 - No integrated icon preview in main control panel
@@ -613,18 +613,18 @@ clean:
 ### Critical Files
 | File | Issue | Lines | Priority |
 |------|-------|-------|----------|
-| `/Users/scawful/src/sketchybar/modules/icons.lua` | Empty icon strings | 9-13, 20, 22-24, 35 | Critical |
-| `/Users/scawful/src/sketchybar/plugins/front_app.sh` | App filtering | 1-29 | Moderate |
-| `/Users/scawful/src/sketchybar/helpers/submenu_hover.c` | Hover behavior | 78-162 | Low-Moderate |
-| `/Users/scawful/src/sketchybar/gui/config_menu_v2.m` | Missing features | 1-150+ | Medium |
+| `/path/to/barista/modules/icons.lua` | Empty icon strings | 9-13, 20, 22-24, 35 | Critical |
+| `/path/to/barista/plugins/front_app.sh` | App filtering | 1-29 | Moderate |
+| `/path/to/barista/helpers/submenu_hover.c` | Hover behavior | 78-162 | Low-Moderate |
+| `/path/to/barista/gui/config_menu_v2.m` | Missing features | 1-150+ | Medium |
 
 ### Supporting Files
 | File | Purpose |
 |------|---------|
-| `/Users/scawful/src/sketchybar/main.lua` | Icon lookup logic, menu setup |
-| `/Users/scawful/src/sketchybar/modules/icon_manager.lua` | Multi-font icon support |
-| `/Users/scawful/src/sketchybar/plugins/apple_menu.sh` | Control panel launcher |
-| `/Users/scawful/src/sketchybar/gui/Makefile` | Build configuration |
+| `/path/to/barista/main.lua` | Icon lookup logic, menu setup |
+| `/path/to/barista/modules/icon_manager.lua` | Multi-font icon support |
+| `/path/to/barista/plugins/apple_menu.sh` | Control panel launcher |
+| `/path/to/barista/gui/Makefile` | Build configuration |
 
 ---
 
@@ -646,13 +646,13 @@ Addressing Issue #1 (Icon Display) should be the immediate priority as it affect
 ### Build Commands
 ```bash
 # Build specific component
-make -C /Users/scawful/src/sketchybar/gui config_v2
+make -C /path/to/barista/gui config_v2
 
 # Build all GUI components
-make -C /Users/scawful/src/sketchybar/gui all
+make -C /path/to/barista/gui all
 
 # Clean build artifacts
-make -C /Users/scawful/src/sketchybar/gui clean
+make -C /path/to/barista/gui clean
 ```
 
 ### Debugging Commands

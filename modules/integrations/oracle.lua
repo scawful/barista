@@ -7,16 +7,24 @@ local oracle = {}
 local locator = require("tool_locator")
 local ui = require("ui_builder")
 
-local HOME = os.getenv("HOME")
-local CODE_DIR = os.getenv("BARISTA_CODE_DIR") or (HOME .. "/src")
-local DOTFILES_DIR = CODE_DIR .. "/config/dotfiles"
-local ORACLE_DIR = CODE_DIR .. "/hobby/oracle-of-secrets"
+local state = locator.load_state()
+local state_paths = state and type(state.paths) == "table" and state.paths or {}
+local CODE_DIR = locator.resolve_code_dir({ state = state })
+local ORACLE_DIR = os.getenv("BARISTA_ORACLE_DIR")
+  or state_paths.oracle
+  or (CODE_DIR .. "/hobby/oracle-of-secrets")
+local TRIFORCE_WIDGET = os.getenv("BARISTA_TRIFORCE_WIDGET")
+  or state_paths.triforce_widget
+  or locator.command_path("oos-triforce-widget")
+  or ""
 
 oracle.config = {
   repo_path = ORACLE_DIR,
-  z3dk_repo = CODE_DIR .. "/hobby/z3dk",
-  triforce_widget = DOTFILES_DIR .. "/bin/oos-triforce-widget",
-  status_script = ORACLE_DIR .. "/Scripts/Build/oos-triforce.sh",
+  z3dk_repo = os.getenv("BARISTA_Z3DK_DIR") or state_paths.z3dk or (CODE_DIR .. "/hobby/z3dk"),
+  triforce_widget = TRIFORCE_WIDGET,
+  status_script = os.getenv("BARISTA_ORACLE_STATUS_SCRIPT")
+    or state_paths.oracle_status_script
+    or (ORACLE_DIR .. "/Scripts/Build/oos-triforce.sh"),
   handoff = ORACLE_DIR .. "/.context/scratchpad/agent_handoff.md",
   tracker = ORACLE_DIR .. "/oracle.org",
   workflow_plan = ORACLE_DIR .. "/Docs/Planning/Plans/development_workflow_alignment_2026-03-28.md",

@@ -139,7 +139,7 @@ This guide outlines the migration from barista's native Objective-C control pane
 #### Step 1: Install barista_config
 ```bash
 # From barista directory
-cd ~/src/lab/barista_config
+cd /path/to/barista-config
 mkdir build && cd build
 cmake ..
 make
@@ -315,7 +315,7 @@ Both panels use the same `state.json` format, ensuring seamless compatibility:
   "integrations": {
     "yaze": {
       "enabled": true,
-      "build_dir": "~/src/hobby/yaze/build"
+      "build_dir": "/path/to/yaze/build"
     },
     "emacs": {
       "enabled": true,
@@ -453,23 +453,23 @@ sketchybar --reload
 - Logs (if applicable)
 
 ### Q: Can I contribute to barista_config?
-**A:** Absolutely! See `/Users/scawful/src/shared/cpp/halext/QUICKSTART.md` for development setup.
+**A:** Absolutely! See `/path/to/halext/QUICKSTART.md` for development setup.
 
 ---
 
 ## Resources
 
 ### Documentation
-- [barista_config README](/Users/scawful/src/lab/barista_config/README.md)
-- [halext QUICKSTART](/Users/scawful/src/shared/cpp/halext/QUICKSTART.md)
-- [halext ROADMAP](/Users/scawful/src/shared/cpp/halext/docs/ROADMAP.md)
-- [barista README](/Users/scawful/src/lab/barista/README.md)
-- [Objective-C Panel Docs](/Users/scawful/src/lab/barista/docs/features/CONTROL_PANEL_V2.md)
+- [barista_config README](/path/to/barista-config/README.md)
+- [halext QUICKSTART](/path/to/halext/QUICKSTART.md)
+- [halext ROADMAP](/path/to/halext/docs/ROADMAP.md)
+- [barista README](/path/to/barista/README.md)
+- [Objective-C Panel Docs](/path/to/barista/docs/features/CONTROL_PANEL_V2.md)
 
 ### Code Repositories
-- barista_config: `/Users/scawful/src/lab/barista_config/`
-- halext library: `/Users/scawful/src/shared/cpp/halext/`
-- barista (SketchyBar config): `/Users/scawful/src/lab/barista/`
+- barista_config: `/path/to/barista-config/`
+- halext library: `/path/to/halext/`
+- barista (SketchyBar config): `/path/to/barista/`
 
 ### Issue Tracking
 - GitHub Issues: (URL when public)

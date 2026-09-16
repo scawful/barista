@@ -650,7 +650,7 @@ profile.description = "Work setup with Emacs and productivity integrations"
 
 profile.paths = {
   work_docs = os.getenv("HOME") .. "/work/docs",
-  code = os.getenv("HOME") .. "/src",
+  code = os.getenv("BARISTA_CODE_DIR") or "/path/to/source",
 }
 
 profile.integrations = {

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$HOME/.lmstudio/bin:$HOME/src/tools/bin:$HOME/src/config/dotfiles/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+PATH="${HOMEBREW_PREFIX:+$HOMEBREW_PREFIX/bin:$HOMEBREW_PREFIX/sbin:}$HOME/.lmstudio/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="${BARISTA_CONFIG_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"

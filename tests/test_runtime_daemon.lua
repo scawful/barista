@@ -51,7 +51,7 @@ run_test("runtime_daemon.stop_runtime_context_daemon: stops helper family", func
     end,
     process_running = function(pid, fragments)
       if pid == "123" then
-        return true, "/Users/scawful/.config/sketchybar/scripts/runtime_context.sh daemon"
+        return true, "/Users/example/.config/sketchybar/scripts/runtime_context.sh daemon"
       end
       return false, nil
     end,

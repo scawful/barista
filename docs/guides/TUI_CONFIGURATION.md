@@ -8,7 +8,7 @@ machines with Python 3.9 or newer.
 
 ```bash
 # From the barista repository
-cd ~/src/lab/barista
+cd /path/to/barista
 ./bin/barista
 
 # Or if barista/bin is in your PATH

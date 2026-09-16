@@ -1,6 +1,5 @@
 #!/bin/bash
-# Install Barista launch agent
-# Sets up unified launch agent for SketchyBar, Yabai, and skhd
+# Install rendered Barista launch agents for the current machine.
 
 set -euo pipefail
 
@@ -11,10 +10,87 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-CONFIG_DIR="${HOME}/.config/sketchybar"
-PLIST_SOURCE="$CONFIG_DIR/launch_agents/dev.barista.control.plist"
-PLIST_DEST="${HOME}/Library/LaunchAgents/dev.barista.control.plist"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+CONFIG_DIR="${BARISTA_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/sketchybar}"
+CODE_DIR="${BARISTA_CODE_DIR:-}"
+BIN_DIRS=()
+INSTALL_MOUSE=0
+DRY_RUN=0
+START_AGENT=1
 DOMAIN="gui/$(id -u)"
+
+usage() {
+  cat <<EOF
+Usage: $0 [options]
+
+Options:
+  --config-dir <path>  Installed Barista runtime (default: \$BARISTA_CONFIG_DIR or XDG config)
+  --code-dir <path>    Optional machine-local source root exported to Barista
+  --bin-dir <path>     Extra executable directory prepended to PATH (repeatable)
+  --mouse-buttons      Also install the optional mouse-button mapper
+  --no-start           Render files without loading or restarting them
+  --dry-run            Print the resolved plan without writing
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --config-dir)
+      CONFIG_DIR="${2:?missing value for --config-dir}"
+      shift 2
+      ;;
+    --code-dir)
+      CODE_DIR="${2:?missing value for --code-dir}"
+      shift 2
+      ;;
+    --bin-dir)
+      BIN_DIRS+=("${2:?missing value for --bin-dir}")
+      shift 2
+      ;;
+    --mouse-buttons)
+      INSTALL_MOUSE=1
+      shift
+      ;;
+    --no-start)
+      START_AGENT=0
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+case "$CONFIG_DIR" in
+  ~/*) CONFIG_DIR="$HOME/${CONFIG_DIR#~/}" ;;
+esac
+if [[ "$CONFIG_DIR" != /* ]]; then
+  CONFIG_DIR="$(pwd)/$CONFIG_DIR"
+fi
+case "$CODE_DIR" in
+  ~/*) CODE_DIR="$HOME/${CODE_DIR#~/}" ;;
+esac
+if [ -n "$CODE_DIR" ] && [[ "$CODE_DIR" != /* ]]; then
+  CODE_DIR="$(pwd)/$CODE_DIR"
+fi
+
+SOURCE_ROOT="$CONFIG_DIR"
+if [ ! -f "$SOURCE_ROOT/launch_agents/dev.barista.control.plist" ]; then
+  SOURCE_ROOT="$REPO_ROOT"
+fi
+LAUNCH_AGENT_DIR="${BARISTA_LAUNCH_AGENT_DIR:-$HOME/Library/LaunchAgents}"
+LOG_DIR="${BARISTA_LOG_DIR:-$HOME/Library/Logs}"
 
 echo_info() {
   echo -e "${BLUE}[INFO]${NC} $1"
@@ -38,34 +114,85 @@ echo "║  Barista Launch Agent Installer       ║"
 echo "╚═══════════════════════════════════════╝"
 echo ""
 
-# Check if source plist exists
-if [[ ! -f "$PLIST_SOURCE" ]]; then
-  echo_error "Launch agent template not found: $PLIST_SOURCE"
-  exit 1
-fi
-
-# Check if barista-launch.sh exists
-if [[ ! -f "$CONFIG_DIR/launch_agents/barista-launch.sh" ]]; then
+if [[ ! -f "$CONFIG_DIR/launch_agents/barista-launch.sh" ]] && [ "$DRY_RUN" -ne 1 ]; then
   echo_error "Launch script not found: $CONFIG_DIR/launch_agents/barista-launch.sh"
   exit 1
 fi
 
 # Make launch script executable
-chmod +x "$CONFIG_DIR/launch_agents/barista-launch.sh"
+if [ "$DRY_RUN" -ne 1 ]; then
+  chmod +x "$CONFIG_DIR/launch_agents/barista-launch.sh"
+fi
 
-# Update plist with correct paths
-echo_info "Installing launch agent..."
-
-# Create plist with expanded paths
-sed "s|\$HOME|$HOME|g" "$PLIST_SOURCE" > "$PLIST_DEST"
-
-# Load launch agent
-if launchctl bootstrap "$DOMAIN" "$PLIST_DEST" 2>/dev/null; then
-  echo_success "Launch agent installed and started"
-elif launchctl kickstart -kp "${DOMAIN}/dev.barista.control" 2>/dev/null; then
-  echo_success "Launch agent restarted"
+if command -v brew >/dev/null 2>&1; then
+  BREW_PREFIX="$(brew --prefix)"
+elif [ "$(uname -m)" = "arm64" ]; then
+  BREW_PREFIX="/opt/homebrew"
 else
-  echo_warning "Launch agent installed but may need manual start"
+  BREW_PREFIX="/usr/local"
+fi
+AGENT_PATH="${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+CUSTOM_PATH=""
+for bin_dir in "${BIN_DIRS[@]}"; do
+  case "$bin_dir" in
+    ~/*) bin_dir="$HOME/${bin_dir#~/}" ;;
+  esac
+  if [[ "$bin_dir" != /* ]]; then
+    bin_dir="$(pwd)/$bin_dir"
+  fi
+  CUSTOM_PATH="${CUSTOM_PATH:+${CUSTOM_PATH}:}${bin_dir}"
+done
+if [ -n "$CUSTOM_PATH" ]; then
+  AGENT_PATH="${CUSTOM_PATH}:${AGENT_PATH}"
+fi
+
+install_agent() {
+  local label="$1"
+  local template="$SOURCE_ROOT/launch_agents/${label}.plist"
+  local destination="$LAUNCH_AGENT_DIR/${label}.plist"
+  if [ ! -f "$template" ]; then
+    echo_error "Launch agent template not found: $template"
+    return 1
+  fi
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo_info "Would render $label to $destination"
+    return 0
+  fi
+  mkdir -p "$LAUNCH_AGENT_DIR" "$LOG_DIR"
+  if [ -f "$destination" ]; then
+    cp "$destination" "${destination}.backup.$(date +%Y%m%d_%H%M%S)"
+  fi
+  cp "$template" "$destination"
+  plutil -replace EnvironmentVariables.PATH -string "$AGENT_PATH" "$destination"
+  plutil -replace EnvironmentVariables.BARISTA_PATH -string "$AGENT_PATH" "$destination"
+  plutil -replace EnvironmentVariables.BARISTA_CONFIG_DIR -string "$CONFIG_DIR" "$destination"
+  if [ -n "$CODE_DIR" ]; then
+    plutil -replace EnvironmentVariables.BARISTA_CODE_DIR -string "$CODE_DIR" "$destination"
+  fi
+  if [ "$label" = "dev.barista.control" ]; then
+    plutil -replace ProgramArguments.2 -string "$CONFIG_DIR/launch_agents/barista-launch.sh start" "$destination"
+    plutil -replace StandardOutPath -string "$LOG_DIR/barista-control.out.log" "$destination"
+    plutil -replace StandardErrorPath -string "$LOG_DIR/barista-control.err.log" "$destination"
+  else
+    plutil -replace ProgramArguments.2 -string "$CONFIG_DIR/scripts/start_mouse_button_mapper.sh" "$destination"
+    plutil -replace StandardOutPath -string "$LOG_DIR/barista-mouse-buttons.log" "$destination"
+    plutil -replace StandardErrorPath -string "$LOG_DIR/barista-mouse-buttons.log" "$destination"
+  fi
+  echo_success "Rendered $destination"
+  if [ "$START_AGENT" -eq 1 ]; then
+    launchctl bootout "${DOMAIN}/${label}" >/dev/null 2>&1 || true
+    if launchctl bootstrap "$DOMAIN" "$destination" 2>/dev/null; then
+      echo_success "Loaded $label"
+    else
+      echo_warning "$label was rendered but launchctl could not load it"
+    fi
+  fi
+}
+
+echo_info "Installing launch agent for runtime: $CONFIG_DIR"
+install_agent dev.barista.control
+if [ "$INSTALL_MOUSE" -eq 1 ]; then
+  install_agent dev.barista.mouse-buttons
 fi
 
 echo ""
@@ -80,6 +207,5 @@ echo "  ~/.config/sketchybar/launch_agents/barista-launch.sh {start|stop|restart
 echo ""
 echo "To uninstall:"
 echo "  launchctl bootout ${DOMAIN}/dev.barista.control"
-echo "  rm $PLIST_DEST"
+echo "  rm $LAUNCH_AGENT_DIR/dev.barista.control.plist"
 echo ""
-

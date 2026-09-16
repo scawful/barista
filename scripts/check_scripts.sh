@@ -66,6 +66,7 @@ done
 
 lint_candidates=(
   scripts/setup_machine.sh
+  scripts/bootstrap_machine.sh
   scripts/install.sh
   scripts/set_mode.sh
   scripts/configure_restricted_work_barista.sh
@@ -194,6 +195,7 @@ bash tests/test_setup_machine_work_apps.sh >/dev/null
 bash tests/test_setup_machine_shortcuts.sh >/dev/null
 bash tests/test_state_migration.sh >/dev/null
 bash tests/test_work_profile_entrypoints.sh >/dev/null
+bash tests/test_portable_bootstrap.sh >/dev/null
 rm -f "$tmp_state" >/dev/null 2>&1 || true
 ./scripts/barista-doctor.sh --help >/dev/null
 ./scripts/install-tui.sh --check >/dev/null || true

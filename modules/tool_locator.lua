@@ -201,24 +201,19 @@ function locator.resolve_code_dir(opts)
     and opts.state.paths
     or nil
 
-  local candidate = option_value(opts, "code_dir")
+  local explicit = option_value(opts, "code_dir")
     or os.getenv("BARISTA_CODE_DIR")
     or (state_paths and (state_paths.code_dir or state_paths.code))
-    or (HOME .. "/src")
+  if explicit and explicit ~= "" then
+    return locator.expand_path(explicit) or explicit
+  end
 
-  candidate = locator.expand_path(candidate) or (HOME .. "/src")
-  local fallback = HOME .. "/src"
-
-  if candidate:match("/Code/?$") and locator.path_exists(fallback, true) then
-    return fallback
+  for _, fallback in ipairs({ HOME .. "/src", HOME .. "/Code" }) do
+    if locator.path_exists(fallback, true) then
+      return fallback
+    end
   end
-  if not locator.path_exists(candidate, true) and locator.path_exists(fallback, true) then
-    return fallback
-  end
-  if not locator.path_exists(candidate .. "/lab", true) and locator.path_exists(fallback .. "/lab", true) then
-    return fallback
-  end
-  return candidate
+  return HOME .. "/src"
 end
 
 function locator.resolve_yaze_dir(opts)
@@ -265,7 +260,7 @@ function locator.resolve_afs_apps_launcher(opts)
     option_value(opts, "afs_apps_launcher"),
     os.getenv("AFS_APPS_LAUNCHER"),
     code_dir .. "/tools/afs/launch.sh",
-    use_global_apps and (HOME .. "/src/tools/afs/launch.sh") or nil,
+    use_global_apps and locator.command_path("afs-apps") or nil,
   })
 end
 
@@ -545,10 +540,7 @@ function locator.resolve_mesen_run(opts)
     return resolved, true
   end
 
-  local code_dir = locator.resolve_code_dir(opts)
   return locator.resolve_executable_path({
-    code_dir .. "/config/dotfiles/bin/mesen-run",
-    HOME .. "/src/config/dotfiles/bin/mesen-run",
     HOME .. "/bin/mesen-run",
     HOME .. "/.local/bin/mesen-run",
   })

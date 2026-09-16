@@ -6,23 +6,23 @@
 - Provide clear onboarding steps plus a switch to re-enable heavy integrations when you need them.
 
 ## Installation Flow (New Mac)
-1. **Clone the repo** somewhere convenient (e.g. `~/src/sketchybar`).
+1. **Clone the repo** somewhere convenient (e.g. `/path/to/barista`).
 2. **Install prerequisites** if missing: Homebrew, `sketchybar`, `jq`, and your preferred font (`Hack Nerd Font`).
 3. **Link/copy the config** into place:
    ```sh
    mkdir -p ~/.config
-   ln -s ~/src/sketchybar ~/.config/sketchybar
+   ln -s /path/to/barista ~/.config/sketchybar
    ```
    (Or copy instead of symlink if you prefer.)
 4. **Build the GUI tools** (optional but recommended):
    ```sh
-   cd ~/src/sketchybar
+   cd /path/to/barista
    ./rebuild_gui.sh
    ```
 5. **Apply the minimal machine variant** (disables Triforce/Oracle, Music,
    ROM-hacking, and Emacs integrations while keeping window management optional):
    ```sh
-   cd ~/src/sketchybar
+   cd /path/to/barista
    ./scripts/setup_machine.sh --profile-variant minimal --skip-fonts --skip-panel --yes
    ```
 6. Launch Sketchybar (or `sketchybar --reload`). The control panel exposes the

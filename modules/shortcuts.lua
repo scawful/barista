@@ -583,6 +583,36 @@ shortcuts.global = {
     symbol = "⌘⌥⇧R"
   },
 
+  -- Agentic AI Launchers
+  {
+    mods = {"cmd", "alt"},
+    key = "a",
+    action = "launch_antigravity",
+    desc = "Launch Antigravity",
+    symbol = "⌘⌥A"
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "c",
+    action = "launch_claude_code",
+    desc = "Launch Claude Code",
+    symbol = "⌘⌥C"
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "w",
+    action = "open_workspace_navigator",
+    desc = "Workspace Navigator",
+    symbol = "⌘⌥W"
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "k",
+    action = "stop_all_agents",
+    desc = "Stop All Agents",
+    symbol = "⌘⌥K"
+  },
+
   -- Yabai Controls
   {
     mods = {"cmd", "alt"},
@@ -608,6 +638,170 @@ shortcuts.global = {
     action = "space_next",
     desc = "Next Space (wrap)",
     symbol = "⌃→",
+    requires = "window_manager"
+  },
+
+  -- Direct Space Navigation (ctrl + 1..9, 0)
+  {
+    mods = {"ctrl"},
+    key = "1",
+    action = "focus_space_1",
+    desc = "Focus Space 1",
+    symbol = "⌃1",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl"},
+    key = "2",
+    action = "focus_space_2",
+    desc = "Focus Space 2",
+    symbol = "⌃2",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl"},
+    key = "3",
+    action = "focus_space_3",
+    desc = "Focus Space 3",
+    symbol = "⌃3",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl"},
+    key = "4",
+    action = "focus_space_4",
+    desc = "Focus Space 4",
+    symbol = "⌃4",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl"},
+    key = "5",
+    action = "focus_space_5",
+    desc = "Focus Space 5",
+    symbol = "⌃5",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl"},
+    key = "6",
+    action = "focus_space_6",
+    desc = "Focus Space 6",
+    symbol = "⌃6",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl"},
+    key = "7",
+    action = "focus_space_7",
+    desc = "Focus Space 7",
+    symbol = "⌃7",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl"},
+    key = "8",
+    action = "focus_space_8",
+    desc = "Focus Space 8",
+    symbol = "⌃8",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl"},
+    key = "9",
+    action = "focus_space_9",
+    desc = "Focus Space 9",
+    symbol = "⌃9",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl"},
+    key = "0",
+    action = "focus_space_10",
+    desc = "Focus Space 10",
+    symbol = "⌃0",
+    requires = "window_manager"
+  },
+
+  -- Direct Window to Space (ctrl + shift + 1..9, 0)
+  {
+    mods = {"ctrl", "shift"},
+    key = "1",
+    action = "send_window_space_1",
+    desc = "Send Window to Space 1",
+    symbol = "⌃⇧1",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl", "shift"},
+    key = "2",
+    action = "send_window_space_2",
+    desc = "Send Window to Space 2",
+    symbol = "⌃⇧2",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl", "shift"},
+    key = "3",
+    action = "send_window_space_3",
+    desc = "Send Window to Space 3",
+    symbol = "⌃⇧3",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl", "shift"},
+    key = "4",
+    action = "send_window_space_4",
+    desc = "Send Window to Space 4",
+    symbol = "⌃⇧4",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl", "shift"},
+    key = "5",
+    action = "send_window_space_5",
+    desc = "Send Window to Space 5",
+    symbol = "⌃⇧5",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl", "shift"},
+    key = "6",
+    action = "send_window_space_6",
+    desc = "Send Window to Space 6",
+    symbol = "⌃⇧6",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl", "shift"},
+    key = "7",
+    action = "send_window_space_7",
+    desc = "Send Window to Space 7",
+    symbol = "⌃⇧7",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl", "shift"},
+    key = "8",
+    action = "send_window_space_8",
+    desc = "Send Window to Space 8",
+    symbol = "⌃⇧8",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl", "shift"},
+    key = "9",
+    action = "send_window_space_9",
+    desc = "Send Window to Space 9",
+    symbol = "⌃⇧9",
+    requires = "window_manager"
+  },
+  {
+    mods = {"ctrl", "shift"},
+    key = "0",
+    action = "send_window_space_10",
+    desc = "Send Window to Space 10",
+    symbol = "⌃⇧0",
     requires = "window_manager"
   },
 
@@ -696,6 +890,11 @@ shortcuts.actions = setmetatable({
   send_window_space_3 = SCRIPTS_DIR .. "/yabai_control.sh window-space 3",
   send_window_space_4 = SCRIPTS_DIR .. "/yabai_control.sh window-space 4",
   send_window_space_5 = SCRIPTS_DIR .. "/yabai_control.sh window-space 5",
+  send_window_space_6 = SCRIPTS_DIR .. "/yabai_control.sh window-space 6",
+  send_window_space_7 = SCRIPTS_DIR .. "/yabai_control.sh window-space 7",
+  send_window_space_8 = SCRIPTS_DIR .. "/yabai_control.sh window-space 8",
+  send_window_space_9 = SCRIPTS_DIR .. "/yabai_control.sh window-space 9",
+  send_window_space_10 = SCRIPTS_DIR .. "/yabai_control.sh window-space 10",
 
   -- Layout Modes
   set_layout_float = SCRIPTS_DIR .. "/space_mode.sh current float",
@@ -734,6 +933,55 @@ shortcuts.actions = setmetatable({
       val = icon_browser_action()
     elseif key == "open_sys_manual" then
       val = sys_manual_action()
+    elseif key == "launch_antigravity" then
+      local launcher = select(1, locator.resolve_antigravity_launcher(shared_opts))
+      if launcher and launcher ~= "" then
+        val = terminal_session_command("launch_antigravity", launcher)
+      else
+        val = ""
+      end
+    elseif key == "launch_claude_code" then
+      local launcher = select(1, locator.resolve_claude_launcher(shared_opts))
+      if launcher and launcher ~= "" then
+        val = terminal_session_command("launch_claude_code", launcher)
+      else
+        val = ""
+      end
+    elseif key == "open_workspace_navigator" then
+      local launcher = select(1, locator.resolve_ws_launcher(shared_opts))
+      if launcher and launcher ~= "" then
+        val = terminal_session_command("open_workspace_navigator", launcher)
+      else
+        val = ""
+      end
+    elseif key == "stop_all_agents" then
+      local launcher = select(1, locator.resolve_stop_agents_launcher(shared_opts))
+      if launcher and launcher ~= "" then
+        val = terminal_session_command("stop_all_agents", launcher)
+      else
+        val = ""
+      end
+    elseif key == "launch_loom" then
+      local launcher = select(1, locator.resolve_loom_launcher(shared_opts))
+      if launcher and launcher ~= "" then
+        val = terminal_session_command("launch_loom", launcher)
+      else
+        val = ""
+      end
+    elseif key == "open_handoff_notes" then
+      local handoff_doc = CONFIG_DIR .. "/docs/guides/HANDOFF.md"
+      if locator.path_exists(handoff_doc, false) then
+        val = open_path_command(handoff_doc)
+      else
+        val = ""
+      end
+    elseif key == "launch_cortex" then
+      local cortex_launcher, cortex_ok = locator.resolve_cortex_launcher(shared_opts)
+      if cortex_ok and cortex_launcher and cortex_launcher ~= "" then
+        val = open_app_command(cortex_launcher, "Cortex")
+      else
+        val = ""
+      end
     elseif key == "launch_afs_browser" then
       local app = select(1, locator.resolve_afs_browser_app(shared_opts))
       local cmd = open_app_command(app, "")

@@ -269,3 +269,66 @@ run_test("shortcuts.get: launch_z3ed is exposed when z3ed is available", functio
     assert_true(command:match("%$lock_dir") ~= nil, "launch_z3ed should preserve lock_dir for bash")
   end
 end)
+
+run_test("shortcuts.list_declared: includes agentic launchers and direct space shortcuts", function()
+  local declared = shortcuts.list_declared()
+  local by_action = {}
+  for _, item in ipairs(declared) do
+    by_action[item.action] = item
+  end
+
+  assert_true(by_action.launch_antigravity ~= nil, "launch_antigravity should be declared")
+  assert_equal(by_action.launch_antigravity.symbol, "⌘⌥A", "antigravity shortcut symbol")
+
+  assert_true(by_action.launch_claude_code ~= nil, "launch_claude_code should be declared")
+  assert_equal(by_action.launch_claude_code.symbol, "⌘⌥C", "claude code shortcut symbol")
+
+  assert_true(by_action.open_workspace_navigator ~= nil, "open_workspace_navigator should be declared")
+  assert_equal(by_action.open_workspace_navigator.symbol, "⌘⌥W", "workspace navigator symbol")
+
+  assert_true(by_action.stop_all_agents ~= nil, "stop_all_agents should be declared")
+  assert_equal(by_action.stop_all_agents.symbol, "⌘⌥K", "stop all agents symbol")
+
+  assert_true(by_action.focus_space_1 ~= nil, "focus_space_1 should be declared")
+  assert_equal(by_action.focus_space_1.symbol, "⌃1", "focus_space_1 symbol")
+
+  assert_true(by_action.send_window_space_1 ~= nil, "send_window_space_1 should be declared")
+  assert_equal(by_action.send_window_space_1.symbol, "⌃⇧1", "send_window_space_1 symbol")
+end)
+
+run_test("shortcuts.get_command: space navigation actions route properly", function()
+  for i = 1, 10 do
+    local focus_cmd = shortcuts.get_command("focus_space_" .. i)
+    assert_equal(focus_cmd, "yabai -m space --focus " .. i, "focus space " .. i)
+
+    local send_cmd = shortcuts.get_command("send_window_space_" .. i)
+    assert_true(send_cmd:match("yabai_control%.sh window%-space " .. i) ~= nil, "send window space " .. i)
+  end
+end)
+
+run_test("shortcuts.get_command: agentic launcher commands resolve properly", function()
+  local agy_cmd = shortcuts.get_command("launch_antigravity")
+  assert_type(agy_cmd, "string", "agy cmd string")
+  if agy_cmd ~= "" then
+    assert_true(agy_cmd:match("agy") ~= nil, "agy command should invoke agy")
+  end
+
+  local claude_cmd = shortcuts.get_command("launch_claude_code")
+  assert_type(claude_cmd, "string", "claude cmd string")
+  if claude_cmd ~= "" then
+    assert_true(claude_cmd:match("claude") ~= nil, "claude command should invoke claude")
+  end
+
+  local ws_cmd = shortcuts.get_command("open_workspace_navigator")
+  assert_type(ws_cmd, "string", "ws cmd string")
+  if ws_cmd ~= "" then
+    assert_true(ws_cmd:match("ws") ~= nil, "ws command should invoke ws")
+  end
+
+  local stop_cmd = shortcuts.get_command("stop_all_agents")
+  assert_type(stop_cmd, "string", "stop agents cmd string")
+  if stop_cmd ~= "" then
+    assert_true(stop_cmd:match("stop%-agents") ~= nil, "stop command should invoke stop-agents")
+  end
+end)
+

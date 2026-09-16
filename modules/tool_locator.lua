@@ -626,4 +626,60 @@ function locator.afs_build_dir(studio_root)
   return "build"
 end
 
+function locator.resolve_antigravity_launcher(opts)
+  local code_dir = locator.resolve_code_dir(opts)
+  return locator.resolve_executable_path({
+    option_value(opts, "antigravity_launcher"),
+    os.getenv("ANTIGRAVITY_LAUNCHER"),
+    locator.command_path("agy"),
+    HOME .. "/.local/bin/agy",
+    code_dir .. "/config/dotfiles/bin/agy",
+    locator.command_path("cursor-agent"),
+    HOME .. "/.local/bin/cursor-agent",
+  })
+end
+
+function locator.resolve_claude_launcher(opts)
+  local code_dir = locator.resolve_code_dir(opts)
+  return locator.resolve_executable_path({
+    option_value(opts, "claude_launcher"),
+    os.getenv("CLAUDE_LAUNCHER"),
+    locator.command_path("claude"),
+    HOME .. "/.local/bin/claude",
+    code_dir .. "/config/dotfiles/bin/claude",
+  })
+end
+
+function locator.resolve_loom_launcher(opts)
+  local code_dir = locator.resolve_code_dir(opts)
+  return locator.resolve_executable_path({
+    option_value(opts, "loom_launcher"),
+    os.getenv("LOOM_LAUNCHER"),
+    locator.command_path("loom"),
+    code_dir .. "/lab/loom/bin/loom",
+    code_dir .. "/lab/loom/loom",
+  })
+end
+
+function locator.resolve_ws_launcher(opts)
+  local code_dir = locator.resolve_code_dir(opts)
+  return locator.resolve_executable_path({
+    option_value(opts, "ws_launcher"),
+    os.getenv("WS_LAUNCHER"),
+    locator.command_path("ws"),
+    code_dir .. "/tools/ws/bin/ws",
+    code_dir .. "/config/dotfiles/bin/ws",
+  })
+end
+
+function locator.resolve_stop_agents_launcher(opts)
+  local code_dir = locator.resolve_code_dir(opts)
+  return locator.resolve_executable_path({
+    option_value(opts, "stop_agents_launcher"),
+    os.getenv("STOP_AGENTS_LAUNCHER"),
+    locator.command_path("stop-agents"),
+    code_dir .. "/config/dotfiles/bin/stop-agents",
+  })
+end
+
 return locator

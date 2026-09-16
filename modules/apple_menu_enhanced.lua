@@ -365,6 +365,11 @@ local function build_prepared(ctx)
   local claude_app, claude_ok = locator.resolve_claude_app(ctx)
   local cursor_app, cursor_ok = locator.resolve_cursor_app(ctx)
   local cortex_launcher, cortex_ok = locator.resolve_cortex_launcher(ctx)
+  local antigravity_launcher, antigravity_ok = locator.resolve_antigravity_launcher(ctx)
+  local claude_code_launcher, claude_code_ok = locator.resolve_claude_launcher(ctx)
+  local loom_launcher, loom_ok = locator.resolve_loom_launcher(ctx)
+  local ws_launcher, ws_ok = locator.resolve_ws_launcher(ctx)
+  local stop_agents_launcher, stop_agents_ok = locator.resolve_stop_agents_launcher(ctx)
   local stemforge_app, stemforge_ok = resolve_stemforge_app(ctx)
   local stem_sampler_app, stem_sampler_ok = resolve_stem_sampler_app(ctx)
   local help_center_bin, help_center_ok = resolve_executable_path({
@@ -474,6 +479,33 @@ local function build_prepared(ctx)
   if cortex_launcher and cortex_ok then
     cortex_action = shell_quote(cortex_launcher)
   end
+  local function terminal_run(cmd)
+    if not cmd or cmd == "" then return "" end
+    if ghostty_app and ghostty_ok then
+      return string.format("open -na %s --args -e /bin/zsh -lc %s", shell_quote(ghostty_app), shell_quote(cmd))
+    end
+    return open_terminal(cmd)
+  end
+  local antigravity_action = ""
+  if antigravity_ok and antigravity_launcher then
+    antigravity_action = terminal_run(antigravity_launcher)
+  end
+  local claude_code_action = ""
+  if claude_code_ok and claude_code_launcher then
+    claude_code_action = terminal_run(claude_code_launcher)
+  end
+  local loom_action = ""
+  if loom_ok and loom_launcher then
+    loom_action = terminal_run(loom_launcher)
+  end
+  local ws_action = ""
+  if ws_ok and ws_launcher then
+    ws_action = terminal_run(ws_launcher)
+  end
+  local stop_agents_action = ""
+  if stop_agents_ok and stop_agents_launcher then
+    stop_agents_action = shell_quote(stop_agents_launcher)
+  end
   local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(studio_root, ctx)
   local labeler_csv = os.getenv("AFS_LABELER_CSV")
   local labeler_cmd
@@ -573,6 +605,103 @@ local function build_prepared(ctx)
       section = "apps",
       action = cursor_action,
       available = cursor_ok,
+      default_enabled = true,
+    },
+    -- Agentic AI
+    {
+      id = "antigravity",
+      label = "Antigravity",
+      icon = "󰚩",
+      icon_color = tc("GREEN"),
+      section = "agentic",
+      action = antigravity_action,
+      shortcut_action = "launch_antigravity",
+      available = antigravity_ok,
+      default_enabled = true,
+    },
+    {
+      id = "claude_code",
+      label = "Claude Code",
+      icon = "󰭹",
+      icon_color = tc("PEACH"),
+      section = "agentic",
+      action = claude_code_action,
+      shortcut_action = "launch_claude_code",
+      available = claude_code_ok,
+      default_enabled = true,
+    },
+    {
+      id = "loom",
+      label = "Loom Studio",
+      icon = "󰅩",
+      icon_color = tc("LAVENDER"),
+      section = "agentic",
+      action = loom_action,
+      shortcut_action = "launch_loom",
+      available = loom_ok,
+      default_enabled = true,
+    },
+    {
+      id = "stop_agents",
+      label = "Stop All Agents",
+      icon = "󰅙",
+      icon_color = tc("RED"),
+      section = "agentic",
+      action = stop_agents_action,
+      shortcut_action = "stop_all_agents",
+      available = stop_agents_ok,
+      default_enabled = true,
+    },
+    -- Workspaces
+    {
+      id = "ws_navigator",
+      label = "Workspace Navigator",
+      icon = "󰵮",
+      icon_color = tc("SKY"),
+      section = "workspaces",
+      action = ws_action,
+      shortcut_action = "open_workspace_navigator",
+      available = ws_ok,
+      default_enabled = true,
+    },
+    {
+      id = "ws_yaze",
+      label = "Zelda (yaze)",
+      icon = "󰯙",
+      icon_color = tc("SAPPHIRE"),
+      section = "workspaces",
+      action = string.format("open %s", shell_quote(code_dir .. "/hobby/yaze")),
+      available = path_exists(code_dir .. "/hobby/yaze", true),
+      default_enabled = true,
+    },
+    {
+      id = "ws_afs",
+      label = "Agent Infra (afs)",
+      icon = "󰈙",
+      icon_color = tc("TEAL"),
+      section = "workspaces",
+      action = string.format("open %s", shell_quote(code_dir .. "/lab/afs")),
+      available = path_exists(code_dir .. "/lab/afs", true),
+      default_enabled = true,
+    },
+    {
+      id = "ws_barista",
+      label = "Barista",
+      icon = "󰒓",
+      icon_color = tc("PEACH"),
+      section = "workspaces",
+      action = string.format("open %s", shell_quote(code_dir .. "/lab/barista")),
+      available = path_exists(code_dir .. "/lab/barista", true),
+      default_enabled = true,
+    },
+    {
+      id = "ws_folio",
+      label = "Folio (writing)",
+      icon = "󰠮",
+      icon_color = tc("YELLOW"),
+      section = "workspaces",
+      action = string.format("open %s", shell_quote(code_dir .. "/folio")),
+      available = path_exists(code_dir .. "/folio", true),
       default_enabled = true,
     },
     {
@@ -699,14 +828,16 @@ local function build_prepared(ctx)
 
   local sections = {
     apps = { id = "apps", label = "Apps", icon = "󰀻", color = tc("MAUVE", "LAVENDER"), order = 0 },
-    oracle = { id = "oracle", label = "Oracle", icon = "󰯙", color = tc("GREEN"), order = 1 },
-    controls = { id = "controls", label = "Controls", icon = "󰒓", color = tc("SKY"), order = 2 },
-    work = { id = "work", label = "Web Apps", icon = "󰖟", color = tc("BLUE"), order = 3 },
-    support = { id = "support", label = "Support", icon = "󰘥", color = tc("LAVENDER"), order = 4 },
-    afs = { id = "afs", label = "AFS Tools", icon = "󰈙", color = tc("SAPPHIRE"), order = 5 },
-    audio = { id = "audio", label = "Audio", icon = "󰎈", color = tc("PEACH"), order = 6 },
-    extensions = { id = "extensions", label = "Extensions", icon = "󰐕", color = tc("TEAL"), order = 7 },
-    custom = { id = "custom", label = "Custom", icon = "󰘥", color = tc("LAVENDER"), order = 8 },
+    agentic = { id = "agentic", label = "Agentic AI", icon = "󰚩", color = tc("GREEN"), order = 1 },
+    workspaces = { id = "workspaces", label = "Workspaces", icon = "󰵮", color = tc("BLUE"), order = 2 },
+    oracle = { id = "oracle", label = "Oracle", icon = "󰯙", color = tc("GREEN"), order = 3 },
+    controls = { id = "controls", label = "Controls", icon = "󰒓", color = tc("SKY"), order = 4 },
+    work = { id = "work", label = "Web Apps", icon = "󰖟", color = tc("BLUE"), order = 5 },
+    support = { id = "support", label = "Support", icon = "󰘥", color = tc("LAVENDER"), order = 6 },
+    afs = { id = "afs", label = "AFS Tools", icon = "󰈙", color = tc("SAPPHIRE"), order = 7 },
+    audio = { id = "audio", label = "Audio", icon = "󰎈", color = tc("PEACH"), order = 8 },
+    extensions = { id = "extensions", label = "Extensions", icon = "󰐕", color = tc("TEAL"), order = 9 },
+    custom = { id = "custom", label = "Custom", icon = "󰘥", color = tc("LAVENDER"), order = 10 },
   }
 
   local menu_model = apple_menu_model.build({

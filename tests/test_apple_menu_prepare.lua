@@ -425,3 +425,78 @@ run_test("apple_menu.prepare: missing app rows stay hidden instead of becoming C
 
   cleanup(root)
 end)
+
+run_test("apple_menu.prepare: agentic AI and workspaces sections render properly", function()
+  local root = make_temp_dir("apple_menu_prepare_agentic_workspaces")
+  local config_dir = root .. "/config"
+  local code_dir = root .. "/code"
+  local agy_bin = root .. "/bin/agy"
+  local claude_bin = root .. "/bin/claude"
+  local loom_bin = root .. "/bin/loom"
+  local ws_bin = root .. "/bin/ws"
+  local stop_agents_bin = root .. "/bin/stop-agents"
+
+  mkdir(config_dir)
+  mkdir(root .. "/bin")
+  mkdir(code_dir .. "/hobby/yaze")
+  mkdir(code_dir .. "/lab/afs")
+  mkdir(code_dir .. "/lab/barista")
+  mkdir(code_dir .. "/folio")
+
+  write_file(agy_bin, "#!/bin/sh\nexit 0\n")
+  write_file(claude_bin, "#!/bin/sh\nexit 0\n")
+  write_file(loom_bin, "#!/bin/sh\nexit 0\n")
+  write_file(ws_bin, "#!/bin/sh\nexit 0\n")
+  write_file(stop_agents_bin, "#!/bin/sh\nexit 0\n")
+  chmod_x(agy_bin)
+  chmod_x(claude_bin)
+  chmod_x(loom_bin)
+  chmod_x(ws_bin)
+  chmod_x(stop_agents_bin)
+
+  local prepared = apple_menu.prepare(build_ctx(root, {
+    paths = {
+      antigravity_launcher = agy_bin,
+      claude_launcher = claude_bin,
+      loom_launcher = loom_bin,
+      ws_launcher = ws_bin,
+      stop_agents_launcher = stop_agents_bin,
+    },
+  }))
+
+  assert_true(prepared.sections.agentic ~= nil, "agentic section should be defined")
+  assert_equal(prepared.sections.agentic.label, "Agentic AI", "agentic section label")
+  assert_true(prepared.sections.workspaces ~= nil, "workspaces section should be defined")
+  assert_equal(prepared.sections.workspaces.label, "Workspaces", "workspaces section label")
+
+  local by_id = {}
+  local agentic_items = {}
+  local workspace_items = {}
+  for _, entry in ipairs(prepared.rendered or {}) do
+    by_id[entry.id] = entry
+    if entry.section == "agentic" then
+      table.insert(agentic_items, entry.id)
+    elseif entry.section == "workspaces" then
+      table.insert(workspace_items, entry.id)
+    end
+  end
+
+  assert_true(by_id.antigravity ~= nil, "antigravity should render")
+  assert_equal(by_id.antigravity.section, "agentic", "antigravity section")
+  assert_true(by_id.claude_code ~= nil, "claude_code should render")
+  assert_equal(by_id.claude_code.section, "agentic", "claude_code section")
+  assert_true(by_id.loom ~= nil, "loom should render")
+  assert_equal(by_id.loom.section, "agentic", "loom section")
+  assert_true(by_id.stop_agents ~= nil, "stop_agents should render")
+  assert_equal(by_id.stop_agents.section, "agentic", "stop_agents section")
+
+  assert_true(by_id.ws_navigator ~= nil, "workspace navigator should render")
+  assert_equal(by_id.ws_navigator.section, "workspaces", "workspace navigator section")
+  assert_true(by_id.ws_yaze ~= nil, "yaze workspace should render")
+  assert_true(by_id.ws_afs ~= nil, "afs workspace should render")
+  assert_true(by_id.ws_barista ~= nil, "barista workspace should render")
+  assert_true(by_id.ws_folio ~= nil, "folio workspace should render")
+
+  cleanup(root)
+end)
+

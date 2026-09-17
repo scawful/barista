@@ -37,31 +37,33 @@ if "$ROOT_DIR/scripts/bootstrap_machine.sh" \
   exit 1
 fi
 
-AGENT_DIR="$TMP_DIR/agents"
-LOG_DIR="$TMP_DIR/logs"
-BARISTA_LAUNCH_AGENT_DIR="$AGENT_DIR" \
-BARISTA_LOG_DIR="$LOG_DIR" \
-  "$ROOT_DIR/bin/install-launch-agent" \
-    --config-dir "$RUNTIME_DIR" \
-    --code-dir "$CODE_DIR" \
-    --bin-dir "$BIN_DIR" \
-    --no-start >/dev/null
+if [ "$(uname -s)" = "Darwin" ]; then
+  AGENT_DIR="$TMP_DIR/agents"
+  LOG_DIR="$TMP_DIR/logs"
+  BARISTA_LAUNCH_AGENT_DIR="$AGENT_DIR" \
+  BARISTA_LOG_DIR="$LOG_DIR" \
+    "$ROOT_DIR/bin/install-launch-agent" \
+      --config-dir "$RUNTIME_DIR" \
+      --code-dir "$CODE_DIR" \
+      --bin-dir "$BIN_DIR" \
+      --no-start >/dev/null
 
-CONTROL_PLIST="$AGENT_DIR/dev.barista.control.plist"
-test -f "$CONTROL_PLIST"
-plutil -extract ProgramArguments.2 raw "$CONTROL_PLIST" \
-  | grep -Fq "$RUNTIME_DIR/launch_agents/barista-launch.sh start"
-plutil -extract StandardOutPath raw "$CONTROL_PLIST" \
-  | grep -Fq "$LOG_DIR/barista-control.out.log"
-plutil -extract EnvironmentVariables.BARISTA_CONFIG_DIR raw "$CONTROL_PLIST" \
-  | grep -Fq "$RUNTIME_DIR"
-plutil -extract EnvironmentVariables.BARISTA_CODE_DIR raw "$CONTROL_PLIST" \
-  | grep -Fq "$CODE_DIR"
-plutil -extract EnvironmentVariables.PATH raw "$CONTROL_PLIST" \
-  | grep -Fq "$BIN_DIR:"
-if grep -Fq '/Users/scawful' "$CONTROL_PLIST"; then
-  echo "portable plist contains a personal path" >&2
-  exit 1
+  CONTROL_PLIST="$AGENT_DIR/dev.barista.control.plist"
+  test -f "$CONTROL_PLIST"
+  plutil -extract ProgramArguments.2 raw "$CONTROL_PLIST" \
+    | grep -Fq "$RUNTIME_DIR/launch_agents/barista-launch.sh start"
+  plutil -extract StandardOutPath raw "$CONTROL_PLIST" \
+    | grep -Fq "$LOG_DIR/barista-control.out.log"
+  plutil -extract EnvironmentVariables.BARISTA_CONFIG_DIR raw "$CONTROL_PLIST" \
+    | grep -Fq "$RUNTIME_DIR"
+  plutil -extract EnvironmentVariables.BARISTA_CODE_DIR raw "$CONTROL_PLIST" \
+    | grep -Fq "$CODE_DIR"
+  plutil -extract EnvironmentVariables.PATH raw "$CONTROL_PLIST" \
+    | grep -Fq "$BIN_DIR:"
+  if grep -Fq '/Users/scawful' "$CONTROL_PLIST"; then
+    echo "portable plist contains a personal path" >&2
+    exit 1
+  fi
 fi
 
 printf 'test_portable_bootstrap.sh: ok\n'

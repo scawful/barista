@@ -16,6 +16,16 @@ SECOND_OUTPUT="$TMP_DIR/workflow_shortcuts.second.json"
 LOCAL_WORKFLOW="$TMP_DIR/workflow_shortcuts.local.json"
 LOCAL_OUTPUT="$TMP_DIR/workflow_shortcuts.with-local.json"
 
+# Linux CI has no yabai; stub one so WM shortcuts (including space-focus) are emitted.
+STUB_BIN="$TMP_DIR/bin"
+mkdir -p "$STUB_BIN"
+cat >"$STUB_BIN/yabai" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+chmod +x "$STUB_BIN/yabai"
+export PATH="$STUB_BIN:$PATH"
+
 BARISTA_CONFIG_DIR="$ROOT_DIR" lua "$ROOT_DIR/helpers/generate_shortcuts.lua" \
   "$SKHD_OUTPUT" "$WORKFLOW_OUTPUT" >/dev/null
 
@@ -51,9 +61,18 @@ jq -e '.keymap[0].items[] | select(.action == "capture_task" and .keys == "âŒ˜âŒ
   "$WORKFLOW_OUTPUT" >/dev/null
 jq -e '.keymap[0].items[] | select(.action == "capture_task" and .requires == "task_source")' \
   "$WORKFLOW_OUTPUT" >/dev/null
-grep -Fq 'cmd + alt - d :' "$SKHD_OUTPUT"
-grep -Fq "${ROOT_DIR}/scripts/invoke_popup_click.sh' 'control_center" "$SKHD_OUTPUT"
-grep -Fq "yabai_control.sh' 'space-focus' '10'" "$SKHD_OUTPUT"
+grep -Fq 'cmd + alt - d :' "$SKHD_OUTPUT" || {
+  echo "FAIL: missing task focus shortcut" >&2
+  exit 1
+}
+grep -Fq "${ROOT_DIR}/scripts/invoke_popup_click.sh' 'control_center" "$SKHD_OUTPUT" || {
+  echo "FAIL: missing control center popup click shortcut" >&2
+  exit 1
+}
+grep -Fq "yabai_control.sh' 'space-focus' '10'" "$SKHD_OUTPUT" || {
+  echo "FAIL: missing space-focus 10 shortcut via yabai_control" >&2
+  exit 1
+}
 if grep -Eq ':[[:space:]]*yabai[[:space:]]+-m' "$SKHD_OUTPUT"; then
   echo "FAIL: generated shortcuts contain raw yabai commands" >&2
   exit 1

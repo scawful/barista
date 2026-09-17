@@ -125,7 +125,11 @@ run_target_checks() {
     BARISTA_SKETCHYBAR_BIN="$BIN_DIR/custom-sketchybar" \
     "$target"
 
-  if ! grep -Fq -- $'custom\t--animate sin 12 --set apple_menu' "$LOG_FILE"; then
+  local default_duration=12
+  if [ "$target" = "$SHELL_SCRIPT" ]; then
+    default_duration=8
+  fi
+  if ! grep -Fq -- "custom	--animate sin $default_duration --set apple_menu" "$LOG_FILE"; then
     echo "FAIL: popup anchor should honor BARISTA_SKETCHYBAR_BIN ($target)" >&2
     exit 1
   fi

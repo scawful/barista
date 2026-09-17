@@ -79,10 +79,10 @@ read_window_manager_mode() {
     normalize_window_manager_mode "$BARISTA_WINDOW_MANAGER_MODE"
     return
   fi
-  if [[ -f "$STATE_FILE" ]] && grep -Eq '"window_manager"[[:space:]]*:[[:space:]]*"[^"]+' "$STATE_FILE"; then
+  if [[ -f "$STATE_FILE" ]]; then
     local mode
-    mode="$(grep -E '"window_manager"[[:space:]]*:' "$STATE_FILE" | head -n 1 | sed -E 's/.*"window_manager"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || true)"
-    if [[ -n "$mode" && "$mode" != "null" ]]; then
+    mode="$(read_state_json_string "$STATE_FILE" "modes.window_manager" "" || true)"
+    if [[ -n "$mode" ]]; then
       normalize_window_manager_mode "$mode"
       return
     fi

@@ -11,6 +11,7 @@ local ui = require("ui_builder")
 
 local HOME = os.getenv("HOME") or ""
 local CONFIG_DIR = locator.resolve_config_dir()
+local LOCAL_WORKFLOW_SCRIPT = CONFIG_DIR .. "/scripts/open_local_workflow.sh"
 
 local function nonblank(value)
   return type(value) == "string" and value:match("%S") and value or nil
@@ -173,6 +174,13 @@ local function window_manager_enabled()
 end
 
 local SCRIPTS_DIR = paths_module.resolve_scripts_dir(CONFIG_DIR, runtime_state)
+local function script_action(path, ...)
+  local parts = { shell_quote(path) }
+  for _, arg in ipairs({ ... }) do
+    table.insert(parts, shell_quote(arg))
+  end
+  return table.concat(parts, " ")
+end
 local shared_opts = {
   config_dir = CONFIG_DIR,
   code_dir = runtime_state.paths and (runtime_state.paths.code_dir or runtime_state.paths.code) or nil,
@@ -188,6 +196,22 @@ local function integration_flag(name)
     return nil
   end
   return entry.enabled ~= false
+end
+
+local function agent_launchers_enabled()
+  local explicit = integration_flag("agent_launchers")
+  if explicit ~= nil then
+    return explicit
+  end
+  local machine = type(runtime_state.machine) == "table" and runtime_state.machine or {}
+  if machine.restricted == true then
+    return false
+  end
+  local selected_profile = runtime_state.profile
+    or os.getenv("BARISTA_PROFILE")
+    or os.getenv("SKETCHYBAR_PROFILE")
+    or "minimal"
+  return selected_profile ~= "work" and selected_profile ~= "minimal" and selected_profile ~= "restricted"
 end
 
 local function get_yaze_dir()
@@ -343,6 +367,13 @@ local function terminal_session_command(key, command)
     )
   end
   return shortcuts.build_terminal_session_command(command)
+end
+
+local function local_workflow_action(workflow)
+  if not locator.path_exists(LOCAL_WORKFLOW_SCRIPT, false) then
+    return ""
+  end
+  return shell_quote(LOCAL_WORKFLOW_SCRIPT) .. " " .. shell_quote(workflow)
 end
 
 local function open_app_command(app_path, app_name)
@@ -589,28 +620,24 @@ shortcuts.global = {
     key = "a",
     action = "launch_antigravity",
     desc = "Launch Antigravity",
-    symbol = "⌘⌥A"
+    symbol = "⌘⌥A",
+    requires = "agent_launchers",
   },
   {
     mods = {"cmd", "alt"},
     key = "c",
     action = "launch_claude_code",
     desc = "Launch Claude Code",
-    symbol = "⌘⌥C"
+    symbol = "⌘⌥C",
+    requires = "agent_launchers",
   },
   {
     mods = {"cmd", "alt"},
     key = "w",
     action = "open_workspace_navigator",
     desc = "Workspace Navigator",
-    symbol = "⌘⌥W"
-  },
-  {
-    mods = {"cmd", "alt"},
-    key = "k",
-    action = "stop_all_agents",
-    desc = "Stop All Agents",
-    symbol = "⌘⌥K"
+    symbol = "⌘⌥W",
+    requires = "agent_launchers",
   },
 
   -- Yabai Controls
@@ -638,170 +665,6 @@ shortcuts.global = {
     action = "space_next",
     desc = "Next Space (wrap)",
     symbol = "⌃→",
-    requires = "window_manager"
-  },
-
-  -- Direct Space Navigation (ctrl + 1..9, 0)
-  {
-    mods = {"ctrl"},
-    key = "1",
-    action = "focus_space_1",
-    desc = "Focus Space 1",
-    symbol = "⌃1",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl"},
-    key = "2",
-    action = "focus_space_2",
-    desc = "Focus Space 2",
-    symbol = "⌃2",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl"},
-    key = "3",
-    action = "focus_space_3",
-    desc = "Focus Space 3",
-    symbol = "⌃3",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl"},
-    key = "4",
-    action = "focus_space_4",
-    desc = "Focus Space 4",
-    symbol = "⌃4",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl"},
-    key = "5",
-    action = "focus_space_5",
-    desc = "Focus Space 5",
-    symbol = "⌃5",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl"},
-    key = "6",
-    action = "focus_space_6",
-    desc = "Focus Space 6",
-    symbol = "⌃6",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl"},
-    key = "7",
-    action = "focus_space_7",
-    desc = "Focus Space 7",
-    symbol = "⌃7",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl"},
-    key = "8",
-    action = "focus_space_8",
-    desc = "Focus Space 8",
-    symbol = "⌃8",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl"},
-    key = "9",
-    action = "focus_space_9",
-    desc = "Focus Space 9",
-    symbol = "⌃9",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl"},
-    key = "0",
-    action = "focus_space_10",
-    desc = "Focus Space 10",
-    symbol = "⌃0",
-    requires = "window_manager"
-  },
-
-  -- Direct Window to Space (ctrl + shift + 1..9, 0)
-  {
-    mods = {"ctrl", "shift"},
-    key = "1",
-    action = "send_window_space_1",
-    desc = "Send Window to Space 1",
-    symbol = "⌃⇧1",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl", "shift"},
-    key = "2",
-    action = "send_window_space_2",
-    desc = "Send Window to Space 2",
-    symbol = "⌃⇧2",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl", "shift"},
-    key = "3",
-    action = "send_window_space_3",
-    desc = "Send Window to Space 3",
-    symbol = "⌃⇧3",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl", "shift"},
-    key = "4",
-    action = "send_window_space_4",
-    desc = "Send Window to Space 4",
-    symbol = "⌃⇧4",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl", "shift"},
-    key = "5",
-    action = "send_window_space_5",
-    desc = "Send Window to Space 5",
-    symbol = "⌃⇧5",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl", "shift"},
-    key = "6",
-    action = "send_window_space_6",
-    desc = "Send Window to Space 6",
-    symbol = "⌃⇧6",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl", "shift"},
-    key = "7",
-    action = "send_window_space_7",
-    desc = "Send Window to Space 7",
-    symbol = "⌃⇧7",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl", "shift"},
-    key = "8",
-    action = "send_window_space_8",
-    desc = "Send Window to Space 8",
-    symbol = "⌃⇧8",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl", "shift"},
-    key = "9",
-    action = "send_window_space_9",
-    desc = "Send Window to Space 9",
-    symbol = "⌃⇧9",
-    requires = "window_manager"
-  },
-  {
-    mods = {"ctrl", "shift"},
-    key = "0",
-    action = "send_window_space_10",
-    desc = "Send Window to Space 10",
-    symbol = "⌃⇧0",
     requires = "window_manager"
   },
 
@@ -850,74 +713,74 @@ shortcuts.global = {
   },
 }
 
+for index = 1, 10 do
+  local key = index == 10 and "0" or tostring(index)
+  table.insert(shortcuts.global, {
+    mods = {"ctrl"},
+    key = key,
+    action = "focus_space_" .. index,
+    desc = "Focus Space " .. index,
+    symbol = "⌃" .. key,
+    requires = "window_manager",
+  })
+  table.insert(shortcuts.global, {
+    mods = {"ctrl", "shift"},
+    key = key,
+    action = "send_window_space_" .. index,
+    desc = "Send Window to Space " .. index,
+    symbol = "⌃⇧" .. key,
+    requires = "window_manager",
+  })
+end
+
 -- Action handlers (maps action names to actual commands)
 shortcuts.actions = setmetatable({
   -- SketchyBar
-  reload_sketchybar = CONFIG_DIR .. "/plugins/reload_sketchybar.sh",
-  rebuild_and_reload = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh",
-  open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh --tab home",
+  reload_sketchybar = script_action(CONFIG_DIR .. "/plugins/reload_sketchybar.sh"),
+  rebuild_and_reload = script_action(CONFIG_DIR .. "/bin/rebuild_sketchybar.sh"),
+  open_control_panel = script_action(CONFIG_DIR .. "/bin/open_control_panel.sh", "--tab", "home"),
   toggle_control_center = shortcuts.build_control_center_toggle_command(shortcuts.resolve_control_center_item_name(runtime_state)),
-  toggle_keyboard_overlay = CONFIG_DIR .. "/scripts/open_keyboard_overlay.sh",
+  toggle_keyboard_overlay = script_action(CONFIG_DIR .. "/scripts/open_keyboard_overlay.sh"),
 
   -- Yabai
-  toggle_yabai_shortcuts = SCRIPTS_DIR .. "/toggle_shortcuts.sh toggle",
-  toggle_layout = SCRIPTS_DIR .. "/yabai_control.sh toggle-layout",
-  balance_windows = SCRIPTS_DIR .. "/yabai_control.sh balance",
-  rotate_layout = SCRIPTS_DIR .. "/yabai_control.sh space-rotate",
+  toggle_yabai_shortcuts = script_action(SCRIPTS_DIR .. "/toggle_shortcuts.sh", "toggle"),
+  toggle_layout = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "toggle-layout"),
+  balance_windows = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "balance"),
+  rotate_layout = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "space-rotate"),
 
   -- Window
-  toggle_float = SCRIPTS_DIR .. "/yabai_control.sh window-toggle-float",
-  toggle_fullscreen = SCRIPTS_DIR .. "/yabai_control.sh window-toggle-fullscreen",
-  center_window = SCRIPTS_DIR .. "/yabai_control.sh window-center",
-  minimize_window = "yabai -m window --minimize",
-  maximize_window = "yabai -m window --toggle zoom-fullscreen",
-  restore_window = "yabai -m window --toggle zoom-fullscreen",
+  toggle_float = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-toggle-float"),
+  toggle_fullscreen = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-toggle-fullscreen"),
+  center_window = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-center"),
+  minimize_window = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-minimize"),
+  maximize_window = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-toggle-fullscreen"),
+  restore_window = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-toggle-fullscreen"),
 
   -- Display
-  window_display_next = SCRIPTS_DIR .. "/yabai_control.sh window-display-next",
-  window_display_prev = SCRIPTS_DIR .. "/yabai_control.sh window-display-prev",
+  window_display_next = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-display-next"),
+  window_display_prev = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-display-prev"),
 
   -- Space Navigation
-  space_prev = SCRIPTS_DIR .. "/yabai_control.sh space-focus-prev-wrap",
-  space_next = SCRIPTS_DIR .. "/yabai_control.sh space-focus-next-wrap",
-  space_recent = SCRIPTS_DIR .. "/yabai_control.sh space-recent",
+  space_prev = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "space-focus-prev-wrap"),
+  space_next = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "space-focus-next-wrap"),
+  space_recent = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "space-recent"),
 
   -- Space Movement
-  window_space_next = SCRIPTS_DIR .. "/yabai_control.sh window-space-next",
-  window_space_prev = SCRIPTS_DIR .. "/yabai_control.sh window-space-prev",
-  send_window_space_1 = SCRIPTS_DIR .. "/yabai_control.sh window-space 1",
-  send_window_space_2 = SCRIPTS_DIR .. "/yabai_control.sh window-space 2",
-  send_window_space_3 = SCRIPTS_DIR .. "/yabai_control.sh window-space 3",
-  send_window_space_4 = SCRIPTS_DIR .. "/yabai_control.sh window-space 4",
-  send_window_space_5 = SCRIPTS_DIR .. "/yabai_control.sh window-space 5",
-  send_window_space_6 = SCRIPTS_DIR .. "/yabai_control.sh window-space 6",
-  send_window_space_7 = SCRIPTS_DIR .. "/yabai_control.sh window-space 7",
-  send_window_space_8 = SCRIPTS_DIR .. "/yabai_control.sh window-space 8",
-  send_window_space_9 = SCRIPTS_DIR .. "/yabai_control.sh window-space 9",
-  send_window_space_10 = SCRIPTS_DIR .. "/yabai_control.sh window-space 10",
+  window_space_next = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-space-next"),
+  window_space_prev = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-space-prev"),
 
   -- Layout Modes
-  set_layout_float = SCRIPTS_DIR .. "/space_mode.sh current float",
-  set_layout_bsp = SCRIPTS_DIR .. "/space_mode.sh current bsp",
-  set_layout_stack = SCRIPTS_DIR .. "/space_mode.sh current stack",
+  set_layout_float = script_action(SCRIPTS_DIR .. "/space_mode.sh", "current", "float"),
+  set_layout_bsp = script_action(SCRIPTS_DIR .. "/space_mode.sh", "current", "bsp"),
+  set_layout_stack = script_action(SCRIPTS_DIR .. "/space_mode.sh", "current", "stack"),
 
   -- Window Focus (vim keys)
-  focus_window_west = "yabai -m window --focus west",
-  focus_window_south = "yabai -m window --focus south",
-  focus_window_north = "yabai -m window --focus north",
-  focus_window_east = "yabai -m window --focus east",
+  focus_window_west = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-focus-west"),
+  focus_window_south = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-focus-south"),
+  focus_window_north = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-focus-north"),
+  focus_window_east = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-focus-east"),
 
   -- Space Focus
-  focus_space_1 = "yabai -m space --focus 1",
-  focus_space_2 = "yabai -m space --focus 2",
-  focus_space_3 = "yabai -m space --focus 3",
-  focus_space_4 = "yabai -m space --focus 4",
-  focus_space_5 = "yabai -m space --focus 5",
-  focus_space_6 = "yabai -m space --focus 6",
-  focus_space_7 = "yabai -m space --focus 7",
-  focus_space_8 = "yabai -m space --focus 8",
-  focus_space_9 = "yabai -m space --focus 9",
-  focus_space_10 = "yabai -m space --focus 10",
 }, {
   __index = function(t, key)
     local val = nil
@@ -934,37 +797,30 @@ shortcuts.actions = setmetatable({
     elseif key == "open_sys_manual" then
       val = sys_manual_action()
     elseif key == "launch_antigravity" then
-      local launcher = select(1, locator.resolve_antigravity_launcher(shared_opts))
+      local launcher = agent_launchers_enabled() and select(1, locator.resolve_antigravity_launcher(shared_opts)) or nil
       if launcher and launcher ~= "" then
-        val = terminal_session_command("launch_antigravity", launcher)
+        val = debounced_command("launch_antigravity", local_workflow_action("antigravity"))
       else
         val = ""
       end
     elseif key == "launch_claude_code" then
-      local launcher = select(1, locator.resolve_claude_launcher(shared_opts))
+      local launcher = agent_launchers_enabled() and select(1, locator.resolve_claude_launcher(shared_opts)) or nil
       if launcher and launcher ~= "" then
-        val = terminal_session_command("launch_claude_code", launcher)
+        val = debounced_command("launch_claude_code", local_workflow_action("claude-code"))
       else
         val = ""
       end
     elseif key == "open_workspace_navigator" then
-      local launcher = select(1, locator.resolve_ws_launcher(shared_opts))
+      local launcher = agent_launchers_enabled() and select(1, locator.resolve_ws_launcher(shared_opts)) or nil
       if launcher and launcher ~= "" then
-        val = terminal_session_command("open_workspace_navigator", launcher)
-      else
-        val = ""
-      end
-    elseif key == "stop_all_agents" then
-      local launcher = select(1, locator.resolve_stop_agents_launcher(shared_opts))
-      if launcher and launcher ~= "" then
-        val = terminal_session_command("stop_all_agents", launcher)
+        val = debounced_command("open_workspace_navigator", local_workflow_action("workspace-navigator"))
       else
         val = ""
       end
     elseif key == "launch_loom" then
       local launcher = select(1, locator.resolve_loom_launcher(shared_opts))
       if launcher and launcher ~= "" then
-        val = terminal_session_command("launch_loom", launcher)
+        val = local_workflow_action("loom")
       else
         val = ""
       end
@@ -1000,9 +856,21 @@ shortcuts.actions = setmetatable({
       val = get_yaze_action()
     elseif key == "launch_z3ed" then
       val = get_z3ed_action()
+    else
+      local focus_index = key:match("^focus_space_(%d+)$")
+      if focus_index then
+        val = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "space-focus", focus_index)
+      else
+        local send_index = key:match("^send_window_space_(%d+)$")
+        if send_index then
+          val = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-space", send_index)
+        end
+      end
     end
     if val ~= nil then
-      rawset(t, key, val)
+      if val ~= "" then
+        rawset(t, key, val)
+      end
       return val
     end
     return nil
@@ -1015,6 +883,7 @@ local function all_shortcuts()
   local yaze_enabled = get_yaze_enabled()
   local z3ed_available = get_z3ed_action() ~= ""
   local task_source_configured = shortcuts.has_task_source(runtime_state)
+  local agent_launchers_available = agent_launchers_enabled()
   for _, shortcut in ipairs(shortcuts.global) do
     local requires = shortcut.requires
     if not requires then
@@ -1026,6 +895,8 @@ local function all_shortcuts()
     elseif requires == "task_source" and task_source_configured then
       table.insert(list, shortcut)
     elseif requires == "window_manager" and wm_enabled then
+      table.insert(list, shortcut)
+    elseif requires == "agent_launchers" and agent_launchers_available then
       table.insert(list, shortcut)
     end
   end

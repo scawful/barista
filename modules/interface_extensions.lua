@@ -120,9 +120,9 @@ local function load_json_items(path)
     return nil, false
   end
   if type(data.items) == "table" then
-    return data.items, true
+    return data.items, true, data.packs
   end
-  return data, true
+  return data, true, nil
 end
 
 local function apply_templates(value, config_dir, code_dir)
@@ -236,6 +236,12 @@ local function normalize_entry(config_dir, code_dir, entry, index)
   if explicit_available ~= nil then
     available = explicit_available
   end
+  local workflow_group = entry.workflow_group or entry.group
+  if type(workflow_group) == "string" and workflow_group ~= "" then
+    workflow_group = sanitize_id(workflow_group, nil)
+  else
+    workflow_group = nil
+  end
 
   return {
     id = id,
@@ -251,6 +257,8 @@ local function normalize_entry(config_dir, code_dir, entry, index)
     missing_title = entry.missing_title,
     missing_action = apply_templates(entry.missing_action or "", config_dir, code_dir),
     shortcut = entry.shortcut,
+    shortcut_action = entry.shortcut_action,
+    workflow_group = workflow_group,
     section = normalize_section(entry.section),
     available = available,
     enabled = enabled ~= false,
@@ -277,6 +285,7 @@ function interface_extensions.load(config_dir, code_dir, state)
 
   local raw_items = {}
   local files = {}
+  local packs = enabled_packs(state, extension_state)
 
   local function append_file(raw_path)
     local resolved = resolve_data_path(config_dir, raw_path)
@@ -284,7 +293,8 @@ function interface_extensions.load(config_dir, code_dir, state)
       return
     end
     table.insert(files, resolved)
-    local file_items, loaded = load_json_items(resolved)
+    local file_items, loaded, file_packs = load_json_items(resolved)
+    merge_pack_list(packs, file_packs)
     if loaded and type(file_items) == "table" then
       for _, item in ipairs(file_items) do
         table.insert(raw_items, item)
@@ -308,7 +318,6 @@ function interface_extensions.load(config_dir, code_dir, state)
     end
   end
 
-  local packs = enabled_packs(state, extension_state)
   local normalized = {}
   for index, entry in ipairs(raw_items) do
     if pack_allowed(entry, packs) then

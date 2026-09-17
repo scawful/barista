@@ -609,6 +609,9 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
       processes
     - missing, nonnumeric, or nonzero-exit native helpers fail softly to the
       portable clock; timing boundaries and normal UI mutations are unchanged
+    - startup now verifies that the helper is executable, shell-quotes paths
+      containing spaces, requests the explicit `ms` interface, and tests
+      helper failure before selecting the portable fallback
     - Lua-only/restricted mode bypasses the helper, and its gate is propagated
       through initial layout work, direct startup sync, the hidden event item,
       persistent yabai signal and space-action commands, child refreshes, and
@@ -619,10 +622,11 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
       until the configuration transaction commits
     - deterministic hosted checks cover all three consumers and the exact six
       timestamps used by a full topology rebuild
-*   **Result:** a randomized 200-pair benchmark of the deployed binary measured
+*   **Result:** a historical randomized 200-pair isolated-process benchmark of the deployed binary measured
     `1.482 ms` median / `1.679 ms` p95, versus `3.980 ms` / `4.251 ms` for the
-    previous Perl timestamp. The `2.69x` median speedup removes an estimated
-    `29.98 ms` across the normal 12-timestamp topology + visual chain. Artifact:
+    previous Perl timestamp. Multiplying that isolated median delta by 12
+    produces a `29.98 ms` estimate; it is not a measured full-refresh saving.
+    Artifact:
     `/tmp/barista_perf_clock_ab_v2_20260725.json` (SHA-256
     `4fcb6fe5d5d0804178504387f5a209252c82fe39d7e322c5287480e2aacc8576`).
     A 20-pair same-daemon `space_active_refresh` A/B then measured
@@ -637,6 +641,14 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
     display-scoped creator items, recorded a `348 ms` full topology pass, and
     added no error-log bytes. That single restart is a runtime smoke result,
     not a causal before/after measurement.
+
+To reproduce the evidence classes separately, run
+`bash scripts/benchmark_perf_clock.sh --clock 200` for randomized isolated process
+cost. Run `bash scripts/benchmark_perf_clock.sh --full-refresh 10` for serialized
+live full-refresh wall time; this second command intentionally rebuilds the
+visible spaces strip. A causal full-refresh speedup requires a controlled A/B
+with equivalent topology and renderer state. A successful single reload or
+full-refresh sample remains a smoke observation, not such an A/B.
 
 ### 5b. Single-Pass Spaces Topology Rebuild (Verified)
 *   **Files:** `plugins/simple_spaces.sh`,

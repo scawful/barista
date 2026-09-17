@@ -157,6 +157,12 @@ bash tests/test_afs_approvals.sh >/dev/null
 "$python_bin" tests/test_afs_approvals_review.py >/dev/null
 bash tests/test_calendar_tasks.sh >/dev/null
 bash tests/test_generate_shortcuts.sh >/dev/null
+bash tests/test_install_skhd.sh >/dev/null
+bash tests/test_open_local_workflow.sh >/dev/null
+bash tests/test_yabai_control_shortcuts.sh >/dev/null
+bash tests/test_common_state_parsing.sh >/dev/null
+bash tests/test_launch_agent_manager.sh >/dev/null
+bash tests/test_menu_action.sh >/dev/null
 bash tests/test_popup_anchor.sh >/dev/null
 bash tests/test_popup_hover.sh >/dev/null
 bash tests/test_hover_serialization.sh >/dev/null

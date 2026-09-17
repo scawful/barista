@@ -150,9 +150,18 @@ runtime_is_lua_only() {
   if [ -z "$runtime_backend" ] && [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ]; then
     runtime_backend="$("$JQ_BIN" -r '.modes.runtime_backend // empty' "$STATE_FILE" 2>/dev/null || true)"
   fi
-  if [ -z "$runtime_backend" ] && [ -f "$STATE_FILE" ] \
-    && grep -Eqi '"runtime_backend"[[:space:]]*:[[:space:]]*"[[:space:]]*(lua|lua-only|lua_only|pure-lua|pure_lua|fallback|shell|no-cmake|no_cmake)[[:space:]]*"' "$STATE_FILE"; then
-    runtime_backend="lua"
+  if [ -z "$runtime_backend" ] && [ -z "$JQ_BIN" ] && [ -f "$STATE_FILE" ] \
+    && command -v python3 >/dev/null 2>&1; then
+    runtime_backend="$(python3 - "$STATE_FILE" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    value = json.load(handle).get("modes", {}).get("runtime_backend", "")
+if isinstance(value, str):
+    print(value)
+PY
+)"
   fi
   runtime_backend="$(printf '%s' "$runtime_backend" \
     | tr '[:upper:]' '[:lower:]' \
@@ -195,7 +204,7 @@ finish_reload() {
 }
 
 if [[ -x "$HELPER" ]]; then
-  "$HELPER" restart "$AGENT"
+  "$HELPER" kickstart "$AGENT"
   finish_reload
   exit $?
 fi

@@ -87,6 +87,7 @@ local function test_items_left_layout()
   -- Check for front_app
   local found_front_app = false
   local found_front_app_divider = false
+  local found_shortcut_mode = false
   local found_front_app_state = false
   local found_front_app_location = false
   local front_app_hide = nil
@@ -145,6 +146,10 @@ local function test_items_left_layout()
     elseif entry.type == "item" and entry.name == "front_app_divider" then
       found_front_app_divider = true
       assert_equal(entry.props.label.string, "·", "front_app divider should render a subtle dot separator")
+    elseif entry.type == "item" and entry.name == "shortcut_mode" then
+      found_shortcut_mode = true
+      assert_equal(entry.props.drawing, false, "shortcut mode should remain hidden outside a modal map")
+      assert_equal(entry.props.label.string, "", "shortcut mode should start without stale modal text")
     elseif entry.type == "item" and entry.name == "front_app.state" then
       found_front_app_state = true
     elseif entry.type == "item" and entry.name == "front_app.location" then
@@ -193,6 +198,7 @@ local function test_items_left_layout()
   end
   assert(found_front_app, "front_app item not found in layout")
   assert(found_front_app_divider, "front_app divider not found in layout")
+  assert(found_shortcut_mode, "dedicated shortcut mode indicator not found in layout")
   assert(found_front_app_state, "front_app state row not found in popup layout")
   assert(found_front_app_location, "front_app location row not found in popup layout")
   assert(front_app_hide ~= nil, "front_app hide action not found in popup layout")
@@ -738,8 +744,10 @@ local function test_items_left_integration_models_and_anchor_order()
   assert_true(found_triforce_subscription, "triforce subscription should be present")
   assert_true(found_control_center_subscription, "control_center subscription should be present")
   assert_equal(anchor_order_count, 1, "left anchors should use one deterministic post-config reorder command")
-  assert_true(anchor_order_command:find('--move "control_center" before "front_app"', 1, true) ~= nil,
-    "control_center should be placed directly before front_app")
+  assert_true(anchor_order_command:find('--move "shortcut_mode" before "front_app"', 1, true) ~= nil,
+    "shortcut mode should be placed directly before front_app")
+  assert_true(anchor_order_command:find('--move "control_center" before "shortcut_mode"', 1, true) ~= nil,
+    "control_center should be placed before shortcut mode")
   assert_true(anchor_order_command:find('--move "music_studio" before "control_center"', 1, true) ~= nil,
     "music should be placed before control_center")
   assert_true(anchor_order_command:find('--move "triforce" before "music_studio"', 1, true) ~= nil,

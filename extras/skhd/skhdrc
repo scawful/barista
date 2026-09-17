@@ -18,8 +18,7 @@
 cmd - 0x32 : open -a iTerm
 
 # --- Space Navigation (wraps within display) ---
-ctrl - left  : ~/.config/sketchybar/scripts/yabai_control.sh space-focus-prev-wrap
-ctrl - right : ~/.config/sketchybar/scripts/yabai_control.sh space-focus-next-wrap
+# Owned by the generated ~/.config/skhd/barista_shortcuts.conf include.
 
 # --- Move Window to Space (wraps within display) ---
 ctrl + shift - left  : ~/.config/sketchybar/scripts/yabai_control.sh window-space-prev-wrap
@@ -57,58 +56,6 @@ ctrl + alt - return : ~/.config/sketchybar/scripts/yabai_control.sh window-toggl
 # --- SketchyBar ---
 ctrl + alt - r : ~/.config/sketchybar/plugins/reload_sketchybar.sh
 
-# =============================================================================
-# Leader Mode (Alt + Space)
-# =============================================================================
-# Press Alt+Space to enter leader mode, then press a key for an action.
-# Press Escape to cancel without action.
-
-# Mode declaration with visual indicator
-:: leader @ : sketchybar --set space_mode label="LEADER" label.color=0xfff38ba8
-:: agent @ : sketchybar --set space_mode label="AGENT" label.color=0xffa6e3a1
-
-# Default mode - reset indicator when returning
-:: default : sketchybar --set space_mode label="" 2>/dev/null || true
-
-# Enter leader mode
-alt - space ; leader
-
-# Exit leader mode
-leader < escape ; default
-agent < escape ; default
-
-# --- Leader: Agent Sub-mode ---
-leader < a ; agent
-
-# --- Agent Mode Actions ---
-agent < a : agy ; skhd -k "escape"
-agent < c : claude ; skhd -k "escape"
-agent < l : loom ; skhd -k "escape"
-agent < x : open -a Cortex ; skhd -k "escape"
-agent < k : stop-agents ; skhd -k "escape"
-agent < return : agy ; skhd -k "escape"
-
-# --- Leader: Navigation & Tasks ---
-leader < w : ws ; skhd -k "escape"
-leader < n : ~/.config/sketchybar/scripts/task_capture.sh ; skhd -k "escape"
-leader < j : open ~/.config/sketchybar/docs/guides/HANDOFF.md 2>/dev/null || true ; skhd -k "escape"
-
-# --- Leader: Window Management ---
-leader < b : ~/.config/sketchybar/scripts/yabai_control.sh balance ; skhd -k "escape"
-leader < r : ~/.config/sketchybar/scripts/yabai_control.sh space-rotate ; skhd -k "escape"
-leader < f : ~/.config/sketchybar/scripts/yabai_control.sh window-toggle-float ; skhd -k "escape"
-leader < m : ~/.config/sketchybar/scripts/yabai_control.sh window-toggle-fullscreen ; skhd -k "escape"
-leader < g : ~/.config/sketchybar/scripts/yabai_control.sh space-toggle-padding-gap ; skhd -k "escape"
-leader < t : ~/.config/sketchybar/scripts/yabai_control.sh window-toggle-topmost ; skhd -k "escape"
-
-# --- Leader: System ---
-leader < q : ~/.config/sketchybar/scripts/yabai_control.sh restart ; skhd -k "escape"
-leader < return : open -a iTerm ; skhd -k "escape"
-leader < l : open -na iTerm --args -e "lazygit" ; skhd -k "escape"
-
-# --- Leader: Layout ---
-leader < 1 : ~/.config/sketchybar/scripts/yabai_control.sh space-layout bsp ; skhd -k "escape"
-leader < 2 : ~/.config/sketchybar/scripts/yabai_control.sh space-layout stack ; skhd -k "escape"
-leader < 3 : ~/.config/sketchybar/scripts/yabai_control.sh space-layout float ; skhd -k "escape"
-ctrl + alt - h : open -a Cortex
+# Personal leader maps belong in the user's skhdrc. Barista only generates
+# portable, profile-aware global bindings in barista_shortcuts.conf.
 

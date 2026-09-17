@@ -43,17 +43,61 @@ expand_path() {
   esac
 }
 
+read_state_json_string() {
+  _state_json_file="$1"
+  _state_json_path1="${2:-}"
+  _state_json_path2="${3:-}"
+  [ -f "$_state_json_file" ] || return 1
+
+  if [ -n "${BARISTA_JQ_BIN+x}" ]; then
+    _state_jq_bin="$BARISTA_JQ_BIN"
+  else
+    _state_jq_bin="$(command -v jq 2>/dev/null || true)"
+  fi
+  if [ -n "$_state_jq_bin" ]; then
+    "$_state_jq_bin" -r --arg p1 "$_state_json_path1" --arg p2 "$_state_json_path2" '
+      . as $root
+      | [$p1, $p2]
+      | map(select(length > 0) | split(".") as $path | $root | getpath($path))
+      | map(select(type == "string" and length > 0))
+      | .[0] // empty
+    ' "$_state_json_file" 2>/dev/null
+    return $?
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$_state_json_file" "$_state_json_path1" "$_state_json_path2" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as handle:
+        root = json.load(handle)
+    for dotted in sys.argv[2:]:
+        if not dotted:
+            continue
+        value = root
+        for component in dotted.split("."):
+            value = value[component]
+        if isinstance(value, str) and value:
+            print(value)
+            raise SystemExit(0)
+except (OSError, UnicodeError, ValueError, KeyError, TypeError):
+    pass
+raise SystemExit(1)
+PY
+    return $?
+  fi
+
+  return 1
+}
+
 # SCRIPTS_DIR: env BARISTA_SCRIPTS_DIR or state.json, then fallbacks
 if [ -z "${SCRIPTS_DIR:-}" ]; then
   SCRIPTS_DIR="${BARISTA_SCRIPTS_DIR:-}"
 fi
-if [ -z "$SCRIPTS_DIR" ] && [ -f "$STATE_FILE" ] && grep -Eq '"(scripts_dir|scripts)"[[:space:]]*:[[:space:]]*"[^"]+' "$STATE_FILE"; then
-  if command -v jq >/dev/null 2>&1; then
-    SCRIPTS_DIR=$(jq -r '.paths.scripts_dir // .paths.scripts // empty' "$STATE_FILE" 2>/dev/null || true)
-    case "$SCRIPTS_DIR" in
-      null|"") SCRIPTS_DIR="" ;;
-    esac
-  fi
+if [ -z "$SCRIPTS_DIR" ] && [ -f "$STATE_FILE" ]; then
+  SCRIPTS_DIR="$(read_state_json_string "$STATE_FILE" "paths.scripts_dir" "paths.scripts" || true)"
 fi
 if [ -n "$SCRIPTS_DIR" ]; then
   SCRIPTS_DIR="$(expand_path "$SCRIPTS_DIR")"
@@ -68,7 +112,7 @@ fi
 # Hover/animation defaults (widgets use BARISTA_*; popup/submenu scripts get POPUP_* / SUBMENU_* from main.lua)
 BARISTA_HOVER_COLOR="${BARISTA_HOVER_COLOR:-${POPUP_HOVER_COLOR:-${SUBMENU_HOVER_BG:-0x40f5c2e7}}}"
 BARISTA_HOVER_ANIMATION_CURVE="${BARISTA_HOVER_ANIMATION_CURVE:-${POPUP_HOVER_ANIMATION_CURVE:-${SUBMENU_ANIMATION_CURVE:-sin}}}"
-BARISTA_HOVER_ANIMATION_DURATION="${BARISTA_HOVER_ANIMATION_DURATION:-${POPUP_HOVER_ANIMATION_DURATION:-${SUBMENU_ANIMATION_DURATION:-12}}}"
+BARISTA_HOVER_ANIMATION_DURATION="${BARISTA_HOVER_ANIMATION_DURATION:-${POPUP_HOVER_ANIMATION_DURATION:-${SUBMENU_ANIMATION_DURATION:-8}}}"
 HIGHLIGHT="$BARISTA_HOVER_COLOR"
 ANIMATION_CURVE="$BARISTA_HOVER_ANIMATION_CURVE"
 ANIMATION_DURATION="$BARISTA_HOVER_ANIMATION_DURATION"

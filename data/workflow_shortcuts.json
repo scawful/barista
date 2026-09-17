@@ -68,22 +68,20 @@
         {
           "keys": "⌘⌥A",
           "description": "Launch Antigravity",
-          "action": "launch_antigravity"
+          "action": "launch_antigravity",
+          "requires": "agent_launchers"
         },
         {
           "keys": "⌘⌥C",
           "description": "Launch Claude Code",
-          "action": "launch_claude_code"
+          "action": "launch_claude_code",
+          "requires": "agent_launchers"
         },
         {
           "keys": "⌘⌥W",
           "description": "Workspace Navigator",
-          "action": "open_workspace_navigator"
-        },
-        {
-          "keys": "⌘⌥K",
-          "description": "Stop All Agents",
-          "action": "stop_all_agents"
+          "action": "open_workspace_navigator",
+          "requires": "agent_launchers"
         },
         {
           "keys": "⌘⌥Y",
@@ -101,126 +99,6 @@
           "keys": "⌃→",
           "description": "Next Space (wrap)",
           "action": "space_next",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃1",
-          "description": "Focus Space 1",
-          "action": "focus_space_1",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃2",
-          "description": "Focus Space 2",
-          "action": "focus_space_2",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃3",
-          "description": "Focus Space 3",
-          "action": "focus_space_3",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃4",
-          "description": "Focus Space 4",
-          "action": "focus_space_4",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃5",
-          "description": "Focus Space 5",
-          "action": "focus_space_5",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃6",
-          "description": "Focus Space 6",
-          "action": "focus_space_6",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃7",
-          "description": "Focus Space 7",
-          "action": "focus_space_7",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃8",
-          "description": "Focus Space 8",
-          "action": "focus_space_8",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃9",
-          "description": "Focus Space 9",
-          "action": "focus_space_9",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃0",
-          "description": "Focus Space 10",
-          "action": "focus_space_10",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃⇧1",
-          "description": "Send Window to Space 1",
-          "action": "send_window_space_1",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃⇧2",
-          "description": "Send Window to Space 2",
-          "action": "send_window_space_2",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃⇧3",
-          "description": "Send Window to Space 3",
-          "action": "send_window_space_3",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃⇧4",
-          "description": "Send Window to Space 4",
-          "action": "send_window_space_4",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃⇧5",
-          "description": "Send Window to Space 5",
-          "action": "send_window_space_5",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃⇧6",
-          "description": "Send Window to Space 6",
-          "action": "send_window_space_6",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃⇧7",
-          "description": "Send Window to Space 7",
-          "action": "send_window_space_7",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃⇧8",
-          "description": "Send Window to Space 8",
-          "action": "send_window_space_8",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃⇧9",
-          "description": "Send Window to Space 9",
-          "action": "send_window_space_9",
-          "requires": "window_manager"
-        },
-        {
-          "keys": "⌃⇧0",
-          "description": "Send Window to Space 10",
-          "action": "send_window_space_10",
           "requires": "window_manager"
         },
         {
@@ -251,6 +129,126 @@
           "keys": "⌃⇧S",
           "description": "Set Stack Layout",
           "action": "set_layout_stack",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃1",
+          "description": "Focus Space 1",
+          "action": "focus_space_1",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃⇧1",
+          "description": "Send Window to Space 1",
+          "action": "send_window_space_1",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃2",
+          "description": "Focus Space 2",
+          "action": "focus_space_2",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃⇧2",
+          "description": "Send Window to Space 2",
+          "action": "send_window_space_2",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃3",
+          "description": "Focus Space 3",
+          "action": "focus_space_3",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃⇧3",
+          "description": "Send Window to Space 3",
+          "action": "send_window_space_3",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃4",
+          "description": "Focus Space 4",
+          "action": "focus_space_4",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃⇧4",
+          "description": "Send Window to Space 4",
+          "action": "send_window_space_4",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃5",
+          "description": "Focus Space 5",
+          "action": "focus_space_5",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃⇧5",
+          "description": "Send Window to Space 5",
+          "action": "send_window_space_5",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃6",
+          "description": "Focus Space 6",
+          "action": "focus_space_6",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃⇧6",
+          "description": "Send Window to Space 6",
+          "action": "send_window_space_6",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃7",
+          "description": "Focus Space 7",
+          "action": "focus_space_7",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃⇧7",
+          "description": "Send Window to Space 7",
+          "action": "send_window_space_7",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃8",
+          "description": "Focus Space 8",
+          "action": "focus_space_8",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃⇧8",
+          "description": "Send Window to Space 8",
+          "action": "send_window_space_8",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃9",
+          "description": "Focus Space 9",
+          "action": "focus_space_9",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃⇧9",
+          "description": "Send Window to Space 9",
+          "action": "send_window_space_9",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃0",
+          "description": "Focus Space 10",
+          "action": "focus_space_10",
+          "requires": "window_manager"
+        },
+        {
+          "keys": "⌃⇧0",
+          "description": "Send Window to Space 10",
+          "action": "send_window_space_10",
           "requires": "window_manager"
         }
       ]

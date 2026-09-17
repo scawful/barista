@@ -54,6 +54,8 @@ run_test("interface_extensions: filters by pack and surface", function()
     "script": "scripts/open_local_workflow.sh",
     "args": ["scawfulbot"],
     "surfaces": ["apple_menu", "front_app"],
+    "workflow_group": "agentic_ai",
+    "shortcut_action": "launch_scawfulbot",
     "order": 20
   },
   {
@@ -76,6 +78,8 @@ run_test("interface_extensions: filters by pack and surface", function()
   assert_equal(apple[1].id, "personal_only", "personal row id")
   assert_true(apple[1].action:find("open_local_workflow%.sh", 1) ~= nil, "script action should resolve")
   assert_true(apple[1].action:find("scawfulbot", 1, true) ~= nil, "script args should be included")
+  assert_equal(apple[1].workflow_group, "agentic_ai", "workflow group metadata should be preserved")
+  assert_equal(apple[1].shortcut_action, "launch_scawfulbot", "shortcut action metadata should be preserved")
 
   local cc = interface_extensions.for_surface(config_dir, code_dir, {
     machine = { menu_packs = { "personal" } },
@@ -105,4 +109,32 @@ run_test("interface_extensions: inline items can enable a pack locally", functio
   }, "front_app")
   assert_equal(#rows, 1, "local pack override should enable inline item")
   assert_true(rows[1].action:find("/tmp/code", 1, true) ~= nil, "template should expand")
+end)
+
+run_test("interface_extensions: a local file can explicitly enable its own pack", function()
+  local root = make_temp_dir("interface_extensions_file_pack")
+  local config_dir = root .. "/config"
+  mkdir(config_dir .. "/data")
+  write_file(config_dir .. "/data/extensions.json", [[
+{
+  "packs": ["personal"],
+  "items": [
+    {
+      "id": "personal_file_item",
+      "pack": "personal",
+      "label": "Personal File Item",
+      "command": "echo ready",
+      "surface": "apple_menu"
+    }
+  ]
+}
+]])
+
+  local loaded = interface_extensions.load(config_dir, root .. "/code", {
+    machine = { menu_packs = {} },
+    menus = { extensions = { file = "data/extensions.json" } },
+  })
+  assert_equal(#loaded.items, 1, "an explicitly installed local pack should enable its entries")
+  assert_equal(loaded.packs[1], "personal", "file-declared pack should be reported")
+  cleanup(root)
 end)

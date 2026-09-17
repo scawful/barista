@@ -1,4 +1,36 @@
-[
+{
+  "packs": ["personal"],
+  "items": [
+  {
+    "id": "antigravity",
+    "pack": "personal",
+    "label": "Antigravity",
+    "icon": "󰚩",
+    "icon_color": "0xffa6e3a1",
+    "script": "scripts/open_local_workflow.sh",
+    "args": ["antigravity"],
+    "surface": "apple_menu",
+    "section": "workflows",
+    "workflow_group": "agentic_ai",
+    "shortcut": "⌘⌥A",
+    "shortcut_action": "launch_antigravity",
+    "order": 100
+  },
+  {
+    "id": "claude_code",
+    "pack": "personal",
+    "label": "Claude Code",
+    "icon": "󰭹",
+    "icon_color": "0xfffab387",
+    "script": "scripts/open_local_workflow.sh",
+    "args": ["claude-code"],
+    "surface": "apple_menu",
+    "section": "workflows",
+    "workflow_group": "agentic_ai",
+    "shortcut": "⌘⌥C",
+    "shortcut_action": "launch_claude_code",
+    "order": 101
+  },
   {
     "id": "scawfulbot",
     "pack": "personal",
@@ -9,7 +41,8 @@
     "script": "scripts/open_local_workflow.sh",
     "args": ["scawfulbot"],
     "surfaces": ["apple_menu", "front_app", "control_center"],
-    "section": "extensions",
+    "section": "workflows",
+    "workflow_group": "agentic_ai",
     "order": 110
   },
   {
@@ -21,7 +54,8 @@
     "script": "scripts/open_local_workflow.sh",
     "args": ["scawfulbot-repo"],
     "surfaces": ["front_app", "control_center"],
-    "section": "extensions",
+    "section": "workflows",
+    "workflow_group": "agentic_ai",
     "order": 111
   },
   {
@@ -34,7 +68,8 @@
     "script": "scripts/open_local_workflow.sh",
     "args": ["premia"],
     "surfaces": ["apple_menu", "front_app", "control_center"],
-    "section": "extensions",
+    "section": "workflows",
+    "workflow_group": "agentic_ai",
     "order": 120
   },
   {
@@ -46,8 +81,76 @@
     "script": "scripts/open_local_workflow.sh",
     "args": ["loom"],
     "surfaces": ["apple_menu", "front_app", "control_center"],
-    "section": "extensions",
+    "section": "workflows",
+    "workflow_group": "agentic_ai",
     "order": 130
+  },
+  {
+    "id": "workspace_navigator",
+    "pack": "personal",
+    "label": "Workspace Navigator",
+    "icon": "󰵮",
+    "icon_color": "0xff89dceb",
+    "script": "scripts/open_local_workflow.sh",
+    "args": ["workspace-navigator"],
+    "surface": "apple_menu",
+    "section": "workflows",
+    "workflow_group": "workspaces",
+    "shortcut": "⌘⌥W",
+    "shortcut_action": "open_workspace_navigator",
+    "order": 200
+  },
+  {
+    "id": "workspace_yaze",
+    "pack": "personal",
+    "label": "Zelda (yaze)",
+    "icon": "󰯙",
+    "icon_color": "0xff74c7ec",
+    "script": "scripts/open_local_workflow.sh",
+    "args": ["open-path", "%CODE%/hobby/yaze"],
+    "surface": "apple_menu",
+    "section": "workflows",
+    "workflow_group": "workspaces",
+    "order": 210
+  },
+  {
+    "id": "workspace_afs",
+    "pack": "personal",
+    "label": "Agent Infra (afs)",
+    "icon": "󰈙",
+    "icon_color": "0xff94e2d5",
+    "script": "scripts/open_local_workflow.sh",
+    "args": ["open-path", "%CODE%/lab/afs"],
+    "surface": "apple_menu",
+    "section": "workflows",
+    "workflow_group": "workspaces",
+    "order": 220
+  },
+  {
+    "id": "workspace_barista",
+    "pack": "personal",
+    "label": "Barista",
+    "icon": "󰒓",
+    "icon_color": "0xfffab387",
+    "script": "scripts/open_local_workflow.sh",
+    "args": ["open-path", "%CODE%/lab/barista"],
+    "surface": "apple_menu",
+    "section": "workflows",
+    "workflow_group": "workspaces",
+    "order": 230
+  },
+  {
+    "id": "workspace_folio",
+    "pack": "personal",
+    "label": "Folio (writing)",
+    "icon": "󰠮",
+    "icon_color": "0xfff9e2af",
+    "script": "scripts/open_local_workflow.sh",
+    "args": ["open-path", "%CODE%/folio"],
+    "surface": "apple_menu",
+    "section": "workflows",
+    "workflow_group": "workspaces",
+    "order": 240
   },
   {
     "id": "lmstudio_scawfulbot_mlx",
@@ -93,4 +196,5 @@
     "surface": "lmstudio",
     "order": 240
   }
-]
+  ]
+}

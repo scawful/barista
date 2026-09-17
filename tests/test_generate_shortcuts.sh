@@ -53,6 +53,15 @@ jq -e '.keymap[0].items[] | select(.action == "capture_task" and .requires == "t
   "$WORKFLOW_OUTPUT" >/dev/null
 grep -Fq 'cmd + alt - d :' "$SKHD_OUTPUT"
 grep -Fq "${ROOT_DIR}/scripts/invoke_popup_click.sh' 'control_center" "$SKHD_OUTPUT"
+grep -Fq "yabai_control.sh' 'space-focus' '10'" "$SKHD_OUTPUT"
+if grep -Eq ':[[:space:]]*yabai[[:space:]]+-m' "$SKHD_OUTPUT"; then
+  echo "FAIL: generated shortcuts contain raw yabai commands" >&2
+  exit 1
+fi
+if grep -Fq 'cmd + alt - k :' "$SKHD_OUTPUT"; then
+  echo "FAIL: emergency stop must not have a global shortcut" >&2
+  exit 1
+fi
 
 cat >"$LOCAL_WORKFLOW" <<'JSON'
 {

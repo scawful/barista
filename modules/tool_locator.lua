@@ -66,7 +66,9 @@ function locator.path_exists(path, want_dir)
     result = ok == true or ok == 0
   end
 
-  path_cache[cache_key] = result
+  if result then
+    path_cache[cache_key] = true
+  end
   return result
 end
 
@@ -83,14 +85,15 @@ function locator.path_is_executable(path)
 
   local file = io.open(path, "r")
   if not file then
-    path_cache[cache_key] = false
     return false
   end
   file:close()
 
   local ok = os.execute(string.format("test -x %q", path))
   local result = ok == true or ok == 0
-  path_cache[cache_key] = result
+  if result then
+    path_cache[cache_key] = true
+  end
   return result
 end
 
@@ -105,7 +108,6 @@ function locator.command_path(command)
 
   local handle = io.popen(string.format("command -v %q 2>/dev/null", command))
   if not handle then
-    command_cache[command] = false
     return nil
   end
 
@@ -113,7 +115,6 @@ function locator.command_path(command)
   handle:close()
   result = result:gsub("%s+$", "")
   if result == "" then
-    command_cache[command] = false
     return nil
   end
   command_cache[command] = result
@@ -628,34 +629,35 @@ end
 
 function locator.resolve_antigravity_launcher(opts)
   local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
   return locator.resolve_executable_path({
     option_value(opts, "antigravity_launcher"),
     os.getenv("ANTIGRAVITY_LAUNCHER"),
-    locator.command_path("agy"),
-    HOME .. "/.local/bin/agy",
+    use_global_apps and locator.command_path("agy") or nil,
+    use_global_apps and (HOME .. "/.local/bin/agy") or nil,
     code_dir .. "/config/dotfiles/bin/agy",
-    locator.command_path("cursor-agent"),
-    HOME .. "/.local/bin/cursor-agent",
   })
 end
 
 function locator.resolve_claude_launcher(opts)
   local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
   return locator.resolve_executable_path({
     option_value(opts, "claude_launcher"),
     os.getenv("CLAUDE_LAUNCHER"),
-    locator.command_path("claude"),
-    HOME .. "/.local/bin/claude",
+    use_global_apps and locator.command_path("claude") or nil,
+    use_global_apps and (HOME .. "/.local/bin/claude") or nil,
     code_dir .. "/config/dotfiles/bin/claude",
   })
 end
 
 function locator.resolve_loom_launcher(opts)
   local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
   return locator.resolve_executable_path({
     option_value(opts, "loom_launcher"),
     os.getenv("LOOM_LAUNCHER"),
-    locator.command_path("loom"),
+    use_global_apps and locator.command_path("loom") or nil,
     code_dir .. "/lab/loom/bin/loom",
     code_dir .. "/lab/loom/loom",
   })
@@ -663,10 +665,11 @@ end
 
 function locator.resolve_ws_launcher(opts)
   local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
   return locator.resolve_executable_path({
     option_value(opts, "ws_launcher"),
     os.getenv("WS_LAUNCHER"),
-    locator.command_path("ws"),
+    use_global_apps and locator.command_path("ws") or nil,
     code_dir .. "/tools/ws/bin/ws",
     code_dir .. "/config/dotfiles/bin/ws",
   })
@@ -674,11 +677,13 @@ end
 
 function locator.resolve_stop_agents_launcher(opts)
   local code_dir = locator.resolve_code_dir(opts)
+  local use_global_apps = not (type(opts) == "table" and opts.use_global_apps == false)
   return locator.resolve_executable_path({
     option_value(opts, "stop_agents_launcher"),
     os.getenv("STOP_AGENTS_LAUNCHER"),
-    locator.command_path("stop-agents"),
+    use_global_apps and locator.command_path("stop-agents") or nil,
     code_dir .. "/config/dotfiles/bin/stop-agents",
+    code_dir .. "/tools/ws/stop-all-agents.sh",
   })
 end
 

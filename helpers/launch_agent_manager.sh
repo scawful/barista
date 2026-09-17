@@ -25,7 +25,8 @@ Commands:
   list [filter]       List LaunchAgents (JSON array). Optional substring filter by label.
   start <label>       Start or bootstrap the specified agent.
   stop <label>        Stop/bootout the specified agent.
-  restart <label>     Stop then start the specified agent.
+  restart <label>     Bootout then bootstrap the specified agent.
+  kickstart <label>   Replace the process without reloading its plist.
   status <label>      Print launchctl status for the agent.
 
 Labels correspond to launchctl labels (e.g., homebrew.mxcl.sketchybar).
@@ -205,19 +206,28 @@ status_agent() {
 
 restart_agent() {
   local target="$1"
+  [[ -z "$target" ]] && die "restart requires a label or plist path"
   local plist
   plist=$(resolve_plist "$target") || die "unable to find plist for ${target}"
   local label
   label=$(get_label_from_plist "$plist") || die "unable to read label for ${plist}"
   if agent_loaded "$label"; then
-    if launchctl kickstart -kp "${DOMAIN}/${label}"; then
-      echo "Restarted ${label} via kickstart."
-      return 0
-    fi
+    launchctl bootout "${DOMAIN}/${label}"
   fi
-  stop_agent "$target" || true
-  sleep 0.1
-  start_agent "$target"
+  launchctl bootstrap "$DOMAIN" "$plist"
+  echo "Restarted ${label} via bootout/bootstrap."
+}
+
+kickstart_agent() {
+  local target="$1"
+  [[ -z "$target" ]] && die "kickstart requires a label or plist path"
+  local plist
+  plist=$(resolve_plist "$target") || die "unable to find plist for ${target}"
+  local label
+  label=$(get_label_from_plist "$plist") || die "unable to read label for ${plist}"
+  agent_loaded "$label" || die "${label} is not loaded"
+  launchctl kickstart -kp "${DOMAIN}/${label}"
+  echo "Kickstarted ${label}."
 }
 
 main() {
@@ -235,6 +245,9 @@ main() {
       ;;
     restart)
       restart_agent "${1:-}"
+      ;;
+    kickstart)
+      kickstart_agent "${1:-}"
       ;;
     status)
       status_agent "${1:-}"

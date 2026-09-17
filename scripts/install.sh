@@ -158,6 +158,24 @@ copy_local_config() {
       "$source_dir/" "$destination/"
 }
 
+prepare_skhd_entrypoint() {
+  local target="$1"
+  local template="$2"
+  if [ -f "$target" ]; then
+    return 0
+  fi
+  cp "$template" "$target"
+}
+
+append_skhd_load() {
+  local target="$1"
+  local generated_shortcuts="$2"
+  local load_line=".load \"$generated_shortcuts\""
+  if ! grep -Fqx "$load_line" "$target"; then
+    printf '\n# Barista generated shortcuts\n%s\n' "$load_line" >>"$target"
+  fi
+}
+
 # Install configuration
 install_config() {
   echo_info "Installing SketchyBar configuration..."
@@ -506,9 +524,11 @@ setup_window_manager() {
       mkdir -p "$HOME/.config/skhd"
       if [ -f "$HOME/.config/skhd/skhdrc" ]; then
         cp "$HOME/.config/skhd/skhdrc" "$HOME/.config/skhd/skhdrc.backup.$(date +%s)"
-        echo_warning "Backed up existing skhdrc"
+        echo_warning "Backed up existing skhdrc; preserving it as the entrypoint"
+      else
+        prepare_skhd_entrypoint "$HOME/.config/skhd/skhdrc" "$INSTALL_DIR/extras/skhd/skhdrc"
+        echo_success "Installed portable skhdrc template"
       fi
-      cp "$INSTALL_DIR/extras/skhd/skhdrc" "$HOME/.config/skhd/skhdrc"
       if command -v lua >/dev/null 2>&1 && [ -f "$INSTALL_DIR/helpers/generate_shortcuts.lua" ]; then
         local generated_shortcuts="$HOME/.config/skhd/barista_shortcuts.conf"
         local generated_workflow="$INSTALL_DIR/data/workflow_shortcuts.local.generated.json"
@@ -516,10 +536,7 @@ setup_window_manager() {
           BARISTA_STATE_FILE="$INSTALL_DIR/state.json" \
           lua "$INSTALL_DIR/helpers/generate_shortcuts.lua" \
             "$generated_shortcuts" "$generated_workflow" >/dev/null; then
-          local load_line=".load \"$generated_shortcuts\""
-          if ! grep -Fqx "$load_line" "$HOME/.config/skhd/skhdrc"; then
-            printf '\n# Barista generated shortcuts\n%s\n' "$load_line" >>"$HOME/.config/skhd/skhdrc"
-          fi
+          append_skhd_load "$HOME/.config/skhd/skhdrc" "$generated_shortcuts"
         else
           echo_warning "Could not generate optional Barista shortcuts"
         fi

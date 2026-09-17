@@ -28,8 +28,7 @@ cd ~/.config/sketchybar
 # Personal Mac only. The output file is gitignored.
 cp data/interface_extensions.personal.example.json data/interface_extensions.local.json
 
-# Make sure this machine has the personal pack enabled.
-python3 ./scripts/machine_profile.py apply --variant personal --report
+# The personal example explicitly enables the pack contained in that local file.
 ```
 
 For a work or restricted machine, leave `data/interface_extensions.local.json`
@@ -55,8 +54,18 @@ absent unless you have a work-safe extension pack to add.
 ```
 
 `machine.menu_packs` comes from `scripts/machine_profile.py`. An extension with
-`"pack": "personal"` only loads when `personal` is in `machine.menu_packs` or
-`menus.extensions.packs`.
+`"pack": "personal"` only loads when `personal` is enabled by the machine,
+`menus.extensions.packs`, or the optional top-level `packs` array in the
+explicitly installed extension file:
+
+```json
+{
+  "packs": ["personal"],
+  "items": [
+    { "id": "example", "pack": "personal", "command": "echo ready" }
+  ]
+}
+```
 
 ## Entry Schema
 
@@ -71,6 +80,8 @@ absent unless you have a work-safe extension pack to add.
   "url": "https://example.com/runbook",
   "surfaces": ["apple_menu", "control_center"],
   "section": "work",
+  "workflow_group": "agentic_ai",
+  "shortcut_action": "launch_example",
   "order": 100,
   "enabled": true
 }
@@ -93,6 +104,10 @@ Scripts receive:
 
 - `BARISTA_EXTENSION_ID`
 - `BARISTA_EXTENSION_PACK`
+
+On the Apple surface, `workflow_group` values `agentic_ai` and `workspaces`
+are progressively disclosed under two `Workflows` child rows.
+`shortcut_action` lets the menu reuse shortcut glyph metadata.
 
 ## Agent Upgrade Checklist
 

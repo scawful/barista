@@ -242,6 +242,7 @@ run_test("runtime_startup.wall_time_ms: prefers fast helper and falls back", fun
   }
 
   local value = runtime_startup.wall_time_ms({
+    is_executable = function() return false end,
     popen = function(command)
       table.insert(commands, command)
       return table.remove(responses, 1)
@@ -257,6 +258,7 @@ run_test("runtime_startup.wall_time_ms: prefers fast helper and falls back", fun
   assert_true(commands[2]:find("python3", 1, true) ~= nil, "python helper should be the fallback")
 
   local fallback_value = runtime_startup.wall_time_ms({
+    is_executable = function() return false end,
     popen = function()
       return nil
     end,
@@ -266,6 +268,57 @@ run_test("runtime_startup.wall_time_ms: prefers fast helper and falls back", fun
   })
 
   assert_equal(fallback_value, 7000, "wall time should fall back to second-resolution time when helpers are unavailable")
+end)
+
+run_test("runtime_startup.wall_time_ms: checks and quotes native clock before fallback", function()
+  local checked_path = nil
+  local commands = {}
+  local responses = {
+    {
+      read = function() return "123456\n" end,
+      close = function() return true end,
+    },
+  }
+  local clock_path = "/tmp/Barista Clock/perf_clock"
+
+  local native = runtime_startup.wall_time_ms({
+    clock_bin = clock_path,
+    is_executable = function(path)
+      checked_path = path
+      return true
+    end,
+    popen = function(command)
+      table.insert(commands, command)
+      return table.remove(responses, 1)
+    end,
+  })
+
+  assert_equal(checked_path, clock_path, "native selection should check the exact configured executable")
+  assert_equal(native, 123456, "valid native output should be selected")
+  assert_true(commands[1]:find('"/tmp/Barista Clock/perf_clock" ms', 1, true) ~= nil,
+    "native paths containing spaces should be shell quoted and request milliseconds")
+
+  commands = {}
+  local fallback = runtime_startup.wall_time_ms({
+    clock_bin = clock_path,
+    is_executable = function() return true end,
+    popen = function(command)
+      table.insert(commands, command)
+      if #commands == 1 then
+        return {
+          read = function() return "111\n" end,
+          close = function() return nil, "exit", 1 end,
+        }
+      end
+      return {
+        read = function() return "9876\n" end,
+        close = function() return true end,
+      }
+    end,
+  })
+  assert_equal(fallback, 9876, "a failed native executable should use the portable fallback")
+  assert_true(commands[2]:find("Time::HiRes", 1, true) ~= nil,
+    "portable timing should follow a failed native clock")
 end)
 
 run_test("runtime_startup.record_reload_metrics: records reload commands and traces duration", function()

@@ -16,7 +16,7 @@ YABAI_LABEL_OLD="com.koekeishiya.yabai"
 SPACE_FOCUS_TIMEOUT_SEC="${SPACE_FOCUS_TIMEOUT_SEC:-1}"
 SPACE_QUERY_TIMEOUT_SEC="${SPACE_QUERY_TIMEOUT_SEC:-1}"
 SPACE_FOCUS_LOCK_STALE_SEC="${SPACE_FOCUS_LOCK_STALE_SEC:-2}"
-SPACE_FOCUS_LOCK_DIR="/tmp/yabai_control_space_focus_${UID}.lock"
+SPACE_FOCUS_LOCK_DIR="${BARISTA_SPACE_FOCUS_LOCK_DIR:-/tmp/yabai_control_space_focus_${UID}.lock}"
 SPACE_FOCUS_OSASCRIPT_FALLBACK="${SPACE_FOCUS_OSASCRIPT_FALLBACK:-0}"
 REQUESTED_COMMAND="${1:-}"
 
@@ -589,6 +589,29 @@ space_focus_wrap() {
   fi
 
   echo "space focus failed (scripting addition likely missing)" >&2
+  return 1
+}
+
+space_focus_index() {
+  local target="${1:-}"
+  if [[ ! "$target" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Usage: $0 space-focus <positive-index>" >&2
+    return 1
+  fi
+
+  if ! acquire_space_focus_lock; then
+    return 0
+  fi
+
+  local rc=0
+  run_with_timeout "$SPACE_FOCUS_TIMEOUT_SEC" "$YABAI_BIN" -m space --focus "$target" >/dev/null 2>&1 || rc=$?
+  release_space_focus_lock
+
+  if (( rc == 0 || rc == 124 )); then
+    return 0
+  fi
+
+  echo "space focus failed for index ${target} (scripting addition likely missing)" >&2
   return 1
 }
 
@@ -2001,6 +2024,9 @@ case "$command" in
   window-center)
     window_center
     ;;
+  window-minimize)
+    "$YABAI_BIN" -m window --minimize
+    ;;
   window-preset-utility)
     window_preset_utility
     ;;
@@ -2041,6 +2067,9 @@ case "$command" in
     ;;
   space-focus-next-wrap)
     space_focus_wrap next
+    ;;
+  space-focus)
+    space_focus_index "${1:-}"
     ;;
   display-focus-prev-wrap)
     display_focus_wrap prev
@@ -2130,11 +2159,13 @@ Commands:
   window-preset-utility|window-preset-focus|window-preset-presentation|window-preset-tile-here
   window-adopt-space-mode [space]
   window-center
+  window-minimize
   window-display-next|window-display-prev
   window-space-next|window-space-prev
   window-space <index>
   window-space-float
   space-focus-prev-wrap|space-focus-next-wrap
+  space-focus <positive-index>
   display-focus-prev-wrap|display-focus-next-wrap
   window-focus-west|window-focus-south|window-focus-north|window-focus-east
   window-swap-west|window-swap-south|window-swap-north|window-swap-east

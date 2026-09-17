@@ -23,6 +23,7 @@ Use `popup section` by default when talking about Apple-menu grouping.
 ## Sections
 
 - Apps
+- Workflows
 - AFS Tools
 - Audio
 - Core Tools
@@ -111,6 +112,13 @@ They can target the Apple menu, disabled front-app/yabai replacement rows,
 disabled Control Center replacement rows, or LM Studio model presets. See
 [../guides/INTERFACE_EXTENSIONS.md](../guides/INTERFACE_EXTENSIONS.md).
 
+The personal example declares its own `personal` pack. Copy or merge
+`data/interface_extensions.personal.example.json` into the ignored local file
+to opt in. Apple-menu entries with `workflow_group: "agentic_ai"` or
+`"workspaces"` collapse into the two click-only rows under `Workflows`.
+Agent launchers use `scripts/open_local_workflow.sh`; Stop All Agents is
+intentionally excluded from every menu surface.
+
 ## Restricted Work Apps
 
 On managed machines, use the script-only configurator instead of the native
@@ -135,6 +143,7 @@ script-only path and also writes the machine-local capability profile.
 - Missing/blocked items open Barista Config so you can adjust paths or disable them.
 - Terminal-only custom tools are hidden unless `menus.apple.terminal` is enabled.
 - LM Studio, ChatGPT, Claude, and Cursor remain app-bundle launchers only; when at least two are rendered, their existing rows move under the click-only `AI Apps` child. Zero or one stays direct, so sparse and work setups do not gain an empty navigation level.
+- Personal terminal agents and repository launchers come only from interface extensions. Their root-row budget is two: `Agentic AI` and `Workspaces`. Loom appears once, and Cortex remains a direct Apps launcher.
 - Help Center and Icon Browser fall back to docs when binaries are missing; Sys Manual requires the app binary.
 - Shortcut glyphs are sourced from `modules/shortcuts.lua` (per-action) and rendered in the menu.
 - Hover styles can be overridden via `menus.apple.hover` or env vars:

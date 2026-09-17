@@ -22,8 +22,17 @@ trap cleanup EXIT
 
 before_seconds="$(date +%s)"
 first="$("$BIN")"
-second="$("$BIN")"
+second="$("$BIN" ms)"
 after_seconds="$(date +%s)"
+
+if "$BIN" seconds >/dev/null 2>&1; then
+  echo "FAIL: perf_clock must reject unknown arguments" >&2
+  exit 1
+fi
+if "$BIN" ms extra >/dev/null 2>&1; then
+  echo "FAIL: perf_clock must reject extra arguments" >&2
+  exit 1
+fi
 
 case "$first:$second" in
   *[!0-9:]*|:*)

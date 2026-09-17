@@ -1,4 +1,32 @@
 local runtime_startup = {}
+local executable_cache = {}
+
+local function command_succeeded(a, _, c)
+  return a == true or a == 0 or c == 0
+end
+
+local function is_executable(path)
+  if type(path) ~= "string" or path == "" then
+    return false
+  end
+  if executable_cache[path] == nil then
+    executable_cache[path] = command_succeeded(os.execute(string.format("[ -x %q ]", path)))
+  end
+  return executable_cache[path]
+end
+
+local function read_native_clock(clock_bin, popen)
+  local handle = popen(string.format("%q ms 2>/dev/null", clock_bin))
+  if not handle then
+    return nil
+  end
+  local value = (handle:read("*a") or ""):match("^%s*(%d+)%s*$")
+  local closed, reason, status = handle:close()
+  if not command_succeeded(closed, reason, status) then
+    return nil
+  end
+  return value and tonumber(value) or nil
+end
 
 local function read_wall_time_ms(commands, opts)
   opts = opts or {}
@@ -22,27 +50,18 @@ end
 
 function runtime_startup.wall_time_ms(opts)
   opts = opts or {}
-  if opts.popen == nil then
-    local clock_bin = opts.clock_bin or os.getenv("BARISTA_PERF_CLOCK_BIN")
-    if not clock_bin then
-      local config_dir = os.getenv("BARISTA_CONFIG_DIR") or ((os.getenv("HOME") or "") .. "/.config/sketchybar")
-      local candidate = config_dir .. "/bin/perf_clock"
-      local f = io.open(candidate, "r")
-      if f then
-        f:close()
-        clock_bin = candidate
-      end
-    end
-    if clock_bin then
-      local handle = io.popen(string.format("%s ms 2>/dev/null", clock_bin))
-      if handle then
-        local value = (handle:read("*a") or ""):gsub("%s+", "")
-        handle:close()
-        local numeric = tonumber(value)
-        if numeric then
-          return numeric
-        end
-      end
+  local popen = opts.popen or io.popen
+  local executable = opts.is_executable or is_executable
+  local clock_bin = opts.clock_bin or os.getenv("BARISTA_PERF_CLOCK_BIN")
+  if not clock_bin then
+    local config_dir = os.getenv("BARISTA_CONFIG_DIR") or ((os.getenv("HOME") or "") .. "/.config/sketchybar")
+    clock_bin = config_dir .. "/bin/perf_clock"
+  end
+
+  if executable(clock_bin) then
+    local numeric = read_native_clock(clock_bin, popen)
+    if numeric then
+      return numeric
     end
   end
 

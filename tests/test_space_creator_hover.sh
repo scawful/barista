@@ -47,4 +47,16 @@ grep -Fq $'space_creator.2 background.drawing=on background.color=0x102a313c ico
   exit 1
 }
 
+: > "$LOG_FILE"
+env PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
+  "${COMMON_ENV[@]}" BARISTA_HOVER_ANIMATION_DURATION=0 BARISTA_HOVER_TIMEOUT=0 \
+  SENDER=mouse.entered "$SCRIPT"
+env PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
+  "${COMMON_ENV[@]}" BARISTA_HOVER_ANIMATION_DURATION=0 \
+  SENDER=mouse.exited "$SCRIPT"
+if grep -Fq -- '--animate' "$LOG_FILE" || [ "$(wc -l < "$LOG_FILE" | tr -d ' ')" != 2 ]; then
+  echo 'FAIL: zero-motion creator enter and exit must each use one direct set' >&2
+  exit 1
+fi
+
 printf 'test_space_creator_hover.sh: ok\n'

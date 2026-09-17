@@ -8,6 +8,7 @@ starts SketchyBar, yabai, and skhd through launchctl.
 
 - **dev.barista.control.plist** — Install to `~/Library/LaunchAgents/` to start all three at login.
 - **barista-launch.sh** — Script that starts/stops/restarts the three services. Uses `BARISTA_CONFIG_DIR` (default `${XDG_CONFIG_HOME:-$HOME/.config}/sketchybar`) and `helpers/launch_agent_manager.sh` from that dir.
+- **com.scawful.afs-missions.plist** — Nightly (03:00) run of the AFS mission runner. Results land in `~/src/lab/.context/scratchpad/missions/*/result.json`; anything needing a decision shows on the `afs_approvals` badge. Install/remove commands are in the plist comment.
 - **dev.barista.mouse-buttons.plist** — Optional local mouse mapper for Logitech M575 middle/back/forward buttons when vendor daemons are unreliable.
 
 **Install:**

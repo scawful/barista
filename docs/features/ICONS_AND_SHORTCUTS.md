@@ -103,8 +103,11 @@ These shortcuts work system-wide and don't conflict with common applications:
 
 #### Apps
 - `⌘⌥Z` - Launch z3ed in Ghostty
+- `⌘⌥A` - Launch Antigravity
+- `⌘⌥C` - Launch Claude Code
+- `⌘⌥W` - Open Workspace Navigator
 
-Note: The `z3ed` shortcut only appears when a `z3ed` launcher is found. It launches through Ghostty when Ghostty is installed and falls back to Terminal-backed shell execution otherwise.
+Agent shortcuts are profile-aware and resolve only their matching tool; Antigravity never falls back to another agent CLI. Agent sessions and Workspace Navigator share `scripts/open_local_workflow.sh`, which prefers Ghostty and falls back to Terminal. The `z3ed` shortcut only appears when a launcher is found.
 
 Task Focus and Task Pulse read the same machine-local
 `menus.calendar.task_sources` configuration. The committed default is empty;
@@ -135,8 +138,10 @@ it. With the explicit `syshelp` provider, capture uses
 #### Space Navigation (ctrl)
 - `⌃←` - Previous Space
 - `⌃→` - Next Space
+- `⌃1`…`⌃9`, `⌃0` - Focus global yabai spaces 1…10
+- `⌃⇧1`…`⌃⇧9`, `⌃⇧0` - Send the focused window to global yabai spaces 1…10
 
-Note: Space navigation wraps within the current display and relies on the yabai scripting addition for instant switching. If it stops working, reload the scripting addition or run the Yabai doctor.
+Arrow navigation wraps within the current display. Numbered navigation intentionally uses global yabai indices, but still routes through `scripts/yabai_control.sh` for validation, timeout, and focus-lock handling.
 
 #### Layout Modes (ctrl+shift)
 - `⌃⇧F` - Set Float Layout
@@ -144,6 +149,14 @@ Note: Space navigation wraps within the current display and relies on the yabai 
 - `⌃⇧S` - Set Stack Layout
 
 Note: Window-manager shortcuts are generated only when `modes.window_manager` permits them. Use `BARISTA_WINDOW_MANAGER_MODE=disabled` (or set `state.json` to disabled/optional) to suppress yabai/skhd bindings on machines without permissions.
+
+### Personal Leader Map
+
+The generated shortcut include does not own personal modal bindings. The
+dotfiles `skhdrc` owns `⌥Space`; its `a` key enters Agent mode, and `k` then
+invokes the managed-agent stop action. There is no global `⌘⌥K` binding.
+`shortcut_mode` is a dedicated hidden bar item that shows `LEADER` or `AGENT`
+without changing the Control Center layout label.
 
 ### Generating skhd Configuration
 

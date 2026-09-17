@@ -45,13 +45,15 @@ get_layout() {
     echo "Bar"
     return
   fi
-  if ! command -v yabai >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+  if ! command -v yabai >/dev/null 2>&1; then
     echo "---"
     return
   fi
-  local layout
-  if ! layout=$(run_with_timeout 1 yabai -m query --spaces --space 2>/dev/null | jq -r '.type // "unknown"' 2>/dev/null); then
+  local raw_output layout
+  if ! raw_output=$(run_with_timeout 1 yabai -m query --spaces --space 2>/dev/null); then
     layout="unknown"
+  else
+    layout=$(printf '%s\n' "$raw_output" | grep -E '"type"[[:space:]]*:' | head -n 1 | sed -E 's/.*"type"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' || echo "unknown")
   fi
   case "$layout" in
     bsp) echo "BSP" ;;
@@ -77,10 +79,10 @@ read_window_manager_mode() {
     normalize_window_manager_mode "$BARISTA_WINDOW_MANAGER_MODE"
     return
   fi
-  if command -v jq >/dev/null 2>&1 && [[ -f "$STATE_FILE" ]]; then
+  if [[ -f "$STATE_FILE" ]]; then
     local mode
-    mode="$(jq -r '.modes.window_manager // empty' "$STATE_FILE" 2>/dev/null || true)"
-    if [[ -n "$mode" && "$mode" != "null" ]]; then
+    mode="$(read_state_json_string "$STATE_FILE" "modes.window_manager" "" || true)"
+    if [[ -n "$mode" ]]; then
       normalize_window_manager_mode "$mode"
       return
     fi

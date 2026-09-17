@@ -88,7 +88,7 @@ PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   TEST_FRONT_APP_READY_ON_QUERY="2" \
   bash "$SCRIPT"
 
-grep -Fqx 'restart homebrew.mxcl.sketchybar' "$HELPER_LOG" || { echo "FAIL: reload helper should restart sketchybar via launch_agent_manager" >&2; exit 1; }
+grep -Fqx 'kickstart homebrew.mxcl.sketchybar' "$HELPER_LOG" || { echo "FAIL: normal reload should kickstart SketchyBar through launch_agent_manager" >&2; exit 1; }
 [ ! -f "$ITEM_FLAG" ] || { echo "FAIL: inclusive core-item readiness should avoid the raw reload fallback" >&2; exit 1; }
 if grep -Fqx -- '--reload' "$SKETCHYBAR_LOG"; then
   echo "FAIL: boundary-ready core item should not trigger sketchybar --reload" >&2
@@ -113,7 +113,7 @@ PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
   BARISTA_CORE_ITEM_WAIT_ATTEMPTS="1" \
   bash "$SCRIPT"
 
-grep -Fqx 'restart homebrew.mxcl.sketchybar' "$HELPER_LOG" || { echo "FAIL: fallback reload should restart sketchybar via launch_agent_manager" >&2; exit 1; }
+grep -Fqx 'kickstart homebrew.mxcl.sketchybar' "$HELPER_LOG" || { echo "FAIL: fallback reload should kickstart sketchybar via launch_agent_manager" >&2; exit 1; }
 [ -f "$ITEM_FLAG" ] || { echo "FAIL: reload helper should fall back to sketchybar --reload until the core item becomes available" >&2; exit 1; }
 [ "$(grep -Fxc -- '--reload' "$SKETCHYBAR_LOG")" -eq 1 ] || { echo "FAIL: missing core item should trigger exactly one raw reload fallback" >&2; exit 1; }
 [ -f "$SPACE_FLAG" ] || { echo "FAIL: reload helper should repair a missing space.1 synchronously" >&2; exit 1; }
@@ -173,7 +173,7 @@ for pid in "${PIDS[@]}"; do
   wait "$pid"
 done
 
-[ "$(grep -Fc 'restart homebrew.mxcl.sketchybar' "$HELPER_LOG")" -eq 1 ] || {
+[ "$(grep -Fc 'kickstart homebrew.mxcl.sketchybar' "$HELPER_LOG")" -eq 1 ] || {
   echo "FAIL: overlapping reload invocations must not steal a stale-looking lock from its live owner" >&2
   exit 1
 }

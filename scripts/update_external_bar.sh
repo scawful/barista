@@ -8,8 +8,9 @@ if [[ -z "$HEIGHT" ]]; then
   exit 1
 fi
 
-if ! command -v yabai >/dev/null 2>&1; then
+YABAI_BIN="${BARISTA_YABAI_BIN:-$(command -v yabai 2>/dev/null || true)}"
+if [ -z "$YABAI_BIN" ] || ! command -v "$YABAI_BIN" >/dev/null 2>&1; then
   exit 0
 fi
 
-yabai -m config external_bar all:"$HEIGHT":0 >/dev/null 2>&1 || true
+"$YABAI_BIN" -m config external_bar all:"$HEIGHT":0 >/dev/null 2>&1

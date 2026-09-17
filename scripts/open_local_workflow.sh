@@ -9,12 +9,20 @@ CONFIG_DIR="${BARISTA_CONFIG_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 SRC_DIR="${BARISTA_CODE_DIR:-$HOME/src}"
 LOG_FILE="${TMPDIR:-/tmp}/barista-local-workflow.log"
 GHOSTTY_APP="${BARISTA_GHOSTTY_APP:-/Applications/Ghostty.app}"
+OSASCRIPT_BIN="${BARISTA_OSASCRIPT_BIN:-/usr/bin/osascript}"
+OPEN_BIN="${BARISTA_OPEN_BIN:-/usr/bin/open}"
+PATH="$HOME/.local/bin:$SRC_DIR/config/dotfiles/bin:$HOME/bin:$PATH"
 
 usage() {
   printf '%s\n' \
     "usage: open_local_workflow.sh <workflow>" \
     "" \
     "Workflows:" \
+    "  antigravity         Launch Antigravity in a terminal" \
+    "  claude-code        Launch Claude Code in a terminal" \
+    "  workspace-navigator Open the ws workspace explorer" \
+    "  open-path PATH       Open a validated local path" \
+    "  stop-managed-agents Stop only registered autonomous agent trees" \
     "  ghostty              Open Ghostty" \
     "  lmstudio            Open LM Studio" \
     "  lmstudio-status     Show loaded LM Studio models in a terminal" \
@@ -47,7 +55,7 @@ resolve_dir() {
 open_path() {
   local path="$1"
   if [[ -e "$path" || -d "$path" ]]; then
-    open "$path"
+    "$OPEN_BIN" "$path"
     return 0
   fi
   return 1
@@ -57,7 +65,7 @@ open_app_or_repo() {
   local app_path="$1"
   local repo_path="$2"
   if [[ -d "$app_path" ]]; then
-    open "$app_path"
+    "$OPEN_BIN" "$app_path"
     return 0
   fi
   open_path "$repo_path"
@@ -66,14 +74,45 @@ open_app_or_repo() {
 terminal_session() {
   local command="$1"
   if [[ -d "$GHOSTTY_APP" ]]; then
-    open -na "$GHOSTTY_APP" --args -e /bin/zsh -lc "$command"
+    "$OPEN_BIN" -na "$GHOSTTY_APP" --args -e /bin/zsh -lc "$command"
     return 0
   fi
 
   local escaped
   escaped="${command//\\/\\\\}"
   escaped="${escaped//\"/\\\"}"
-  osascript -e "tell application \"Terminal\" to do script \"$escaped\""
+  "$OSASCRIPT_BIN" -e "tell application \"Terminal\" to do script \"$escaped\""
+}
+
+resolve_executable() {
+  local override="${1:-}"
+  shift || true
+  local candidate resolved
+  for candidate in "$override" "$@"; do
+    [[ -n "$candidate" ]] || continue
+    if [[ "$candidate" == */* ]]; then
+      if [[ -x "$candidate" ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+      continue
+    fi
+    resolved="$(command -v "$candidate" 2>/dev/null || true)"
+    if [[ -n "$resolved" && -x "$resolved" ]]; then
+      printf '%s\n' "$resolved"
+      return 0
+    fi
+  done
+  return 1
+}
+
+terminal_cli_session() {
+  local binary="$1"
+  shift || true
+  local command
+  printf -v command '%q ' "$binary" "$@"
+  command="${command% }"
+  terminal_session "$command; status=\$?; printf '\\n'; exec /bin/zsh -l"
 }
 
 background_exec() {
@@ -90,18 +129,63 @@ PREMIA_ROOT="$(resolve_dir "$SRC_DIR/lab/premia" "$SRC_DIR/premia")"
 
 workflow="${1:-}"
 case "$workflow" in
+  antigravity)
+    binary="$(resolve_executable "${ANTIGRAVITY_LAUNCHER:-}" \
+      "$SRC_DIR/config/dotfiles/bin/agy" agy || true)"
+    [[ -n "$binary" ]] || {
+      echo "Antigravity launcher not found" >&2
+      exit 127
+    }
+    terminal_cli_session "$binary"
+    ;;
+  claude-code|claude)
+    binary="$(resolve_executable "${CLAUDE_LAUNCHER:-}" \
+      "$SRC_DIR/config/dotfiles/bin/claude" claude || true)"
+    [[ -n "$binary" ]] || {
+      echo "Claude Code launcher not found" >&2
+      exit 127
+    }
+    terminal_cli_session "$binary"
+    ;;
+  workspace-navigator|ws)
+    binary="$(resolve_executable "${WS_LAUNCHER:-}" \
+      "$SRC_DIR/config/dotfiles/bin/ws" ws || true)"
+    [[ -n "$binary" ]] || {
+      echo "Workspace Navigator launcher not found" >&2
+      exit 127
+    }
+    terminal_cli_session "$binary" explore
+    ;;
+  open-path)
+    target="${2:-}"
+    [[ -n "$target" && -e "$target" ]] || {
+      echo "Local workflow path not found: ${target:-<empty>}" >&2
+      exit 1
+    }
+    "$OPEN_BIN" "$target"
+    ;;
+  stop-managed-agents)
+    binary="$(resolve_executable "${STOP_AGENTS_LAUNCHER:-}" \
+      "$SRC_DIR/tools/ws/stop-all-agents.sh" \
+      "$SRC_DIR/config/dotfiles/bin/stop-agents" stop-agents || true)"
+    [[ -n "$binary" ]] || {
+      echo "Managed agent stop command not found" >&2
+      exit 127
+    }
+    exec "$binary" --managed
+    ;;
   ghostty|terminal)
     if [[ -d "$GHOSTTY_APP" ]]; then
-      open -na "$GHOSTTY_APP"
+      "$OPEN_BIN" -na "$GHOSTTY_APP"
     else
-      open -a Terminal
+      "$OPEN_BIN" -a Terminal
     fi
     ;;
   lmstudio|lmstudio-open)
     if [[ -x "$CONFIG_DIR/scripts/lmstudio_control.sh" ]]; then
       "$CONFIG_DIR/scripts/lmstudio_control.sh" open
     else
-      open -ga "LM Studio" >/dev/null 2>&1 || open -a "LM Studio"
+      "$OPEN_BIN" -ga "LM Studio" >/dev/null 2>&1 || "$OPEN_BIN" -a "LM Studio"
     fi
     ;;
   lmstudio-status)
@@ -123,9 +207,9 @@ case "$workflow" in
   scawfulbot)
     app="$SCAWFULBOT_ROOT/apps/apple/build-macos/Build/Products/Debug/Scawfulbot.app"
     if [[ -d "$app" ]]; then
-      open "$app"
+      "$OPEN_BIN" "$app"
     else
-      open -b com.scawful.Scawfulbot.mac >/dev/null 2>&1 || open_path "$SCAWFULBOT_ROOT"
+      "$OPEN_BIN" -b com.scawful.Scawfulbot.mac >/dev/null 2>&1 || open_path "$SCAWFULBOT_ROOT"
     fi
     ;;
   scawfulbot-repo)
@@ -135,9 +219,9 @@ case "$workflow" in
     if command -v yaze-nightly >/dev/null 2>&1; then
       background_exec yaze-nightly
     elif [[ -d "$YAZE_ROOT/dist/nightly/yaze.app" ]]; then
-      open "$YAZE_ROOT/dist/nightly/yaze.app"
+      "$OPEN_BIN" "$YAZE_ROOT/dist/nightly/yaze.app"
     elif [[ -d "$YAZE_ROOT/dist/yaze-macos-local-test/yaze.app" ]]; then
-      open "$YAZE_ROOT/dist/yaze-macos-local-test/yaze.app"
+      "$OPEN_BIN" "$YAZE_ROOT/dist/yaze-macos-local-test/yaze.app"
     else
       open_path "$YAZE_ROOT"
     fi

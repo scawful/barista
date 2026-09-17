@@ -25,7 +25,8 @@ Commands:
   list [filter]       List LaunchAgents (JSON array). Optional substring filter by label.
   start <label>       Start or bootstrap the specified agent.
   stop <label>        Stop/bootout the specified agent.
-  restart <label>     Stop then start the specified agent.
+  restart <label>     Bootout then bootstrap the specified agent.
+  kickstart <label>   Replace the process without reloading its plist.
   status <label>      Print launchctl status for the agent.
 
 Labels correspond to launchctl labels (e.g., homebrew.mxcl.sketchybar).
@@ -41,6 +42,12 @@ die() {
 get_label_from_plist() {
   local plist="$1"
   if [[ -f "$plist" ]]; then
+    local label
+    label=$(sed -n '/<key>Label<\/key>/{n;s/.*<string>\(.*\)<\/string>.*/\1/p;q;}' "$plist" 2>/dev/null || true)
+    if [[ -n "$label" ]]; then
+      printf '%s\n' "$label"
+      return 0
+    fi
     if label="$($PLIST_BUDDY -c 'Print :Label' "$plist" 2>/dev/null)"; then
       printf '%s\n' "$label"
       return 0
@@ -65,6 +72,11 @@ resolve_plist() {
   local candidate="${PLIST_DIR}/${target}"
   if [[ -f "$candidate" ]]; then
     printf '%s\n' "$candidate"
+    return 0
+  fi
+  local candidate_plist="${PLIST_DIR}/${target}.plist"
+  if [[ -f "$candidate_plist" ]]; then
+    printf '%s\n' "$candidate_plist"
     return 0
   fi
   local match=""
@@ -193,10 +205,29 @@ status_agent() {
 }
 
 restart_agent() {
-  local label="$1"
-  stop_agent "$label" || true
-  sleep 0.3
-  start_agent "$label"
+  local target="$1"
+  [[ -z "$target" ]] && die "restart requires a label or plist path"
+  local plist
+  plist=$(resolve_plist "$target") || die "unable to find plist for ${target}"
+  local label
+  label=$(get_label_from_plist "$plist") || die "unable to read label for ${plist}"
+  if agent_loaded "$label"; then
+    launchctl bootout "${DOMAIN}/${label}"
+  fi
+  launchctl bootstrap "$DOMAIN" "$plist"
+  echo "Restarted ${label} via bootout/bootstrap."
+}
+
+kickstart_agent() {
+  local target="$1"
+  [[ -z "$target" ]] && die "kickstart requires a label or plist path"
+  local plist
+  plist=$(resolve_plist "$target") || die "unable to find plist for ${target}"
+  local label
+  label=$(get_label_from_plist "$plist") || die "unable to read label for ${plist}"
+  agent_loaded "$label" || die "${label} is not loaded"
+  launchctl kickstart -kp "${DOMAIN}/${label}"
+  echo "Kickstarted ${label}."
 }
 
 main() {
@@ -214,6 +245,9 @@ main() {
       ;;
     restart)
       restart_agent "${1:-}"
+      ;;
+    kickstart)
+      kickstart_agent "${1:-}"
       ;;
     status)
       status_agent "${1:-}"

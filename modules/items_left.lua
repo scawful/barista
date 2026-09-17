@@ -193,6 +193,23 @@ local function get_layout(ctx)
     background = { drawing = false },
     updates = false,
   }))
+  table.insert(layout, factory.create_item("shortcut_mode", {
+    position = "left",
+    drawing = false,
+    icon = { drawing = false },
+    label = {
+      drawing = true,
+      string = "",
+      color = tc("RED"),
+      padding_left = 8,
+      padding_right = 8,
+    },
+    ["label.font"] = font_bold,
+    associated_display = associated_displays,
+    associated_space = "all",
+    background = anchor_chip(),
+    updates = false,
+  }))
 
   if oracle_module and type(oracle_module.create_triforce_widget) == "function" then
     local triforce_start_ms = current_time_ms()
@@ -678,6 +695,7 @@ local function get_layout(ctx)
     table.insert(left_group_children, control_center_item_name)
     table.insert(popup_parents, control_center_item_name)
   end
+  table.insert(left_group_children, "shortcut_mode")
   table.insert(left_group_children, "front_app")
 
   if #left_group_children > 1 then

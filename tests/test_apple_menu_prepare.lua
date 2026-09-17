@@ -425,3 +425,54 @@ run_test("apple_menu.prepare: missing app rows stay hidden instead of becoming C
 
   cleanup(root)
 end)
+
+run_test("apple_menu.prepare: personal workflows collapse to two child menus", function()
+  local root = make_temp_dir("apple_menu_prepare_agentic_workspaces")
+  local config_dir = root .. "/config"
+  local code_dir = root .. "/code"
+  local cortex_bin = root .. "/bin/cortex"
+
+  mkdir(config_dir)
+  mkdir(root .. "/bin")
+  write_file(cortex_bin, "#!/bin/sh\nexit 0\n")
+  chmod_x(cortex_bin)
+
+  local ctx = build_ctx(root, { paths = { cortex_bin = cortex_bin } })
+  ctx.state.menus.extensions = {
+    packs = { "personal" },
+    items = {
+      { id = "antigravity", pack = "personal", label = "Antigravity", command = "run antigravity", surface = "apple_menu", section = "workflows", workflow_group = "agentic_ai", shortcut_action = "launch_antigravity", order = 100 },
+      { id = "loom", pack = "personal", label = "Loom", command = "run loom", surface = "apple_menu", section = "workflows", workflow_group = "agentic_ai", order = 110 },
+      { id = "workspace_navigator", pack = "personal", label = "Workspace Navigator", command = "run ws", surface = "apple_menu", section = "workflows", workflow_group = "workspaces", shortcut_action = "open_workspace_navigator", order = 200 },
+      { id = "workspace_yaze", pack = "personal", label = "Zelda (yaze)", command = "open yaze", surface = "apple_menu", section = "workflows", workflow_group = "workspaces", order = 210 },
+    },
+  }
+  local prepared = apple_menu.prepare(ctx)
+
+  assert_true(prepared.sections.workflows ~= nil, "workflows section should be defined")
+  assert_equal(prepared.sections.workflows.label, "Workflows", "workflows section label")
+
+  local by_id = {}
+  local workflow_roots = {}
+  for _, entry in ipairs(prepared.rendered or {}) do
+    by_id[entry.id] = entry
+    if entry.section == "workflows" then
+      table.insert(workflow_roots, entry)
+    end
+  end
+
+  assert_equal(#workflow_roots, 2, "workflows should consume at most two root rows")
+  assert_equal(workflow_roots[1].id, "agentic_ai", "agentic child should be first")
+  assert_equal(workflow_roots[2].id, "workspaces", "workspace child should be second")
+  assert_equal(#workflow_roots[1].items, 2, "agentic child should preserve launchers")
+  assert_equal(#workflow_roots[2].items, 2, "workspace child should preserve launchers")
+  assert_equal(workflow_roots[1].items[1].shortcut_action, "launch_antigravity", "shortcut metadata survives grouping")
+  assert_equal(workflow_roots[2].items[1].shortcut_action, "open_workspace_navigator", "workspace shortcut metadata survives grouping")
+  assert_nil(by_id.antigravity, "agent launchers should leave the root")
+  assert_nil(by_id.workspace_navigator, "workspace launchers should leave the root")
+  assert_nil(by_id.stop_agents, "emergency stop should never appear in the Apple menu")
+  assert_true(by_id.cortex ~= nil, "Cortex should remain in the Apps surface")
+
+  cleanup(root)
+end)
+

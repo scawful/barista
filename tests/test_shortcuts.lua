@@ -221,8 +221,8 @@ run_test("shortcuts.get_command: window display moves route through yabai_contro
   local prev_command = shortcuts.get_command("window_display_prev")
   assert_type(next_command, "string", "window_display_next command")
   assert_type(prev_command, "string", "window_display_prev command")
-  assert_true(next_command:match("yabai_control%.sh window%-display%-next") ~= nil, "next display move should route through yabai_control.sh")
-  assert_true(prev_command:match("yabai_control%.sh window%-display%-prev") ~= nil, "prev display move should route through yabai_control.sh")
+  assert_true(next_command:match("yabai_control%.sh' 'window%-display%-next") ~= nil, "next display move should route through yabai_control.sh")
+  assert_true(prev_command:match("yabai_control%.sh' 'window%-display%-prev") ~= nil, "prev display move should route through yabai_control.sh")
 end)
 
 run_test("shortcuts.get_command: reload uses serialized reload helper", function()
@@ -269,3 +269,65 @@ run_test("shortcuts.get: launch_z3ed is exposed when z3ed is available", functio
     assert_true(command:match("%$lock_dir") ~= nil, "launch_z3ed should preserve lock_dir for bash")
   end
 end)
+
+run_test("shortcuts.list_declared: includes agentic launchers and direct space shortcuts", function()
+  local declared = shortcuts.list_declared()
+  local by_action = {}
+  for _, item in ipairs(declared) do
+    by_action[item.action] = item
+  end
+
+  assert_true(by_action.launch_antigravity ~= nil, "launch_antigravity should be declared")
+  assert_equal(by_action.launch_antigravity.symbol, "⌘⌥A", "antigravity shortcut symbol")
+
+  assert_true(by_action.launch_claude_code ~= nil, "launch_claude_code should be declared")
+  assert_equal(by_action.launch_claude_code.symbol, "⌘⌥C", "claude code shortcut symbol")
+
+  assert_true(by_action.open_workspace_navigator ~= nil, "open_workspace_navigator should be declared")
+  assert_equal(by_action.open_workspace_navigator.symbol, "⌘⌥W", "workspace navigator symbol")
+
+  assert_nil(by_action.stop_all_agents, "destructive stop action should not have a global shortcut")
+
+  for index = 1, 10 do
+    local key = index == 10 and "0" or tostring(index)
+    assert_equal(by_action["focus_space_" .. index].symbol, "⌃" .. key, "focus space symbol")
+    assert_equal(by_action["send_window_space_" .. index].symbol, "⌃⇧" .. key, "send space symbol")
+  end
+end)
+
+run_test("shortcuts.get_command: space navigation actions route properly", function()
+  for i = 1, 10 do
+    local focus_cmd = shortcuts.get_command("focus_space_" .. i)
+    assert_true(focus_cmd:match("yabai_control%.sh' 'space%-focus' '" .. i .. "'") ~= nil, "focus space " .. i)
+    assert_true(focus_cmd:match("^yabai %-m") == nil, "focus space should not bypass yabai_control")
+
+    local send_cmd = shortcuts.get_command("send_window_space_" .. i)
+    assert_true(send_cmd:match("yabai_control%.sh' 'window%-space' '" .. i .. "'") ~= nil, "send window space " .. i)
+  end
+end)
+
+run_test("shortcuts.get_command: agentic launcher commands resolve properly", function()
+  local agy_cmd = shortcuts.get_command("launch_antigravity")
+  assert_type(agy_cmd, "string", "agy cmd string")
+  if agy_cmd ~= "" then
+    assert_true(agy_cmd:match("open_local_workflow%.sh") ~= nil, "agy should use shared workflow runner")
+    assert_true(agy_cmd:match("antigravity") ~= nil, "agy command should select antigravity workflow")
+  end
+
+  local claude_cmd = shortcuts.get_command("launch_claude_code")
+  assert_type(claude_cmd, "string", "claude cmd string")
+  if claude_cmd ~= "" then
+    assert_true(claude_cmd:match("open_local_workflow%.sh") ~= nil, "claude should use shared workflow runner")
+    assert_true(claude_cmd:match("claude%-code") ~= nil, "claude command should select claude workflow")
+  end
+
+  local ws_cmd = shortcuts.get_command("open_workspace_navigator")
+  assert_type(ws_cmd, "string", "ws cmd string")
+  if ws_cmd ~= "" then
+    assert_true(ws_cmd:match("open_local_workflow%.sh") ~= nil, "workspace should use shared workflow runner")
+    assert_true(ws_cmd:match("workspace%-navigator") ~= nil, "workspace command should select navigator workflow")
+  end
+
+  assert_equal(shortcuts.get_command("stop_all_agents"), "", "stop action should not be globally exposed")
+end)
+

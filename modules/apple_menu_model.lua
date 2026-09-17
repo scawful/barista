@@ -326,6 +326,8 @@ local function collect_interface_extensions(rendered, extensions, show_missing)
         label_color = extension.label_color,
         action = resolved_action,
         shortcut = extension.shortcut,
+        shortcut_action = extension.shortcut_action,
+        workflow_group = extension.workflow_group,
         missing = resolved_missing or not extension.available,
         order = extension.order or (1600 + index),
         default_index = 1300 + index,

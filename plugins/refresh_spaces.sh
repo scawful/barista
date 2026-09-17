@@ -23,6 +23,7 @@ BARISTA_ALL_SPACES_DATA="${BARISTA_ALL_SPACES_DATA:-}"
 SPACE_METRICS_FILE=""
 EXTERNAL_BAR_HEIGHT_CACHE_FILE="${CONFIG_DIR}/cache/external_bar_height"
 SPACE_ITEM_LOOKUP_FILE="${CONFIG_DIR}/cache/space_visuals/space_items"
+TOPOLOGY_DIRTY_FILE="${CONFIG_DIR}/cache/space_topology_dirty"
 BAR_SPACE_ITEMS_LOOKUP=""
 BAR_SPACE_ITEMS_LOADED=0
 CURRENT_SPACES_COUNT="0"
@@ -53,8 +54,22 @@ cleanup_metrics() {
 
 queue_coalesced_refresh() {
   local reason="${BARISTA_REASON:-${SENDER:-coalesced_refresh}}"
+  local kind="topology"
+  case "$reason" in
+    space_changed) kind="active" ;;
+    display_changed|display_added|display_removed) kind="display" ;;
+    space_topology_repair) kind="repair" ;;
+  esac
   mkdir -p "$(dirname "$PENDING_REFRESH_FILE")" >/dev/null 2>&1 || true
-  printf '%s' "$reason" > "$PENDING_REFRESH_FILE" 2>/dev/null || true
+  # Separate atomic markers prevent a later focus event from overwriting a
+  # display/topology repair. Every burst occupies at most four empty markers.
+  mkdir "$PENDING_REFRESH_FILE.$kind" 2>/dev/null || true
+  if [ "${BARISTA_SPACE_ACTIVE_PENDING:-0}" = "1" ]; then
+    mkdir "$PENDING_REFRESH_FILE.active" 2>/dev/null || true
+  fi
+  if [ "${BARISTA_TOPOLOGY_APPLY_RETRY:-0}" = "1" ]; then
+    mkdir "$PENDING_REFRESH_FILE.repair" 2>/dev/null || true
+  fi
 
   if ! mkdir "$PENDING_REFRESH_LOCK_DIR" 2>/dev/null; then
     return 0
@@ -68,12 +83,32 @@ queue_coalesced_refresh() {
       sleep 0.05
       tries=$((tries + 1))
     done
-    [ -f "$PENDING_REFRESH_FILE" ] || exit 0
+    # Open the waiter slot before consuming markers or sampling live state.
+    # Events arriving after consumption can then queue another serialized pass.
+    rmdir "$PENDING_REFRESH_LOCK_DIR" >/dev/null 2>&1 || true
+    trap - EXIT
     local pending_reason=""
-    IFS= read -r pending_reason < "$PENDING_REFRESH_FILE" || pending_reason=""
-    rm -f "$PENDING_REFRESH_FILE" >/dev/null 2>&1 || true
-    [ -n "$pending_reason" ] || pending_reason="coalesced_refresh"
-    BARISTA_REASON="$pending_reason" CONFIG_DIR="$CONFIG_DIR" "$0" >/dev/null 2>&1 &
+    local pending_active=0
+    local pending_retry=0
+    local pending_kind
+    for pending_kind in active topology display repair; do
+      if rmdir "$PENDING_REFRESH_FILE.$pending_kind" 2>/dev/null; then
+        case "$pending_kind" in
+          active) pending_reason="space_changed"; pending_active=1 ;;
+          topology) pending_reason="coalesced_refresh" ;;
+          display) pending_reason="display_changed" ;;
+          repair) pending_retry=1 ;;
+        esac
+      fi
+    done
+    if [ "$pending_retry" -eq 1 ] && [ -z "$pending_reason" ]; then
+      pending_reason="space_topology_repair"
+    fi
+    [ -n "$pending_reason" ] || exit 0
+    BARISTA_REASON="$pending_reason" SENDER="$pending_reason" \
+      BARISTA_SPACE_ACTIVE_PENDING="$pending_active" \
+      BARISTA_TOPOLOGY_APPLY_RETRY="$pending_retry" BARISTA_ALL_SPACES_DATA="" \
+      CONFIG_DIR="$CONFIG_DIR" "$0" >/dev/null 2>&1 || true
   ) >/dev/null 2>&1 &
 }
 
@@ -90,7 +125,7 @@ update_external_bar_if_needed() {
     should_update=1
   fi
 
-  case "${SENDER:-${BARISTA_REASON:-}}" in
+  case "${BARISTA_REASON:-${SENDER:-}}" in
     display_changed|display_added|display_removed)
       should_update=1
       ;;
@@ -98,7 +133,7 @@ update_external_bar_if_needed() {
 
   if [ "$should_update" -eq 1 ]; then
     mkdir -p "$(dirname "$EXTERNAL_BAR_HEIGHT_CACHE_FILE")" 2>/dev/null || true
-    "$SCRIPTS_DIR/update_external_bar.sh" "$bar_height"
+    "$SCRIPTS_DIR/update_external_bar.sh" "$bar_height" || return 0
     printf '%s' "$bar_height" > "$EXTERNAL_BAR_HEIGHT_CACHE_FILE" 2>/dev/null || true
   fi
 }
@@ -279,12 +314,15 @@ trigger_space_mode_refresh() {
 }
 
 dispatch_space_active_refresh_if_needed() {
-  [ "$BARISTA_REASON" = "space_changed" ] || return 0
+  [ "$BARISTA_REASON" = "space_changed" ] \
+    || [ "${BARISTA_SPACE_ACTIVE_PENDING:-0}" = "1" ] || return 0
   [ -n "$SKETCHYBAR_BIN" ] || return 0
   "$SKETCHYBAR_BIN" --trigger space_active_refresh >/dev/null 2>&1 || true
 }
 
 fast_active_refresh_from_cache() {
+  [ ! -f "$TOPOLOGY_DIRTY_FILE" ] || return 1
+  [ "${BARISTA_TOPOLOGY_APPLY_RETRY:-0}" != "1" ] || return 1
   [ "$BARISTA_REASON" = "space_changed" ] || return 1
   [ -f "$CACHE_FILE" ] || return 1
   [ -f "$ACTIVE_CACHE_FILE" ] || return 1
@@ -440,11 +478,18 @@ fi
 if [ -n "$current_display_state$current_space_state" ]; then
   combined_state="${current_display_state}|${current_space_state}"
   cached_state="$(cat "$CACHE_FILE" 2>/dev/null || true)"
-  if [ "$combined_state" = "$cached_state" ]; then
+  if [ "$combined_state" = "$cached_state" ] \
+    && [ "${BARISTA_TOPOLOGY_APPLY_RETRY:-0}" != "1" ] && [ ! -f "$TOPOLOGY_DIRTY_FILE" ]; then
     if space_items_present && space_items_match_expected_height; then
+      case "${BARISTA_REASON:-${SENDER:-}}" in
+        display_changed|display_added|display_removed)
+          update_external_bar_if_needed "$(resolve_external_bar_height "${1:-}")"
+          ;;
+      esac
       spaces_count="${CURRENT_SPACES_COUNT:-0}"
       cached_active_state="$(cat "$ACTIVE_CACHE_FILE" 2>/dev/null || true)"
-      if [ -n "$current_active_state" ] && [ "$current_active_state" != "$cached_active_state" ]; then
+      if [ -n "$current_active_state" ] \
+        && { [ "$current_active_state" != "$cached_active_state" ] || [ "${BARISTA_SPACE_ACTIVE_PENDING:-0}" = "1" ]; }; then
         printf '%s' "$current_active_state" >"$ACTIVE_CACHE_FILE" || true
         visual_refresh_start_ms="$(now_ms)"
         refresh_space_visuals "space_active_refresh"
@@ -469,14 +514,18 @@ if [ -n "$current_display_state$current_space_state" ]; then
       rm -f "$ICON_CACHE_DIR"/* 2>/dev/null || true
     fi
   fi
-  printf '%s' "$combined_state" >"$CACHE_FILE" || true
-  printf '%s' "$current_active_state" >"$ACTIVE_CACHE_FILE" || true
 fi
 
 # OPTIMIZED: Removed sleep - the cache check above provides sufficient debouncing
 
 create_metrics_file
 BARISTA_SPACE_METRICS_FILE="$SPACE_METRICS_FILE" BARISTA_ALL_SPACES_DATA="${ALL_SPACES_DATA:-}" "$CONFIG_DIR/plugins/simple_spaces.sh"
+
+# A failed apply must not make later focus events trust the uncommitted map.
+if [ -n "${combined_state:-}" ]; then
+  printf '%s' "$combined_state" >"$CACHE_FILE" || true
+  printf '%s' "$current_active_state" >"$ACTIVE_CACHE_FILE" || true
+fi
 
 dispatch_space_active_refresh_if_needed
 trigger_space_mode_refresh

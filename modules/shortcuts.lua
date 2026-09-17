@@ -11,6 +11,7 @@ local ui = require("ui_builder")
 
 local HOME = os.getenv("HOME") or ""
 local CONFIG_DIR = locator.resolve_config_dir()
+local LOCAL_WORKFLOW_SCRIPT = CONFIG_DIR .. "/scripts/open_local_workflow.sh"
 
 local function nonblank(value)
   return type(value) == "string" and value:match("%S") and value or nil
@@ -173,6 +174,13 @@ local function window_manager_enabled()
 end
 
 local SCRIPTS_DIR = paths_module.resolve_scripts_dir(CONFIG_DIR, runtime_state)
+local function script_action(path, ...)
+  local parts = { shell_quote(path) }
+  for _, arg in ipairs({ ... }) do
+    table.insert(parts, shell_quote(arg))
+  end
+  return table.concat(parts, " ")
+end
 local shared_opts = {
   config_dir = CONFIG_DIR,
   code_dir = runtime_state.paths and (runtime_state.paths.code_dir or runtime_state.paths.code) or nil,
@@ -181,20 +189,6 @@ local shared_opts = {
 local CODE_DIR = locator.resolve_code_dir(shared_opts)
 shared_opts.code_dir = CODE_DIR
 
-local AFS_ROOT = select(1, locator.resolve_afs_root(shared_opts))
-local AFS_STUDIO_ROOT = select(1, locator.resolve_afs_studio_root(shared_opts, AFS_ROOT))
-local AFS_APPS_LAUNCHER, AFS_APPS_LAUNCHER_OK = locator.resolve_afs_apps_launcher(shared_opts)
-local AFS_STUDIO_LAUNCHER, AFS_STUDIO_LAUNCHER_OK = locator.resolve_afs_studio_launcher(shared_opts)
-local AFS_BROWSER_APP = select(1, locator.resolve_afs_browser_app(shared_opts))
-local GHOSTTY_APP = select(1, locator.resolve_ghostty_app(shared_opts))
-local STEMFORGE_APP = select(1, locator.resolve_stemforge_app(shared_opts))
-local STEM_SAMPLER_APP = select(1, locator.resolve_stem_sampler_app(shared_opts))
-local YAZE_APP, YAZE_OK = locator.resolve_yaze_app(shared_opts)
-local YAZE_LAUNCHER = select(1, locator.resolve_yaze_launcher())
-local Z3ED_BIN, Z3ED_OK = locator.resolve_z3ed_launcher(shared_opts)
-local SYS_MANUAL_BIN, SYS_MANUAL_OK = locator.resolve_sys_manual_binary(shared_opts)
-local HELP_CENTER_BIN, HELP_CENTER_OK = locator.resolve_help_center_bin(CONFIG_DIR)
-local ICON_BROWSER_BIN, ICON_BROWSER_OK = locator.resolve_icon_browser_bin(CONFIG_DIR)
 local function integration_flag(name)
   local integrations = runtime_state.integrations
   local entry = type(integrations) == "table" and integrations[name] or nil
@@ -204,10 +198,33 @@ local function integration_flag(name)
   return entry.enabled ~= false
 end
 
-local YAZE_FLAG = integration_flag("yaze")
-local YAZE_AVAILABLE = YAZE_OK or (YAZE_LAUNCHER and YAZE_LAUNCHER ~= "")
-local YAZE_ENABLED = (YAZE_FLAG == nil) and YAZE_AVAILABLE or (YAZE_FLAG and YAZE_AVAILABLE)
-local YAZE_DIR = select(1, locator.resolve_yaze_dir(shared_opts)) or (CODE_DIR .. "/hobby/yaze")
+local function agent_launchers_enabled()
+  local explicit = integration_flag("agent_launchers")
+  if explicit ~= nil then
+    return explicit
+  end
+  local machine = type(runtime_state.machine) == "table" and runtime_state.machine or {}
+  if machine.restricted == true then
+    return false
+  end
+  local selected_profile = runtime_state.profile
+    or os.getenv("BARISTA_PROFILE")
+    or os.getenv("SKETCHYBAR_PROFILE")
+    or "minimal"
+  return selected_profile ~= "work" and selected_profile ~= "minimal" and selected_profile ~= "restricted"
+end
+
+local function get_yaze_dir()
+  return select(1, locator.resolve_yaze_dir(shared_opts)) or (CODE_DIR .. "/hobby/yaze")
+end
+
+local function get_yaze_enabled()
+  local yaze_flag = integration_flag("yaze")
+  local yaze_app, yaze_ok = locator.resolve_yaze_app(shared_opts)
+  local yaze_launcher = select(1, locator.resolve_yaze_launcher())
+  local yaze_available = yaze_ok or (yaze_launcher and yaze_launcher ~= "")
+  return (yaze_flag == nil) and yaze_available or (yaze_flag and yaze_available)
+end
 
 local function open_path_command(path)
   if not path or path == "" then
@@ -326,9 +343,14 @@ local function debounced_command(key, command)
   return "bash -lc " .. bash_literal(wrapped)
 end
 
+local function get_ghostty_app()
+  return select(1, locator.resolve_ghostty_app(shared_opts))
+end
+
 local function terminal_app_command()
-  if GHOSTTY_APP and GHOSTTY_APP ~= "" then
-    return debounced_command("open_terminal", string.format("open -na %s", shell_quote(GHOSTTY_APP)))
+  local ghostty = get_ghostty_app()
+  if ghostty and ghostty ~= "" then
+    return debounced_command("open_terminal", string.format("open -na %s", shell_quote(ghostty)))
   end
   return "open -a Terminal"
 end
@@ -337,13 +359,21 @@ local function terminal_session_command(key, command)
   if not command or command == "" then
     return terminal_app_command()
   end
-  if GHOSTTY_APP and GHOSTTY_APP ~= "" then
+  local ghostty = get_ghostty_app()
+  if ghostty and ghostty ~= "" then
     return debounced_command(
       key or "ghostty_session",
-      string.format("open -na %s --args -e /bin/zsh -lc %s", shell_quote(GHOSTTY_APP), shell_quote(command))
+      string.format("open -na %s --args -e /bin/zsh -lc %s", shell_quote(ghostty), shell_quote(command))
     )
   end
   return shortcuts.build_terminal_session_command(command)
+end
+
+local function local_workflow_action(workflow)
+  if not locator.path_exists(LOCAL_WORKFLOW_SCRIPT, false) then
+    return ""
+  end
+  return shell_quote(LOCAL_WORKFLOW_SCRIPT) .. " " .. shell_quote(workflow)
 end
 
 local function open_app_command(app_path, app_name)
@@ -357,8 +387,9 @@ local function open_app_command(app_path, app_name)
 end
 
 local function help_center_action()
-  if HELP_CENTER_OK and HELP_CENTER_BIN then
-    return shell_quote(HELP_CENTER_BIN)
+  local help_center_bin, help_center_ok = locator.resolve_help_center_bin(CONFIG_DIR)
+  if help_center_ok and help_center_bin then
+    return shell_quote(help_center_bin)
   end
   local fallback_doc = CONFIG_DIR .. "/docs/features/ICONS_AND_SHORTCUTS.md"
   if locator.path_exists(fallback_doc, false) then
@@ -368,8 +399,9 @@ local function help_center_action()
 end
 
 local function icon_browser_action()
-  if ICON_BROWSER_OK and ICON_BROWSER_BIN then
-    return shell_quote(ICON_BROWSER_BIN)
+  local icon_browser_bin, icon_browser_ok = locator.resolve_icon_browser_bin(CONFIG_DIR)
+  if icon_browser_ok and icon_browser_bin then
+    return shell_quote(icon_browser_bin)
   end
   local fallback_doc = CONFIG_DIR .. "/docs/features/ICON_REFERENCE.md"
   if locator.path_exists(fallback_doc, false) then
@@ -379,8 +411,9 @@ local function icon_browser_action()
 end
 
 local function sys_manual_action()
-  if SYS_MANUAL_OK and SYS_MANUAL_BIN then
-    return shell_quote(SYS_MANUAL_BIN)
+  local sys_manual_bin, sys_manual_ok = locator.resolve_sys_manual_binary(shared_opts)
+  if sys_manual_ok and sys_manual_bin then
+    return shell_quote(sys_manual_bin)
   end
   return ""
 end
@@ -407,19 +440,25 @@ end
 shortcuts._build_afs_studio_action = build_afs_studio_action
 
 local function afs_studio_action()
-  local studio_bin, studio_bin_ok = locator.resolve_afs_studio_binary(AFS_STUDIO_ROOT)
+  local afs_root = select(1, locator.resolve_afs_root(shared_opts))
+  local studio_root = select(1, locator.resolve_afs_studio_root(shared_opts, afs_root))
+  local apps_launcher, apps_launcher_ok = locator.resolve_afs_apps_launcher(shared_opts)
+  local studio_launcher, studio_launcher_ok = locator.resolve_afs_studio_launcher(shared_opts)
+  local studio_bin, studio_bin_ok = locator.resolve_afs_studio_binary(studio_root)
   return build_afs_studio_action({
-    apps_launcher = AFS_APPS_LAUNCHER,
-    apps_launcher_ok = AFS_APPS_LAUNCHER_OK,
+    apps_launcher = apps_launcher,
+    apps_launcher_ok = apps_launcher_ok,
     studio_bin = studio_bin,
     studio_bin_ok = studio_bin_ok,
-    studio_launcher = AFS_STUDIO_LAUNCHER,
-    studio_launcher_ok = AFS_STUDIO_LAUNCHER_OK,
+    studio_launcher = studio_launcher,
+    studio_launcher_ok = studio_launcher_ok,
   })
 end
 
 local function afs_labeler_action()
-  local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(AFS_STUDIO_ROOT, shared_opts)
+  local afs_root = select(1, locator.resolve_afs_root(shared_opts))
+  local studio_root = select(1, locator.resolve_afs_studio_root(shared_opts, afs_root))
+  local labeler_bin, labeler_bin_ok = locator.resolve_afs_labeler_binary(studio_root, shared_opts)
   if labeler_bin_ok and labeler_bin then
     if labeler_bin:match("%.app/?$") then
       return open_path_command(labeler_bin)
@@ -434,34 +473,36 @@ local function afs_labeler_action()
   return ""
 end
 
-local AFS_STUDIO_ACTION = afs_studio_action()
-local AFS_BROWSER_ACTION = open_app_command(AFS_BROWSER_APP, "")
-if AFS_BROWSER_ACTION == "" then
-  AFS_BROWSER_ACTION = AFS_STUDIO_ACTION
-end
-local AFS_LABELER_ACTION = afs_labeler_action()
-local STEMFORGE_ACTION = open_app_command(STEMFORGE_APP, "StemForge")
-local STEM_SAMPLER_ACTION = open_app_command(STEM_SAMPLER_APP, "StemSampler")
-local YAZE_ACTION = ""
-if YAZE_ENABLED then
-  if YAZE_OK and YAZE_APP and YAZE_APP ~= "" then
-    YAZE_ACTION = open_app_command(YAZE_APP, "Yaze")
-  elseif YAZE_LAUNCHER and YAZE_LAUNCHER ~= "" then
-    YAZE_ACTION = shell_quote(YAZE_LAUNCHER)
+local function get_yaze_action()
+  if not get_yaze_enabled() then return "" end
+  local yaze_app, yaze_ok = locator.resolve_yaze_app(shared_opts)
+  if yaze_ok and yaze_app and yaze_app ~= "" then
+    return open_app_command(yaze_app, "Yaze")
   end
+  local yaze_launcher = select(1, locator.resolve_yaze_launcher())
+  if yaze_launcher and yaze_launcher ~= "" then
+    return shell_quote(yaze_launcher)
+  end
+  return ""
 end
-local OPEN_TERMINAL_ACTION = terminal_app_command()
-local TASK_FOCUS_ACTION = task_focus_action()
-local TASK_CAPTURE_ACTION = task_capture_action()
-local TASK_SOURCE_CONFIGURED = shortcuts.has_task_source(runtime_state)
-local Z3ED_ACTION = ""
-if Z3ED_OK and Z3ED_BIN and Z3ED_BIN ~= "" then
-  local command = string.format(
-    "cd %s && clear && printf 'z3ed\\n\\n' && %s --help; printf '\\n'; exec /bin/zsh -l",
-    shell_quote(YAZE_DIR),
-    shell_quote(Z3ED_BIN)
-  )
-  Z3ED_ACTION = terminal_session_command("launch_z3ed", command)
+
+local z3ed_action_cache = nil
+local function get_z3ed_action()
+  if z3ed_action_cache ~= nil then
+    return z3ed_action_cache
+  end
+  local z3ed_bin, z3ed_ok = locator.resolve_z3ed_launcher(shared_opts)
+  if z3ed_ok and z3ed_bin and z3ed_bin ~= "" then
+    local command = string.format(
+      "cd %s && clear && printf 'z3ed\\n\\n' && %s --help; printf '\\n'; exec /bin/zsh -l",
+      shell_quote(get_yaze_dir()),
+      shell_quote(z3ed_bin)
+    )
+    z3ed_action_cache = terminal_session_command("launch_z3ed", command)
+  else
+    z3ed_action_cache = ""
+  end
+  return z3ed_action_cache
 end
 
 -- Modifier key symbols and their skhd representations
@@ -573,6 +614,32 @@ shortcuts.global = {
     symbol = "⌘⌥⇧R"
   },
 
+  -- Agentic AI Launchers
+  {
+    mods = {"cmd", "alt"},
+    key = "a",
+    action = "launch_antigravity",
+    desc = "Launch Antigravity",
+    symbol = "⌘⌥A",
+    requires = "agent_launchers",
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "c",
+    action = "launch_claude_code",
+    desc = "Launch Claude Code",
+    symbol = "⌘⌥C",
+    requires = "agent_launchers",
+  },
+  {
+    mods = {"cmd", "alt"},
+    key = "w",
+    action = "open_workspace_navigator",
+    desc = "Workspace Navigator",
+    symbol = "⌘⌥W",
+    requires = "agent_launchers",
+  },
+
   -- Yabai Controls
   {
     mods = {"cmd", "alt"},
@@ -646,100 +713,190 @@ shortcuts.global = {
   },
 }
 
+for index = 1, 10 do
+  local key = index == 10 and "0" or tostring(index)
+  table.insert(shortcuts.global, {
+    mods = {"ctrl"},
+    key = key,
+    action = "focus_space_" .. index,
+    desc = "Focus Space " .. index,
+    symbol = "⌃" .. key,
+    requires = "window_manager",
+  })
+  table.insert(shortcuts.global, {
+    mods = {"ctrl", "shift"},
+    key = key,
+    action = "send_window_space_" .. index,
+    desc = "Send Window to Space " .. index,
+    symbol = "⌃⇧" .. key,
+    requires = "window_manager",
+  })
+end
+
 -- Action handlers (maps action names to actual commands)
-shortcuts.actions = {
+shortcuts.actions = setmetatable({
   -- SketchyBar
-  reload_sketchybar = CONFIG_DIR .. "/plugins/reload_sketchybar.sh",
-  rebuild_and_reload = CONFIG_DIR .. "/bin/rebuild_sketchybar.sh",
-  open_control_panel = CONFIG_DIR .. "/bin/open_control_panel.sh --tab home",
-  open_task_focus = TASK_FOCUS_ACTION,
-  capture_task = TASK_CAPTURE_ACTION,
+  reload_sketchybar = script_action(CONFIG_DIR .. "/plugins/reload_sketchybar.sh"),
+  rebuild_and_reload = script_action(CONFIG_DIR .. "/bin/rebuild_sketchybar.sh"),
+  open_control_panel = script_action(CONFIG_DIR .. "/bin/open_control_panel.sh", "--tab", "home"),
   toggle_control_center = shortcuts.build_control_center_toggle_command(shortcuts.resolve_control_center_item_name(runtime_state)),
-  open_help_center = help_center_action(),
-  open_icon_browser = icon_browser_action(),
-  open_sys_manual = sys_manual_action(),
-  toggle_keyboard_overlay = CONFIG_DIR .. "/scripts/open_keyboard_overlay.sh",
+  toggle_keyboard_overlay = script_action(CONFIG_DIR .. "/scripts/open_keyboard_overlay.sh"),
 
   -- Yabai
-  toggle_yabai_shortcuts = SCRIPTS_DIR .. "/toggle_shortcuts.sh toggle",
-  toggle_layout = SCRIPTS_DIR .. "/yabai_control.sh toggle-layout",
-  balance_windows = SCRIPTS_DIR .. "/yabai_control.sh balance",
-  rotate_layout = SCRIPTS_DIR .. "/yabai_control.sh space-rotate",
+  toggle_yabai_shortcuts = script_action(SCRIPTS_DIR .. "/toggle_shortcuts.sh", "toggle"),
+  toggle_layout = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "toggle-layout"),
+  balance_windows = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "balance"),
+  rotate_layout = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "space-rotate"),
 
   -- Window
-  toggle_float = SCRIPTS_DIR .. "/yabai_control.sh window-toggle-float",
-  toggle_fullscreen = SCRIPTS_DIR .. "/yabai_control.sh window-toggle-fullscreen",
-  center_window = SCRIPTS_DIR .. "/yabai_control.sh window-center",
-  minimize_window = "yabai -m window --minimize",
-  maximize_window = "yabai -m window --toggle zoom-fullscreen",
-  restore_window = "yabai -m window --toggle zoom-fullscreen",
+  toggle_float = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-toggle-float"),
+  toggle_fullscreen = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-toggle-fullscreen"),
+  center_window = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-center"),
+  minimize_window = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-minimize"),
+  maximize_window = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-toggle-fullscreen"),
+  restore_window = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-toggle-fullscreen"),
 
   -- Display
-  window_display_next = SCRIPTS_DIR .. "/yabai_control.sh window-display-next",
-  window_display_prev = SCRIPTS_DIR .. "/yabai_control.sh window-display-prev",
+  window_display_next = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-display-next"),
+  window_display_prev = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-display-prev"),
 
   -- Space Navigation
-  space_prev = SCRIPTS_DIR .. "/yabai_control.sh space-focus-prev-wrap",
-  space_next = SCRIPTS_DIR .. "/yabai_control.sh space-focus-next-wrap",
-  space_recent = SCRIPTS_DIR .. "/yabai_control.sh space-recent",
+  space_prev = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "space-focus-prev-wrap"),
+  space_next = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "space-focus-next-wrap"),
+  space_recent = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "space-recent"),
 
   -- Space Movement
-  window_space_next = SCRIPTS_DIR .. "/yabai_control.sh window-space-next",
-  window_space_prev = SCRIPTS_DIR .. "/yabai_control.sh window-space-prev",
-  send_window_space_1 = SCRIPTS_DIR .. "/yabai_control.sh window-space 1",
-  send_window_space_2 = SCRIPTS_DIR .. "/yabai_control.sh window-space 2",
-  send_window_space_3 = SCRIPTS_DIR .. "/yabai_control.sh window-space 3",
-  send_window_space_4 = SCRIPTS_DIR .. "/yabai_control.sh window-space 4",
-  send_window_space_5 = SCRIPTS_DIR .. "/yabai_control.sh window-space 5",
+  window_space_next = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-space-next"),
+  window_space_prev = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-space-prev"),
 
   -- Layout Modes
-  set_layout_float = SCRIPTS_DIR .. "/space_mode.sh current float",
-  set_layout_bsp = SCRIPTS_DIR .. "/space_mode.sh current bsp",
-  set_layout_stack = SCRIPTS_DIR .. "/space_mode.sh current stack",
-
-  -- Apps
-  open_terminal = OPEN_TERMINAL_ACTION,
-  launch_afs_browser = AFS_BROWSER_ACTION,
-  launch_afs_studio = AFS_STUDIO_ACTION,
-  launch_afs_labeler = AFS_LABELER_ACTION,
-  launch_stemforge = STEMFORGE_ACTION,
-  launch_stem_sampler = STEM_SAMPLER_ACTION,
-  launch_yaze = YAZE_ACTION,
-  launch_z3ed = Z3ED_ACTION,
+  set_layout_float = script_action(SCRIPTS_DIR .. "/space_mode.sh", "current", "float"),
+  set_layout_bsp = script_action(SCRIPTS_DIR .. "/space_mode.sh", "current", "bsp"),
+  set_layout_stack = script_action(SCRIPTS_DIR .. "/space_mode.sh", "current", "stack"),
 
   -- Window Focus (vim keys)
-  focus_window_west = "yabai -m window --focus west",
-  focus_window_south = "yabai -m window --focus south",
-  focus_window_north = "yabai -m window --focus north",
-  focus_window_east = "yabai -m window --focus east",
+  focus_window_west = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-focus-west"),
+  focus_window_south = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-focus-south"),
+  focus_window_north = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-focus-north"),
+  focus_window_east = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-focus-east"),
 
   -- Space Focus
-  focus_space_1 = "yabai -m space --focus 1",
-  focus_space_2 = "yabai -m space --focus 2",
-  focus_space_3 = "yabai -m space --focus 3",
-  focus_space_4 = "yabai -m space --focus 4",
-  focus_space_5 = "yabai -m space --focus 5",
-  focus_space_6 = "yabai -m space --focus 6",
-  focus_space_7 = "yabai -m space --focus 7",
-  focus_space_8 = "yabai -m space --focus 8",
-  focus_space_9 = "yabai -m space --focus 9",
-  focus_space_10 = "yabai -m space --focus 10",
-}
+}, {
+  __index = function(t, key)
+    local val = nil
+    if key == "open_terminal" then
+      val = terminal_app_command()
+    elseif key == "open_task_focus" then
+      val = task_focus_action()
+    elseif key == "capture_task" then
+      val = task_capture_action()
+    elseif key == "open_help_center" then
+      val = help_center_action()
+    elseif key == "open_icon_browser" then
+      val = icon_browser_action()
+    elseif key == "open_sys_manual" then
+      val = sys_manual_action()
+    elseif key == "launch_antigravity" then
+      local launcher = agent_launchers_enabled() and select(1, locator.resolve_antigravity_launcher(shared_opts)) or nil
+      if launcher and launcher ~= "" then
+        val = debounced_command("launch_antigravity", local_workflow_action("antigravity"))
+      else
+        val = ""
+      end
+    elseif key == "launch_claude_code" then
+      local launcher = agent_launchers_enabled() and select(1, locator.resolve_claude_launcher(shared_opts)) or nil
+      if launcher and launcher ~= "" then
+        val = debounced_command("launch_claude_code", local_workflow_action("claude-code"))
+      else
+        val = ""
+      end
+    elseif key == "open_workspace_navigator" then
+      local launcher = agent_launchers_enabled() and select(1, locator.resolve_ws_launcher(shared_opts)) or nil
+      if launcher and launcher ~= "" then
+        val = debounced_command("open_workspace_navigator", local_workflow_action("workspace-navigator"))
+      else
+        val = ""
+      end
+    elseif key == "launch_loom" then
+      local launcher = select(1, locator.resolve_loom_launcher(shared_opts))
+      if launcher and launcher ~= "" then
+        val = local_workflow_action("loom")
+      else
+        val = ""
+      end
+    elseif key == "open_handoff_notes" then
+      local handoff_doc = CONFIG_DIR .. "/docs/guides/HANDOFF.md"
+      if locator.path_exists(handoff_doc, false) then
+        val = open_path_command(handoff_doc)
+      else
+        val = ""
+      end
+    elseif key == "launch_cortex" then
+      local cortex_launcher, cortex_ok = locator.resolve_cortex_launcher(shared_opts)
+      if cortex_ok and cortex_launcher and cortex_launcher ~= "" then
+        val = open_app_command(cortex_launcher, "Cortex")
+      else
+        val = ""
+      end
+    elseif key == "launch_afs_browser" then
+      local app = select(1, locator.resolve_afs_browser_app(shared_opts))
+      local cmd = open_app_command(app, "")
+      val = (cmd ~= "") and cmd or afs_studio_action()
+    elseif key == "launch_afs_studio" then
+      val = afs_studio_action()
+    elseif key == "launch_afs_labeler" then
+      val = afs_labeler_action()
+    elseif key == "launch_stemforge" then
+      local app = select(1, locator.resolve_stemforge_app(shared_opts))
+      val = open_app_command(app, "StemForge")
+    elseif key == "launch_stem_sampler" then
+      local app = select(1, locator.resolve_stem_sampler_app(shared_opts))
+      val = open_app_command(app, "StemSampler")
+    elseif key == "launch_yaze" then
+      val = get_yaze_action()
+    elseif key == "launch_z3ed" then
+      val = get_z3ed_action()
+    else
+      local focus_index = key:match("^focus_space_(%d+)$")
+      if focus_index then
+        val = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "space-focus", focus_index)
+      else
+        local send_index = key:match("^send_window_space_(%d+)$")
+        if send_index then
+          val = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-space", send_index)
+        end
+      end
+    end
+    if val ~= nil then
+      if val ~= "" then
+        rawset(t, key, val)
+      end
+      return val
+    end
+    return nil
+  end
+})
 
 local function all_shortcuts()
   local list = {}
   local wm_enabled = window_manager_enabled()
+  local yaze_enabled = get_yaze_enabled()
+  local z3ed_available = get_z3ed_action() ~= ""
+  local task_source_configured = shortcuts.has_task_source(runtime_state)
+  local agent_launchers_available = agent_launchers_enabled()
   for _, shortcut in ipairs(shortcuts.global) do
     local requires = shortcut.requires
     if not requires then
       table.insert(list, shortcut)
-    elseif requires == "yaze" and YAZE_ENABLED then
+    elseif requires == "yaze" and yaze_enabled then
       table.insert(list, shortcut)
-    elseif requires == "z3ed" and Z3ED_ACTION ~= "" then
+    elseif requires == "z3ed" and z3ed_available then
       table.insert(list, shortcut)
-    elseif requires == "task_source" and TASK_SOURCE_CONFIGURED then
+    elseif requires == "task_source" and task_source_configured then
       table.insert(list, shortcut)
     elseif requires == "window_manager" and wm_enabled then
+      table.insert(list, shortcut)
+    elseif requires == "agent_launchers" and agent_launchers_available then
       table.insert(list, shortcut)
     end
   end

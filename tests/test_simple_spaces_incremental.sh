@@ -36,6 +36,7 @@ active_display=1
 space_props=
 creator_props=
 SIG
+cp "$CONFIG_DIR/.spaces_signatures" "$TMP_DIR/original_signatures"
 
 cat > "$BIN_DIR/yabai" <<'YABAI'
 #!/bin/bash
@@ -69,6 +70,7 @@ if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "front_app" ]; then
   exit 0
 fi
 printf '%s\n' "\$*" >> "\$LOG_FILE"
+[ "\${BARISTA_TEST_FAIL_APPLY:-0}" != 1 ] || exit 1
 exit 0
 EOF
 chmod +x "$BIN_DIR/sketchybar"
@@ -129,5 +131,28 @@ grep -Fxq 'strategy=incremental_add_remove' "$METRICS_FILE" || { echo "FAIL: inc
 grep -Fxq 'added=1' "$METRICS_FILE" || { echo "FAIL: incremental add/remove path should report added spaces" >&2; exit 1; }
 grep -Fxq 'removed=1' "$METRICS_FILE" || { echo "FAIL: incremental add/remove path should report removed spaces" >&2; exit 1; }
 grep -Fxq 'updated=2' "$METRICS_FILE" || { echo "FAIL: incremental add/remove path should report updated spaces" >&2; exit 1; }
+
+cp "$TMP_DIR/original_signatures" "$CONFIG_DIR/.spaces_signatures"
+cat > "$CONFIG_DIR/plugins/refresh_spaces.sh" <<EOF
+#!/bin/bash
+printf '%s:%s\n' "\$BARISTA_REASON" "\$BARISTA_TOPOLOGY_APPLY_RETRY" >> "$TMP_DIR/repairs"
+EOF
+chmod +x "$CONFIG_DIR/plugins/refresh_spaces.sh"
+if BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
+  BARISTA_YABAI_BIN="$BIN_DIR/yabai" BARISTA_TEST_FAIL_APPLY=1 \
+  CONFIG_DIR="$CONFIG_DIR" "$SCRIPT"; then
+  echo 'FAIL: failed incremental apply must propagate failure' >&2
+  exit 1
+fi
+cmp -s "$TMP_DIR/original_signatures" "$CONFIG_DIR/.spaces_signatures" || {
+  echo 'FAIL: failed incremental apply must preserve the last successful signatures' >&2; exit 1;
+}
+for _ in {1..40}; do
+  [ -f "$TMP_DIR/repairs" ] && break
+  sleep 0.02
+done
+[ "$(cat "$TMP_DIR/repairs")" = 'space_topology_repair:1' ] || {
+  echo 'FAIL: failed incremental apply must schedule one serialized topology repair' >&2; exit 1;
+}
 
 printf 'test_simple_spaces_incremental.sh: ok\n'

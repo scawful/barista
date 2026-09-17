@@ -87,6 +87,7 @@ local function test_items_left_layout()
   -- Check for front_app
   local found_front_app = false
   local found_front_app_divider = false
+  local found_shortcut_mode = false
   local found_front_app_state = false
   local found_front_app_location = false
   local front_app_hide = nil
@@ -145,6 +146,10 @@ local function test_items_left_layout()
     elseif entry.type == "item" and entry.name == "front_app_divider" then
       found_front_app_divider = true
       assert_equal(entry.props.label.string, "·", "front_app divider should render a subtle dot separator")
+    elseif entry.type == "item" and entry.name == "shortcut_mode" then
+      found_shortcut_mode = true
+      assert_equal(entry.props.drawing, false, "shortcut mode should remain hidden outside a modal map")
+      assert_equal(entry.props.label.string, "", "shortcut mode should start without stale modal text")
     elseif entry.type == "item" and entry.name == "front_app.state" then
       found_front_app_state = true
     elseif entry.type == "item" and entry.name == "front_app.location" then
@@ -193,6 +198,7 @@ local function test_items_left_layout()
   end
   assert(found_front_app, "front_app item not found in layout")
   assert(found_front_app_divider, "front_app divider not found in layout")
+  assert(found_shortcut_mode, "dedicated shortcut mode indicator not found in layout")
   assert(found_front_app_state, "front_app state row not found in popup layout")
   assert(found_front_app_location, "front_app location row not found in popup layout")
   assert(front_app_hide ~= nil, "front_app hide action not found in popup layout")
@@ -738,8 +744,10 @@ local function test_items_left_integration_models_and_anchor_order()
   assert_true(found_triforce_subscription, "triforce subscription should be present")
   assert_true(found_control_center_subscription, "control_center subscription should be present")
   assert_equal(anchor_order_count, 1, "left anchors should use one deterministic post-config reorder command")
-  assert_true(anchor_order_command:find('--move "control_center" before "front_app"', 1, true) ~= nil,
-    "control_center should be placed directly before front_app")
+  assert_true(anchor_order_command:find('--move "shortcut_mode" before "front_app"', 1, true) ~= nil,
+    "shortcut mode should be placed directly before front_app")
+  assert_true(anchor_order_command:find('--move "control_center" before "shortcut_mode"', 1, true) ~= nil,
+    "control_center should be placed before shortcut mode")
   assert_true(anchor_order_command:find('--move "music_studio" before "control_center"', 1, true) ~= nil,
     "music should be placed before control_center")
   assert_true(anchor_order_command:find('--move "triforce" before "music_studio"', 1, true) ~= nil,
@@ -1140,6 +1148,16 @@ end
 local function test_items_right_lmstudio_extension_rows()
   print("Testing items_right LM Studio extension rows...")
 
+  local checked_hover_scripts = {}
+  local function check_hover_settings(name, script)
+    checked_hover_scripts[name] = true
+    assert_true(script:find("BARISTA_HOVER_ANIMATION_DURATION='0'", 1, true) ~= nil,
+      name .. " should forward zero hover duration to the shell handler")
+    assert_true(script:find("BARISTA_HOVER_COLOR='0x44ffffff'", 1, true) ~= nil,
+      name .. " should forward the configured hover color")
+    assert_true(script:find("BARISTA_SKETCHYBAR_BIN='sketchybar'", 1, true) ~= nil,
+      name .. " should preserve the resolved SketchyBar binary")
+  end
   local mock_ctx = {
     settings = {
       font = {
@@ -1153,7 +1171,7 @@ local function test_items_right_lmstudio_extension_rows()
     theme = { WHITE = "0xffffffff", GREEN = "0xffa6e3a1", YELLOW = "0xfff9e2af", RED = "0xfff38ba8", BLUE = "0xff89b4fa", LAVENDER = "0xffb4befe", TEAL = "0xff94e2d5", bar = { bg = "0xff1e1e2e" } },
     state = {
       appearance = { widget_scale = 1.0, bar_height = 28, corner_radius = 6 },
-      widgets = { lmstudio = true },
+      widgets = { lmstudio = true, afs_approvals = true },
       machine = { menu_packs = { "personal" } },
       menus = {
         extensions = {
@@ -1186,17 +1204,20 @@ local function test_items_right_lmstudio_extension_rows()
     group_corner_radius = 4,
     icon_for = function(_, d) return d end,
     state_module = { get_icon = function() return "" end },
-    env_prefix = function() return "" end,
+    env_prefix = shell_utils.env_prefix,
     call_script = function(path, ...)
       local parts = { path }
       for _, arg in ipairs({ ... }) do table.insert(parts, tostring(arg)) end
       return table.concat(parts, " ")
     end,
-    compiled_script = function(_, fallback) return fallback end,
+    compiled_script = function(name, fallback)
+      if name == "clock_widget" then check_hover_settings("clock", fallback) end
+      return fallback
+    end,
     widget_daemon_enabled = false,
     hover_color = "0x44ffffff",
     hover_animation_curve = "ease_out",
-    hover_animation_duration = 10,
+    hover_animation_duration = 0,
   }
   mock_ctx.widget_factory = widgets_module.create_factory(
     { add = function() end, set = function() end },
@@ -1211,6 +1232,9 @@ local function test_items_right_lmstudio_extension_rows()
   local found_extension = false
   local found_scawfulbot_default = false
   for _, entry in ipairs(layout) do
+    if entry.type == "item" and (entry.name == "lmstudio" or entry.name == "afs_approvals") then
+      check_hover_settings(entry.name, entry.props.script)
+    end
     if entry.type == "item" and entry.name == "lmstudio" then
       found_lmstudio = true
     elseif entry.type == "item" and entry.name == "lmstudio.extension.local_model" then
@@ -1220,6 +1244,8 @@ local function test_items_right_lmstudio_extension_rows()
     end
   end
   assert_true(found_lmstudio, "lmstudio should render when explicitly enabled")
+  assert_true(checked_hover_scripts.clock and checked_hover_scripts.afs_approvals,
+    "clock fallback and enabled AFS approvals should receive hover settings")
   assert_true(found_extension, "lmstudio extension row should render")
   assert_true(not found_scawfulbot_default, "personal model rows should not be hardcoded by default")
   print("  items_right LM Studio extension test passed!")
@@ -1477,12 +1503,117 @@ local function test_items_right_task_focus_surface()
   print("  items_right Task Pulse surface test passed!")
 end
 
+local function test_items_right_afs_approvals_widget()
+  print("Testing items_right AFS approvals widget...")
+
+  local function build_layout(widgets)
+    local mock_ctx = {
+      settings = {
+        font = {
+          text = "Inter",
+          numbers = "Inter",
+          icon = "Symbols Nerd Font",
+          style_map = { Regular = "Regular", Bold = "Bold", Semibold = "Semibold" },
+          sizes = { small = 12, text = 14, icon = 16, numbers = 14 }
+        }
+      },
+      theme = { WHITE = "0xffffffff", GREEN = "0xffa6e3a1", YELLOW = "0xfff9e2af", RED = "0xfff38ba8", BLUE = "0xff89b4fa", LAVENDER = "0xffb4befe", TEAL = "0xff94e2d5", bar = { bg = "0xff1e1e2e" } },
+      state = {
+        appearance = { widget_scale = 1.0, bar_height = 28, corner_radius = 6 },
+        widgets = widgets,
+      },
+      font_string = function(f, s, sz) return string.format("%s:%s:%0.1f", f, s, sz) end,
+      CONFIG_DIR = "/tmp/config",
+      CODE_DIR = "/tmp/code",
+      PLUGIN_DIR = "/tmp/plugins",
+      SCRIPTS_DIR = "/tmp/scripts",
+      widget_height = 22,
+      popup_background = function() return { drawing = true } end,
+      hover_script_cmd = "hover.sh",
+      popup_toggle_action = function() return "toggle.sh" end,
+      POST_CONFIG_DELAY = 0.1,
+      SKETCHYBAR_BIN = "sketchybar",
+      group_bg_color = "0x44000000",
+      group_border_color = "0xffffffff",
+      group_border_width = 1,
+      group_corner_radius = 4,
+      icon_for = function(_, d) return d end,
+      state_module = { get_icon = function() return "" end },
+      env_prefix = function() return "" end,
+      call_script = function(path, ...)
+        local parts = { path }
+        for _, arg in ipairs({ ... }) do table.insert(parts, tostring(arg)) end
+        return table.concat(parts, " ")
+      end,
+      compiled_script = function(_, fallback) return fallback end,
+      widget_daemon_enabled = false,
+      hover_color = "0x44ffffff",
+      hover_animation_curve = "ease_out",
+      hover_animation_duration = 10,
+    }
+    mock_ctx.widget_factory = widgets_module.create_factory(
+      { add = function() end, set = function() end },
+      mock_ctx.theme,
+      mock_ctx.settings,
+      mock_ctx.state,
+      { widget_height = mock_ctx.widget_height }
+    )
+    return items_right.get_layout(mock_ctx)
+  end
+
+  local function entries_by_name(layout)
+    local map = {}
+    for _, entry in ipairs(layout) do
+      if entry.type == "item" and entry.name then map[entry.name] = entry end
+    end
+    return map
+  end
+
+  -- Off by default: nothing about approvals reaches the bar.
+  local off = entries_by_name(build_layout({}))
+  assert_true(off["afs_approvals"] == nil, "afs_approvals must stay out of the layout unless enabled")
+  assert_true(off["afs_approvals.review"] == nil, "afs_approvals popup rows must stay out when disabled")
+
+  -- Enabled: hidden badge driven by the plugin, plus a fixed popup topology.
+  local layout = build_layout({ afs_approvals = true })
+  local on = entries_by_name(layout)
+  local badge = on["afs_approvals"]
+  assert_true(badge ~= nil, "afs_approvals badge should render when enabled")
+  assert_true(badge.props.drawing == false, "badge starts hidden; the plugin shows it when something is pending")
+  assert_equal(badge.props.script, "'/tmp/plugins/afs_approvals.sh'", "badge should be driven by the quoted approvals plugin path")
+  assert_true(badge.props.update_freq == 60, "badge should poll the approvals queue every 60s")
+  assert_true(on["afs_approvals.header"] ~= nil, "popup header row should exist")
+  assert_true(on["afs_approvals.summary"] ~= nil, "popup summary row should exist")
+  for row = 1, 5 do
+    local entry = on["afs_approvals.row." .. row]
+    assert_true(entry ~= nil, "popup row " .. row .. " should exist for the plugin to fill")
+    assert_true(entry.props.drawing == false, "popup row " .. row .. " starts hidden")
+  end
+  local review = on["afs_approvals.review"]
+  assert_true(review ~= nil, "review row should exist")
+  assert_true(
+    review.props.click_script:find("/tmp/plugins/afs_approvals.sh review", 1, true) ~= nil,
+    "review row should call the plugin's review action"
+  )
+
+  local subscribed_woke = false
+  for _, entry in ipairs(layout) do
+    if entry.action == "exec" and type(entry.cmd) == "string"
+      and entry.cmd:find("--subscribe afs_approvals system_woke", 1, true) then
+      subscribed_woke = true
+    end
+  end
+  assert_true(subscribed_woke, "badge should refresh after wake")
+  print("  items_right AFS approvals widget test passed!")
+end
+
 test_items_left_layout()
 test_items_left_without_yabai()
 test_items_left_control_center_custom_name()
 test_items_left_integration_models_and_anchor_order()
 test_items_right_layout()
 test_items_right_lmstudio_extension_rows()
+test_items_right_afs_approvals_widget()
 test_items_right_task_focus_surface()
 
 print("\nAll item layout tests passed!")

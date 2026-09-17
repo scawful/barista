@@ -1,7 +1,7 @@
 # Barista Performance & Safety Audit
 
-**Date:** 2026-07-26
-**Status:** Active runtime app-model path verified
+**Date:** 2026-09-14
+**Status:** Multi-monitor event, hover, and subprocess stability review
 **Scope:** `main.lua`, `modules/`, `helpers/`, `plugins/`, `scripts/`
 
 ## Executive Summary
@@ -10,6 +10,243 @@ Following the initial audit, the active runtime path was tightened through July
 the original shell-heavy bar, but the more important change is architectural:
 routine updates now stay on long-lived helpers, while expensive detail
 collection, task snapshots, and space visuals run on explicit event paths.
+
+## Multi-monitor and DisplayLink checks
+
+The September review targets event work and animation consistency. CPU snapshots
+alone cannot establish that Barista causes DisplayLink or WindowServer load.
+
+The inspected Mac had three active displays: ASUS VA24EQSB at 1080×1920 / 75 Hz,
+T32UD-40 at 1920×1080 / 60 Hz, and T27QD-40 at 1920×1080 / 60 Hz. SketchyBar and
+yabai agreed on arrangement indexes 1–3. The bar had 186 configured items,
+height 28, blur radius 45, and shadow off. One `process_manager.sh load`
+snapshot reported six Barista-family processes totaling 0.8% CPU, DisplayLink
+at 45.7% CPU, and no Barista runaways. These are observations under the user's
+current desktop workload, not an idle benchmark or a before/after speedup.
+The existing performance counters span older sessions and must not be used as
+a baseline for this change.
+
+The reviewed fixes address three reproducible failure modes:
+
+1. `refresh_spaces.sh` previously discarded a queued reason because its
+   non-newline-terminated file made `read` return failure. Pending work now
+   preserves active, topology, display, and repair requirements. Display repair
+   survives a subsequent focus event; an unchanged topology can update yabai's
+   external-bar reservation without rebuilding space items. Failed item applies
+   retry through the refresh owner with fresh topology. If that retry also
+   fails, a dirty marker lets a later real event repair the bar instead of
+   trusting the last successful topology. Mixed display/focus bursts retain
+   both reservation repair and active-space notifications.
+2. Popup shell defaults previously shadowed the supplied hover settings. Both
+   native and shell hover paths now support immediate updates for duration `0`.
+   Native anchor exit invalidates the prior timeout, and an exiting popup row
+   no longer overwrites the newly active submenu parent. Display-scoped space
+   creation chips receive the same settings during rebuild and incremental
+   property updates; changing motion settings does not require recreating them.
+   A follow-up fix serializes token checks and command completion with a lock
+   for each item. Already-dispatched restores cannot finish after a newer
+   highlight; commands have a 500 ms deadline, immediate events wait at most
+   1.2 seconds for the lock, and expired timers skip busy items. Pending native
+   and shell timers cancel each other when the backend changes.
+3. `runtime_context_helper` previously waited for a query process to exit before
+   draining its stdout. A response larger than pipe capacity could time out;
+   a descendant holding stdout open could block indefinitely. The helper now
+   drains concurrently, caps stdout at 4 MiB, bounds the whole operation by its
+   monotonic deadline, and cleans up only the spawned query's process group.
+
+Targeted regressions include `test_refresh_spaces_coalescing.sh`,
+`test_popup_anchor.sh`, `test_popup_hover.sh`, `test_bar_config.lua`, and
+`test_runtime_context_helper_subprocess.sh`. The subprocess test exercises a
+512 KiB response, inherited stdout, unresponsive descendants, failed commands,
+output overflow, and repeated calls without descriptor growth. These tests
+verify behavior; they do not measure physical DisplayLink frame delivery.
+`test_hover_serialization.sh` additionally covers native, shell, Lua-only,
+older-helper, and cross-backend races, including already-dispatched restores,
+popup-close timers, command descendants, and lock contention.
+
+The review also fixes the verification script's counter increments: under
+`set -e`, `((pass++))` exits unsuccessfully when the old count is zero, which
+previously stopped `barista-verify.sh` before its remaining checks. Pre-increment
+lets the suite complete and report the final pass/failure counts.
+
+For an explicit lower-effects configuration, merge these values into the
+existing machine-local `state.json` appearance object:
+
+```json
+{
+  "appearance": {
+    "blur_radius": 0,
+    "hover_animation_duration": 0
+  }
+}
+```
+
+This disables background blur and makes popup/anchor highlights immediate.
+It does not change monitor resolution, display placement, or space selection.
+Barista keeps existing visual preferences unless these keys are changed.
+SketchyBar defines animation duration as frames at 60 Hz and documents that a
+direct `--set` cancels the active animation queue; see its
+[animation reference](https://felixkratz.github.io/SketchyBar/config/animations)
+and [bar properties](https://felixkratz.github.io/SketchyBar/config/bar).
+
+To compare on hardware:
+
+1. Record monitor resolution/refresh rate, current appearance values, and
+   `./scripts/process_manager.sh load` with the same foreground workload.
+2. Switch focus across the same displays and open/close the same popups. Compare
+   fresh deltas from `./bin/barista-stats.sh show`, not its lifetime averages.
+3. Repeat with the lower-effects values after
+   `./plugins/reload_sketchybar.sh`; inspect latency and CPU separately.
+4. Restore the prior appearance values and verify dock reconnect plus wake.
+   These physical transitions still require a hands-on check.
+
+Native changes require rebuilding `file_lock`, `popup_anchor`, `popup_hover`, and
+`runtime_context_helper`, deploying those binaries to the active runtime, and
+using `./plugins/reload_sketchybar.sh` so the running context daemon picks up
+the new helper. A source edit alone does not replace a resident daemon.
+
+### September initial verification result
+
+- `lua tests/run_tests.lua` (via the quick smoke suite): **265 passed**.
+- `./scripts/barista-verify.sh --quick`: **35 passed**; no failed or skipped checks.
+- `./scripts/check_scripts.sh`: **passed**, including the registered new
+  subprocess/coalescing tests and incremental-apply regression.
+- All **11** targeted spaces tests passed. The **15** native subprocess cases
+  and dependent popup/hover tests passed. Independent review covered both the
+  spaces recovery and native subprocess changes.
+- Built `popup_anchor`, `popup_hover`, and `runtime_context_helper` with CMake,
+  atomically installed those three helpers into `bin/`, and verified installed
+  hashes against `build/bin/`. The guarded reload succeeded.
+- Live queries retained **186 items**, **three displays**, **seven space items**
+  with matching display associations and height **20**, bar height **28**, blur
+  radius **45**, and yabai reservation **`all:28:0`**. A hash check confirmed
+  `state.json` was unchanged.
+- Actual Front App and Volume click scripts opened, switched exclusively, and
+  dismissed their popups. The context cache matched yabai's focused space **2**
+  on display **2**. No new stderr was written during reload/checks; no runaways
+  were detected after startup settled.
+
+These results establish source regressions and live bar behavior on the current
+topology. Physical disconnect/reconnect, sleep/wake, and DisplayLink frame
+delivery remain unverified. The effects experiment below measures process CPU
+during a synthetic hover workload.
+
+### September effects experiment
+
+A balanced, same-daemon experiment on the three-display setup compared four
+conditions across eight rounds: 16 anchor enter/exit transitions per condition
+at a fixed 250 ms cadence, totaling 32 blocks and 512 transitions. Display
+topology, process identities, binary hash, and persisted state were checked.
+Each condition had a warmup; timers drained between blocks. Other desktop apps
+remained active, so these are exploratory workload measurements, not idle
+power measurements or physical frame-delivery results.
+
+| Temporary settings | WindowServer CPU | SketchyBar CPU | DisplayLink CPU |
+| --- | ---: | ---: | ---: |
+| Current: blur 45, motion 8 | 95.85% | 56.96% | 51.66% |
+| Blur 0, motion 8 | 93.17% | 56.94% | 49.74% |
+| Blur 45, motion 0 | 48.19% | 7.91% | 54.37% |
+| Blur 0, motion 0 | 47.44% | 7.64% | 53.61% |
+
+Values are medians of interval CPU deltas; **100% means one CPU core**. The
+predeclared primary comparison, current settings versus both effects disabled,
+saved a median **47.39 CPU percentage points** in combined WindowServer and
+DisplayLink use (**31.38%** relative to the current combined median). All eight
+pairs favored disabled effects; the paired bootstrap interval was
+**38.59–53.30 points**. Motion accounted for most of the observed difference.
+The blur-only exploratory comparison had a bootstrap interval crossing zero.
+DisplayLink's own process CPU did not improve; the clear reduction was in
+WindowServer and SketchyBar during this deliberately busy hover workload.
+
+The experiment **did not pass the complete acceptance gate**: observed helper
+completion p95 rose from **37.10 ms to 78.33 ms**, exceeding the allowed 10%
+regression. This includes the harness's coarse `Popen.wait(timeout=3)` polling
+delay and CLI completion; it is not paint time or an established input-latency
+regression. No transition started more than 50 ms late against the 250 ms
+schedule. The result supports
+offering immediate highlights as a CPU tradeoff, but does not justify changing
+the user's default appearance or claiming a DisplayLink frame-rate win.
+
+Original blur, anchor properties, item list, and `state.json` hash were restored;
+the experiment emitted no stderr. Evidence and the reviewed harness are in
+`/tmp/barista-effects-20260914.ZpnE2b/`. `results.json` SHA-256:
+`7451e6da555be8f4f136d10817899ef9aee4897ac63dd35c863e544164ddd7c8`.
+`raw.json` SHA-256:
+`fe69bc3aee49888bf5b2ffefe9579348b7698cbd46a8a45ad53ef95a94fd193e`.
+The experiment used the first September deployed anchor helper, before the
+subsequent command-ordering fix; do not treat it as a latency benchmark for
+that later helper.
+
+### September event replay
+
+An isolated replay compared frozen `HEAD` and working-tree refresh scripts
+with the same mocks, the production 120 ms debounce, three warmup pairs, and
+20 measured pairs for each of two five-event bursts. The repaired focus burst
+avoided four discovery queries and emitted one visual refresh plus one active
+notification. The mixed display/focus burst also repaired the external-bar
+reservation with no topology rebuild. The candidate completed the required
+work in **40/40** measured runs; `HEAD` completed it in **0/40** because queued
+event reasons were lost. Runtime comparisons would therefore compare unequal
+work and are not presented as a speedup. Evidence:
+`/private/tmp/barista-spaces-replay-20260914.zo3dT9/results.json`, SHA-256
+`4d66665bf3a1f8ead1e18158b66f71c199f673503dcd58a3e3a13ea026158b1d`.
+
+### September hover ordering cost
+
+A separate isolated sample used 60 balanced pairs per lane and a no-op
+SketchyBar replacement. It measured process completion, with no live renderer
+calls. Native comparison used the previously deployed helper; shell comparisons
+used `HEAD`'s common hover code under the same lane environment.
+
+| Handler | Previous median / p95 | Updated median / p95 |
+| --- | ---: | ---: |
+| Native anchor | 5.86 / 6.86 ms | 5.37 / 6.57 ms |
+| Shell with native lock and GNU timeout | 26.10 / 31.70 ms | 17.92 / 22.65 ms |
+| Shell with Perl lock and GNU timeout | 26.41 / 31.39 ms | 25.34 / 28.73 ms |
+| Shell with Perl lock and Perl timeout | 19.17 / 26.97 ms | 27.80 / 38.42 ms |
+
+Avoiding duplicate state-path processes offsets the locking cost on the normal
+paths. The fully portable path retains a measured cost: approximately **8.6 ms
+at the median and 11.4 ms at p95** for the supervising Perl process. This is a
+bounded command-lifecycle tradeoff, not a performance win for every backend.
+No daemon or recurring poll was added. These synthetic timings do not establish
+physical hover latency. Source hashes in the final artifact match the reviewed
+native and common-shell sources:
+`/var/folders/42/b_1q5t0n1xgb_05h2067y8hh0000gn/T/barista_hover_serialization_overhead_ry6_sd3a/final-results.json`,
+SHA-256 `12ac98dad4e1dd5bbbca6375a7eeada0e203b709df07f8ef9f182311fb3f91c8`.
+
+### September follow-up verification result
+
+- Final `./scripts/check_scripts.sh` passed, including the newly registered
+  serialization, creator, and space-hover-timeout tests. The full Lua suite
+  again passed **265 tests**, and `./scripts/barista-verify.sh --quick` passed
+  **35 checks**. All **seven** focused serialization lanes passed, and an
+  independent review found no remaining concrete lock/timeout lifecycle issue.
+- Built `popup_anchor` and `file_lock` with CMake, atomically installed those
+  two helpers into `bin/`, checked hashes against `build/bin/`, and completed
+  the supported guarded reload. The original binaries are retained with the
+  verification artifacts.
+- Live Apple-anchor and all three space-creator enter/exit scripts highlighted
+  and restored correctly. Each creator's configured script carries duration
+  **8**. Front App → Volume → dismiss passed through the actual click scripts.
+- The bar retained **186 items**, **three displays**, **seven correctly
+  associated spaces**, height **28**, blur **45**, and yabai reservation
+  **`all:28:0`**. Item order, display topology, and the persisted state hash
+  matched the prior snapshot. Context state matched focused space **6** on
+  display **3**; no new stderr or Barista runaways were observed.
+- One `sketchybar --query front_app` returned exit `0` with empty stdout during
+  the first popup-switch probe, causing that probe's JSON parse to fail. Cleanup
+  dismissed the popups. Subsequent individual queries and a complete repeat of
+  the same sequence passed without query retries; the cause remains unconfirmed.
+  This isolated observation is retained rather than counted as a clean first run.
+  The installed upstream client at `031cdff` uses a 100 ms Mach reply timeout
+  and can return empty output with success on receive failure. That is compatible
+  with the observation, but the original query duration was not captured; see
+  [Mach handling](https://raw.githubusercontent.com/FelixKratz/SketchyBar/031cdff/src/mach.c)
+  and [CLI handling](https://raw.githubusercontent.com/FelixKratz/SketchyBar/031cdff/src/sketchybar.c).
+
+Live evidence, helper backups, logs, and the verification script are in
+`/var/folders/42/b_1q5t0n1xgb_05h2067y8hh0000gn/T/barista-hover-ordering-20260914-ifhja54o/`.
 
 ## Resolved / Mitigated "Hot Spots"
 
@@ -372,6 +609,9 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
       processes
     - missing, nonnumeric, or nonzero-exit native helpers fail softly to the
       portable clock; timing boundaries and normal UI mutations are unchanged
+    - startup now verifies that the helper is executable, shell-quotes paths
+      containing spaces, requests the explicit `ms` interface, and tests
+      helper failure before selecting the portable fallback
     - Lua-only/restricted mode bypasses the helper, and its gate is propagated
       through initial layout work, direct startup sync, the hidden event item,
       persistent yabai signal and space-action commands, child refreshes, and
@@ -382,10 +622,11 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
       until the configuration transaction commits
     - deterministic hosted checks cover all three consumers and the exact six
       timestamps used by a full topology rebuild
-*   **Result:** a randomized 200-pair benchmark of the deployed binary measured
+*   **Result:** a historical randomized 200-pair isolated-process benchmark of the deployed binary measured
     `1.482 ms` median / `1.679 ms` p95, versus `3.980 ms` / `4.251 ms` for the
-    previous Perl timestamp. The `2.69x` median speedup removes an estimated
-    `29.98 ms` across the normal 12-timestamp topology + visual chain. Artifact:
+    previous Perl timestamp. Multiplying that isolated median delta by 12
+    produces a `29.98 ms` estimate; it is not a measured full-refresh saving.
+    Artifact:
     `/tmp/barista_perf_clock_ab_v2_20260725.json` (SHA-256
     `4fcb6fe5d5d0804178504387f5a209252c82fe39d7e322c5287480e2aacc8576`).
     A 20-pair same-daemon `space_active_refresh` A/B then measured
@@ -400,6 +641,14 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
     display-scoped creator items, recorded a `348 ms` full topology pass, and
     added no error-log bytes. That single restart is a runtime smoke result,
     not a causal before/after measurement.
+
+To reproduce the evidence classes separately, run
+`bash scripts/benchmark_perf_clock.sh --clock 200` for randomized isolated process
+cost. Run `bash scripts/benchmark_perf_clock.sh --full-refresh 10` for serialized
+live full-refresh wall time; this second command intentionally rebuilds the
+visible spaces strip. A causal full-refresh speedup requires a controlled A/B
+with equivalent topology and renderer state. A successful single reload or
+full-refresh sample remains a smoke observation, not such an A/B.
 
 ### 5b. Single-Pass Spaces Topology Rebuild (Verified)
 *   **Files:** `plugins/simple_spaces.sh`,

@@ -43,15 +43,61 @@ expand_path() {
   esac
 }
 
+read_state_json_string() {
+  _state_json_file="$1"
+  _state_json_path1="${2:-}"
+  _state_json_path2="${3:-}"
+  [ -f "$_state_json_file" ] || return 1
+
+  if [ -n "${BARISTA_JQ_BIN+x}" ]; then
+    _state_jq_bin="$BARISTA_JQ_BIN"
+  else
+    _state_jq_bin="$(command -v jq 2>/dev/null || true)"
+  fi
+  if [ -n "$_state_jq_bin" ]; then
+    "$_state_jq_bin" -r --arg p1 "$_state_json_path1" --arg p2 "$_state_json_path2" '
+      . as $root
+      | [$p1, $p2]
+      | map(select(length > 0) | split(".") as $path | $root | getpath($path))
+      | map(select(type == "string" and length > 0))
+      | .[0] // empty
+    ' "$_state_json_file" 2>/dev/null
+    return $?
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$_state_json_file" "$_state_json_path1" "$_state_json_path2" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as handle:
+        root = json.load(handle)
+    for dotted in sys.argv[2:]:
+        if not dotted:
+            continue
+        value = root
+        for component in dotted.split("."):
+            value = value[component]
+        if isinstance(value, str) and value:
+            print(value)
+            raise SystemExit(0)
+except (OSError, UnicodeError, ValueError, KeyError, TypeError):
+    pass
+raise SystemExit(1)
+PY
+    return $?
+  fi
+
+  return 1
+}
+
 # SCRIPTS_DIR: env BARISTA_SCRIPTS_DIR or state.json, then fallbacks
 if [ -z "${SCRIPTS_DIR:-}" ]; then
   SCRIPTS_DIR="${BARISTA_SCRIPTS_DIR:-}"
 fi
-if [ -z "$SCRIPTS_DIR" ] && command -v jq >/dev/null 2>&1 && [ -f "$STATE_FILE" ]; then
-  SCRIPTS_DIR=$(jq -r '.paths.scripts_dir // .paths.scripts // empty' "$STATE_FILE" 2>/dev/null || true)
-  case "$SCRIPTS_DIR" in
-    null|"") SCRIPTS_DIR="" ;;
-  esac
+if [ -z "$SCRIPTS_DIR" ] && [ -f "$STATE_FILE" ]; then
+  SCRIPTS_DIR="$(read_state_json_string "$STATE_FILE" "paths.scripts_dir" "paths.scripts" || true)"
 fi
 if [ -n "$SCRIPTS_DIR" ]; then
   SCRIPTS_DIR="$(expand_path "$SCRIPTS_DIR")"
@@ -64,12 +110,12 @@ if [ ! -d "$SCRIPTS_DIR" ]; then
 fi
 
 # Hover/animation defaults (widgets use BARISTA_*; popup/submenu scripts get POPUP_* / SUBMENU_* from main.lua)
-BARISTA_HOVER_COLOR="${BARISTA_HOVER_COLOR:-0x40f5c2e7}"
-BARISTA_HOVER_ANIMATION_CURVE="${BARISTA_HOVER_ANIMATION_CURVE:-sin}"
-BARISTA_HOVER_ANIMATION_DURATION="${BARISTA_HOVER_ANIMATION_DURATION:-12}"
-HIGHLIGHT="${BARISTA_HOVER_COLOR:-${POPUP_HOVER_COLOR:-${SUBMENU_HOVER_BG:-0x40f5c2e7}}}"
-ANIMATION_CURVE="${BARISTA_HOVER_ANIMATION_CURVE:-${POPUP_HOVER_ANIMATION_CURVE:-${SUBMENU_ANIMATION_CURVE:-sin}}}"
-ANIMATION_DURATION="${BARISTA_HOVER_ANIMATION_DURATION:-${POPUP_HOVER_ANIMATION_DURATION:-${SUBMENU_ANIMATION_DURATION:-12}}}"
+BARISTA_HOVER_COLOR="${BARISTA_HOVER_COLOR:-${POPUP_HOVER_COLOR:-${SUBMENU_HOVER_BG:-0x40f5c2e7}}}"
+BARISTA_HOVER_ANIMATION_CURVE="${BARISTA_HOVER_ANIMATION_CURVE:-${POPUP_HOVER_ANIMATION_CURVE:-${SUBMENU_ANIMATION_CURVE:-sin}}}"
+BARISTA_HOVER_ANIMATION_DURATION="${BARISTA_HOVER_ANIMATION_DURATION:-${POPUP_HOVER_ANIMATION_DURATION:-${SUBMENU_ANIMATION_DURATION:-8}}}"
+HIGHLIGHT="$BARISTA_HOVER_COLOR"
+ANIMATION_CURVE="$BARISTA_HOVER_ANIMATION_CURVE"
+ANIMATION_DURATION="$BARISTA_HOVER_ANIMATION_DURATION"
 HOVER_TIMEOUT="${BARISTA_HOVER_TIMEOUT:-${POPUP_HOVER_TIMEOUT:-${SUBMENU_HOVER_TIMEOUT:-0.55}}}"
 HOVER_STATE_DIR="${BARISTA_HOVER_STATE_DIR:-${TMPDIR:-/tmp}/sketchybar_hover_state}"
 
@@ -95,17 +141,102 @@ anchor_idle_props() {
 }
 
 animate_set() {
-  if sketchybar --animate "$ANIMATION_CURVE" "$ANIMATION_DURATION" --set "$@" >/dev/null 2>&1; then
+  case "$ANIMATION_DURATION" in
+    0|0.0)
+      hover_dispatch --set "$@"
+      return $?
+      ;;
+  esac
+  if hover_dispatch --animate "$ANIMATION_CURVE" "$ANIMATION_DURATION" --set "$@" >/dev/null 2>&1; then
     return 0
+  else
+    _animate_status=$?
   fi
-  sketchybar --set "$@"
+  case "$_animate_status" in 124|137|142|143) return "$_animate_status" ;; esac
+  hover_dispatch --set "$@"
+}
+
+hover_dispatch() {
+  if [ "${HOVER_LOCK_HELD:-0}" != 1 ]; then
+    sketchybar "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout -s KILL 0.5 "${SKETCHYBAR_BIN:-sketchybar}" "$@" 9>&-
+  elif command -v timeout >/dev/null 2>&1; then
+    timeout -s KILL 0.5 "${SKETCHYBAR_BIN:-sketchybar}" "$@" 9>&-
+  else
+    perl -MTime::HiRes=alarm -MPOSIX -MErrno=EINTR -e '
+      my $child = fork;
+      defined($child) or exit 74;
+      if (!$child) { setpgrp(0, 0) or exit 74; exec @ARGV; exit 127; }
+      POSIX::setpgid($child, $child);
+      my $timed_out = 0;
+      $SIG{ALRM} = sub { $timed_out = 1; kill 9, -$child; kill 9, $child; };
+      alarm 0.5;
+      my $waited;
+      do { $waited = waitpid($child, 0); } while ($waited < 0 && $! == EINTR);
+      my $status = $?;
+      alarm 0;
+      exit 124 if $timed_out;
+      exit 74 if $waited < 0;
+      exit(($status & 127) ? 128 + ($status & 127) : $status >> 8);
+    ' "${SKETCHYBAR_BIN:-sketchybar}" "$@" 9>&-
+  fi
 }
 
 hover_state_file() {
   key="${1:-item}"
-  key="$(printf '%s' "$key" | tr -cs '[:alnum:]._-' '_')"
+  case "$key" in
+    *[!a-zA-Z0-9._-]*) key="$(printf '%s' "$key" | LC_ALL=C tr -cs '[:alnum:]._-' '_')" ;;
+  esac
   [ -d "$HOVER_STATE_DIR" ] || mkdir -p "$HOVER_STATE_DIR" 2>/dev/null || true
   printf '%s/%s.state' "$HOVER_STATE_DIR" "$key"
+}
+
+hover_acquire_lock() {
+  _hover_file="${3:-}"
+  [ -n "$_hover_file" ] || _hover_file="$(hover_state_file "$1")"
+  _hover_wait="${2:-1200}"
+  _hover_helper="${BARISTA_FILE_LOCK_BIN:-$CONFIG_DIR/bin/file_lock}"
+  exec 9> "${_hover_file%.state}.apply.lock" || return 1
+  _hover_status=64
+  if [ "${BARISTA_LUA_ONLY:-0}" != 1 ] && [ -x "$_hover_helper" ]; then
+    if "$_hover_helper" 9 "$_hover_wait" 2>/dev/null; then
+      _hover_status=0
+    else
+      _hover_status=$?
+    fi
+  fi
+  # Old installed helpers reject the second argument. Use the same kernel
+  # lock through Perl until rebuilt helpers are deployed, including Lua-only.
+  if [ "$_hover_status" = 64 ] && command -v perl >/dev/null 2>&1; then
+    if perl -MFcntl=:flock -MTime::HiRes=alarm -e '
+      my ($fd, $wait) = @ARGV;
+      open(my $lock, ">&=$fd") or exit 74;
+      $SIG{ALRM} = sub { exit 75 };
+      alarm($wait / 1000) if $wait > 0;
+      flock($lock, LOCK_EX | ($wait > 0 ? 0 : LOCK_NB)) or exit 75;
+      alarm(0);
+    ' 9 "$_hover_wait"; then
+      _hover_status=0
+    else
+      _hover_status=$?
+    fi
+  fi
+  if [ "$_hover_status" != 0 ]; then
+    exec 9>&-
+    return 1
+  fi
+  HOVER_LOCK_HELD=1
+}
+
+hover_release_lock() {
+  exec 9>&-
+  HOVER_LOCK_HELD=0
+}
+
+hover_cancel_native_timer() {
+  _native_hover_state="${TMPDIR:-/tmp}/sketchybar_popup_state/$1.anchor"
+  [ ! -e "$_native_hover_state" ] || rm -f "$_native_hover_state" 2>/dev/null || true
 }
 
 hover_token() {
@@ -118,17 +249,25 @@ highlight_with_timeout() {
   off_props="${3:-background.drawing=off background.border_width=0}"
   [ -n "$name" ] || return 0
   state_file="$(hover_state_file "$name")"
+  hover_acquire_lock "$name" 1200 "$state_file" || return 0
+  hover_cancel_native_timer "$name"
   token="$(hover_token)"
   printf '%s' "$token" > "$state_file"
+  if [ -n "${POPUP_ANCHOR_STATE_FILE:-}" ]; then
+    printf '%s' "$token" > "$POPUP_ANCHOR_STATE_FILE"
+  fi
   # shellcheck disable=SC2086
-  animate_set "$name" $on_props
+  animate_set "$name" $on_props || true
   case "$HOVER_TIMEOUT" in
     ""|0|0.0|false|off)
+      hover_release_lock
       return 0
       ;;
   esac
   (
+    hover_release_lock
     sleep "$HOVER_TIMEOUT"
+    hover_acquire_lock "$name" 0 "$state_file" || exit 0
     current=""
     if [ -f "$state_file" ]; then
       IFS= read -r current < "$state_file" || true
@@ -138,15 +277,20 @@ highlight_with_timeout() {
       animate_set "$name" $off_props
     fi
   ) >/dev/null 2>&1 &
+  hover_release_lock
 }
 
 clear_highlight() {
   name="$1"
   off_props="${2:-background.drawing=off background.border_width=0}"
   [ -n "$name" ] || return 0
-  rm -f "$(hover_state_file "$name")" >/dev/null 2>&1 || true
+  state_file="$(hover_state_file "$name")"
+  hover_acquire_lock "$name" 1200 "$state_file" || return 0
+  hover_cancel_native_timer "$name"
+  rm -f "$state_file" >/dev/null 2>&1 || true
   # shellcheck disable=SC2086
-  animate_set "$name" $off_props
+  animate_set "$name" $off_props || true
+  hover_release_lock
 }
 
 run_with_timeout() {

@@ -39,6 +39,7 @@ profile.appearance = {
 -- Widget configuration
 profile.widgets = {
   lmstudio = false,
+  afs_approvals = false,
   clock = true,
   battery = true,
   network = true,

@@ -1,5 +1,32 @@
 local spaces = require("spaces")
 
+run_test("spaces: display JSON IDs are numeric, sorted, and deduplicated", function()
+  local json = [[
+    [
+      {"arrangement-id": 10},
+      {"arrangement-id": "02"},
+      {"arrangement-id": 2},
+      {"arrangement-id": 1e1},
+      {"arrangement-id": -1},
+      {"arrangement-id": 3.5},
+      {"nested": {"arrangement-id": "7"}}
+    ]
+  ]]
+  assert_equal(
+    spaces.normalize_display_ids(json, "arrangement-id"),
+    "2,7,10",
+    "display IDs should normalize numeric spellings before sorting and deduplication"
+  )
+  assert_nil(
+    spaces.normalize_display_ids('[{"arrangement-id":"bad"}]', "arrangement-id"),
+    "nonnumeric display IDs should be rejected"
+  )
+  assert_nil(
+    spaces.normalize_display_ids('[{"arrangement-id":2}', "arrangement-id"),
+    "malformed JSON should be rejected before display extraction"
+  )
+end)
+
 run_test("spaces: watch_spaces uses resolved yabai binary for signals", function()
   local executed = nil
   local manager = spaces.create(

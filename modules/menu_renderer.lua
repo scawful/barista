@@ -1,5 +1,6 @@
 local menu_renderer = {}
 local menu_style = require("menu_style")
+local locator = require("tool_locator")
 
 local unpack = table.unpack or _G.unpack
 
@@ -122,18 +123,9 @@ function menu_renderer.create(ctx)
     return "sketchybar -m --set $NAME popup.drawing=toggle"
   end
 
-  -- PERF: Lua-native file check + cached executable test
+  -- PERF: Cached executable test via tool_locator
   local function is_executable(path)
-    if not path or path == "" then
-      return false
-    end
-    local f = io.open(path, "r")
-    if not f then
-      return false
-    end
-    f:close()
-    local ok = os.execute(string.format("test -x %q", path))
-    return ok == true or ok == 0
+    return locator.path_is_executable(path)
   end
 
   local function resolve_menu_action_command()

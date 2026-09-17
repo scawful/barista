@@ -323,3 +323,57 @@ run_test("tool_locator.resolve_mesen_run: explicit override wins", function()
   assert_equal(resolved, bin, "mesen override path")
   cleanup(root)
 end)
+
+run_test("tool_locator: missing paths are not cached across creation", function()
+  local root = make_temp_dir("locator_negative_cache")
+  local file = root .. "/later"
+
+  locator.clear_cache()
+  assert_true(not locator.path_exists(file, false), "missing file should not exist")
+  write_file(file, "#!/bin/sh\n")
+  assert_true(locator.path_exists(file, false), "new file should resolve without clearing a negative cache")
+
+  local executable = root .. "/later-executable"
+  assert_true(not locator.path_is_executable(executable), "missing executable should not resolve")
+  write_file(executable, "#!/bin/sh\n")
+  local ok = os.execute(string.format("chmod +x %q", executable))
+  assert_true(ok == 0 or ok == true, "chmod later executable")
+  assert_true(locator.path_is_executable(executable), "new executable should resolve without clearing a negative cache")
+  cleanup(root)
+end)
+
+run_test("tool_locator.resolve_agent_launchers: portable repo paths resolve without global PATH", function()
+  local root = make_temp_dir("locator_agent_launchers")
+  local code_dir = root .. "/code"
+  local bin_dir = code_dir .. "/config/dotfiles/bin"
+  mkdir(bin_dir)
+
+  for _, name in ipairs({ "agy", "claude", "ws", "stop-agents" }) do
+    local path = bin_dir .. "/" .. name
+    write_file(path, "#!/bin/sh\n")
+    local ok = os.execute(string.format("chmod +x %q", path))
+    assert_true(ok == 0 or ok == true, "chmod " .. name)
+  end
+
+  local opts = { code_dir = code_dir, use_global_apps = false }
+  assert_equal(select(1, locator.resolve_antigravity_launcher(opts)), bin_dir .. "/agy", "antigravity repo path")
+  assert_equal(select(1, locator.resolve_claude_launcher(opts)), bin_dir .. "/claude", "claude repo path")
+  assert_equal(select(1, locator.resolve_ws_launcher(opts)), bin_dir .. "/ws", "ws repo path")
+  assert_equal(select(1, locator.resolve_stop_agents_launcher(opts)), bin_dir .. "/stop-agents", "stop repo path")
+  cleanup(root)
+end)
+
+run_test("tool_locator.resolve_antigravity_launcher: does not alias unrelated agent commands", function()
+  local root = make_temp_dir("locator_antigravity_no_alias")
+  mkdir(root .. "/code")
+  locator.clear_cache()
+
+  local resolved, found = locator.resolve_antigravity_launcher({
+    code_dir = root .. "/code",
+    use_global_apps = false,
+  })
+
+  assert_true(not found, "missing Antigravity should remain unavailable")
+  assert_equal(resolved, root .. "/code/config/dotfiles/bin/agy", "fallback should remain labeled Antigravity")
+  cleanup(root)
+end)

@@ -19,6 +19,21 @@ local function trace(message)
 end
 
 local function now_ms()
+  local fast_clock = CONFIG_DIR .. "/bin/perf_clock"
+  local f = io.open(fast_clock, "r")
+  if f then
+    f:close()
+    local handle = io.popen(string.format("%s ms 2>/dev/null", fast_clock))
+    if handle then
+      local value = (handle:read("*a") or ""):gsub("%s+", "")
+      handle:close()
+      local numeric = tonumber(value)
+      if numeric then
+        return numeric
+      end
+    end
+  end
+
   local commands = {
     [[perl -MTime::HiRes=time -e 'printf("%d\n", time() * 1000)']],
     [[python3 - <<'PY'

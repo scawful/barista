@@ -19,6 +19,9 @@ mkdir -p "$BIN_DIR" "$SKHD_DIR" "$LOCAL_BIN"
 
 cat > "$BIN_DIR/yabai" <<'EOF'
 #!/bin/bash
+if [ -n "${YABAI_TEST_LOG:-}" ]; then
+  printf '%s\n' "$*" >>"$YABAI_TEST_LOG"
+fi
 exit 0
 EOF
 chmod +x "$BIN_DIR/yabai"
@@ -59,6 +62,8 @@ run_control() {
   HOME="$HOME_DIR" \
     PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
     YABAI_BIN="$BIN_DIR/yabai" \
+    YABAI_TEST_LOG="$TMP_DIR/yabai.log" \
+    BARISTA_SPACE_FOCUS_LOCK_DIR="$TMP_DIR/space-focus.lock" \
     SKHD_CONFIG="$SKHD_DIR/skhdrc" \
     "$SCRIPT" "$@"
 }
@@ -97,5 +102,18 @@ assert any("yabai -m" in row["command"] for row in rows)
 assert any(row["status"] == "disabled" and row["combo"] == "f19" for row in rows)
 assert sum(1 for row in rows if row["missing_target"]) == 1
 PY
+
+: >"$TMP_DIR/yabai.log"
+run_control space-focus 7
+grep -Fqx -- '-m space --focus 7' "$TMP_DIR/yabai.log" || {
+  echo "FAIL: numeric space focus did not route through the bounded yabai command" >&2
+  cat "$TMP_DIR/yabai.log" >&2
+  exit 1
+}
+
+if run_control space-focus nope >/dev/null 2>&1; then
+  echo "FAIL: invalid numeric space target should be rejected" >&2
+  exit 1
+fi
 
 printf 'test_yabai_control_shortcuts.sh: ok\n'

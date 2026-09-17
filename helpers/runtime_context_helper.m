@@ -2,12 +2,20 @@
 #import <Foundation/Foundation.h>
 #import <errno.h>
 #import <fcntl.h>
+#import <math.h>
+#import <poll.h>
+#import <spawn.h>
+#import <stdlib.h>
 #import <signal.h>
 #import <string.h>
 #import <sys/stat.h>
+#import <sys/wait.h>
 #import <time.h>
 #import <unistd.h>
 
+extern char **environ;
+
+static const NSUInteger kMaxTaskOutputBytes = 4 * 1024 * 1024;
 static volatile sig_atomic_t keep_running = 1;
 static const NSTimeInterval kDefaultSafetyRefreshSeconds = 5.0;
 static const NSTimeInterval kEventRefreshDebounceSeconds = 0.05;
@@ -87,7 +95,7 @@ static NSString *yabai_bin(void) {
 static NSTimeInterval task_timeout_seconds(void) {
   NSString *value = env_value(@"BARISTA_RUNTIME_CONTEXT_QUERY_TIMEOUT");
   double seconds = value.length > 0 ? value.doubleValue : 1.0;
-  if (seconds <= 0.0) {
+  if (!isfinite(seconds) || seconds <= 0.0) {
     seconds = 1.0;
   }
   return seconds;
@@ -102,63 +110,185 @@ static NSTimeInterval safety_refresh_seconds(void) {
   return seconds;
 }
 
-static NSString *run_task(NSString *launchPath, NSArray<NSString *> *arguments) {
-  if (launchPath.length == 0) {
-    return nil;
+static BOOL task_process_group_exists(pid_t child) {
+  return kill(-child, 0) == 0 || errno == EPERM;
+}
+
+static void stop_task_process_group(pid_t child, BOOL childNeedsReap,
+                                    int *status) {
+  if (child <= 0) {
+    return;
   }
-
-  NSFileHandle *outputReadHandle = nil;
-  NSFileHandle *outputWriteHandle = nil;
-  NSFileHandle *errorHandle = nil;
-  @try {
-    NSTask *task = [[NSTask alloc] init];
-    NSPipe *pipe = [NSPipe pipe];
-    outputReadHandle = pipe.fileHandleForReading;
-    outputWriteHandle = pipe.fileHandleForWriting;
-    errorHandle = [NSFileHandle fileHandleWithNullDevice];
-    task.launchPath = launchPath;
-    task.arguments = arguments ?: @[];
-    task.standardOutput = outputWriteHandle;
-    task.standardError = errorHandle;
-    [task launch];
-    [outputWriteHandle closeFile];
-    outputWriteHandle = nil;
-    [errorHandle closeFile];
-    errorHandle = nil;
-
-    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:task_timeout_seconds()];
-    NSTimeInterval pollStart = monotonic_seconds();
-    while (task.isRunning && deadline.timeIntervalSinceNow > 0.0) {
-      [NSThread sleepForTimeInterval:task_poll_interval_seconds(
-          monotonic_seconds() - pollStart)];
-    }
-    if (task.isRunning) {
-      [task terminate];
-      [NSThread sleepForTimeInterval:0.05];
-      if (task.isRunning) {
-        kill((pid_t)task.processIdentifier, SIGKILL);
+  if (kill(-child, SIGTERM) != 0 && errno == ESRCH && childNeedsReap) {
+    kill(child, SIGTERM);
+  }
+  BOOL childReaped = !childNeedsReap;
+  NSTimeInterval graceStart = monotonic_seconds();
+  while (monotonic_seconds() - graceStart < 0.05) {
+    if (!childReaped) {
+      pid_t waited = waitpid(child, status, WNOHANG);
+      if (waited == child || (waited < 0 && errno == ECHILD)) {
+        childReaped = YES;
+      } else if (waited < 0 && errno != EINTR) {
+        break;
       }
-      [task waitUntilExit];
-      [outputReadHandle closeFile];
-      outputReadHandle = nil;
-      return nil;
     }
-
-    NSData *data = [outputReadHandle readDataToEndOfFile];
-    [outputReadHandle closeFile];
-    outputReadHandle = nil;
-    if (data.length == 0 || task.terminationStatus != 0) {
-      return nil;
+    if (childReaped && !task_process_group_exists(child)) {
+      return;
     }
+    usleep(1000);
+  }
+  if (kill(-child, SIGKILL) != 0 && errno == ESRCH && !childReaped) {
+    kill(child, SIGKILL);
+  }
+  if (!childReaped) {
+    while (waitpid(child, status, 0) < 0 && errno == EINTR) {
+    }
+  }
+}
 
-    NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    return [output stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-  } @catch (__unused NSException *exception) {
-    [outputReadHandle closeFile];
-    [outputWriteHandle closeFile];
-    [errorHandle closeFile];
+static NSString *run_task(NSString *launchPath, NSArray<NSString *> *arguments) {
+  if (launchPath.length == 0 || arguments.count > 32) {
     return nil;
   }
+  const char *path = launchPath.fileSystemRepresentation;
+  if (path == NULL || path[0] == '\0') {
+    return nil;
+  }
+  char **argv = calloc(arguments.count + 2, sizeof(char *));
+  if (argv == NULL) {
+    return nil;
+  }
+  argv[0] = (char *)path;
+  for (NSUInteger i = 0; i < arguments.count; i++) {
+    argv[i + 1] = (char *)arguments[i].UTF8String;
+    if (argv[i + 1] == NULL) {
+      free(argv);
+      return nil;
+    }
+  }
+
+  int pipeFDs[2];
+  if (pipe(pipeFDs) != 0) {
+    free(argv);
+    return nil;
+  }
+  int readFlags = fcntl(pipeFDs[0], F_GETFL, 0);
+  if (readFlags < 0 ||
+      fcntl(pipeFDs[0], F_SETFL, readFlags | O_NONBLOCK) != 0 ||
+      fcntl(pipeFDs[0], F_SETFD, FD_CLOEXEC) != 0 ||
+      fcntl(pipeFDs[1], F_SETFD, FD_CLOEXEC) != 0) {
+    close(pipeFDs[0]);
+    close(pipeFDs[1]);
+    free(argv);
+    return nil;
+  }
+
+  posix_spawn_file_actions_t actions;
+  posix_spawnattr_t attributes;
+  BOOL actionsReady = posix_spawn_file_actions_init(&actions) == 0;
+  BOOL attributesReady = posix_spawnattr_init(&attributes) == 0;
+  int spawnError = EINVAL;
+  pid_t child = -1;
+  if (actionsReady && attributesReady) {
+    int error = posix_spawn_file_actions_addclose(&actions, pipeFDs[0]);
+    error |= posix_spawn_file_actions_adddup2(&actions, pipeFDs[1], STDOUT_FILENO);
+    error |= posix_spawn_file_actions_addclose(&actions, pipeFDs[1]);
+    error |= posix_spawn_file_actions_addopen(&actions, STDERR_FILENO,
+                                             "/dev/null", O_WRONLY, 0);
+    error |= posix_spawnattr_setpgroup(&attributes, 0);
+    error |= posix_spawnattr_setflags(&attributes,
+        POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETPGROUP);
+    if (error == 0) {
+      spawnError = posix_spawnp(&child, path, &actions, &attributes, argv, environ);
+    }
+  }
+  if (actionsReady) {
+    posix_spawn_file_actions_destroy(&actions);
+  }
+  if (attributesReady) {
+    posix_spawnattr_destroy(&attributes);
+  }
+  close(pipeFDs[1]);
+  free(argv);
+  if (spawnError != 0) {
+    close(pipeFDs[0]);
+    return nil;
+  }
+
+  NSMutableData *data = [NSMutableData data];
+  NSTimeInterval started = monotonic_seconds();
+  NSTimeInterval timeout = task_timeout_seconds();
+  BOOL childDone = NO;
+  BOOL eof = NO;
+  BOOL failed = NO;
+  int childStatus = 0;
+  while (!childDone || !eof) {
+    NSTimeInterval elapsed = monotonic_seconds() - started;
+    if (elapsed >= timeout) {
+      failed = YES;
+      break;
+    }
+    int waitMilliseconds = (int)ceil(fmin(timeout - elapsed,
+        task_poll_interval_seconds(elapsed)) * 1000.0);
+    // Once stdout closes, sleep until the next reap check instead of spinning
+    // on POLLHUP while a wrapper finishes its remaining work.
+    struct pollfd descriptor = {
+      .fd = eof ? -1 : pipeFDs[0],
+      .events = POLLIN | POLLHUP,
+      .revents = 0,
+    };
+    int pollResult = poll(&descriptor, 1, waitMilliseconds);
+    if (pollResult < 0 && errno != EINTR) {
+      failed = YES;
+      break;
+    }
+    if (pollResult > 0 && (descriptor.revents & (POLLIN | POLLHUP))) {
+      while (YES) {
+        unsigned char buffer[8192];
+        ssize_t count = read(pipeFDs[0], buffer, sizeof(buffer));
+        if (count > 0) {
+          if (data.length + (NSUInteger)count > kMaxTaskOutputBytes) {
+            failed = YES;
+            break;
+          }
+          [data appendBytes:buffer length:(NSUInteger)count];
+          continue;
+        }
+        if (count == 0) {
+          eof = YES;
+        } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
+          failed = YES;
+        }
+        break;
+      }
+    }
+    if (pollResult > 0 && (descriptor.revents & (POLLERR | POLLNVAL))) {
+      failed = YES;
+    }
+    if (!childDone) {
+      pid_t waited = waitpid(child, &childStatus, WNOHANG);
+      if (waited == child) {
+        childDone = YES;
+      } else if (waited < 0 && errno != EINTR) {
+        failed = YES;
+        childDone = YES;
+      }
+    }
+    if (failed) {
+      break;
+    }
+  }
+  close(pipeFDs[0]);
+  // The spawned child is its own group leader. Cleanup also covers wrappers
+  // whose descendants hold stdout open or survive after the wrapper exits.
+  stop_task_process_group(child, !childDone, &childStatus);
+  if (failed || data.length == 0 || !WIFEXITED(childStatus) ||
+      WEXITSTATUS(childStatus) != 0) {
+    return nil;
+  }
+  NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+  return [output stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 }
 
 static id parse_json(NSString *json) {

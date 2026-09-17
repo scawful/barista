@@ -109,6 +109,57 @@ local function compact_ai_apps(rendered, theme)
   return compacted
 end
 
+local workflow_groups = {
+  agentic_ai = {
+    id = "agentic_ai",
+    name = "menu.tools.workflow.agentic_ai",
+    label = "Agentic AI",
+    icon = "󰚩",
+    color = "GREEN",
+  },
+  workspaces = {
+    id = "workspaces",
+    name = "menu.tools.workflow.workspaces",
+    label = "Workspaces",
+    icon = "󰵮",
+    color = "BLUE",
+  },
+}
+
+local function compact_workflow_extensions(rendered, theme)
+  local grouped = { agentic_ai = {}, workspaces = {} }
+  for _, entry in ipairs(rendered or {}) do
+    if grouped[entry.workflow_group] then
+      table.insert(grouped[entry.workflow_group], entry)
+    end
+  end
+
+  local emitted = {}
+  local compacted = {}
+  for _, entry in ipairs(rendered or {}) do
+    local group_id = entry.workflow_group
+    local definition = workflow_groups[group_id]
+    if definition and #grouped[group_id] > 0 then
+      if not emitted[group_id] then
+        table.insert(compacted, {
+          id = definition.id,
+          name = definition.name,
+          label = definition.label,
+          icon = definition.icon,
+          icon_color = theme[definition.color],
+          section = "workflows",
+          submenu = true,
+          items = grouped[group_id],
+        })
+        emitted[group_id] = true
+      end
+    else
+      table.insert(compacted, entry)
+    end
+  end
+  return compacted
+end
+
 local function font_string(ctx, family, style, size)
   if ctx.font_string then
     return ctx.font_string(family, style, size)
@@ -699,14 +750,15 @@ local function build_prepared(ctx)
 
   local sections = {
     apps = { id = "apps", label = "Apps", icon = "󰀻", color = tc("MAUVE", "LAVENDER"), order = 0 },
-    oracle = { id = "oracle", label = "Oracle", icon = "󰯙", color = tc("GREEN"), order = 1 },
-    controls = { id = "controls", label = "Controls", icon = "󰒓", color = tc("SKY"), order = 2 },
-    work = { id = "work", label = "Web Apps", icon = "󰖟", color = tc("BLUE"), order = 3 },
-    support = { id = "support", label = "Support", icon = "󰘥", color = tc("LAVENDER"), order = 4 },
-    afs = { id = "afs", label = "AFS Tools", icon = "󰈙", color = tc("SAPPHIRE"), order = 5 },
-    audio = { id = "audio", label = "Audio", icon = "󰎈", color = tc("PEACH"), order = 6 },
-    extensions = { id = "extensions", label = "Extensions", icon = "󰐕", color = tc("TEAL"), order = 7 },
-    custom = { id = "custom", label = "Custom", icon = "󰘥", color = tc("LAVENDER"), order = 8 },
+    workflows = { id = "workflows", label = "Workflows", icon = "󰘦", color = tc("GREEN"), order = 1 },
+    oracle = { id = "oracle", label = "Oracle", icon = "󰯙", color = tc("GREEN"), order = 3 },
+    controls = { id = "controls", label = "Controls", icon = "󰒓", color = tc("SKY"), order = 4 },
+    work = { id = "work", label = "Web Apps", icon = "󰖟", color = tc("BLUE"), order = 5 },
+    support = { id = "support", label = "Support", icon = "󰘥", color = tc("LAVENDER"), order = 6 },
+    afs = { id = "afs", label = "AFS Tools", icon = "󰈙", color = tc("SAPPHIRE"), order = 7 },
+    audio = { id = "audio", label = "Audio", icon = "󰎈", color = tc("PEACH"), order = 8 },
+    extensions = { id = "extensions", label = "Extensions", icon = "󰐕", color = tc("TEAL"), order = 9 },
+    custom = { id = "custom", label = "Custom", icon = "󰘥", color = tc("LAVENDER"), order = 10 },
   }
 
   local menu_model = apple_menu_model.build({
@@ -729,7 +781,7 @@ local function build_prepared(ctx)
     popup_padding = popup_padding,
     hover_script_cmd = hover_script_cmd,
     menu_action = menu_action,
-    rendered = compact_ai_apps(menu_model.rendered, theme),
+    rendered = compact_workflow_extensions(compact_ai_apps(menu_model.rendered, theme), theme),
     sections = menu_model.sections,
   }
 end

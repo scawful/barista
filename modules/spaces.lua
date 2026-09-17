@@ -1,5 +1,59 @@
 -- Space management: display list, refresh, and yabai signal wiring.
 
+local function normalize_display_ids(json_text, key, decode)
+  if type(json_text) ~= "string" or type(key) ~= "string" or key == "" then
+    return nil
+  end
+
+  if type(decode) ~= "function" then
+    local ok_json, json = pcall(require, "json")
+    if not ok_json or type(json.decode) ~= "function" then
+      return nil
+    end
+    decode = json.decode
+  end
+
+  local ok_decode, payload = pcall(decode, json_text)
+  if not ok_decode or type(payload) ~= "table" then
+    return nil
+  end
+
+  local seen = {}
+  local values = {}
+
+  local function append(raw)
+    local numeric = type(raw) == "number" and raw or (type(raw) == "string" and tonumber(raw) or nil)
+    if numeric and numeric > 0 and numeric % 1 == 0 and not seen[numeric] then
+      seen[numeric] = true
+      table.insert(values, numeric)
+    end
+  end
+
+  local function visit(value)
+    if type(value) ~= "table" then
+      return
+    end
+    if value[key] ~= nil then
+      append(value[key])
+    end
+    for child_key, child in pairs(value) do
+      if child_key ~= key and type(child) == "table" then
+        visit(child)
+      end
+    end
+  end
+
+  visit(payload)
+  if #values == 0 then
+    return nil
+  end
+  table.sort(values)
+  for index, value in ipairs(values) do
+    values[index] = tostring(value)
+  end
+  return table.concat(values, ",")
+end
+
 local function create(CONFIG_DIR, PLUGIN_DIR, SKETCHYBAR_BIN, YABAI_BIN, shell_exec, yabai_available, lua_only)
   local last_display_state = nil
   local display_refresh_pending = false
@@ -9,42 +63,38 @@ local function create(CONFIG_DIR, PLUGIN_DIR, SKETCHYBAR_BIN, YABAI_BIN, shell_e
     if not yabai_available() then
       return nil
     end
-    local cmd = (YABAI_BIN or "yabai") .. " -m query --displays 2>/dev/null | jq -r '[.[] | .index] | sort | join(\",\")'"
+    local cmd = string.format("%q -m query --displays 2>/dev/null", YABAI_BIN or "yabai")
     local handle = io.popen(cmd)
     if not handle then return nil end
-    local result = handle:read("*a")
+    local result = handle:read("*a") or ""
     handle:close()
-    return result and result:gsub("%s+", "") or nil
+    return normalize_display_ids(result, "index")
   end
 
   local function get_associated_displays()
-    local function read_display_list(cmd)
+    local function parse_display_query(cmd, key)
       local handle = io.popen(cmd)
       if not handle then
         return nil
       end
       local output = handle:read("*a") or ""
       handle:close()
-      local targets = {}
-      for line in output:gmatch("[^\r\n]+") do
-        local num = tonumber(line)
-        if num then
-          table.insert(targets, tostring(num))
-        end
-      end
-      if #targets == 0 then
-        return nil
-      end
-      return table.concat(targets, ",")
+      return normalize_display_ids(output, key)
     end
 
-    local list = read_display_list(string.format([[ %s --query displays 2>/dev/null | jq -r '.[]."arrangement-id"' ]], SKETCHYBAR_BIN))
+    local list = parse_display_query(
+      string.format("%q --query displays 2>/dev/null", SKETCHYBAR_BIN),
+      "arrangement-id"
+    )
     if list then
       return list
     end
 
     if yabai_available() and YABAI_BIN then
-      list = read_display_list(string.format([[ %s -m query --displays 2>/dev/null | jq -r '.[].index' ]], YABAI_BIN))
+      list = parse_display_query(
+        string.format("%q -m query --displays 2>/dev/null", YABAI_BIN),
+        "index"
+      )
       if list then
         return list
       end
@@ -111,4 +161,7 @@ local function create(CONFIG_DIR, PLUGIN_DIR, SKETCHYBAR_BIN, YABAI_BIN, shell_e
   }
 end
 
-return { create = create }
+return {
+  create = create,
+  normalize_display_ids = normalize_display_ids,
+}

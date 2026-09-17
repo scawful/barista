@@ -12,6 +12,7 @@ FOCUS_SCRIPT="$CONFIG_DIR/plugins/focus_space.sh"
 ICON_CACHE_DIR="$CONFIG_DIR/cache/space_icons"
 RETRY_FILE="$CONFIG_DIR/.spaces_retry"
 SIG_CACHE_FILE="$CONFIG_DIR/.spaces_signatures"
+TOPOLOGY_DIRTY_FILE="$CONFIG_DIR/cache/space_topology_dirty"
 STATE_FILE="$CONFIG_DIR/state.json"
 SPACE_ACTION_SCRIPT="$CONFIG_DIR/scripts/space_action.sh"
 SPACE_MANAGER_BIN="$CONFIG_DIR/bin/space_manager"
@@ -25,6 +26,9 @@ SIMPLE_SPACES_START_MS=""
 STATE_SPACE_CONFIG_LOADED=0
 STATE_CREATOR_MODE=""
 STATE_DIFF_UPDATES_ENABLED=""
+STATE_CREATOR_HOVER_CURVE="sin"
+STATE_CREATOR_HOVER_DURATION="8"
+CREATOR_HOVER_SCRIPT=""
 BAR_QUERY_JSON=""
 BAR_SNAPSHOT_LOADED=0
 BAR_HEIGHT_SNAPSHOT=""
@@ -80,14 +84,40 @@ load_state_space_config() {
   [ "$STATE_SPACE_CONFIG_LOADED" -eq 0 ] || return 0
   if [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ]; then
     local state_values=""
-    if ! state_values="$("$JQ_BIN" -r '[.spaces.creator_mode // "", (.spaces.experimental_diff_updates // "")] | @tsv' "$STATE_FILE" 2>/dev/null)"; then
+    if ! state_values="$("$JQ_BIN" -r '[
+        .spaces.creator_mode // "",
+        (.spaces.experimental_diff_updates // ""),
+        (.appearance.hover_animation_curve // "sin"),
+        ((.appearance.hover_animation_duration // 8) | (try tonumber catch 8)
+          | if isfinite then floor | if . < 0 then 0 else . end else 8 end)
+      ] | map("v" + tostring) | @tsv' "$STATE_FILE" 2>/dev/null)"; then
       return 0
     fi
     if [ -n "$state_values" ]; then
-      IFS=$'\t' read -r STATE_CREATOR_MODE STATE_DIFF_UPDATES_ENABLED <<< "$state_values"
+      IFS=$'\t' read -r STATE_CREATOR_MODE STATE_DIFF_UPDATES_ENABLED STATE_CREATOR_HOVER_CURVE STATE_CREATOR_HOVER_DURATION <<< "$state_values"
+      # Prefixes keep read from collapsing empty TSV fields.
+      STATE_CREATOR_MODE="${STATE_CREATOR_MODE#v}"
+      STATE_DIFF_UPDATES_ENABLED="${STATE_DIFF_UPDATES_ENABLED#v}"
+      STATE_CREATOR_HOVER_CURVE="${STATE_CREATOR_HOVER_CURVE#v}"
+      STATE_CREATOR_HOVER_DURATION="${STATE_CREATOR_HOVER_DURATION#v}"
     fi
   fi
   STATE_SPACE_CONFIG_LOADED=1
+}
+
+initialize_creator_hover_script() {
+  local binary="$SKETCHYBAR_BIN"
+  local plugin="$CONFIG_DIR/plugins/space_creator.sh"
+  local curve="${STATE_CREATOR_HOVER_CURVE:-sin}"
+  local duration="$STATE_CREATOR_HOVER_DURATION"
+  local quote="'" escaped_quote="'\\''"
+  # Quote the generated command for SketchyBar's shell, including config roots
+  # and binary paths that contain spaces or apostrophes.
+  binary="${binary//$quote/$escaped_quote}"
+  plugin="${plugin//$quote/$escaped_quote}"
+  curve="${curve//$quote/$escaped_quote}"
+  duration="${duration//$quote/$escaped_quote}"
+  CREATOR_HOVER_SCRIPT="BARISTA_SKETCHYBAR_BIN='$binary' BARISTA_HOVER_ANIMATION_CURVE='$curve' BARISTA_HOVER_ANIMATION_DURATION='$duration' '$plugin'"
 }
 
 ensure_bar_snapshot_loaded() {
@@ -631,19 +661,18 @@ schedule_spaces_retry() {
 }
 
 schedule_topology_apply_retry() {
+  # Keep later real events eligible to repair partial state even if the single
+  # delayed retry also fails. Successful reconstruction clears this marker.
+  mkdir -p "${TOPOLOGY_DIRTY_FILE%/*}" 2>/dev/null || true
+  : > "$TOPOLOGY_DIRTY_FILE" 2>/dev/null || true
   [ "${BARISTA_TOPOLOGY_APPLY_RETRY:-0}" != "1" ] || return 0
   (
     sleep 0.15
-    if BARISTA_TOPOLOGY_APPLY_RETRY=1 \
+    BARISTA_TOPOLOGY_APPLY_RETRY=1 \
+      BARISTA_REASON=space_topology_repair SENDER=space_topology_repair \
+      BARISTA_ALL_SPACES_DATA="" BARISTA_SPACE_METRICS_FILE="" \
       CONFIG_DIR="$CONFIG_DIR" \
-      "$0" >/dev/null 2>&1; then
-      if [ -x "$CONFIG_DIR/plugins/space_visuals.sh" ]; then
-        NAME="space_runtime" \
-          SENDER="space_topology_repair" \
-          BARISTA_ALL_SPACES_DATA="${BARISTA_ALL_SPACES_DATA:-}" \
-          "$CONFIG_DIR/plugins/space_visuals.sh" >/dev/null 2>&1 || true
-      fi
-    fi
+      "$CONFIG_DIR/plugins/refresh_spaces.sh" >/dev/null 2>&1 || true
   ) &
 }
 
@@ -652,6 +681,7 @@ if [ "$STATE_SPACE_CONFIG_LOADED" -eq 0 ]; then
   load_state_space_config
 fi
 CREATOR_MODE="$(normalize_creator_mode "${STATE_CREATOR_MODE:-per_display}")"
+initialize_creator_hover_script
 ensure_bar_snapshot_loaded
 if [ "$BAR_SNAPSHOT_LOADED" -eq 0 ]; then
   ensure_bar_snapshot_loaded
@@ -828,8 +858,8 @@ creator_props_signature() {
       creator_ignore_association="off"
     fi
     creator_cmd="$(creator_click_action "$creator_target")"
-    printf '%s|%s|%s|%s|%s|%s|%s\n' \
-      "$creator_item" "$creator_target" "$SPACE_ITEM_HEIGHT" "$creator_cmd" "$creator_ignore_association" "$creator_associated_display" "$creator_associated_space"
+    printf '%s|%s|%s|%s|%s|%s|%s|%s\n' \
+      "$creator_item" "$creator_target" "$SPACE_ITEM_HEIGHT" "$creator_cmd" "$creator_ignore_association" "$creator_associated_display" "$creator_associated_space" "$CREATOR_HOVER_SCRIPT"
   done | join_lines_with_comma
 }
 
@@ -867,6 +897,7 @@ write_signatures() {
     printf 'space_props=%s\n' "$space_props_sig"
     printf 'creator_props=%s\n' "$creator_props_sig"
   } > "$SIG_CACHE_FILE" 2>/dev/null || true
+  rm -f "$TOPOLOGY_DIRTY_FILE" 2>/dev/null || true
 }
 
 if [ -d "$ICON_CACHE_DIR" ]; then
@@ -890,6 +921,15 @@ fi
 FULL_REBUILD_DISCOVERY_END_MS="$(now_ms)"
 load_cached_space_icons
 prefetch_space_icons_if_needed
+
+apply_space_updates() {
+  if ! "$SKETCHYBAR_BIN" "$@" >/dev/null 2>&1; then
+    # Incremental and creator updates can partially apply too. Keep the last
+    # successful signatures and let the serialized repair reconstruct once.
+    schedule_topology_apply_retry
+    return 1
+  fi
+}
 
 sync_creator_items() {
   local anchor_item="${1:-}"
@@ -931,7 +971,7 @@ sync_creator_items() {
       background.color="0x102a313c"
       background.corner_radius=10
       background.height="$SPACE_ITEM_HEIGHT"
-      script="$CONFIG_DIR/plugins/space_creator.sh"
+      script="$CREATOR_HOVER_SCRIPT"
       click_script="$creator_cmd")
     if [ -n "$creator_associated_display" ]; then
       creator_args+=(associated_display="$creator_associated_display")
@@ -954,7 +994,7 @@ sync_creator_items() {
   done < <(snapshot_creator_items)
 
   if [ ${#creator_args[@]} -gt 0 ]; then
-    "$SKETCHYBAR_BIN" "${creator_args[@]}" >/dev/null 2>&1 || true
+    apply_space_updates "${creator_args[@]}" || return 1
   fi
 }
 
@@ -1051,7 +1091,7 @@ apply_incremental_space_items() {
   done
 
   if [ ${#update_args[@]} -gt 0 ]; then
-    "$SKETCHYBAR_BIN" "${update_args[@]}" >/dev/null 2>&1 || true
+    apply_space_updates "${update_args[@]}" || return 1
   fi
 
   write_space_metrics "$strategy" "$added_count" "$removed_count" "$updated_count"
@@ -1061,7 +1101,8 @@ apply_incremental_space_items() {
 declare -a SB_ARGS=()
 SNAPSHOT_SPACE_COUNT="$(count_snapshot_space_items)"
 FORCE_FULL_REBUILD=0
-if [ "${BARISTA_TOPOLOGY_APPLY_RETRY:-0}" = "1" ] || [ "$SNAPSHOT_SPACE_COUNT" -eq 0 ]; then
+if [ "${BARISTA_TOPOLOGY_APPLY_RETRY:-0}" = "1" ] \
+  || [ -f "$TOPOLOGY_DIRTY_FILE" ] || [ "$SNAPSHOT_SPACE_COUNT" -eq 0 ]; then
   FORCE_FULL_REBUILD=1
 fi
 
@@ -1293,6 +1334,7 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ] && [ "$FORCE_FULL_REBUILD" -eq 0 ]; then
               display="$creator_target"
               ignore_association="$creator_ignore_association"
               click_script="$creator_cmd"
+              script="$CREATOR_HOVER_SCRIPT"
               background.height="$SPACE_ITEM_HEIGHT")
             if [ -n "$creator_associated_display" ]; then
               FAST_ARGS+=(associated_display="$creator_associated_display")
@@ -1304,7 +1346,7 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ] && [ "$FORCE_FULL_REBUILD" -eq 0 ]; then
         fi
       else
         if [ ${#FAST_ARGS[@]} -gt 0 ]; then
-          "$SKETCHYBAR_BIN" "${FAST_ARGS[@]}" >/dev/null 2>&1 || true
+          apply_space_updates "${FAST_ARGS[@]}" || exit 1
           FAST_ARGS=()
         fi
         sync_creator_items "${SPACE_ITEMS[${#SPACE_ITEMS[@]}-1]}"
@@ -1314,11 +1356,13 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ] && [ "$FORCE_FULL_REBUILD" -eq 0 ]; then
       fi
 
       if [ ${#FAST_ARGS[@]} -gt 0 ]; then
-        "$SKETCHYBAR_BIN" "${FAST_ARGS[@]}" >/dev/null 2>&1 || true
+        apply_space_updates "${FAST_ARGS[@]}" || exit 1
       fi
 
       if [ "$space_props_changed" -eq 1 ]; then
         write_space_metrics "props_only" 0 0 "$(count_desired_space_items)"
+      elif [ "$creator_props_changed" -eq 1 ]; then
+        write_space_metrics "creator_only" 0 0 0
       else
         write_space_metrics "noop" 0 0 0
       fi
@@ -1369,7 +1413,7 @@ for creator_target in "${CREATOR_TARGETS[@]-}"; do
                   background.color="0x102a313c" \
                   background.corner_radius=10 \
                   background.height="$SPACE_ITEM_HEIGHT" \
-                  script="$CONFIG_DIR/plugins/space_creator.sh" \
+                  script="$CREATOR_HOVER_SCRIPT" \
                   click_script="$creator_cmd")
   if [ -n "$creator_associated_display" ]; then
     SB_ARGS+=(associated_display="$creator_associated_display")

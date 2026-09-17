@@ -19,17 +19,17 @@ check() {
   shift
   if "$@" >/dev/null 2>&1; then
     printf "${GREEN}  ✓${RESET} %s\n" "$label"
-    ((pass++))
+    ((++pass))
   else
     printf "${RED}  ✗${RESET} %s\n" "$label"
-    ((fail++))
+    ((++fail))
   fi
 }
 
 skip_check() {
   local label="$1"
   printf "${YELLOW}  ⊘${RESET} %s (skipped)\n" "$label"
-  ((skip++))
+  ((++skip))
 }
 
 echo ""
@@ -40,9 +40,9 @@ echo ""
 echo "${YELLOW}▸ Lua Unit Tests${RESET}"
 if command -v lua >/dev/null 2>&1; then
   if lua "$CONFIG_DIR/tests/run_tests.lua"; then
-    ((pass++))
+    ((++pass))
   else
-    ((fail++))
+    ((++fail))
   fi
 else
   skip_check "Lua tests (lua not in PATH)"
@@ -125,7 +125,7 @@ if [ "${1:-}" != "--quick" ]; then
         check "shellcheck: $basename" true
       else
         printf "${YELLOW}  △${RESET} shellcheck: %s (warnings)\n" "$basename"
-        ((skip++))
+        ((++skip))
       fi
     done
   else

@@ -2,6 +2,33 @@
 
 ## Issues Fixed
 
+### Multi-monitor hover and refresh stability (September 2026)
+
+Popup rows, anchors, and display-scoped space creation chips now honor the
+configured hover duration in both native and shell paths. Set
+`appearance.hover_animation_duration` to `0` for immediate highlights. An
+anchor exit cancels its pending timeout restore, and an old popup row exit
+cannot replace the current submenu parent.
+
+Anchor and shell hover commands now share a lock for each item. Token checks
+and command completion happen under that lock, so a previously launched restore
+cannot finish after the next highlight. Commands have a 500 ms deadline; event
+lock waits are bounded to 1.2 seconds, while expired timers skip busy items.
+Native and shell events cancel each other's pending timers. The existing
+`file_lock` helper supports bounded waits, with a Perl fallback for Lua-only
+setups or older installed helpers. No polling daemon is added.
+
+Display events retain their refresh requirements when coalesced with focus
+events. A display change can repair yabai's bar reservation even if the space
+indexes did not change. Large yabai responses are drained while the query runs,
+and query descendants cannot hold the runtime-context cache refresh open past
+its timeout.
+
+Rebuild and deploy `file_lock`, `popup_anchor`, `popup_hover`, and `runtime_context_helper`
+before using `./plugins/reload_sketchybar.sh` for the native changes. See
+[DisplayLink checks](../PERFORMANCE_AUDIT.md#multi-monitor-and-displaylink-checks)
+for the measured effects tradeoffs and the physical reconnect/wake checks.
+
 ### 1. Submenu Hover Behavior (plugins/submenu_hover.sh)
 **Problem**: Submenus dismissed too easily and had no visible highlight
 

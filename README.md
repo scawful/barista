@@ -48,6 +48,19 @@ and keeps machine state in ignored local files. Run
 dry-run modes. The older guided full builder remains available as
 `./scripts/install.sh`.
 
+After bootstrap, `barista-doctor.sh --onboard` validates portable readiness.
+Machine-specific tools belong in gitignored metadata such as
+`data/onboard.local.json` and `data/interface_extensions.local.json`. See
+[Portable Onboarding](docs/guides/ONBOARDING.md).
+
+Personal workflow packs:
+
+```bash
+./scripts/bootstrap_machine.sh --profile personal --enable-pack personal --reload
+# or later:
+./scripts/enable_extension_pack.sh --pack personal
+```
+
 ## Profiles
 
 | Profile | Description | Yabai | Vibe |

@@ -1,0 +1,27 @@
+{
+  "_version": 1,
+  "description": "Portable first-run checks shared by personal and work Macs. Machine-specific tools belong in data/onboard.local.json.",
+  "checks": {
+    "state_json": "fail",
+    "open_local_workflow": "fail",
+    "shortcut_mode_source": "warn",
+    "generated_shortcuts": "warn",
+    "wm_stack_when_required": "fail",
+    "machine_profile": "warn",
+    "extension_pack_when_enabled": "warn"
+  },
+  "extension_packs": {
+    "personal": {
+      "example": "data/interface_extensions.personal.example.json",
+      "local": "data/interface_extensions.local.json",
+      "allowed_variants": ["personal"]
+    },
+    "work": {
+      "example": "data/interface_extensions.example.json",
+      "local": "data/interface_extensions.local.json",
+      "allowed_variants": ["work", "personal", "minimal", "cozy"]
+    }
+  },
+  "expected_tools": [],
+  "expected_workflow_groups": []
+}

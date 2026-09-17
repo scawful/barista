@@ -1,0 +1,35 @@
+{
+  "_version": 1,
+  "description": "Copy to data/onboard.local.json on a personal Mac only. Work Macs should leave this file absent.",
+  "expected_tools": [
+    {
+      "id": "antigravity",
+      "label": "Antigravity launcher",
+      "kind": "command",
+      "candidates": ["agy", "%CODE%/config/dotfiles/bin/agy"],
+      "severity": "warn"
+    },
+    {
+      "id": "claude_code",
+      "label": "Claude Code launcher",
+      "kind": "command",
+      "candidates": ["claude", "%CODE%/config/dotfiles/bin/claude"],
+      "severity": "warn"
+    },
+    {
+      "id": "workspace_navigator",
+      "label": "Workspace navigator",
+      "kind": "command",
+      "candidates": ["ws", "%CODE%/config/dotfiles/bin/ws"],
+      "severity": "warn"
+    },
+    {
+      "id": "stop_managed_agents",
+      "label": "Managed agent stop script",
+      "kind": "path",
+      "candidates": ["%CODE%/tools/ws/stop-all-agents.sh"],
+      "severity": "warn"
+    }
+  ],
+  "expected_workflow_groups": ["agentic_ai", "workspaces"]
+}

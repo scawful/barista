@@ -25,14 +25,18 @@ added below those rows.
 ```bash
 cd ~/.config/sketchybar
 
-# Personal Mac only. The output file is gitignored.
-cp data/interface_extensions.personal.example.json data/interface_extensions.local.json
+# Preferred: enable the pack through the portable helper
+./scripts/enable_extension_pack.sh --pack personal
 
-# The personal example explicitly enables the pack contained in that local file.
+# Equivalent manual copy for a personal Mac only. The output file is gitignored.
+cp data/interface_extensions.personal.example.json data/interface_extensions.local.json
 ```
 
+The personal example explicitly enables the pack contained in that local file.
 For a work or restricted machine, leave `data/interface_extensions.local.json`
 absent unless you have a work-safe extension pack to add.
+`enable_extension_pack.sh --pack personal` is blocked on work variants unless
+you pass `--force`.
 
 ## State Keys
 

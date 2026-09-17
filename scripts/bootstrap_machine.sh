@@ -14,6 +14,7 @@ INSTALL_AGENT=0
 REPLACE=0
 RELOAD=0
 DRY_RUN=0
+ENABLE_PACKS=()
 
 usage() {
   cat <<EOF
@@ -27,6 +28,7 @@ Options:
   --domain <domain>          Optional Google Workspace domain for Work menu links
   --code-dir <path>         Optional machine-local source root saved in Barista state
   --bin-dir <path>          Extra executable directory for the login agent (repeatable)
+  --enable-pack <name>       Enable a portable extension pack into gitignored local files (repeatable)
   --copy                     Copy portable tracked files into the runtime (default)
   --link                     Symlink the runtime to this checkout
   --replace                  Back up and replace an existing runtime
@@ -57,6 +59,10 @@ while [ $# -gt 0 ]; do
       ;;
     --bin-dir)
       BIN_DIRS+=("${2:?missing value for --bin-dir}")
+      shift 2
+      ;;
+    --enable-pack)
+      ENABLE_PACKS+=("${2:?missing value for --enable-pack}")
       shift 2
       ;;
     --copy)
@@ -227,6 +233,18 @@ else
   note "Would apply machine profile $PROFILE without reloading services"
 fi
 
+for pack_name in "${ENABLE_PACKS[@]}"; do
+  pack_args=(--pack "$pack_name" --config-dir "$RUNTIME_DIR")
+  if [ "$DRY_RUN" -eq 1 ]; then
+    pack_args+=(--dry-run)
+  fi
+  if [ -x "$RUNTIME_DIR/scripts/enable_extension_pack.sh" ]; then
+    "$RUNTIME_DIR/scripts/enable_extension_pack.sh" "${pack_args[@]}"
+  else
+    "$REPO_ROOT/scripts/enable_extension_pack.sh" "${pack_args[@]}"
+  fi
+done
+
 if [ "$INSTALL_AGENT" -eq 1 ]; then
   agent_args=(--config-dir "$RUNTIME_DIR")
   if [ -n "$CODE_DIR" ]; then
@@ -254,7 +272,7 @@ if [ "$RELOAD" -eq 1 ]; then
 fi
 
 if [ "$DRY_RUN" -eq 0 ] && [ -x "$RUNTIME_DIR/scripts/barista-doctor.sh" ]; then
-  BARISTA_CONFIG_DIR="$RUNTIME_DIR" "$RUNTIME_DIR/scripts/barista-doctor.sh" --report || true
+  BARISTA_CONFIG_DIR="$RUNTIME_DIR" "$RUNTIME_DIR/scripts/barista-doctor.sh" --onboard --report || true
 fi
 
 note "setup complete"

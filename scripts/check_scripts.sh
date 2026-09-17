@@ -159,6 +159,7 @@ bash tests/test_calendar_tasks.sh >/dev/null
 bash tests/test_generate_shortcuts.sh >/dev/null
 bash tests/test_install_skhd.sh >/dev/null
 bash tests/test_open_local_workflow.sh >/dev/null
+bash tests/test_onboard_portable.sh >/dev/null
 bash tests/test_yabai_control_shortcuts.sh >/dev/null
 bash tests/test_common_state_parsing.sh >/dev/null
 bash tests/test_launch_agent_manager.sh >/dev/null

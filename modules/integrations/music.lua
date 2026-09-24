@@ -151,8 +151,16 @@ local function app_path_override(ctx, ui, id)
 end
 
 local function resolve_app(ctx, ui, spec)
+  local override = app_path_override(ctx, ui, spec.id)
+  if override then
+    local path, ok = locator.resolve_path({ override }, true)
+    if ok and path and path ~= "" then
+      return path
+    end
+    -- Configured override that misses means "not installed" (no candidate fallthrough).
+    return nil
+  end
   local candidates = {}
-  table.insert(candidates, app_path_override(ctx, ui, spec.id))
   for _, candidate in ipairs(spec.candidates or {}) do
     table.insert(candidates, candidate)
   end
@@ -200,6 +208,31 @@ local app_specs = {
       HOME .. "/Applications/Logic Pro.app",
       "/Applications/Logic Pro X.app",
       HOME .. "/Applications/Logic Pro X.app",
+    },
+  },
+  {
+    id = "yams_sp1",
+    label = "sp-xcx",
+    icon = "󰟠",
+    color_key = "LAVENDER",
+    primary = true,
+    candidates = {
+      HOME .. "/Applications/YamsSP1.app",
+      HOME .. "/Applications/SP-XCX.app",
+      HOME .. "/Applications/sp-xcx.app",
+      "/Applications/YamsSP1.app",
+      "/Applications/SP-XCX.app",
+      HOME .. "/src/hobby/yams-sp1/mac/dist/YamsSP1.app",
+    },
+  },
+  {
+    id = "sp1_utility",
+    label = "SP-1 Utility",
+    icon = "󰐊",
+    color_key = "LAVENDER",
+    candidates = {
+      "/Applications/SP-1 Utility.app",
+      HOME .. "/Applications/SP-1 Utility.app",
     },
   },
   {
@@ -318,6 +351,22 @@ function music.build_menu_model(ctx)
     end
   end
 
+  -- If sp-xcx (StemDesk/YamsSP1) is missing, keep stock SP-1 Utility on the Music root.
+  local has_sp_xcx = false
+  for _, entry in ipairs(app_entries) do
+    if entry.id == "yams_sp1" then
+      has_sp_xcx = true
+      break
+    end
+  end
+  if not has_sp_xcx then
+    for _, entry in ipairs(app_entries) do
+      if entry.id == "sp1_utility" then
+        entry.primary = true
+      end
+    end
+  end
+
   if #app_entries > 0 then
     table.insert(sections, {
       id = "apps",
@@ -357,6 +406,17 @@ function music.build_menu_model(ctx)
     ))
   end
 
+  local studio_guides = STUDIO_ROOT .. "/Reference/guides"
+  if path_exists(studio_guides, true) then
+    table.insert(workflow_entries, make_entry(
+      "studio_guides",
+      "Studio Guides",
+      "󰂺",
+      open_path_action(studio_guides),
+      { icon_color = theme_color(ctx, "YELLOW") }
+    ))
+  end
+
   local guides = HOME .. "/Documents/Music/Guides"
   if path_exists(guides, true) then
     table.insert(workflow_entries, make_entry(
@@ -364,7 +424,7 @@ function music.build_menu_model(ctx)
       "PDF Guides",
       "󰈙",
       open_path_action(guides),
-      { icon_color = theme_color(ctx, "YELLOW") }
+      { icon_color = theme_color(ctx, "PEACH") }
     ))
   end
 
@@ -395,6 +455,7 @@ function music.build_menu_model(ctx)
   local kit_entries = {}
   local kit_paths = {
     { id = "samples", label = "Samples", icon = "󰉋", path = MUSIC_ROOT .. "/Samples", color = "SAPPHIRE" },
+    { id = "sp1_library", label = "SP-1 Stems", icon = "󰐑", path = MUSIC_ROOT .. "/SP-1", color = "LAVENDER" },
     { id = "opxy_wavetables", label = "OP-XY Wavetables", icon = "󰝚", path = MUSIC_ROOT .. "/Samples/OP-XY/Wavetables Starter 01", color = "MAUVE" },
     { id = "sp404_wavetables", label = "SP-404 Wavetables", icon = "󰟴", path = MUSIC_ROOT .. "/Samples/SP-404/Wavetables Starter 01", color = "RED" },
     { id = "song_pdfs", label = "Song PDFs", icon = "󰈙", path = MUSIC_ROOT .. "/PDFs/Song PDFs", color = "YELLOW" },

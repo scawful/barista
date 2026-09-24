@@ -34,6 +34,7 @@ local function build_ctx(root, overrides)
           show_label = false,
           app_paths = {
             logic_pro = root .. "/Logic Pro.app",
+            sp1_utility = root .. "/SP-1 Utility.app",
             roland_cloud_manager = root .. "/Roland Cloud Manager.app",
             sp404_mkii = root .. "/SP-404MKII.app",
           },
@@ -94,11 +95,15 @@ end
 run_test("music integration: model discovers studio app launchers", function()
   local root = make_fixture_root()
   mkdir(root .. "/Logic Pro.app")
+  mkdir(root .. "/SP-1 Utility.app")
   mkdir(root .. "/Roland Cloud Manager.app")
   mkdir(root .. "/SP-404MKII.app")
   mkdir(root .. "/Crate")
 
-  local model = music.build_menu_model(build_ctx(root))
+  local ctx = build_ctx(root)
+  -- Explicit miss: do not fall through to a real ~/Applications/YamsSP1.app.
+  ctx.state.menus.music.app_paths.yams_sp1 = root .. "/__no_stemdesk__.app"
+  local model = music.build_menu_model(ctx)
   assert_equal(model.title, "Studio", "menu title should follow music menu config")
 
   local apps = nil
@@ -115,9 +120,12 @@ run_test("music integration: model discovers studio app launchers", function()
     app_ids[entry.id] = entry
   end
   assert_true(app_ids.logic_pro ~= nil, "Logic Pro launcher should exist")
+  assert_true(app_ids.sp1_utility ~= nil, "SP-1 Utility launcher should exist")
   assert_true(app_ids.roland_cloud_manager ~= nil, "Roland Cloud Manager launcher should exist")
   assert_true(app_ids.sp404_mkii ~= nil, "SP-404MKII launcher should exist")
   assert_true(app_ids.logic_pro.action:find("Logic Pro%.app", 1, false) ~= nil, "Logic Pro row should open the app bundle")
+  -- When sp-xcx is absent, Utility remains primary (this fixture has no YamsSP1.app).
+  assert_equal(app_ids.sp1_utility.primary, true, "SP-1 Utility stays primary without sp-xcx")
 
   local workflow_ids = {}
   for _, entry in ipairs(workflow.entries) do
@@ -129,12 +137,15 @@ end)
 run_test("music integration: widget and popup mirror Triforce-style behavior", function()
   local root = make_fixture_root()
   mkdir(root .. "/Logic Pro.app")
+  mkdir(root .. "/YamsSP1.app")
+  mkdir(root .. "/SP-1 Utility.app")
   mkdir(root .. "/Roland Cloud Manager.app")
   mkdir(root .. "/SP-404MKII.app")
   mkdir(root .. "/Crate")
   mkdir(root .. "/Ghostty.app")
 
   local ctx = build_ctx(root)
+  ctx.state.menus.music.app_paths.yams_sp1 = root .. "/YamsSP1.app"
   local widget = music.create_widget({ ctx = ctx })
   assert_equal(widget.name, "music_studio", "widget should use the configured stable item name")
   assert_equal(widget.icon.string, "󰝚", "widget should default to a music glyph")
@@ -152,11 +163,17 @@ run_test("music integration: widget and popup mirror Triforce-style behavior", f
   assert_true(by_name["music.studio.header"] ~= nil, "popup header should exist")
   assert_true(by_name["music.studio.apps.header"] ~= nil, "apps section header should exist")
   assert_true(by_name["music.studio.apps.logic_pro"] ~= nil, "Logic Pro row should exist")
+  assert_true(by_name["music.studio.apps.yams_sp1"] ~= nil, "sp-xcx row should exist")
+  assert_true(by_name["music.studio.apps.sp1_utility"] ~= nil, "SP-1 Utility row should exist")
   assert_true(by_name["music.studio.apps.roland_cloud_manager"] ~= nil, "Roland Cloud Manager row should exist")
   assert_true(by_name["music.studio.apps.sp404_mkii"] ~= nil, "SP-404MKII row should exist")
   assert_true(by_name["music.studio.workflow.crate"] ~= nil, "custom workflow row should exist")
   assert_equal(by_name["music.studio.apps.logic_pro"].position, "popup.music_studio",
     "primary app rows should remain immediately available")
+  assert_equal(by_name["music.studio.apps.yams_sp1"].position, "popup.music_studio",
+    "sp-xcx should stay on the Music root with the other primary apps")
+  assert_equal(by_name["music.studio.apps.sp1_utility"].position, "popup.music.studio.more_apps",
+    "SP-1 Utility should move under More Apps when sp-xcx is primary")
   assert_equal(by_name["music.studio.apps.roland_cloud_manager"].position, "popup.music.studio.more_apps",
     "secondary app rows should move under More Apps")
   assert_true(by_name["music.studio.apps.logic_pro"].hover == true, "popup actions should opt into hover treatment")

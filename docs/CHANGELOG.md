@@ -1,5 +1,21 @@
 # SketchyBar Configuration Changelog
 
+## September 24, 2026 - Music Studio → sp-xcx (SP-1 desk)
+
+- Music Studio primary SP-1 launcher is now **sp-xcx**
+  (`~/Applications/YamsSP1.app` / `SP-XCX.app`). Stock **SP-1 Utility** stays
+  under More Apps when installed.
+- Bundle may still be `YamsSP1.app` until product rename lands; see
+  `hobby/yams-sp1/lab/NAMING.md`.
+
+## September 22, 2026 - Music Studio SP-1 and Guides
+
+- Music Studio now launches **SP-1 Utility** as a primary app when
+  `/Applications/SP-1 Utility.app` is installed, and adds **Studio Guides**
+  (`~/Music/Studio/Reference/guides`) next to the existing PDF Guides row.
+- Kits + Folders includes **SP-1 Stems** (`~/Music/SP-1`) when that library
+  exists. Secondary hardware apps stay under More Apps.
+
 ## August 6, 2026 - Batched Battery Popup Refresh
 
 - Routine battery-anchor ownership remains unchanged: compiled setups continue

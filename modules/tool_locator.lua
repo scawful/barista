@@ -547,16 +547,6 @@ function locator.resolve_mesen_run(opts)
   })
 end
 
-function locator.resolve_oracle_agent_manager(opts)
-  local code_dir = locator.resolve_code_dir(opts)
-  return locator.resolve_executable_path({
-    code_dir .. "/hobby/oracle-agent-manager/build/oracle_manager_gui",
-    code_dir .. "/hobby/oracle-agent-manager/oracle_manager_gui",
-    code_dir .. "/hobby/oracle-agent-manager/build/oracle_hub",
-    code_dir .. "/hobby/oracle-agent-manager/oracle_hub",
-  })
-end
-
 function locator.resolve_afs_studio_binary(studio_root)
   return locator.resolve_path({
     studio_root and (studio_root .. "/build_ai/apps/studio/afs-studio.app") or nil,

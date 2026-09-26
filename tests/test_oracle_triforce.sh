@@ -136,7 +136,7 @@ if [ -s "$SKETCHYBAR_LOG" ] || [ -s "$STATUS_LOG" ]; then
 fi
 
 # Popup-open refresh takes one canonical snapshot and applies every dynamic
-# target through one SketchyBar client call, preserving quoted/Unicode labels.
+# target through one SketchyBar client call.
 reset_logs
 run_plugin popup_refresh
 if [ "$(grep -c '^CALL$' "$SKETCHYBAR_LOG")" -ne 1 ]; then
@@ -151,15 +151,19 @@ grep -Fqx "$EXPECTED_REPO_PATH"$'\tstatus-json --barista' "$STATUS_LOG" || {
 for expected in \
   $'ARG\tlabel=M0*' \
   $'ARG\ticon.color=0xfff9e2af' \
-  $'ARG\toracle.triforce.header' \
-  $'ARG\tlabel=ROM: oos168x.sfc' \
-  $'ARG\tdrawing=on' \
-  $'ARG\tlabel=Focus: Maku "Tree" 日本 🌟' \
-  $'ARG\tlabel=Continue: Maku "Tree" 日本 🌟'; do
+  $'ARG\toracle.triforce.header'; do
   grep -Fqx "$expected" "$SKETCHYBAR_LOG" || {
     echo "FAIL: missing batched refresh argument: $expected" >&2
     exit 1
   }
+done
+# Popup rows are static: the refresh no longer rewrites ROM, focus or
+# continue labels, so the popup keeps its width.
+for retired in oracle.triforce.rom oracle.triforce.focus oracle.triforce.play.continue; do
+  if grep -Fqx $'ARG\t'"$retired" "$SKETCHYBAR_LOG"; then
+    echo "FAIL: refresh should not update retired row: $retired" >&2
+    exit 1
+  fi
 done
 
 # A configured anchor label remains authoritative while popup detail stays

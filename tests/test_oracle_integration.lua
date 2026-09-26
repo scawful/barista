@@ -144,7 +144,15 @@ local function build_ctx(overrides)
 end
 
 run_test("oracle integration: shared model respects section visibility overrides", function()
-  local model = oracle.build_menu_model(build_ctx())
+  local root = make_fixture_root()
+  local mesen_run = root .. "/mesen-run"
+  local mesen_file = io.open(mesen_run, "w")
+  assert_true(mesen_file ~= nil, "mesen fixture should be writable")
+  mesen_file:write("#!/bin/sh\nexit 0\n")
+  mesen_file:close()
+  assert_true(command_ok(os.execute(string.format("chmod +x %q", mesen_run))), "mesen fixture should be executable")
+
+  local model = oracle.build_menu_model(build_ctx({ paths = { mesen_run = mesen_run } }))
   local by_id = {}
   for _, section in ipairs(model.sections) do
     by_id[section.id] = section
@@ -171,21 +179,37 @@ run_test("oracle integration: triforce widget uses runtime overrides", function(
   assert_true(widget.click_script:match("BARISTA_TRIFORCE_ACTION=click") == nil, "clicks should not route toggle ownership through the controller")
 end)
 
-run_test("oracle integration: dynamic rows exist before the first status refresh", function()
-  local items = oracle.create_triforce_popup_items(build_ctx({
-    oracle_status_snapshot = {},
-  }))
-  local by_name = {}
-  for _, item in ipairs(items) do
-    by_name[item.name] = item
+run_test("oracle integration: launch rows name the newest ROM without a status snapshot", function()
+  local root = make_fixture_root()
+  local fixtures = { "oos168x.sfc", "oos170x.sfc", "oos171.sfc", "oos169x_old.sfc" }
+  assert_true(command_ok(os.execute(string.format("mkdir -p %q", root .. "/Roms"))), "Roms fixture should be created")
+  for _, name in ipairs(fixtures) do
+    local handle = io.open(root .. "/Roms/" .. name, "w")
+    assert_true(handle ~= nil, "ROM fixture should be writable")
+    handle:close()
   end
 
-  local focus = by_name["oracle.triforce.focus"]
-  local continue = by_name["oracle.triforce.play.continue"]
-  assert_true(focus ~= nil, "focus row should have a stable refresh target")
-  assert_equal(focus.drawing, false, "unknown focus should start hidden")
-  assert_equal(continue.label, "Continue Session", "unknown focus should use the stable fallback label")
-  assert_true(continue.click_script:find("./Scripts/Build/oos-triforce.sh continue-play", 1, true) ~= nil, "continue action should resolve the current focus at click time")
+  local saved_repo = oracle.config.repo_path
+  oracle.config.repo_path = root
+  local ok, err = pcall(function()
+    local items = oracle.create_triforce_popup_items(build_ctx({
+      oracle_status_snapshot = {},
+    }))
+    local by_name = {}
+    for _, item in ipairs(items) do
+      by_name[item.name] = item
+    end
+
+    local stable = by_name["oracle.triforce.play.launch_stable"]
+    local test = by_name["oracle.triforce.play.launch_test"]
+    assert_true(stable ~= nil and test ~= nil, "both launch rows should exist before any status refresh")
+    assert_equal(stable.label, "Launch oos170x.sfc", "stable row should name the highest patched ROM in Roms")
+    assert_equal(test.label, "Launch oos170x.sfc (test)", "test row should name the same ROM version")
+    assert_nil(by_name["oracle.triforce.focus"], "focus row should be gone")
+    assert_nil(by_name["oracle.triforce.rom"], "ROM row should be gone; the launch rows name the ROM")
+  end)
+  oracle.config.repo_path = saved_repo
+  assert_true(ok, tostring(err))
 end)
 
 run_test("oracle integration: configured anchor label is passed to refresh", function()
@@ -231,29 +255,32 @@ run_test("oracle integration: triforce popup uses apple-style sections and Oracl
     by_name[item.name] = item
   end
 
-  assert_true(by_name["oracle.triforce.rom"] ~= nil, "rom row should exist")
-  assert_equal(by_name["oracle.triforce.rom"].label, "ROM: oos168x.sfc", "rom row should surface the detected ROM version")
-  assert_true(by_name["oracle.triforce.focus"] ~= nil, "focus status row should exist")
-  assert_equal(by_name["oracle.triforce.focus"].label, "Focus: Maku Tree at 0 crystals", "focus row should surface the current play focus without adding docs/tests")
-  assert_true(by_name["oracle.triforce.play.header"] ~= nil, "session section header should exist")
-  assert_equal(by_name["oracle.triforce.play.header"].label, "Oracle Session", "session section header should use the configured section label")
+  assert_nil(by_name["oracle.triforce.rom"], "ROM row should be gone")
+  assert_nil(by_name["oracle.triforce.focus"], "focus row should be gone")
+  assert_true(by_name["oracle.triforce.play.header"] ~= nil, "play section header should exist")
+  assert_equal(by_name["oracle.triforce.play.header"].label, "Play", "play section header should use the default section label")
   assert_true(by_name["oracle.triforce.apps.header"] ~= nil, "apps section header should exist")
   assert_equal(by_name["oracle.triforce.apps.header"].label, "Apps", "apps section header should use the apple-style section label")
   assert_true(by_name["oracle.triforce.meta.sep"] ~= nil, "metadata separator should exist")
   assert_true(by_name["oracle.triforce.sep.apps"] ~= nil, "section separator should exist")
   assert_true(by_name["oracle.triforce.play.header"].background.drawing == true, "section headers should draw a background like the apple menu")
   assert_equal(by_name["oracle.triforce.play.header"].background.height, 25, "section header height should follow menu_style")
-  assert_equal(by_name["oracle.triforce.play.continue"].background.height, 23, "action rows should use menu item height")
-  assert_true(by_name["oracle.triforce.play.continue"] ~= nil, "continue row should exist")
-  assert_equal(by_name["oracle.triforce.play.continue"].label, "Continue: Maku Tree at 0 crystals", "continue row should use the richer focus title")
-  assert_true(by_name["oracle.triforce.play.continue"].click_script:find("./Scripts/Build/oos-triforce.sh continue-play", 1, true) ~= nil, "continue row should not retain a stale reload-time focus command")
-  assert_true(by_name["oracle.triforce.play.continue"].hover == true, "popup actions should opt into hover treatment")
-  assert_true(by_name["oracle.triforce.play.continue"].click_script:find("popup%.drawing=off", 1, false) ~= nil, "popup actions should close the triforce popup after firing")
-  assert_true(by_name["oracle.triforce.play.patch_continue"] ~= nil, "patch + continue row should exist")
+  local stable = by_name["oracle.triforce.play.launch_stable"]
+  local test = by_name["oracle.triforce.play.launch_test"]
+  assert_true(stable ~= nil, "stable launch row should exist")
+  assert_equal(stable.background.height, 23, "action rows should use menu item height")
+  assert_equal(stable.label, "Launch oos168x.sfc", "stable launch row should name the patched ROM")
+  assert_true(stable.click_script:find("./Scripts/Build/oos-triforce.sh launch stable", 1, true) ~= nil, "stable row should launch through the Oracle runner")
+  assert_true(stable.click_script:find(">/tmp/oos-launch-stable.log 2>&1 &", 1, true) ~= nil, "stable launch should run in the background with a log")
+  assert_true(stable.hover == true, "popup actions should opt into hover treatment")
+  assert_true(stable.click_script:find("popup%.drawing=off", 1, false) ~= nil, "popup actions should close the triforce popup after firing")
+  assert_true(test ~= nil, "test launch row should exist")
+  assert_equal(test.label, "Launch oos168x.sfc (test)", "test launch row should mark the test build")
+  assert_true(test.click_script:find("./Scripts/Build/oos-triforce.sh launch test", 1, true) ~= nil, "test row should launch the newest test build")
+  assert_nil(by_name["oracle.triforce.play.continue"], "continue row should be gone")
+  assert_nil(by_name["oracle.triforce.play.patch_continue"], "patch + launch row should be gone")
   assert_nil(by_name["oracle.triforce.play.verify"], "verify row should not be in the shallow popup")
-  assert_true(by_name["oracle.triforce.apps.oracle_hub"] ~= nil, "oracle hub row should exist in the apps section")
-  assert_equal(by_name["oracle.triforce.apps.oracle_hub"].label, "Oracle Hub", "oracle hub row should use the app label")
-  assert_equal(by_name["oracle.triforce.apps.oracle_hub"].icon.color, "0xffcba6f7", "oracle hub row should keep the apple-menu icon color")
+  assert_nil(by_name["oracle.triforce.apps.oracle_hub"], "Oracle Hub launcher should be gone")
   assert_true(by_name["oracle.triforce.apps.yaze"] ~= nil, "yaze row should exist in the apps section")
   assert_equal(by_name["oracle.triforce.apps.yaze"].label, "Yaze", "yaze row should use the app label")
   assert_equal(by_name["oracle.triforce.apps.yaze"].icon.color, "0xfff9e2af", "yaze row should keep the apple-menu icon color")

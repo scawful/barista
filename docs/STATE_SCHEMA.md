@@ -351,7 +351,7 @@ This config drives the standalone Zelda hacking surface:
 - the left-bar `Triforce` widget popup
 - the native Barista control-panel `Zelda` tab as its status source
 
-Section visibility and ordering shape the shallow Triforce popup. In the current design, `play` is the only primary launcher section and the native Zelda tab owns the deeper workflow detail.
+Section visibility and ordering shape the shallow Triforce popup. In the current design, `play` has two rows: launch the stable ROM (the highest `Roms/oosNNNx.sfc`) or the newest test build (`Roms/TestBuilds/*/oosNNNx.sfc`) through `Scripts/Build/oos-triforce.sh launch stable|test`. The native Zelda tab owns the deeper workflow detail.
 
 Triforce status is event-driven: it refreshes after configuration, on anchor
 click, and after wake. There is no configurable polling interval.

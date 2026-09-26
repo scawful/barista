@@ -53,7 +53,6 @@ refresh_triforce() (
       "$PYTHON_BIN" -c '
 import json
 import os
-import re
 import signal
 import subprocess
 import sys
@@ -118,7 +117,6 @@ except (UnicodeDecodeError, TypeError, ValueError):
 
 finish = mapping(data.get("finish_line"))
 focus = mapping(finish.get("focus"))
-commands = mapping(data.get("commands"))
 
 status_label = label_override or string(finish.get("status_line")) or string(focus.get("label")) or "Oracle"
 level = string(finish.get("alerts_level")) or "ok"
@@ -128,29 +126,10 @@ color = {
     "error": "0xfff38ba8",
 }.get(level, "0xff89b4fa")
 
-focus_label = string(focus.get("title")) or string(focus.get("label"))
-if focus_label.startswith("Play "):
-    focus_label = focus_label[5:]
-focus_label = focus_label[:34]
-
-version = None
-for command in (string(commands.get("verify")), string(commands.get("quick"))):
-    match = re.search(r"oos-(?:verify|quick)\.sh\s+(\d+)", command)
-    if match:
-        version = match.group(1)
-        break
-rom_label = f"oos{version}x.sfc" if version else "patched ROM"
-continue_label = f"Continue: {focus_label}" if focus_label else "Continue Session"
-
 emit(
     "--set", name,
     f"label={status_label[:24]}", f"icon.color={color}", f"label.color={color}",
     "--set", "oracle.triforce.header", f"icon.color={color}",
-    "--set", "oracle.triforce.rom", f"label=ROM: {rom_label}",
-    "--set", "oracle.triforce.focus",
-    "drawing=on" if focus_label else "drawing=off",
-    f"label=Focus: {focus_label}" if focus_label else "label=",
-    "--set", "oracle.triforce.play.continue", f"label={continue_label}",
 )
 ' "$NAME" "$ORACLE_STATUS_BIN" "$ORACLE_REPO_PATH" "$STATUS_TIMEOUT" "$LABEL_OVERRIDE" 2>/dev/null
     )

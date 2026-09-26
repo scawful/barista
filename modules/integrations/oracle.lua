@@ -1,6 +1,6 @@
 -- Oracle workflow integration for Barista.
--- The dedicated Triforce popup stays shallow and points deeper work at
--- Oracle Agent Manager plus a few high-signal session actions.
+-- The Triforce popup stays shallow: launch the stable ROM or the newest test
+-- build, plus the editor and emulator apps.
 
 local oracle = {}
 
@@ -32,7 +32,7 @@ oracle.config = {
 }
 
 local section_defaults = {
-  play = { label = "Oracle Session", order = 10, color_key = "GREEN", enabled = true, limit = 5, icon = "󰐃", presentation = "direct" },
+  play = { label = "Play", order = 10, color_key = "GREEN", enabled = true, limit = 5, icon = "󰐃", presentation = "direct" },
   apps = { label = "Apps", order = 20, color_key = "LAVENDER", enabled = true, limit = 5, icon = "󰀻", presentation = "direct" },
 }
 
@@ -199,6 +199,22 @@ local function parse_version_from_command(command)
   return nil
 end
 
+local function detect_rom_version(repo_path)
+  local handle = io.popen(string.format("ls %s 2>/dev/null", shell_quote(repo_path .. "/Roms")))
+  if not handle then
+    return nil
+  end
+  local best
+  for name in handle:lines() do
+    local version = tonumber(name:match("^oos(%d+)x%.sfc$") or "")
+    if version and (not best or version > best) then
+      best = version
+    end
+  end
+  handle:close()
+  return best
+end
+
 local function finishline_color(level)
   local colors = {
     ok = "0xffa6e3a1",
@@ -289,21 +305,10 @@ local function build_state(ctx)
   local focus = get_field(finish_line, "focus") or {}
   local version = parse_version_from_command(get_field(status, "commands.verify"))
     or parse_version_from_command(get_field(status, "commands.quick"))
-  local rom_label = version and string.format("oos%dx.sfc", version) or "patched ROM"
+    or (repo_ok and detect_rom_version(oracle.config.repo_path))
+    or nil
+  local rom_label = version and string.format("oos%dx.sfc", version) or nil
   local ui = ui_config(ctx)
-
-  local panel_action = ""
-  if ctx and ctx.scripts and ctx.scripts.open_oracle_agent_manager and ctx.call_script then
-    panel_action = ctx.call_script(ctx.scripts.open_oracle_agent_manager)
-  else
-    local oam_bin, oam_ok = locator.resolve_oracle_agent_manager(ctx or {})
-    if oam_ok and oam_bin then
-      panel_action = binary_action(oam_bin)
-    end
-  end
-  if panel_action == "" and ctx and ctx.scripts and ctx.scripts.open_control_panel and ctx.call_script then
-    panel_action = ctx.call_script(ctx.scripts.open_control_panel, "--oracle")
-  end
 
   local yaze_action = ""
   local yaze_enabled = not (ctx and ctx.integration_flags and ctx.integration_flags.yaze == false)
@@ -334,8 +339,15 @@ local function build_state(ctx)
     )
     z3ed_action = terminal_action(command, ctx)
   end
-  local continue_action = repo_action("./Scripts/Build/oos-triforce.sh continue-play")
-  local patch_and_play_action = repo_action("./Scripts/Build/oos-triforce.sh patch-and-play")
+  -- Launches run in the background so the popup closes at once; each channel
+  -- logs to /tmp/oos-launch-<channel>.log.
+  local function launch_action(channel)
+    return repo_action(string.format(
+      "nohup ./Scripts/Build/oos-triforce.sh launch %s >/tmp/oos-launch-%s.log 2>&1 &",
+      channel,
+      channel
+    ))
+  end
   local density = current_density(ctx and ctx.state or {})
   local widget_icon = ui.triforce.icon
   if widget_icon == "" then
@@ -343,7 +355,7 @@ local function build_state(ctx)
   end
   local menu_title = ui.triforce.title
   if menu_title == "" then
-    menu_title = "Oracle Hub"
+    menu_title = "Oracle of Secrets"
   end
   local widget_label = ui.triforce.label
   if widget_label == "" then
@@ -353,12 +365,11 @@ local function build_state(ctx)
   return {
     repo_ok = repo_ok,
     ui = ui,
-    panel_action = panel_action,
     yaze_action = yaze_action,
     mesen_action = mesen_action,
     z3ed_action = z3ed_action,
-    continue_action = continue_action,
-    patch_and_play_action = patch_and_play_action,
+    launch_stable_action = launch_action("stable"),
+    launch_test_action = launch_action("test"),
     menu_title = menu_title,
     rom_label = rom_label,
     show_label = ui.triforce.show_label,
@@ -366,8 +377,6 @@ local function build_state(ctx)
     widget_label_override = ui.triforce.label,
     widget_icon = widget_icon,
     alerts_level = finish_line.alerts_level or "warn",
-    focus_label = focus.label or "",
-    focus_title = focus.title or "",
     density = density,
     triforce_widget = oracle.config.triforce_widget,
     status_script = oracle.config.status_script,
@@ -424,24 +433,15 @@ function oracle.build_menu_model(ctx)
 
   local sections = {}
 
-  local continue_label = "Continue Session"
-  if state.focus_title ~= "" then
-    continue_label = "Continue: " .. tostring(state.focus_title):gsub("^Play%s+", "")
-  elseif state.focus_label ~= "" then
-    continue_label = "Continue: " .. state.focus_label
-  end
+  local stable_label = state.rom_label and ("Launch " .. state.rom_label) or "Launch stable build"
+  local test_label = state.rom_label and ("Launch " .. state.rom_label .. " (test)") or "Launch test build"
   local play_entries = {
-    make_entry("continue", continue_label, "󰐃", state.continue_action, { prominent = true }),
-    make_entry("patch_continue", "Patch + Launch", "󰑐", state.patch_and_play_action),
+    make_entry("launch_stable", stable_label, "󰐃", state.launch_stable_action, { prominent = true }),
+    make_entry("launch_test", test_label, "󰙨", state.launch_test_action),
   }
   add_section(sections, "play", play_entries)
 
   local app_entries = {}
-  if state.panel_action ~= "" then
-    table.insert(app_entries, make_entry("oracle_hub", "Oracle Hub", "󰒋", state.panel_action, {
-      icon_color = theme_color(ctx, "MAGENTA", "MAUVE"),
-    }))
-  end
   if state.yaze_action ~= "" then
     table.insert(app_entries, make_entry("yaze", "Yaze", "󰯙", state.yaze_action, {
       icon_color = theme_color(ctx, "YELLOW"),
@@ -571,29 +571,6 @@ local function popup_items_from_model(model, ctx)
     icon = { string = model.state.widget_icon, color = accent },
     font = title_font,
     color = theme_color(ctx, "WHITE"),
-  })
-
-  ui.row(items, "triforce", "oracle.triforce.rom", {
-    style = style,
-    icon = { string = "󰍛", color = theme_color(ctx, "BLUE") },
-    label = "ROM: " .. tostring(model.state.rom_label or "patched ROM"),
-    font = style.font_small or title_font,
-    label_color = theme_color(ctx, "SUBTEXT1", "WHITE"),
-    hover = false,
-  })
-
-  local focus_label = model.state.focus_title ~= "" and model.state.focus_title
-    or model.state.focus_label
-    or ""
-  focus_label = tostring(focus_label):gsub("^Play%s+", "")
-  ui.row(items, "triforce", "oracle.triforce.focus", {
-    style = style,
-    icon = { string = "󰐃", color = theme_color(ctx, "GREEN") },
-    label = focus_label ~= "" and ("Focus: " .. truncate_label(focus_label, 34)) or "",
-    font = style.font_small or title_font,
-    label_color = theme_color(ctx, "SUBTEXT1", "WHITE"),
-    hover = false,
-    props = { drawing = focus_label ~= "" },
   })
 
   local visible_sections = {}

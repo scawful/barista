@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # AFS approvals badge.
 #
-# Shows how many agent-gate requests are waiting for a human decision
-# (~/.config/afs/agents/approvals.json). Hidden while nothing is pending, so
+# Shows how many agent-gate requests are waiting for a human decision, read
+# through `afs approvals list --json` (via bin/afs-approvals-review --json,
+# which also expires stale requests). Hidden while nothing is pending, so
 # the badge itself is the notification. The popup lists the oldest rows;
 # clicking one opens a terminal with bin/afs-approvals-review, because the
 # decision must be typed on a real tty (`afs approvals approve` re-asks for the
@@ -23,14 +24,6 @@ _d="${0%/*}"
 NAME="${NAME:-afs_approvals}"
 ACTION="${1:-refresh}"
 REQUEST_ID="${2:-}"
-# Same resolution as afs.runtime_paths.default_config_root():
-# AFS_CONFIG_HOME, else $XDG_CONFIG_HOME/afs, else ~/.config/afs.
-if [ -n "${AFS_CONFIG_HOME:-}" ]; then
-  AFS_CONFIG_DIR="$AFS_CONFIG_HOME"
-else
-  AFS_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/afs"
-fi
-APPROVALS_FILE="${AFS_APPROVALS_FILE:-$AFS_CONFIG_DIR/agents/approvals.json}"
 REVIEWER="${BARISTA_AFS_REVIEWER:-${_d}/../bin/afs-approvals-review}"
 MAX_ROWS="${BARISTA_AFS_APPROVALS_ROWS:-5}"
 SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-${SKETCHYBAR_BIN:-}}"
@@ -45,18 +38,16 @@ sb_set() {
   "$SKETCHYBAR_BIN" --set "$@" >/dev/null 2>&1 || true
 }
 
-# Pending requests as a compact JSON array. The file is a list of request
-# objects (ApprovalGate) but tolerate a {"requests": [...]} wrapper too.
+# Pending requests as a compact JSON array, oldest first. The reviewer runs
+# `afs approvals list --json` (honoring AFS_APPROVALS_FILE); any failure or
+# non-array output reads as nothing pending.
 pending_json() {
-  if [ ! -r "$APPROVALS_FILE" ] || ! command -v jq >/dev/null 2>&1; then
+  local rows
+  if ! command -v jq >/dev/null 2>&1 || ! rows="$("$REVIEWER" --json 2>/dev/null)"; then
     printf '[]'
     return 0
   fi
-  jq -c '
-    (if type == "array" then . else (.requests // []) end)
-    | map(select((.status // "") == "pending"))
-    | sort_by(.timestamp // "")
-  ' "$APPROVALS_FILE" 2>/dev/null || printf '[]'
+  printf '%s' "$rows" | jq -c 'if type == "array" then . else [] end' 2>/dev/null || printf '[]'
 }
 
 shell_quote() {

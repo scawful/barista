@@ -83,6 +83,17 @@ class ReviewerTest(unittest.TestCase):
         self.assertLess(result.stdout.index("gate_older000000"), result.stdout.index("gate_newer000000"))
         self.assertEqual(self.calls(), [["approvals", "list", "--json"]])
 
+    def test_json_prints_pending_oldest_first_for_the_badge(self) -> None:
+        approved = {"agent": "scout", "action": "deploy", "detail": "done already",
+                    "timestamp": "2026-06-01T00:00:00+00:00", "status": "approved",
+                    "request_id": "gate_done0000000"}
+        self.fixture.write_text(json.dumps([*reversed(PENDING), approved]))
+        result = self.run_reviewer("", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([r["request_id"] for r in json.loads(result.stdout)],
+                         ["gate_older000000", "gate_newer000000"])
+        self.assertEqual(self.calls(), [["approvals", "list", "--json"]])
+
     def test_approve_by_number_passes_request_id_and_rationale(self) -> None:
         result = self.run_reviewer("approve 2\npr drafts reviewed\nq\n")
         self.assertEqual(result.returncode, 0, result.stderr)

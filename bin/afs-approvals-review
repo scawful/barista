@@ -7,7 +7,9 @@ runs through ``afs approvals approve|reject --request-id ...``, which still
 asks you to re-type the ``agent:action`` token on this tty. That prompt is the
 security boundary; this script only saves you the lookup and the typing of ids.
 
-Usage: afs-approvals-review [--request-id gate_...] [--afs-root DIR]
+Usage: afs-approvals-review [--request-id gate_...] [--afs-root DIR] [--json]
+       --json prints the pending rows (oldest first) and exits; the badge
+       reads the queue this way, so both resolve the same afs checkout.
 Env:   AFS_ROOT (afs checkout), AFS_APPROVALS_FILE (custom queue path),
        BARISTA_AFS_REVIEW_CMD (test seam: command prefix instead of python -m afs)
 """
@@ -113,11 +115,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--request-id", help="Start with this request selected.")
     parser.add_argument("--afs-root", help="Path to the afs checkout.")
+    parser.add_argument("--json", action="store_true", help="Print pending requests as JSON and exit.")
     args = parser.parse_args(argv)
 
     root = find_afs_root(args.afs_root)
     if root is None and not os.environ.get("BARISTA_AFS_REVIEW_CMD"):
         sys.exit("afs checkout not found; set AFS_ROOT=/path/to/afs")
+
+    if args.json:
+        print(json.dumps(pending(root)))
+        return 0
 
     preselect = args.request_id
     while True:

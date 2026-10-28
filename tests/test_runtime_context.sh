@@ -6,6 +6,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="$ROOT_DIR/scripts/runtime_context.sh"
 TMP_DIR="$(mktemp -d)"
 CONFIG_DIR="$TMP_DIR/config"
+export BARISTA_CONFIG_DIR="$CONFIG_DIR"
+export BARISTA_RUNTIME_CONTEXT_DIR="$CONFIG_DIR/cache/runtime_context"
 BIN_DIR="$TMP_DIR/bin"
 OUTPUT_LOG="$TMP_DIR/output.log"
 DAEMON_PID=""
@@ -130,6 +132,7 @@ FRONT_OUTPUT="$({
 printf '%s\n' "$FRONT_OUTPUT" | grep -Fxq $'app_name\tGhostty' || { echo "FAIL: runtime context should cache front app name" >&2; exit 1; }
 printf '%s\n' "$FRONT_OUTPUT" | grep -Fxq $'state_label\tTiled · Sticky' || { echo "FAIL: runtime context should cache front app state" >&2; exit 1; }
 printf '%s\n' "$FRONT_OUTPUT" | grep -Fxq $'location_label\tSpace 3 · Display 1' || { echo "FAIL: runtime context should cache front app location" >&2; exit 1; }
+printf '%s\n' "$FRONT_OUTPUT" | grep -Fxq $'window_id\t12' || { echo "FAIL: runtime context should capture the displayed window id" >&2; exit 1; }
 printf '%s\n' "$FRONT_OUTPUT" | grep -Fxq $'space_index\t3' || { echo "FAIL: runtime context should cache raw front app space index" >&2; exit 1; }
 printf '%s\n' "$FRONT_OUTPUT" | grep -Fxq $'display_index\t1' || { echo "FAIL: runtime context should cache raw front app display index" >&2; exit 1; }
 
@@ -173,6 +176,7 @@ TOPMOST_OUTPUT="$({
     CONFIG_DIR="$CONFIG_DIR" \
     "$SCRIPT" front-app
 })"
+printf '%s\n' "$TOPMOST_OUTPUT" | grep -Fxq $'window_space_type\tbsp' || { echo "FAIL: runtime context should capture the displayed window space type" >&2; exit 1; }
 printf '%s\n' "$TOPMOST_OUTPUT" | grep -Fxq $'state_label\tTiled · Above' || { echo "FAIL: runtime context should surface sub-layer above as an Above state" >&2; exit 1; }
 
 MEDIA_OUTPUT="$({

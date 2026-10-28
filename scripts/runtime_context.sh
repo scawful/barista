@@ -563,7 +563,7 @@ window_stack_label() {
 
 write_front_app_cache() {
   local app_name current_space_json current_space_index current_display_index current_space_visible
-  local window_json window_space window_display window_focused window_space_type floating sticky fullscreen stack_label state_icon state_label location_label window_available
+  local window_json window_id window_space window_display window_focused window_space_type floating sticky fullscreen stack_label state_icon state_label location_label window_available
 
   app_name="$(resolve_front_app_name)"
   current_space_json=""
@@ -584,6 +584,8 @@ write_front_app_cache() {
   state_label="No managed window"
   location_label="Space ${current_space_index:-?} · Display ${current_display_index:-?}"
   window_available="false"
+  window_id=""
+  window_space_type=""
   window_json=""
 
   if [ -n "$app_name" ] && [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ]; then
@@ -592,6 +594,7 @@ write_front_app_cache() {
 
   if [ -n "$window_json" ]; then
     window_available="true"
+    window_id="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.id // empty' 2>/dev/null || true)"
     window_space="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.space // empty' 2>/dev/null || true)"
     window_display="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.display // empty' 2>/dev/null || true)"
     window_focused="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."has-focus" // false' 2>/dev/null || echo false)"
@@ -638,6 +641,8 @@ write_front_app_cache() {
   {
     emit_line app_name "$app_name"
     emit_line window_available "$window_available"
+    emit_line window_id "$window_id"
+    emit_line window_space_type "$window_space_type"
     emit_line state_icon "$state_icon"
     emit_line state_label "$state_label"
     emit_line location_label "$location_label"

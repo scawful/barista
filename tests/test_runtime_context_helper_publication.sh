@@ -343,6 +343,15 @@ grep -Fxq $'window_available\ttrue' "$TMP_DIR/query-match/front_app.tsv" || {
   exit 1
 }
 
+grep -Fxq $'window_id\t7' "$TMP_DIR/query-match/front_app.tsv" || {
+  echo "FAIL: context must preserve the displayed window identity" >&2
+  exit 1
+}
+grep -Fxq $'window_space_type\tbsp' "$TMP_DIR/query-match/front_app.tsv" || {
+  echo "FAIL: context must preserve the selected window layout" >&2
+  exit 1
+}
+
 : > "$QUERY_LOG"
 run_query_case match "$TMP_DIR/query-fresh" "" fresh-front-app > "$TMP_DIR/query-fresh-output.tsv"
 assert_query_total 2
@@ -455,7 +464,7 @@ run_event_case space 0.40 1
 run_event_case wake 0.40 1
 run_event_case maximum-deferral 0.45 5
 
-# A missing target is created with the deterministic eight-row UTF-8 schema.
+# A missing target is created with the deterministic ten-row UTF-8 schema.
 run_refresh Finder
 [[ -f "$CACHE_FILE" && ! -L "$CACHE_FILE" ]] || {
   echo "FAIL: refresh-front-app should create a regular cache file" >&2
@@ -473,6 +482,8 @@ rows = [line.split("\t", 1) for line in raw.decode("utf-8").splitlines()]
 assert rows == [
     ["app_name", "Finder"],
     ["window_available", "false"],
+    ["window_id", ""],
+    ["window_space_type", ""],
     ["state_icon", "󰋽"],
     ["state_label", "No managed window"],
     ["location_label", "Space ? · Display ?"],

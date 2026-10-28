@@ -463,10 +463,13 @@ static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
                              spaceIndex ? spaceIndex.stringValue : @"?",
                              displayIndex ? displayIndex.stringValue : @"?"];
   BOOL windowAvailable = NO;
+  NSString *windowID = @"";
+  NSString *windowSpaceType = @"";
 
   NSDictionary *window = select_matching_window(appName, spaceIndex, displayIndex, focusedWindow);
   if (window != nil) {
     windowAvailable = YES;
+    windowID = number_value(window[@"id"]).stringValue ?: @"";
     NSString *windowApp = string_value(window[@"app"]);
     if (windowApp.length > 0 && [windowApp caseInsensitiveCompare:appName] == NSOrderedSame) {
       appName = windowApp;
@@ -493,6 +496,7 @@ static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
     NSNumber *windowDisplay = number_value(window[@"display"]);
     NSDictionary *windowSpaceRecord = space_record_for_index(spaces, windowSpace ?: spaceIndex);
     NSString *spaceType = string_value(windowSpaceRecord[@"type"]) ?: string_value(currentSpace[@"type"]);
+    windowSpaceType = spaceType ?: @"";
 
     if (sticky) {
       stateLabel = [stateLabel stringByAppendingString:@" · Sticky"];
@@ -525,6 +529,8 @@ static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
   return @{
     @"app_name": sanitize_value(appName),
     @"window_available": windowAvailable ? @"true" : @"false",
+    @"window_id": sanitize_value(windowID),
+    @"window_space_type": sanitize_value(windowSpaceType),
     @"state_icon": sanitize_value(stateIcon),
     @"state_label": sanitize_value(stateLabel),
     @"location_label": sanitize_value(locationLabel),
@@ -538,6 +544,8 @@ static NSString *record_to_tsv(NSDictionary<NSString *, NSString *> *record) {
   NSArray<NSString *> *order = @[
     @"app_name",
     @"window_available",
+    @"window_id",
+    @"window_space_type",
     @"state_icon",
     @"state_label",
     @"location_label",

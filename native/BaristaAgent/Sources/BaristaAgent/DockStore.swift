@@ -295,7 +295,9 @@ final class DockStore: ObservableObject {
     var unclaimed: [String: NSRunningApplication] = [:]
     var keysByPath: [String: String] = [:]
     var launchOrder: [String] = []
-    for app in apps where app.activationPolicy == .regular && !app.isTerminated {
+    let me = ProcessInfo.processInfo.processIdentifier
+    // The agent itself turns regular while a Files or viewer window is open.
+    for app in apps where app.activationPolicy == .regular && !app.isTerminated && app.processIdentifier != me {
       guard let key = app.bundleIdentifier ?? app.bundleURL?.path, unclaimed[key] == nil else { continue }
       unclaimed[key] = app
       if let path = app.bundleURL?.path { keysByPath[path] = key }

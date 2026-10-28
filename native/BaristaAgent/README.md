@@ -46,7 +46,9 @@ The agent runs as `dev.barista.agent` and logs to
 | `Viewer.swift` | The viewer windows for Markdown and images, and `FileWatcher`, which reloads a file when it is saved. |
 | `FileBrowserModel.swift` | Barista Files' pure model: tab history, in-window tabs, listing, sorting, filtering, and `FileOperations` (Finder's names for new folders, copies, and kept-both clashes; rename; repo root). |
 | `FileBrowser.swift` | The Barista Files window: path bar, tabs, sidebar, table, preview, in-place rename, and `BrowserWindow`, which drives the Quick Look panel. |
-| `AgentWindows.swift` | Focus for the agent's titled windows, and the hidden Edit menu that makes ⌘C work in them. |
+| `Git.swift` | Barista Files' git: porcelain v2 status and worktree parsing, `Git.inspect` (no optional locks), and `Tool` for running Homebrew tools from launchd. |
+| `Jump.swift` | ⌘K: candidate ranking, `JumpIndex` (places, zoxide, repos under `~/src`), and the sheet. |
+| `AgentWindows.swift` | Focus for the agent's titled windows, the regular activation policy (⌘Tab) while one is open, and the hidden Edit menu that makes ⌘C work in them. |
 
 ## Viewer and Barista Files
 

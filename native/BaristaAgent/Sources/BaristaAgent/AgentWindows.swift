@@ -1,8 +1,9 @@
 import AppKit
 
 /// Focus for the agent's own titled windows (viewer, file browser). The agent
-/// is an accessory app: it activates to take typing when one opens, and hands
-/// focus back to the app you were in when the last one closes.
+/// is an accessory app until one opens: then it becomes a regular app, so
+/// ⌘Tab reaches it, and activates to take typing. When the last one closes it
+/// goes back to accessory and hands focus to the app you were in.
 enum AgentWindows {
   private static var previousApp: NSRunningApplication?
 
@@ -11,6 +12,11 @@ enum AgentWindows {
        front.processIdentifier != ProcessInfo.processInfo.processIdentifier {
       previousApp = front
     }
+    if NSApp.activationPolicy() != .regular {
+      NSApp.setActivationPolicy(.regular)
+      // A bare executable has no icon of its own for the app switcher.
+      NSApp.applicationIconImage = NSWorkspace.shared.icon(for: .folder)
+    }
     NSApp.activate(ignoringOtherApps: true)
     window.makeKeyAndOrderFront(nil)
   }
@@ -18,13 +24,15 @@ enum AgentWindows {
   /// Call from a window's will-close; `closing` is still listed then.
   static func closed(_ closing: NSWindow) {
     let others = NSApp.windows.contains {
-      $0 !== closing && $0.isVisible && $0.styleMask.contains(.titled)
+      $0 !== closing && ($0.isVisible || $0.isMiniaturized) && $0.styleMask.contains(.titled)
     }
     guard !others else { return }
     defer { previousApp = nil }
+    let wasActive = NSApp.isActive
+    NSApp.setActivationPolicy(.accessory)
     // A close button clicked from another app doesn't activate the agent;
     // focus is already where the user wants it.
-    guard NSApp.isActive else { return }
+    guard wasActive else { return }
     previousApp?.activate()
   }
 

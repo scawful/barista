@@ -112,6 +112,7 @@ final class BrowserController {
       case ([], 49, _) where !typing: state.onQuickLook?()
       case ([.command, .shift], _, "p"), ([.command, .shift], _, "P"): state.showPreview.toggle()
       case ([.command, .shift], _, "n"), ([.command, .shift], _, "N"): state.newFolder()
+      case (.command, _, "k"), ([.command, .shift], _, "g"), ([.command, .shift], _, "G"): state.jumping = true
       case (.command, 51, _) where !typing: state.trashSelection()
       case (.command, _, "c") where !typing && !state.selection.isEmpty: state.copySelection()
       case (.command, _, "d") where !typing && !state.selection.isEmpty: state.duplicateSelection()
@@ -141,6 +142,10 @@ final class BrowserState: ObservableObject {
   @Published var renaming: URL?
   /// A failed file operation, shown as an alert.
   @Published var problem: String?
+  /// The repo holding the shown folder, and its worktrees.
+  @Published private(set) var git: GitStatus?
+  @Published private(set) var worktrees: [GitWorktree] = []
+  @Published var jumping = false
   var places: () -> [(name: String, url: URL)] = { [] }
   var onTitle: ((String) -> Void)?
   var onCloseWindow: (() -> Void)?
@@ -178,7 +183,25 @@ final class BrowserState: ObservableObject {
           self.selection = self.selection.intersection(present)
         }
       }
+      // After the listing is shown: git should never hold it up.
+      let inspected = Git.inspect(folder)
+      DispatchQueue.main.async { [weak self] in
+        guard let self, self.generation == token else { return }
+        if self.git != inspected?.status { self.git = inspected?.status }
+        if self.worktrees != inspected?.worktrees ?? [] { self.worktrees = inspected?.worktrees ?? [] }
+      }
     }
+  }
+
+  /// Goes to the same place in another worktree, or its top when that
+  /// folder isn't there.
+  func switchTo(_ worktree: GitWorktree) {
+    guard let root = git?.root else { return go(to: worktree.path) }
+    let relative = PopoverController.relativePath(location, from: root)
+    let same = relative.hasPrefix("/") ? worktree.path : worktree.path.appendingPathComponent(relative)
+    var isFolder: ObjCBool = false
+    let exists = FileManager.default.fileExists(atPath: same.path, isDirectory: &isFolder) && isFolder.boolValue
+    go(to: exists ? same : worktree.path)
   }
 
   private func refreshShown() {
@@ -191,6 +214,7 @@ final class BrowserState: ObservableObject {
     query = ""
     selection = []
     reload()
+    JumpIndex.remember(url)
   }
 
   func back() {
@@ -405,6 +429,7 @@ struct BrowserView: View {
     }
     .ignoresSafeArea(edges: .top)
     .onChange(of: state.focusSearch) { searchFocused = true }
+    .sheet(isPresented: $state.jumping) { JumpView(state: state) }
     .alert("Barista Files", isPresented: Binding(get: { state.problem != nil },
                                                  set: { if !$0 { state.problem = nil } })) {
       Button("OK", role: .cancel) {}
@@ -427,6 +452,8 @@ struct BrowserView: View {
         .disabled(state.tabs.selected.parent == nil).help("Enclosing Folder (⌘↑)")
       PathBar(location: state.location, go: state.go(to:))
       Spacer(minLength: 8)
+      Button { state.jumping = true } label: { Image(systemName: "arrow.up.forward.square") }
+        .help("Jump to a Folder (⌘K)")
       TextField("Search", text: $state.query)
         .textFieldStyle(.roundedBorder).frame(width: 180).focused($searchFocused)
       Button { state.hidden.toggle(); state.reload() } label: {
@@ -473,8 +500,45 @@ struct BrowserView: View {
           ForEach(dock, id: \.url) { place in placeRow(place) }
         }
       }
+      // Last, so entering or leaving a repo never moves the places above.
+      if let git = state.git {
+        Section("Repository") {
+          repoRow(git)
+          if state.worktrees.count > 1 {
+            ForEach(state.worktrees, id: \.path) { worktree in
+              // Agent branches share prefixes (`claude/`, `codex/`); the
+              // rest is what tells them apart in a narrow sidebar.
+              let name = worktree.branch.map { ($0 as NSString).lastPathComponent } ?? worktree.path.lastPathComponent
+              Label(name, systemImage: "arrow.triangle.branch")
+                .lineLimit(1)
+                .fontWeight(worktree.path == git.root ? .semibold : .regular)
+                .help("\(worktree.branch ?? "Detached HEAD") at "
+                      + "\((worktree.path.path as NSString).abbreviatingWithTildeInPath); "
+                      + "opens the same folder there")
+                .contentShape(Rectangle())
+                .onTapGesture { state.switchTo(worktree) }
+            }
+          }
+        }
+      }
     }
     .listStyle(.sidebar)
+  }
+
+  private func repoRow(_ git: GitStatus) -> some View {
+    let count = git.changeCount
+    let parts = [git.branch ?? "detached",
+                 count == 0 ? "clean" : "\(count) changed",
+                 git.ahead > 0 ? "↑\(git.ahead)" : nil,
+                 git.behind > 0 ? "↓\(git.behind)" : nil].compactMap { $0 }
+    return VStack(alignment: .leading, spacing: 1) {
+      Label(git.root.lastPathComponent, systemImage: "shippingbox")
+        .fontWeight(state.location == git.root ? .semibold : .regular)
+      Text(parts.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+    }
+    .help((git.root.path as NSString).abbreviatingWithTildeInPath)
+    .contentShape(Rectangle())
+    .onTapGesture { state.go(to: git.root) }
   }
 
   private func placeRow(_ place: (name: String, url: URL)) -> some View {
@@ -552,6 +616,13 @@ private struct FileTable: View {
                         cancel: { state.renaming = nil })
           } else {
             Text(entry.name).lineLimit(1)
+          }
+          if let mark = state.git?.mark(for: entry.url, isFolder: entry.isFolder) {
+            Spacer(minLength: 4)
+            Text(mark.letter)
+              .font(.caption.monospaced().weight(.bold))
+              .foregroundStyle(mark.color)
+              .help(mark.help)
           }
         }
       }
@@ -797,6 +868,29 @@ extension Notification.Name {
 extension FileEntry {
   /// Folders sort below every file when sorting by size.
   var sortableSize: Int64 { size ?? -1 }
+}
+
+private extension GitMark {
+  var color: Color {
+    switch self {
+    case .modified, .renamed: return .orange
+    case .added, .untracked: return .green
+    case .deleted, .conflicted: return .red
+    case .inside: return .secondary
+    }
+  }
+
+  var help: String {
+    switch self {
+    case .modified: return "Modified"
+    case .added: return "Added"
+    case .deleted: return "Deleted"
+    case .renamed: return "Renamed"
+    case .untracked: return "Untracked"
+    case .conflicted: return "Conflicted"
+    case .inside: return "Has changes inside"
+    }
+  }
 }
 
 /// The selected file: Markdown and images render, anything else shows its

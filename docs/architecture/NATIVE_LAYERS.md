@@ -236,7 +236,21 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   space for the folder's own menu. Name clashes keep both (`name 2`), copies
   are `name copy`, and a failed operation shows an alert. The Finder tile
   opens it (⌥-click opens Finder; `files_browser: "finder"` turns this off),
-  as does Browse in Barista Files on any folder callout or file.
+  as does Browse in Barista Files on any folder callout or file. While a
+  Files or viewer window is open the agent is a regular app, so ⌘Tab
+  reaches it; it goes back to an accessory when the last one closes.
+- Inside a git repo, each changed file in the list carries a letter (M, A,
+  D, R, ? untracked, U conflicted) and folders that hold changes a dot. The
+  sidebar's Repository section shows the branch, change count, and
+  ahead/behind, and lists the repo's worktrees by branch; clicking one goes
+  to the same folder in that worktree, or its top when the folder isn't
+  there. git runs after the listing is shown and without optional locks, so
+  browsing never takes `index.lock` from an agent committing in the repo.
+- ⌘K (or ⇧⌘G) jumps to a folder: type parts of its name or path (`oos
+  core`); Return goes, ⌘Return opens a tab, a path starting with `/` or `~`
+  goes straight there. Candidates are the places, zoxide's folders by
+  frecency, and every repo under `~/src` (found with `fd`), read again after
+  five minutes. Folders you browse are added to zoxide, as `cd` does.
 - yabai: viewer windows float on the raised layer through the rule
   `barista-agent-viewer` (title `… - Barista Viewer`), which the agent adds
   when it opens one. Browser windows match no rule and tile. macOS window
@@ -326,8 +340,9 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
 
 ## Next slices
 
-- Barista Files: Get Info, column and icon views, and a regular activation
-  policy while a browser is open so it appears in ⌘Tab.
+- Barista Files: Get Info, column and icon views, previews for org, code,
+  JSON, and ROMs, and a panel for a repo's `.context` (AFS scratchpad,
+  items, handoffs).
 - EventKit reminders and calendar into the agent cache, surfaced by the
   existing calendar/task popups.
 - halext-org API client in the agent (admin status, reminders sync).

@@ -390,7 +390,53 @@ Live evidence, helper backups, logs, and the verification script are in
 *   **Result:** after three warmup rounds, a final-code 24-pair forced closed-to-open A/B with a 60 ms pre-sample settle measured `52.164 ms` median / `73.237 ms` p95 for the direct Front App toggle and `59.554 / 80.056 ms` for the full 11-root/4-child switch. The paired median cost was `5.361 ms` under the live renderer load. A separate 100-pair renderer-free process-completion A/B isolated the native helper at `3.238 ms` median versus a `1.356 ms` process baseline (`1.875 ms` paired overhead). Both runs preserved the SketchyBar PID, state identity, error log, and final all-off topology. Artifacts: `/tmp/barista_exclusive_popup_switch_ab_v3_20260724.json` (SHA-256 `f49980a7b4756f4b6cd5de75fc4bad064725755b120833e263f4e9e778c186ff`) and `/tmp/barista_popup_switch_native_dispatch_v1_20260724.json` (SHA-256 `ab5a1e6ff4e1d5c95853cf293e833fdf04df9d4e5022f33021ecb4c0923cc9c9`).
 *   **Direct transport result:** a final-source, same-daemon randomized A/B used five warmup pairs and 30 measured pairs with all 11 roots / 4 children forced off around each lane. Process completion fell from `56.573 ms` median / `62.662 ms` p95 on exact CLI execution to `51.400 / 62.256 ms` on direct Mach dispatch, a `4.168 ms` paired median saving (19/30 direct wins). Renderer-observed clock open fell from `63.309 / 70.845 ms` to `59.126 / 69.324 ms`, a `5.354 ms` paired median saving (20/30 direct wins). The 743-byte payload remained byte-identical to the pre-change oracle (SHA-256 `8eefeb7fc78f04b213868c1112615246fc869bd727a383f00c679a7533d3976b`); SketchyBar, Lua, and skhd PIDs, logs, state, topology, bar query, hover state, and final all-off topology stayed unchanged. Artifact: `/tmp/barista_popup_mach_candidate_20260731/live-direct-vs-cli-clock-final-2ae983c-20260731.json` (SHA-256 `d5731219635aa82b9ae9fc5332736127f02dac06dc3768329dc89e9e70dfa20f`).
 
+### 0k-2. Multi-Monitor Reload, Display Focus, and Mission Control (Verified)
+*   **Files:** `modules/display_profile.lua`, `plugins/display_density.sh`, `plugins/refresh_spaces.sh`, `plugins/mission_control_guard.sh`, `modules/spaces.lua`, `tests/test_refresh_spaces_coalescing.sh`, `tests/test_mission_control_guard.sh`
+*   **Update:**
+    - the display profile cache is keyed by the `sketchybar --query displays` frame signature and stays valid past its 10 s TTL while the signature matches; `display_density.sh` no longer deletes it on every `display_change`, and its probe uses `jq` instead of Python
+    - focus-only `display_changed` no longer forces `yabai -m config external_bar`, which re-tiles every visible space; display add/remove and bar height changes still do
+    - yabai `mission_control_enter`/`mission_control_exit` signals snapshot space-to-display and window-to-space ownership, then re-flush any space whose display changed (`space --gap rel:0`) and return its windows that snapped back to the old display
+*   **Result:** cached display detection fell from 540-700 ms (`system_profiler` plus the JXA inset probe) to 10-40 ms; live `reload_prep_time` dropped to 338 ms from a 490-1,103 ms range. `display_density.sh` fell from ~50 ms to ~15 ms per display event.
+*   **Remaining renderer cost (SketchyBar 2.23.0):** a raw `sketchybar --set <item> popup.drawing=on|off` takes 45-110 ms with no Barista code involved. Sampling shows `bar_manager_refresh` -> `bar_draw` -> per-item `text_draw` blocking on `SLSDeviceLock`/`CGSWindowUpdateBackingStoreData`, plus `window_create` on every open because `popup_set_drawing(false)` closes the popup window and resets `adid`, which marks every popup row dirty on reopen. Reload `config_build_wall_time` is ~1.2 s against 11 ms of Lua CPU, which is SketchyBar creating one window per item per display (220 items x 3 displays). Further popup/reload gains need a SketchyBar patch, not Barista changes.
+
+### 0k-3. Patched SketchyBar Popup Rendering (Verified)
+*   **Fork:** `~/src/lab/sketchybar`, branch `barista-perf` on upstream `031cdff` (v2.23.0, the installed Homebrew HEAD, so the Homebrew `sketchybar` CLI stays protocol-compatible). `bin/sketchybar_wrapper.sh` execs `~/.local/libexec/sketchybar-barista/sketchybar` when present (override with `BARISTA_SKETCHYBAR_FORK_BIN`; an explicit `SKETCHYBAR_BIN` wins); the process name stays `sketchybar` for `pgrep -x` health checks.
+*   **Patch:**
+    - closing a popup parks its window off-screen instead of releasing it and keeps the popup's display association, so reopening on the same display moves windows without recreating them or redrawing rows; rows edited while hidden carry `needs_redraw_on_show`
+    - popup visibility changes re-run layout through `popup_visibility_changed` instead of marking the host for redraw; the popup background redraws only when created, reshaped, or restyled
+    - message-triggered refreshes render items serially (`7a666f6`); threaded draws contended on the WindowServer connection (62 ms vs 49 ms)
+    - `SKETCHYBAR_PROFILE=1` logs per-message parse/refresh time plus draw/window counters to the SketchyBar error log
+*   **Result:** raw `popup.drawing` round trips (`bench/popup_bench.sh`, 20 pairs x 5 popups) fell from `112.3 ms` open / `111.3 ms` close medians to `7.3 / 7.5 ms`; server-side reopen fell from 104-200 ms to 0.1 ms, and a reopen after a hidden row edit costs one draw (~5 ms). Barista click scripts now open popups in 14-41 ms median. A routine `system_info` label update fell from `36.6` to `25.4 ms` median. First open, reopen, hidden-edit reopen, nested `front_app.move` reopen, and a cross-display reopen were checked with `bench/capture_popup`; first open and reopen are byte-identical to the stock render.
+*   **Remaining cost:** each item draw still blocks ~5-6 ms on a WindowServer backing-store round trip (independent of blur), so first opens and multi-item updates scale with draw count.
+*   **Leading-whitespace labels:** stock SketchyBar sizes labels by glyph ink bounds, so leading spaces count as zero width and the text is clipped (the calendar's first week and the centered month header disappeared). The fork adds the leading-space advance to the label width; whitespace-only labels stay zero-width. On stock SketchyBar the calendar grid still loses its leading offset.
+*   **Rebuild/rollback:** `cd ~/src/lab/sketchybar && make clean && make arm64 && bench/install_live.sh` (always `make clean`: the makefile does not track shared headers). `install_live.sh` reverts to Homebrew if the fork does not stay up; manual rollback is `rm ~/.local/libexec/sketchybar-barista/sketchybar && launchctl kickstart -k gui/$UID/homebrew.mxcl.sketchybar`.
+
+### 0k-4. Popups Open on the Clicked Display (Unit-Tested)
+*   **Problem:** popups render only on the bar whose display is `active_adid`, and SketchyBar re-polls the active display before every event, so clicking a bar on an inactive monitor opened the popup on the focused monitor.
+*   **Fork (`f4fa8a0`):** a bar click exports `BAR_DISPLAY` (clicked) and `ACTIVE_DISPLAY` to the click script and holds `active_adid` on the clicked display for up to 1 s, released early once macOS reports the same display.
+*   **Barista:** `popup_switch switch` (`helpers/popup_manager.c`) runs a detached `yabai -m display --focus <BAR_DISPLAY>` when the two differ and writes a 1.5 s handoff marker so the resulting `space_change`/`display_change` does not dismiss the popup; display add/remove always dismiss. `tests/test_popup_manager.sh` covers same-display, cross-display, handoff, and stale-handoff cases.
+
+### 0k-5. Latency Trace
+*   **Enable:** `launchctl setenv SKETCHYBAR_TRACE_FILE ~/Library/Logs/sketchybar-barista/trace.log` then kickstart SketchyBar; the fork (`00ed78e`) appends `kind=click|msg|space_change|display_change|lock_wait` lines (capped at 50 MB). `launchctl unsetenv SKETCHYBAR_TRACE_FILE` disables it.
+*   **Report:** `~/src/lab/sketchybar/bench/trace_report.py <log> [--since-hours N]` prints click-to-popup latency bucketed by idle time since the previous click (to confirm or rule out the "first popup after a while" lag), cross-display click latency, space/display change settle time, and event lock waits.
+*   **First samples:** `display_change` settles in 876-1,366 ms with 73-112 ms of render work; `space_change` settles in ~490 ms.
+
+### 0k-6. Mission Control Thumbnail Flicker and Busy-Bar Queries (Verified)
+*   **Repo:** the fork is published at `https://github.com/scawful/SketchyBar` (default branch `barista-perf`); the local clone keeps upstream as `origin` and the fork as `fork`.
+*   **Problem:** Mission Control's space thumbnails flickered because the space strip was being fully rebuilt: 70 of 121 refreshes recreated ~39 sticky bar windows, and every sticky window created or closed changes every space's window list, so Mission Control re-renders its thumbnails. Two Barista bugs fed each other:
+    - `sync_creator_items` matched existing `space_creator.*` items against the expected list with a substring test, so a stale creator was never removed and creator sync failed, which scheduled a topology retry that forces a full rebuild
+    - the SketchyBar client waits 100 ms for a reply and then prints nothing with exit 0; an empty `--query bar` read as "no space items", forcing a full rebuild that kept the bar busy long enough for the next query to come back empty too
+*   **Barista (`plugins/simple_spaces.sh`):** creator matching uses an exact newline-delimited lookup; `ensure_bar_snapshot_loaded` retries an empty or invalid snapshot up to 8 times, 150 ms apart, before giving up. `tests/test_simple_spaces_multidisplay_creator.sh` (stale creator) and `tests/test_simple_spaces_diff.sh` (bar busy for 0.8 s) cover both.
+*   **Fork:**
+    - popup prewarm runs from an idle timer (0.2 s after messages go quiet, at most 1 s) instead of inside a message, and repaints at most 3 rows per pass (~12 ms per row), so a pass stays well under the client's 100 ms reply window
+    - `space_change` fires only when a bar's space or visibility, or the focused display, changes; macOS posts 2-4 active-space notifications per switch and each one used to run every subscriber, including the popup-close batch. The trace logs dropped ones as `kind=space_change ... skipped=1`
+    - `--query` JSON escapes backslashes and control characters, so items whose click scripts contain `\"` or tabs (the `oracle.triforce.*` rows) no longer make `--query bar` unparseable
+*   **Result:** live refreshes take the no-op path with no window churn; after the fork install 54 of 61 space-change notifications were dropped and 1 of 1,656 bar messages exceeded 100 ms (110 ms). App-switch icon refreshes (`space_visual_refresh`, `path=focus`) fell from 266 ms to ~175 ms median and from 1,101 ms to ~450 ms p95.
+*   **Full visual pass:** an `xtrace` profile of the all-spaces pass (run on every Mission Control exit) put 38 of 177 ms in `app_cache_key`, which piped each app name through two `tr` processes. `app_cache_key_into` folds the name in pure bash (0.2 ms vs ~10 ms per call), producing the same keys for ASCII names so existing glyph cache files stay valid; the pass now takes ~130 ms. The remainder is the `space_visual_helper visible-apps` yabai query (~25 ms) and the stats write (~20 ms).
+*   **Reading `space_visual_refresh`:** an app-switch refresh that finds another pass holding the visual lock waits once and reruns with fresh focus context so a quick second switch is not lost. Its duration includes that wait; the details field carries `wait=<ms>` when it happened, and work is the difference.
+
 ### 0l. On-Demand Triforce Status (Verified)
+*   **Optional fight launcher:** `Ganondorf test` is a static row when an executable `paths.ganondorf_launcher` (or `BARISTA_GANONDORF_LAUNCHER`) is configured. Only its click executes the packet; it adds no status subprocess or timer.
 *   **Files:** `modules/integrations/oracle.lua`, `plugins/oracle_triforce.sh`, `tests/test_oracle_triforce.sh`
 *   **Update:**
     - removed the Triforce anchor's 45-second polling timer; click still toggles the popup first, then starts one background status refresh
@@ -481,7 +527,9 @@ Live evidence, helper backups, logs, and the verification script are in
     The shared root switch resets both children before opening or closing, nested actions close the child and root together, and the shell plugin only owns hover/status behavior.
 *   **Result:** the Music menu keeps every launcher without periodic forced updates or presenting all 24 rows at once. The live first-open measurement is recorded in section 3e.
 
-### 2b. Control-Center Popup Cleanup (Verified Active Path)
+### 2b. Control-Center Popup Cleanup (Historical Measurements)
+
+Menu grouping changed on 2026-10-05; see Scope-specific Yabai controls below.
 *   **Files:** `modules/integrations/control_center.lua`, `modules/items_left.lua`, `modules/ui_builder.lua`, `plugins/control_center.sh`
 *   **Update:**
     - removed service-health, workspace dirtiness, and utility rows from the popup
@@ -548,6 +596,15 @@ Live evidence, helper backups, logs, and the verification script are in
     A separate same-method 20-sample Control Center run reduced the layout-only median from 86.90 ms to 57.48 ms (33.8%) and p95 from 94.00 ms to 62.97 ms. Its configured-click median fell from 114.21 ms to 84.44 ms (26.1%) and p95 from 126.41 ms to 92.11 ms. The SketchyBar PID stayed stable, every open-state check passed, no stderr lines were added, and all popup parents finished closed.
     On 2026-08-04, a same-daemon Apple first-paint A/B ran four warmups plus 50 balanced paired rounds against the exact 15-row root and a 12-drawing-row stand-in that preserved AFS Browser, Cortex, and Ghostty direct. Process-completion median fell from `71.944 ms` to `64.563 ms` (10.3%) and p95 from `76.483 ms` to `70.086 ms`; renderer-observed median fell from `79.951 ms` to `71.796 ms` (10.2%) and p95 from `86.142 ms` to `82.978 ms`. The compact surface won 39/50 renderer pairs with an `8.184 ms` paired median benefit and bootstrap 95% CI `[5.886, 9.891]`; 7,056 row/state queries required zero retries. PIDs, exact baseline rows, state/topology hashes, logs, and the all-off popup state were restored. Artifact: `/tmp/barista_apple_progressive_ab_20260804/apple-progressive-disclosure-ab-b2150cb-20260804.json` (SHA-256 `9b73bbcce2002b69db3bd1b19ee71e1b5e67dc79926f00083ba8561956e5d949`; harness SHA-256 `d275c3ea30307d53525774030d526b56acacda704dada907a6cf24a1076178cc`). This isolates root first paint; functional child switching and dismissal are covered separately by tests and live acceptance.
 
+### Scope-specific Yabai controls (2026-10-05)
+
+The earlier root-row measurements above describe the historical menu. The
+current menu groups app defaults and moves into separate children and moves
+integration settings behind Bar Settings. Both roots still toggle immediately
+and refresh their state asynchronously. Front App still batches its mutable
+rows into one SketchyBar request. Snapshot identity is now used to bind actions;
+this adds correctness checks and is not a claim of lower click latency.
+
 ### 4. Yabai Query merging (Resolved)
 *   **File:** `plugins/refresh_spaces.sh`
 *   **Update:** Merged 3 separate `yabai` queries into 1.
@@ -581,7 +638,7 @@ The Lua layer now uses a modular architecture (decomposed from `main.lua`) to im
     - active-only refreshes now dispatch `space_active_refresh` once through SketchyBar instead of both triggering the event and separately re-running `space_visuals.sh`, removing duplicate focused-space visual work from the hot path
     - creator-only and incremental add/remove topology updates now sync existing creator items in place instead of tearing down and recreating the whole creator set when the creator item identity did not change
     - `refresh_spaces.sh` now parses child topology metrics with one shell read instead of a stack of `awk` probes, and it now prefers the cheaper Perl timing path before `python3` for its own wrapper timing
-    - `runtime_daemon.stop_runtime_context_daemon()` now clears the whole runtime-context family on restart, including stale helper daemon and refresh children, so live focused-space probes no longer inherit orphaned runtime/query processes across reloads
+    - `runtime_daemon.stop_runtime_context_daemon()` now clears the runtime-context family for the selected config/helper paths on restart, including stale helper daemon and refresh children, so live focused-space probes no longer inherit orphaned runtime/query processes across reloads
     - `runtime_context.sh daemon` now launches `runtime_context_helper daemon` directly instead of backgrounding a shell function, removing the redundant nested shell layer from the live runtime path
     - topology and visual refresh durations are logged separately
     - config-build timing now flushes through one `events-batch` write instead of spawning `barista-stats.sh` once per config metric, removing a large artificial post-config cost from reload profiling

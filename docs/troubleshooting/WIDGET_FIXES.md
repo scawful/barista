@@ -2,6 +2,15 @@
 
 ## Issues Fixed
 
+### Emacs covering Yaze despite focus (October 2026)
+
+If Emacs remains above a focused Yaze window, compare `sub-layer` before
+changing sticky state. A legacy Emacs rule used `normal`, while Yaze uses
+`below`, the tiled-window layer. The labeled `emacs-window-layer` rule now
+uses `sub-layer=below sticky=off`. Apply `yabai -m window <id> --sub-layer below`
+to an existing Emacs window; this preserves its frame, Space, and tiled/floating
+state. Do not restart the apps or reapply the floating rule to existing windows.
+
 ### Multi-monitor hover and refresh stability (September 2026)
 
 Popup rows, anchors, and display-scoped space creation chips now honor the
@@ -190,6 +199,7 @@ sketchybar --reload
 - The machine-local `oos-triforce-widget` is only a fallback when the canonical Oracle producer is unavailable.
 - Normal runtime no longer subscribes the anchor to `mouse.exited.global`; second-click, popup action rows, and global space/display/wake dismissal close it.
 - Popup action rows still close the popup after firing.
+- `Ganondorf test` appears only when local `paths.ganondorf_launcher` (or `BARISTA_GANONDORF_LAUNCHER`) points to an executable packet launcher. Reload after configuring it; launch errors go to `/tmp/oos-launch-ganondorf.log`. This row uses the packet's private profile and checkpoint.
 
 ### 7b. Popup Click Reliability
 **Current path**: `main.lua` `popup_toggle_action()` + `modules/ui_builder.lua` + `bin/popup_switch`
@@ -374,12 +384,24 @@ are ever removed.
 - Cross-display window moves now adopt the visible destination space mode in both directions. A floating window moved onto a managed display is re-tiled, and a tiled window moved onto a float display is floated.
 - The `Toggle Topmost` action now maps to yabai's current window `sub-layer` control (`above` / `auto`) instead of the removed `--toggle topmost` flag, so the popup and skhd shortcut no longer emit runtime errors on yabai 7.x.
 - The `front_app` popup now updates its float/fullscreen/topmost row labels from the current window state, so the row explains the next action instead of always saying `Toggle`.
-- The fully enabled `front_app` root now shows 10 rows instead of 18. Its dynamic `App · <name>` title replaces the duplicate App section, and two decorative separators are omitted; `Quit App`, `Float Window`, `Adopt Current Space Mode`, and `Fullscreen` stay direct. The click-only `front_app.more` child remains the 17-row `More Actions` surface for `Hide App`, `Force Quit`, `Sticky`, `Topmost`, `Center`, presets, and display/space moves.
-- `Send to Float Space` remains in the child. Root toggles still reset the child first, and child actions still close both popup levels after running. Disabled/no-Yabai layouts keep Hide and Force Quit with the other app actions on the root and omit the child.
-- The Control Center popup keeps persistent app-default controls out of the smaller `front_app` popup. In enabled setups, its click-only `More Layout Controls` child contains `Default App: Float`, `Default App: Tile`, and `Unset App Default`; they call `scripts/yabai_control.sh app-default-current ...`, persist the choice in `state.json` under `window_defaults.apps`, and install/remove a labeled live yabai rule (`barista-default-*`) when yabai is running.
-- `app-default-current` uses the same front-app context fallback when yabai has
-  no focused managed window, so unmanaged/frontmost utility apps can still be
-  saved as app defaults.
+- Window actions, moves, app defaults, and app lifecycle now have named scopes.
+  The root keeps this-window controls, `front_app.move` holds moves,
+  `front_app.defaults` holds saved rules for new windows, and `front_app.more`
+  holds advanced window controls plus Hide/Quit/Force Quit.
+- Context includes `window_id` and `window_space_type`. Actions bind that ID and
+  app name, and refuse stale targets. Old helpers use a bounded matching-window
+  fallback; unavailable window actions are disabled.
+- Control Center shows the live space/display and selected layout. Its
+  `cc.more` child contains arrangement commands, while `cc.settings` contains
+  global integration visibility and shortcut controls. It no longer mixes app
+  defaults with space layout.
+- App defaults do not modify the current window. The saved choice and live
+  rule status are separate; after an external Yabai reset, choose the saved
+  option again if it is not active. Removing a default removes only Barista's
+  rule, so another Yabai rule can still affect that app.
+- A failed menu command keeps its error visible. The space setter verifies the
+  applied layout before saving; the shared state writer rejects malformed JSON
+  and preserves unrelated keys using a lock and atomic replacement.
 
 ### 11. Runtime Context Helper
 **Current path**: `main.lua` + `modules/runtime_daemon.lua` + `scripts/runtime_context.sh` + `bin/runtime_context_helper`
@@ -390,7 +412,7 @@ are ever removed.
 - Audio probes are timeout-bounded, failed current-output discovery leaves route rows unselected, and only the four routes the popup can display are cached.
 - A runtime launched with `runtime_backend=lua` propagates `BARISTA_LUA_ONLY=1`, preventing a leftover `bin/runtime_context_helper` from being used by the daemon.
 - The shared cache under `cache/runtime_context/` is the current source for front-app state, focused-space fast-path refreshes, media state, and audio output switching.
-- `runtime_daemon.stop_runtime_context_daemon()` now kills the whole runtime-context family on restart, including stale shell refresh wrappers and `runtime_context_helper daemon`, `refresh-front-app`, or `fresh-front-app` children, so reloads do not accumulate orphaned helper/query processes.
+- `runtime_daemon.stop_runtime_context_daemon()` now stops the runtime-context family for the selected config/helper paths on restart, including stale shell refresh wrappers and `runtime_context_helper daemon`, `refresh-front-app`, or `fresh-front-app` children, so reloads do not accumulate orphaned helper/query processes. Matching requires an actual daemon invocation, not a shell command or search that mentions its name; identity is checked before termination and escalation.
 - `runtime_context.sh daemon` now backgrounds the helper binary directly instead of backgrounding a shell function, so the live runtime settles to one shell supervisor plus one helper daemon instead of leaving a redundant nested shell layer.
 - `runtime_daemon.ensure_runtime_context_daemon()` now writes a per-launch start token and the final launcher shell only `exec`s when its token is still current, so overlapping config passes cannot both spawn the daemon family.
 - The native helper no longer launches its focused-window/spaces pair on every

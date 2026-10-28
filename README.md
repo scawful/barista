@@ -7,11 +7,12 @@ Barista is a curated configuration for [SketchyBar](https://github.com/FelixKrat
 ## Features
 
 - **Dynamic Island**: Context-aware popups for volume, brightness, and music.
-- **Task Pulse**: Optional, local-first task status and capture actions without committing personal task paths.
+- **Agents**: One bar icon with the count of running Codex, Claude, Cursor, and Gemini sessions; the popup jumps to a session, shows Codex rate-limit usage, and keeps LM Studio presets under `Local`. Enable with `widgets.agents = true` (on in the Personal profile).
 - **Profile variants**: Switch between Minimal, Cozy, Personal, Work, and Restricted Work modes.
 - **Modular Architecture**: Lua-based configuration system decomposed for high performance and testability.
 - **Integrations**: Optional support for Yabai (tiling), Skhd (hotkeys), Journal (org-mode capture/inbox), NERV (transfer queue + host monitoring), Halext, and machine-local interface extensions. Integrations are toggled per profile or machine.
 - **AFS approvals badge**: Shows how many AFS agent-gate requests wait for you (`~/.config/afs/agents/approvals.json`), hidden while the count is 0. Click a row to review it in a terminal; the decision still goes through `afs approvals approve|reject`, which asks you to re-type the token. Enable with `widgets.afs_approvals = true` (on in the Personal profile).
+- **Barista dock**: Optional replacement for the macOS Dock with magnification, folder grids, the Trash, drag-to-edit pins, and script/URL tiles, themed like the bar. Switch with `scripts/barista_agent.sh dock barista|native` or Control Center → Bar Settings; configure in `~/.config/barista/dock.json` (see `docs/architecture/NATIVE_LAYERS.md`).
 
 ## Product Boundary
 
@@ -75,9 +76,8 @@ Cozy, Work, and restricted-work leave both off unless that Mac explicitly opts
 in through its ignored local state or `barista_config.lua`.
 
 Task configuration is portable by default: committed defaults contain no task
-paths and keep the Task Pulse widget off. Applying `work` or `restricted-work`
-also clears task sources and disables Task Pulse so a synced work Mac cannot
-inherit a personal board. Halext remains an explicit local opt-in on Work
+paths. Applying `work` or `restricted-work` also clears task sources so a synced
+work Mac cannot inherit a personal board. Halext remains an explicit local opt-in on Work
 rather than an implied profile dependency.
 
 When an older non-Personal state first upgrades to schema v2, Barista removes
@@ -107,21 +107,34 @@ target space is actually `float`. Cross-display window moves now adopt the
 visible destination space mode in both directions, so a floating window dropped
 onto a managed (`bsp` / `stack`) display is re-tiled and a tiled window dropped
 onto a float display is floated.
-The Yabai-enabled `front_app` popup now trims its previous 18-row root to 10
-rows. Its live `App · <name>` title already identifies the app, so the duplicate
-App section header and two decorative separators no longer consume first-paint
-rows. `Quit App`, `Float Window`, `Adopt Current Space Mode`, and `Fullscreen`
-stay direct; the existing click-only `front_app.more` child is labeled `More
-Actions` and keeps its 17-row secondary surface.
-Opening or closing the root still resets the child, and a child action still
-closes both popup levels after it runs. Disabled and no-Yabai paths keep the app
-actions on the root and omit the child. App-default rows can persist
-"this app floats" / "this app tiles" rules through `scripts/yabai_control.sh
-app-default-current <float|tile|unset>`. The Yabai-enabled Control Center keeps
-its mode, space-layout, and shortcut rows on a 12-row root; its click-only
-`More Layout Controls` child holds the 11 Layout Ops and App Defaults rows.
-Opening or closing the root resets that child, and a child action closes both
-levels. Disabled and no-Yabai paths omit the child entirely.
+The menu bar separates three scopes:
+
+1. **Control Center → Space layout** shows the focused space and display, with
+   the live selection marked as Manual, Tile, or Stack. **Arrange Windows**
+   contains balance, rotate, and mirror actions. **Bar Settings** contains the
+   integration visibility mode and keyboard shortcuts; hiding bar controls does
+   not stop Yabai.
+2. **App icon** changes the displayed window now. **Move This
+   Window** groups space/display moves. **More Actions** keeps advanced
+   window presets, Hide, Quit, and Force Quit available without crowding the root.
+   **Always on top** and **All spaces** show On/Off directly; failed attempts to
+   remove an app-owned pin report an error instead of a success message.
+3. **App icon → App Defaults** shows the saved rule for that named app. Float,
+   Tile in Managed Spaces, and Remove Barista Default affect new windows. They
+   do not silently change the current window. Removing a Barista default leaves
+   other Yabai rules in force.
+
+Popup refresh binds actions to the displayed window/app or space identity.
+Missing windows disable their actions; command failures remain visible instead
+of closing the menu as if they succeeded. Space layout changes are verified
+with Yabai before they are saved. App rules and space preferences use atomic,
+locked JSON updates that preserve unrelated settings and reject corrupt state.
+Saved choices are distinct from live state: a Yabai restart or another config
+can replace live rules/layouts. Use the live selection and app-default status
+when checking what is currently effective.
+
+The complete service, saved-state, and shortcut ownership map is documented in
+[Window Management Setup](docs/guides/WINDOW_MANAGEMENT_SETUP.md).
 
 Reload shortcuts should use `plugins/reload_sketchybar.sh`; avoid raw
 `sketchybar --reload` for normal use so overlapping reload requests stay
@@ -194,9 +207,21 @@ Those Zelda launchers live in the Triforce popup rather than being duplicated in
 
 In practice, the Triforce popup should stay close to:
 
-- a `ROM: oosNNNx.sfc` context row
-- a session section with `Continue: <current focus>` and `Patch + Launch`
-- an app launcher section with `Oracle Hub`, `Yaze`, `z3ed`, and `Mesen2 OoS`
+- a Play section with staged-build status, `Play`, `Load now`, and the newest `Dev <topic>` build
+- an optional `Ganondorf test` row when a private fight packet is configured
+- an app launcher section with `Yaze`, `z3ed`, and `Mesen2 OoS`
+
+Set `paths.oracle_project_launcher` in local `state.json`, or
+`BARISTA_ORACLE_PROJECT_LAUNCHER`, to an executable project launcher to show
+`Edit Oracle Project`. It runs that launcher directly, preserving its matching
+editor and project guards; output goes to `/tmp/oos-open-oracle.log`. A configured
+unavailable launcher does not fall back to a global Yaze app.
+
+Set `paths.ganondorf_launcher` in local `state.json`, or
+`BARISTA_GANONDORF_LAUNCHER`, to an executable fight-packet launcher. The row
+opens that packet's private Mesen profile and checkpoint; its output goes to
+`/tmp/oos-launch-ganondorf.log`. Missing packets omit the row. The regular Play
+and Dev actions keep their existing instance and save selection.
 
 The Triforce anchor toggles immediately, then refreshes its ROM, focus, Continue,
 and alert fields asynchronously from Oracle's canonical
@@ -212,32 +237,14 @@ For quick workflow access, the generated skhd shortcuts include:
   `Blocked` task focus; it uses the clock's live popup owner, so switching from
   another menu dismisses that menu and a second press closes the task surface
 
-## Task Pulse
+## Local Tasks
 
-Task Pulse is an optional right-side chip for a configured local task board. It
-is absent unless both `widgets.task_focus=true` and at least one
-`menus.calendar.task_sources` entry are present. Clicking the chip opens a
-bounded popup with `Summary`, `Focus`, `Next`, `Waiting`, and `Blocked` rows plus
-`Capture Task`, `Open Board`, and a single menu-only focus-session action. When
-the provider is `syshelp`, the popup also includes `Complete Focus…`: it takes a
-fresh focus snapshot, asks for confirmation, then revalidates the same unique
-focus identity before marking its exact title and section done and refreshing
-task state. File-only providers stay read-only and never render the completion
-action. The focus-session row starts or stops a
-25-minute session without adding another bar widget, daemon, or polling timer.
-The closed chip stays narrow:
-its task icon is followed only by the open count (or `Clear` / `Tasks !` for the
-empty and source-or-provider-unavailable states). Task titles remain inside
-bounded popup rows.
-
-Keep the paths in ignored `state.json` or `barista_config.lua`, not in a shared
-profile:
+The clock popup's `Focus` / `Next` / `Waiting` / `Blocked` rows read a
+configured local task board. There is no separate task chip on the bar. Keep the
+paths in ignored `state.json` or `barista_config.lua`, not in a shared profile:
 
 ```json
 {
-  "widgets": {
-    "task_focus": true
-  },
   "menus": {
     "calendar": {
       "task_provider": "files",
@@ -254,11 +261,7 @@ configured board. The opt-in `syshelp` provider reads
 cannot resolve that command, set machine-local `menus.calendar.syshelp_path` to
 its absolute executable path. When a task source exists, generated skhd
 shortcuts also include `⌘⌥N` for conditional task capture. Successful syshelp
-capture and external task tools can trigger
-`task_state_changed`, which refreshes Task Pulse without adding a polling timer.
-Each refresh builds the normalized snapshot, derives focus-session status, and
-renders the bounded popup fields in one Python process before one batched
-SketchyBar apply.
+capture and external task tools can trigger `task_state_changed`.
 
 The existing clock popup can also show one next meeting from an explicitly
 configured local `menus.calendar.meeting_cache_file`. This is a read-only menu
@@ -350,7 +353,7 @@ See [docs/guides/WORK_MACHINE_GEMINI.md](docs/guides/WORK_MACHINE_GEMINI.md) for
 Use script-backed extension rows for local launchers and machine-specific
 actions instead of committing personal app paths into the default Apple menu.
 Extensions can appear in the Apple menu, disabled-yabai `front_app` / Control
-Center replacement rows, and the LM Studio popup.
+Center replacement rows, and the agents popup's `Local` submenu.
 
 ```bash
 # Personal Mac only; this file is ignored by git.
@@ -358,7 +361,7 @@ cp data/interface_extensions.personal.example.json data/interface_extensions.loc
 python3 ./scripts/machine_profile.py apply --variant personal --report
 ```
 
-Work and restricted profiles leave personal extensions and the LM Studio widget
+Work and restricted profiles leave personal extensions and the agents widget
 off by default. See [docs/guides/INTERFACE_EXTENSIONS.md](docs/guides/INTERFACE_EXTENSIONS.md).
 
 ### Machine Profile Variants
@@ -422,7 +425,7 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **Widget Daemon:** `clock`, `system_info`, and `battery` can run as daemon-managed surfaces. The compiled daemon updates the clock on minute boundaries, system info every 10 seconds, and battery every 120 seconds; popup detail refresh still happens only on click.
 - **Batched Battery Detail Refresh:** routine battery-anchor ownership remains with `widget_manager` or the existing shell fallback. A click toggles the popup immediately, then portable `plugins/battery.sh popup_refresh` captures `pmset` once and `ioreg` once, parses both snapshots in-process, and applies the anchor plus five detail rows as one ordered six-target/20-property SketchyBar batch. This changes no widget, timer, row, helper, or daemon and keeps Lua-only/restricted-work compatibility; the performance audit records the read-only proxy benchmark separately from live first-paint latency.
 - **Native System Info Detail Refresh:** on default compiled setups, `widget_manager daemon` owns the 10-second compact CPU/memory anchor; daemon-disabled and portable setups retain `plugins/system_info.sh` plus the routine `system_info_widget` helper. Clicks toggle immediately and start `system_info_popup_helper popup_refresh` in the background. `modules/items_right.lua` sends the exact enabled subset of `cpu,mem,disk,net,swap,uptime,procs`; the helper gathers only those rows and applies them as one bounded SketchyBar Mach update. Actionable Top CPU replaces the redundant standalone Activity Monitor row while enabled; disabling Top CPU restores that direct action. Setting `system_info_items.actions=false` preserves every enabled metric, keeps Top CPU informational, and omits the Activity Monitor and System Settings launchers. The popup stays flat because a controlled five-versus-seven-row progressive-disclosure A/B found no measurable root-open improvement. Mach VM statistics use the same active+wired+compressed memory model as the anchor, SystemConfiguration discovers Wi-Fi interfaces without a hardware-list child, and the remaining bounded probes cover disk, route/optional SSID, and a compact system-wide top-process lookup. Missing helpers and native invocation, payload, or IPC failures use the strict `plugins/system_info.sh popup_refresh` fallback, while individual probe failures render safe placeholders. Lua-only mode explicitly ignores stale native binaries; see the performance audit for current phase attribution and artifacts.
-- **Event-driven task surfaces:** the closed calendar popup has no periodic header timer. Opening it via the clock or `⌘⌥D` routes through the same exclusive live click owner, refreshes on demand, and applies its exact 14-row topology in one SketchyBar call. The compact popup keeps the month header, six-week grid, date/time summary, optional meeting, and four task rows while omitting redundant weekend-countdown, month-progress, and week/day footer metadata. A strict same-daemon 16→13 drawing-row A/B improved renderer median by 15.43% and p95 by 11.94%. Optional Task Pulse refreshes on click, `task_state_changed`, and `system_woke`, with snapshot, focus status, and bounded field rendering combined into one Python process.
+- **Event-driven task surfaces:** the closed calendar popup has no periodic header timer. Opening it via the clock or `⌘⌥D` routes through the same exclusive live click owner, refreshes on demand, and applies its exact 14-row topology in one SketchyBar call. The compact popup keeps the month header, six-week grid, date/time summary, optional meeting, and four task rows while omitting redundant weekend-countdown, month-progress, and week/day footer metadata. A strict same-daemon 16→13 drawing-row A/B improved renderer median by 15.43% and p95 by 11.94%.
 - **Adaptive Runtime Context:** `scripts/runtime_context.sh` prefers the compiled `bin/runtime_context_helper` for front-app/focused-space work. The native helper reuses one focused-window snapshot per refresh, wakes on app/space/wake events, and retains a five-second safety refresh while preserving unchanged cache bytes. Front-app popup clicks toggle first, then `plugins/front_app.sh` calls the compiled helper directly with the resolved absolute yabai path for one fresh returned snapshot and applies all available anchor/detail updates in one SketchyBar request; helper-missing, failed, and explicit Lua-only paths retain the portable wrapper and discovery fallback. The portable media path uses one bounded player snapshot, probes less often when idle, and likewise avoids unchanged media/output publication.
 - **Batched Space Visual Helper:** full visual passes prefer `bin/space_visual_helper` for one helper-backed visible-space app lookup, then resolve missing app glyphs through one `app_icon.sh --batch` call before the single SketchyBar apply.
 - **Spaces Diff Path:** `plugins/simple_spaces.sh` now updates `space.*` incrementally for reorder and add/remove topology changes instead of dropping the full spaces stack in those cases.
@@ -433,7 +436,7 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **Precomputed Apple Menu Model:** the enhanced Apple-menu model is now prepared before `begin_config`, so menu path discovery and section building happen while the old bar is still visible instead of inside the blank reload window.
 - **Shared Popup UI Builder:** repeated popup toggles and menu-style rows now go through `modules/ui_builder.lua`, keeping click-open anchors direct while detail refreshes happen asynchronously. Front App and Control Center popup rows use the same row/header/separator helpers as Triforce and Music.
 - **Progressive Popup Disclosure:** Music, Front App, and Control Center keep their measured compact child menus. Apple Apps still collapses multiple app-bundle AIs into `AI Apps`; separately, the opt-in personal extension pack contributes at most two `Workflows` root rows (`Agentic AI` and `Workspaces`) instead of eager personal launchers. Cortex stays direct in Apps, Loom is deduplicated, and Stop All Agents is leader-only.
-- **Exclusive Popup Switching:** top-level anchors, asynchronous detail popups, and the Control Center shortcut route through the protocol-checked `bin/popup_switch` (or the portable manager script) for one target-last SketchyBar mutation: other roots and all children close, then the requested root toggles. Child switches close unrelated branches while preserving every registered ancestor. One versioned, generation-bound topology manifest atomically publishes validated roots, children, and ancestry; enabled LM Studio joins the root list, missing/stale helpers and missing or mismatched topology fail open to portable or target-only behavior, and no focus query, hover-open behavior, or extra daemon is involved. On macOS, the compiled helper sends the same bounded argument vector directly to the canonical SketchyBar Mach service instead of launching the CLI. Custom binaries, unsupported platforms, oversized payloads, and failures before an accepted send retain exact-argv execution; an accepted toggle is never replayed if its reply is late or malformed. If a future SketchyBar update changes its private IPC contract, run `launchctl setenv BARISTA_POPUP_MACH_DISABLE 1` and `./plugins/reload_sketchybar.sh` to force the CLI transport; restore direct transport with `launchctl unsetenv BARISTA_POPUP_MACH_DISABLE` and another reload.
+- **Exclusive Popup Switching:** top-level anchors, asynchronous detail popups, and the Control Center shortcut route through the protocol-checked `bin/popup_switch` (or the portable manager script) for one target-last SketchyBar mutation: other roots and all children close, then the requested root toggles. Child switches close unrelated branches while preserving every registered ancestor. One versioned, generation-bound topology manifest atomically publishes validated roots, children, and ancestry; enabled agents joins the root list with `Local` as its child, missing/stale helpers and missing or mismatched topology fail open to portable or target-only behavior, and no focus query, hover-open behavior, or extra daemon is involved. On macOS, the compiled helper sends the same bounded argument vector directly to the canonical SketchyBar Mach service instead of launching the CLI. Custom binaries, unsupported platforms, oversized payloads, and failures before an accepted send retain exact-argv execution; an accepted toggle is never replayed if its reply is late or malformed. If a future SketchyBar update changes its private IPC contract, run `launchctl setenv BARISTA_POPUP_MACH_DISABLE 1` and `./plugins/reload_sketchybar.sh` to force the CLI transport; restore direct transport with `launchctl unsetenv BARISTA_POPUP_MACH_DISABLE` and another reload.
 - **Direct Popup Execution:** Popup-row hover passes bounded arguments directly from `popup_hover` to SketchyBar, and native-helper setups use compiled `popup_anchor` for the Apple anchor; portable fallbacks remain available.
 - **Native Volume State + Detail Refresh:** Compiled setups use `volume_popup_helper` for initial state, `volume_change`, and click-time detail refreshes (CoreAudio + bounded runtime-cache reads + one SketchyBar request/reply). The compact popup configures 12 functional rows rather than spending two more items on a duplicate `Audio` heading and decorative separator; its state prefixes, icons, and action labels preserve the visual hierarchy. Stable hardware-controlled outputs stay native, show `HW` / `Volume: Hardware controlled`, and hide unavailable mute until a software-controllable output restores it. Lua-only/helper-missing, explicitly disabled, transient CoreAudio/device-read, and IPC-failure paths retain `plugins/volume.sh`; missing `SwitchAudioSource` keeps unusable route rows hidden without adding another widget.
 - **Modular Load:** Configuration logic is split across focused modules (`shell_utils`, `paths`, `binary_resolver`) to ensure fast initialization.
@@ -443,7 +446,7 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **Config Build Metric:** `./bin/barista-stats.sh show` now reports `config_build_time` separately from total reload time, so the `begin_config` to `end_config` window can be tuned independently from spaces follow-up work.
 - **Config Build Breakdown:** the same stats view now splits config build into menu render, left layout, right layout, and popup/submenu registry work, and now further separates left/right layout time into layout-table build vs. SketchyBar apply so reload tuning can target the actual slow phase.
 - **Non-blocking Integration Models:** the left-side Oracle builder creates one shared static menu model without running the Oracle status command inside config construction. Control Center likewise defers its live Yabai layout query to the bounded post-config updater and reuses complete window-manager flags instead of probing them again while building popup rows.
-- **Post-config Commit Queue:** layout effects, hover/submenu subscriptions, and Yabai signal registration are collected during construction and flushed only after `sbar.end_config()`. Configuration-time delays use native `sbar.delay` callbacks instead of detached sleeper shells, duplicate hover/dismissal subscription intents collapse to one client call per item, the supported reload path relies on its existing synchronous missing-space fallback instead of scheduling a redundant repair sleeper, and popup dismissal registers optional left-side anchors, enabled LM Studio, and nested popup parents only when they were actually created.
+- **Post-config Commit Queue:** layout effects, hover/submenu subscriptions, and Yabai signal registration are collected during construction and flushed only after `sbar.end_config()`. Configuration-time delays use native `sbar.delay` callbacks instead of detached sleeper shells, duplicate hover/dismissal subscription intents collapse to one client call per item, the supported reload path relies on its existing synchronous missing-space fallback instead of scheduling a redundant repair sleeper, and popup dismissal registers optional left-side anchors, enabled agents, and nested popup parents only when they were actually created.
 - **Left-Layout Section Metrics:** the same stats view now also breaks left-layout build into `front_app`, `triforce`, `spaces`, `control_center`, and group assembly so the next reload fix can target the slow subsection instead of the whole left side.
 - **Cheap Timing Probes:** config-build and left-layout section metrics now use an in-process profiling clock so measuring reload hot paths no longer adds extra timestamp subprocesses; end-to-end `reload_time` still uses wall-clock.
 - **Native Spaces Timing:** topology, wrapper, and visual-refresh phase boundaries prefer the framework-free `bin/perf_clock` realtime helper. Selection checks an executable, quotes its path, requests explicit millisecond output, and falls back after helper failure. The historical isolated process benchmark measured 1.482 ms median versus 3.980 ms for Perl; its multiplied 12-call estimate is not an end-to-end result.

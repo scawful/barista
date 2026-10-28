@@ -18,7 +18,7 @@ Ways to tailor the bar without editing core Lua.
 Location: `~/.config/sketchybar/state.json` (or `$BARISTA_CONFIG_DIR/state.json`).
 
 - **widgets** – Turn items on/off: `system_info`, `clock`, `volume`, `battery`, `network`, etc.
-- **appearance** – Bar height, padding, colors, fonts, hover animation, popup styling, and scaling. `widget_scale` is the manual baseline; `auto_more_space_scaling` and `more_space_widget_scale_boost` let Barista automatically raise the effective bar height and grow items when the built-in display is using macOS "More Space". Menu density is separate now: use `menu_item_height`, `menu_header_height`, and `menu_padding` to tune popup sections without changing the bar itself. `submenu_close_delay` still applies to legacy fly-out submenus.
+- **appearance** – Bar height, padding, colors, fonts, hover animation, popup styling, and scaling. `widget_scale` is the manual baseline; `auto_more_space_scaling` and `more_space_widget_scale_boost` let Barista automatically raise the effective bar height and grow items when the built-in display is using macOS "More Space". `auto_display_density` (default on) adapts **per display**: wide desktops keep the full music/widget set, while narrow/portrait monitors get a compact status strip instead of shrinking the main bar. Menu density is separate now: use `menu_item_height`, `menu_header_height`, and `menu_padding` to tune popup sections without changing the bar itself. `submenu_close_delay` still applies to legacy fly-out submenus.
 - **icons** – Override icons by name (e.g. `apple`, `clock`, `volume`).
 - **modes** – Persist runtime switches like `window_manager` and `runtime_backend`.
 - **paths** – Override runtime paths such as `scripts_dir` and `code_dir`.
@@ -76,6 +76,9 @@ Mac. `state.machine` stores the smaller runtime summary.
 
 - **Icon font** (`appearance.font_icon`): Used for all bar and popup icons. Default is "Hack Nerd Font". The icon manager falls back by availability (e.g. SF Symbols, Menlo). For best coverage, install a [Nerd Font](https://www.nerdfonts.com/) (e.g. via the installer or `scripts/install_missing_fonts_and_panel.sh`). See [ICON_REFERENCE.md](../features/ICON_REFERENCE.md) for the full icon set.
 - **Text / numbers** (`appearance.font_text`, `appearance.font_numbers`): Used for labels and the clock. Change in state or in the Control Panel → Appearance tab.
+- **Popup text** (`appearance.font_popup`, default "SF Pro"): Used for popup and menu rows; rows rendered in `font_numbers` (calendar grid) stay monospace.
+- **SF families**: "SF Pro", "SF Pro Text", "SF Pro Display", and "SF Mono" resolve to the hidden system copies (`System Font`, `.SF NS Mono`), so they work without installing Apple's font packages. Other family names that are not installed fall back to Helvetica.
+- **Overrides**: `barista_config.lua` `appearance` values win over `state.json`; check it first when an appearance change does not take effect.
 
 ## Where to edit the bar layout
 

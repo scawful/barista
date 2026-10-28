@@ -83,11 +83,14 @@
 | `icons` | object | Named icon overrides such as `apple`, `wifi`, `volume`. |
 | `widget_colors` | object | Per-widget color overrides. |
 | `space_icons` | object | Custom icon per space number. |
-| `space_modes` | object | Saved layout mode per space number (`bsp`, `stack`, or `float`). |
+| `space_modes` | object | Numeric compatibility mirror for saved space layouts (`bsp`, `stack`, or `float`). |
+| `space_modes_by_uuid` | object | Canonical saved layouts keyed by the macOS space UUID. |
+| `space_mode_uuids` | object | Binds numeric compatibility entries to UUIDs so replay does not apply them twice. |
 | `spaces` | object | Space-management behavior toggles. |
 | `system_info_items` | object | Controls which system-info popup rows are shown. |
 | `modes` | object | Runtime mode switches such as window manager and backend selection. |
-| `toggles` | object | Simple persisted toggles, for example yabai shortcut enablement. |
+| `toggles` | object | Persisted toggles (`yabai_shortcuts`, `stack_indicator`). |
+| `workflow` | object | Settings for scratchpads, Emacs client commands, and the file picker. |
 | `paths` | object | Runtime path overrides. |
 | `menus` | object | Apple-menu popup sections, app shortcuts, and web-app shortcut configuration. |
 | `integrations` | object | Per-integration enablement and metadata. |
@@ -99,7 +102,7 @@
 
 Common keys:
 
-- `lmstudio`
+- `agents`
 - `clock`
 - `system_info`
 - `volume`
@@ -107,12 +110,14 @@ Common keys:
 - `network`
 - `task_focus`
 
-`lmstudio` controls the dedicated LM Studio quick-switch widget on the right side of the bar. Personal machines enable it by profile; minimal, cozy, work, and restricted variants disable it by default.
+`agents` controls the right-side agent manager (running Codex/Claude/Cursor/Gemini
+sessions, Codex usage, and the LM Studio `Local` submenu). It has no state
+default, so the profile decides: Personal enables it; minimal, cozy, work, and
+restricted variants disable it.
 
-`task_focus` controls the optional Task Pulse chip. Its default is `false`, and
-the item is not created unless `menus.calendar.task_sources` also contains at
-least one non-empty source. This two-part gate keeps shared installs free of
-personal task UI and paths.
+`task_focus` is kept as the machine's task opt-in flag. Work and restricted
+variants force it to `false` along with clearing task sources. No bar chip
+reads it anymore; task rows live in the clock popup.
 
 ### `system_info_items`
 
@@ -136,13 +141,20 @@ Common keys:
 - `menu_item_height`, `menu_header_height`, `menu_padding`
 - `menu_item_corner_radius`, `menu_font_style`, `menu_header_font_style`, `menu_font_size_offset`
 - `bar_padding_left`, `bar_padding_right`, `bar_margin`, `bar_y_offset`
-- `popup_padding`, `popup_corner_radius`, `popup_border_width`, `popup_bg_color`
+- `popup_padding`, `popup_corner_radius`, `popup_border_width`, `popup_border_color`, `popup_bg_color`
+- `popup_blur_radius`, `popup_shadow` (native window shadow), `popup_icon_width` (fixed icon column for single-glyph popup rows)
 - `hover_color`, `hover_border_color`, `hover_animation_curve`, `hover_animation_duration`
 - `submenu_hover_color`, `submenu_idle_color`, `submenu_close_delay`
 - `submenu_hover_corner_radius`, `submenu_hover_padding_left`, `submenu_hover_padding_right`
-- `font_icon`, `font_text`, `font_numbers`
+- `font_icon`, `font_text`, `font_numbers`, `font_popup` (popup row text; numeric rows keep `font_numbers`)
 
 `widget_scale` is the manual baseline. When `auto_more_space_scaling` is enabled, Barista detects a built-in display running a downscaled macOS "More Space" mode, raises the effective bar height to match the top inset when needed, and adds `more_space_widget_scale_boost` on top of the widget baseline.
+
+When `auto_display_density` is enabled (default), Barista measures every SketchyBar display's logical width and classifies each as wide or narrow/portrait:
+
+- **Split layouts** (laptop + portrait external): the wide desktop keeps the full widget set, labels, and clock. Optional/heavy widgets (`music_studio`, `agents`, `system_info`) and the full clock/volume/battery stay on wide displays. Narrow monitors get compact `clock_narrow` / `volume_narrow` / `battery_narrow` clones plus the usual spaces strip.
+- **All-narrow** (only a portrait/small display): global compact/dense chrome applies (`comfortable` / `compact` / `dense` by min width).
+- Display add/remove/rotate events recompute a density fingerprint (`plugins/display_density.sh`) and reload SketchyBar only when the mode changes.
 
 Menu popup rows are separate from the bar now: `menu_item_height`, `menu_header_height`, and `menu_padding` control popup density without changing the bar height.
 
@@ -183,6 +195,71 @@ Restricted work-laptop setup writes `window_manager = "disabled"`,
 `runtime_backend = "lua"`, and `widget_daemon = "disabled"` so Barista avoids
 yabai/skhd and compiled helper paths.
 
+### Saved space layouts and startup
+
+`plugins/set_space_mode.sh` queries and validates a live space, applies its
+layout, verifies it, and saves the UUID plus numeric compatibility entry using
+`scripts/yabai_state.py`. Manual (`float`) is an explicit preference. It is not
+represented by deleting the entry.
+
+`space_modes_by_uuid` is authoritative after a desktop reorder. A missing UUID
+is skipped; its old index is never used as a fallback. Legacy numeric entries
+without a UUID binding remain supported until that layout is saved again.
+`scripts/yabai_restore.py --dry-run` shows the proposed startup actions without
+changing anything. `bin/barista space prune` (or `scripts/yabai_control.sh space-prune`)
+prunes orphaned UUIDs from `space_modes_by_uuid` and remaps moved live UUIDs to
+their current numeric space indices.
+
+### `spaces` policy & restrictions
+
+Supported keys under `spaces`:
+
+- `creator_mode`: `per_display` (default), `primary`, or `active`
+- `right_click_close`: `confirm` (default), `direct`, or `off`
+- `reorder_mode`: `menu` (default), `modifier_click`, or `off`
+- `max_spaces_per_display`: maximum spaces allowed per display (`8` default; `0` = unlimited)
+- `min_spaces_per_display`: minimum spaces preserved per display (`1` default)
+- `destroy_non_empty_policy`: `allow` (default), `refuse` (blocks destroying spaces with windows), or `evacuate` (moves windows to an alternate space on the same display before destroying)
+- `new_space_layout`: `default` (default), `bsp`, `stack`, `float`, or `inherit` (applies and persists the chosen layout when creating a space)
+- `window_move_policy`: `preserve` (default; keeps manual floating across spaces unless entering a floating space) or `adopt_destination` (adopts destination space layout)
+- `locked_spaces`: map or array of space indices/UUIDs protected from destruction, reordering, and layout overwrites unless `--force` (`BARISTA_SPACE_FORCE=1`) is passed
+
+The yabairc uses `--startup` after base/custom app rules: saved app rules are
+installed first, saved layouts are pinned with `config --space ... layout`,
+and the global Tile default is applied afterward. Matching Manual layouts must
+also be pinned to prevent the global default from briefly tiling them.
+Visual refresh only renders observed layout; focusing a space does not reapply
+saved preferences.
+
+The startup supervisor starts eligible installed services in Yabai, skhd,
+SketchyBar order. `auto` starts installed Yabai; `required` reports missing
+services; `optional` leaves Yabai startup to its existing service; `disabled`
+skips Yabai and skhd. These choices do not stop an already running service or
+disable independently enabled LaunchAgents. `toggles.yabai_shortcuts=false`
+skips skhd. The shortcut Off action also disables its selected LaunchAgent so
+that the preference survives login; On enables that same service. Shortcut
+status is read-only.
+
+### `toggles` and `workflow`
+
+Toggles under `toggles` (TUI Advanced tab):
+
+- `yabai_shortcuts` (`true` default): skhd shortcut management. Change it with
+  `scripts/toggle_shortcuts.sh`, which also updates the skhd service.
+- `stack_indicator` (`true` default): show an `[idx/total]` badge on
+  `front_app` for a stacked window. Also `barista feature stack_indicator [on|off|toggle]`.
+
+Settings under `workflow` (`barista workflow [list|get <key>|set <key> <value>]`),
+used by `scripts/barista_workflow.sh`:
+
+- `scratchpad.width_pct` / `scratchpad.height_pct` (`75` default, `25..100`)
+- `scratchpad.terminal_cmd` (`""` default), `scratchpad.files_cmd` (`"yazi"`)
+- `emacs.client_bin` (`"emacsclient"`), `emacs.app_name` (`"Emacs"`), `emacs.capture_key` (`""`)
+- `files.picker` (`"auto"`, `"yazi"`, `"fzf"`, or `"dired"`), `files.default_root` (`"~/src"`)
+
+These commands have no global hotkeys. Bind them in your own skhdrc or load
+`extras/skhd/barista_submaps.conf` for leader submaps.
+
 ### `window_defaults`
 
 Supported keys:
@@ -190,13 +267,38 @@ Supported keys:
 - `apps.<App Name>.mode`: `float` or `tile`
 - `apps.<App Name>.app_regex`: exact app regex installed as a yabai rule
 - `apps.<App Name>.rule_label`: stable `barista-default-*` yabai rule label
-- `apps.<App Name>.manage` / `sub_layer`: the conservative rule fields Barista writes
+- `apps.<App Name>.manage`: the rule field Barista writes
 
 These entries are written by `scripts/yabai_control.sh app-default ...` and by
-the `front_app` / Control Center popup rows. `float` means unmanaged/manual
-(`manage=off sub-layer=normal`); `tile` means managed by yabai
-(`manage=on sub-layer=normal`). Unsetting an app removes the persisted state and
-attempts to remove the matching live yabai rule label.
+the app-icon App Defaults popup rows. `float` means unmanaged/manual
+(`manage=off`); `tile` means managed by yabai (`manage=on`). Neither sets a
+sub-layer: stacking belongs to `window_levels`. Unsetting an app removes the
+persisted state and verifies removal of the matching live yabai rule label.
+Saved Barista defaults are replayed after base app rules on Yabai startup.
+Other rules remain in force.
+
+### `window_levels`
+
+Where every window of an app stacks, by app name:
+
+- `<App Name>.level`: `normal`, `raised`, or `top`
+- `<App Name>.app_regex`: exact app regex installed as a yabai rule
+- `<App Name>.rule_label`: stable `barista-level-*` yabai rule label
+
+| Level | yabai sub-layer | Meaning |
+|-------|-----------------|---------|
+| `normal` | `below` | Shared with tiled windows and every app without a level; focus decides |
+| `raised` | `normal` | Above every `normal` window, tiled or floating |
+| `top` | `above` | Always on top |
+
+The yabairc base rule `barista-level-base` puts every app on `below` first, so
+no app without a rule sits permanently above the others on a float (manual)
+space. Entries are written by `scripts/yabai_control.sh app-level ...`, the
+front-app popup's Window Level rows, and the dock's Window Level menu. Setting
+a level also moves the app's open standard windows. Levels are replayed after
+`window_defaults` on Yabai startup, so they override the yabairc stacking rules.
+`unset` removes the entry and the rule, and the app's windows go back to what
+the yabairc rules give them.
 
 ### `machine`
 
@@ -284,14 +386,7 @@ machine-local `syshelp_path` when launchd's reduced `PATH` cannot find the
 executable; do not commit a user-specific absolute path.
 
 The clock popup keeps status-only `Focus`, `Next`, `Waiting`, and `Blocked`
-rows. It refreshes when opened and does not poll while closed. If Task Pulse is
-enabled, its separate popup contains `Summary`, `Focus`, `Next`, `Waiting`, and
-`Blocked` status rows plus `Capture Task`, `Open Board`, and one menu-only
-25-minute focus-session toggle. With the `syshelp` provider, the popup also
-shows `Complete Focus…`; it builds a fresh snapshot, confirms the exact focus
-title, then takes a second snapshot and requires the same unique focus identity
-before passing its title plus section to `syshelp plan tasks done` and emitting
-`task_state_changed`. The action is absent for read-only file providers.
+rows. It refreshes when opened and does not poll while closed.
 Focus-session state is local under ignored
 `cache/focus_session/state.json`; it creates no additional bar widget or daemon.
 Successful syshelp capture emits `task_state_changed`, and external task tools

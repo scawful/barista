@@ -58,7 +58,7 @@ if [[ -d "$CONFIG_DIR/build" ]] && command -v cmake &> /dev/null; then
   echo "Rebuilding components..."
   cd "$CONFIG_DIR"
   if cmake -B build -S . -DCMAKE_BUILD_TYPE=Release 2>/dev/null && \
-     cmake --build build -j$(sysctl -n hw.ncpu 2>/dev/null || echo 4) 2>/dev/null; then
+     cmake --build build -j"$(sysctl -n hw.ncpu 2>/dev/null || echo 4)" 2>/dev/null; then
     mkdir -p "$CONFIG_DIR/bin"
     cp -f build/bin/* "$CONFIG_DIR/bin/" 2>/dev/null || true
     echo "Binaries updated"

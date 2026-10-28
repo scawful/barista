@@ -255,7 +255,7 @@ if [[ -f CMakeLists.txt ]]; then
   else
     mkdir -p build
     if cmake -B build -S . -DCMAKE_BUILD_TYPE=Release && \
-       cmake --build build -j$(sysctl -n hw.ncpu 2>/dev/null || echo 4); then
+       cmake --build build -j"$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"; then
       mkdir -p bin
       cp -f build/bin/* bin/ 2>/dev/null || true
       echo_success "Rebuild complete"

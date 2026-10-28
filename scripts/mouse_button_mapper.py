@@ -58,8 +58,6 @@ def _run_action(button: int, command: list[str]) -> None:
 
 
 def _event_callback(proxy, event_type, event, refcon):
-    global _event_tap
-
     if event_type in (
         Quartz.kCGEventTapDisabledByTimeout,
         Quartz.kCGEventTapDisabledByUserInput,

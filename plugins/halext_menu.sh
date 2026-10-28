@@ -72,9 +72,6 @@ fi
 
 # Menu configuration
 SERVER_URL=$(read_config "integrations.halext.server_url" "")
-SHOW_TASKS=$(read_config "integrations.halext.show_tasks" "true")
-SHOW_CALENDAR=$(read_config "integrations.halext.show_calendar" "true")
-SHOW_SUGGESTIONS=$(read_config "integrations.halext.show_suggestions" "true")
 
 # Check for valid configuration
 if [ -z "$SERVER_URL" ]; then

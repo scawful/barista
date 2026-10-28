@@ -130,7 +130,7 @@ resolve_window_manager_flags() {
 }
 
 # Main
-IFS=: read -r WM_MODE WM_ENABLED WM_REQUIRED WM_HAS_YABAI WM_HAS_SKHD WM_YABAI_RUNNING WM_SKHD_RUNNING <<EOF
+IFS=: read -r WM_MODE WM_ENABLED WM_REQUIRED _ _ WM_YABAI_RUNNING WM_SKHD_RUNNING <<EOF
 $(resolve_window_manager_flags)
 EOF
 SPACE_INDEX=""

@@ -79,7 +79,7 @@ refresh_runtime_context_media() {
 }
 
 print_status() {
-  local player state track artist toggle_label toggle_icon output current_output
+  local player state track artist toggle_label toggle_icon current_output
   local runtime_output
 
   runtime_output="$(runtime_context_status || true)"
@@ -179,7 +179,7 @@ switch_output() {
   [ -n "$SWITCH_AUDIO_SOURCE_BIN" ] || exit 1
 
   local target_name=""
-  while IFS=$'\t' read -r kind index selected name; do
+  while IFS=$'\t' read -r kind index _ name; do
     [ "$kind" = "output" ] || continue
     if [ "$index" = "$output_index" ]; then
       target_name="$name"

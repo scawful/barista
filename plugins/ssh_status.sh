@@ -4,8 +4,6 @@
 
 set -euo pipefail
 
-CONFIG_DIR="${HOME}/.config/sketchybar"
-STATE_FILE="$CONFIG_DIR/state.json"
 SSH_CONFIG="${HOME}/.ssh/config"
 
 # Count active SSH connections

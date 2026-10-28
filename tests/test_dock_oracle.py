@@ -12,6 +12,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from types import SimpleNamespace
 
@@ -146,6 +147,29 @@ class DockOracleTests(unittest.TestCase):
         (self.roms / "oos169.sfc").write_bytes(b"newer base")
         self.assertEqual(self.cli("version", check=True).stdout.strip(), "168")
         self.assertEqual(self.built()["title"], "Built 168 · passed with gaps")
+
+    def test_malformed_status_keeps_the_rows_it_can_and_never_loses_them_all(self):
+        status = json.loads(json.dumps(STATUS))
+        status["git"].update(modified=None, untracked="2", behind=1)
+        status["alerts"] = [7, "flips is not on PATH."]
+        rows = self.rows(status=status)
+        self.assertIn({"title": "master", "detail": "1 changed · 1 behind", "tone": "warn"}, rows)
+        self.assertIn("flips is not on PATH.", [row["title"] for row in rows])
+        for payload in (["not", "an object"], None):
+            rows = self.rows(status=payload)
+            self.assertEqual([row["tone"] for row in rows], ["error"])
+        rows = self.rows(status={**STATUS, "paths": {}, "tracker": "not an object"})
+        self.assertEqual([(row["title"], row["tone"]) for row in rows], [("Oracle status error", "error")])
+        self.assertIsNone(load_module().timestamp(1_700_000_000))
+
+    def test_a_hung_status_query_is_killed_with_everything_it_started(self):
+        script = self.repo / "hung-status.sh"
+        stub(script, "sleep 30 &\nwait")
+        started = time.monotonic()
+        with self.assertRaises(subprocess.TimeoutExpired):
+            load_module().query([str(script)], self.repo, timeout=0.5)
+        # A grandchild left alive holds stdout open, so this also proves it died.
+        self.assertLess(time.monotonic() - started, 5)
 
     def test_a_missing_binding_is_one_error_row(self):
         self.binding_path.unlink()

@@ -39,6 +39,7 @@ import json
 import os
 import re
 import shlex
+import signal
 import socket
 import subprocess
 import sys
@@ -67,6 +68,10 @@ BUSY = 75
 
 class BindingError(Exception):
     pass
+
+
+class BusyError(BindingError):
+    """Another build holds the outputs; exits BUSY so callers can retry."""
 
 
 @dataclass
@@ -145,7 +150,7 @@ def age(seconds: float) -> str:
 def timestamp(text: str | None) -> float | None:
     try:
         return dt.datetime.fromisoformat(text).timestamp() if text else None
-    except ValueError:
+    except (TypeError, ValueError):
         return None
 
 
@@ -184,7 +189,7 @@ def build_lock(binding: Binding):
         holder = handle.read().strip() or "another process"
         handle.close()
         if error.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
-            raise BindingError(f"Build outputs are in use by {holder}; try again when it finishes") from None
+            raise BusyError(f"Build outputs are in use by {holder}; try again when it finishes") from None
         raise
     try:
         handle.seek(0)
@@ -359,13 +364,13 @@ def status_rows(binding: Binding, status: dict, play: dict | None, now: float) -
 
     git = status.get("git") or {}
     if git.get("available"):
-        counts = [(git.get("modified", 0) + git.get("added", 0) + git.get("deleted", 0)
-                   + git.get("renamed", 0), "changed"),
-                  (git.get("untracked", 0), "new"),
-                  (git.get("ahead", 0), "ahead"),
-                  (git.get("behind", 0), "behind")]
-        detail = " · ".join(f"{count} {word}" for count, word in counts if count) or "clean"
-        tone = "warn" if git.get("behind") else ("ok" if detail == "clean" else "none")
+        def count(key: str) -> int:
+            value = git.get(key)
+            return value if type(value) is int else 0
+        counts = [(count("modified") + count("added") + count("deleted") + count("renamed"), "changed"),
+                  (count("untracked"), "new"), (count("ahead"), "ahead"), (count("behind"), "behind")]
+        detail = " · ".join(f"{number} {word}" for number, word in counts if number) or "clean"
+        tone = "warn" if count("behind") else ("ok" if detail == "clean" else "none")
         out.append({"title": git.get("branch") or "detached", "detail": detail, "tone": tone})
 
     # status-json derives its build focus from its own version guess; the Built row owns building.
@@ -381,7 +386,7 @@ def status_rows(binding: Binding, status: dict, play: dict | None, now: float) -
                     "tone": "none", "open": tracker})
 
     alerts = [alert for alert in status.get("alerts") or []
-              if not alert.startswith(("Patched ROM is missing", "Registry has many stale"))]
+              if isinstance(alert, str) and not alert.startswith(("Patched ROM is missing", "Registry has many stale"))]
     if alerts:
         out.append({"title": alerts[0], "detail": f"+{len(alerts) - 1}" if len(alerts) > 1 else "",
                     "tone": "none", "open": paths.get("runbook")})
@@ -389,14 +394,32 @@ def status_rows(binding: Binding, status: dict, play: dict | None, now: float) -
 
 
 def query(args: list[str], cwd: Path, timeout: float = TIMEOUT) -> dict:
-    result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=True)
-    return json.loads(result.stdout)
+    """A JSON object from a command. oos-triforce.sh is a shell script, so a
+    timeout kills its whole process group rather than orphaning its children."""
+    proc = subprocess.Popen(args, cwd=cwd, text=True, start_new_session=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    try:
+        stdout, _ = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(OSError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        proc.communicate()
+        raise
+    if proc.returncode:
+        raise subprocess.CalledProcessError(proc.returncode, args)
+    value = json.loads(stdout)
+    if not isinstance(value, dict):
+        raise ValueError("expected a JSON object")
+    return value
 
 
 def read_json(path: str) -> dict:
     source = sys.stdin if path == "-" else open(path, encoding="utf-8")
     with source:
-        return json.load(source)
+        value = json.load(source)
+    if not isinstance(value, dict):
+        raise ValueError("expected a JSON object")
+    return value
 
 
 def option(argv: list[str], name: str) -> str | None:
@@ -432,7 +455,12 @@ def cmd_info(argv: list[str]) -> int:
                 binding.repo, timeout=remaining)
         except (OSError, ValueError, subprocess.SubprocessError):
             play = None
-    print(json.dumps({"rows": status_rows(binding, status, play, time.time())}))
+    try:
+        rows = status_rows(binding, status, play, time.time())
+    except Exception as error:
+        # The dock shows nothing for a failed info command; say so in a row instead.
+        return fail("Oracle status error", type(error).__name__)
+    print(json.dumps({"rows": rows}))
     return 0
 
 
@@ -509,11 +537,10 @@ def cmd_session(binding: Binding, argv: list[str]) -> int:
 
 
 def cmd_sessions_menu(binding: Binding) -> int:
-    script = shlex.quote(str(Path(__file__).resolve()))
-    items = [{"kind": "action", "title": "Free Instance", "command": f"{script} session free"}]
+    script = str(Path(__file__).resolve())
+    items = [{"kind": "action", "title": "Free Instance", "command": shlex.join([script, "session", "free"])}]
     for task, title, extra in SESSION_TASKS:
-        entry = {"kind": "action", "title": title, "command": shlex.join([str(Path(__file__).resolve()),
-                                                                          "session", task, *extra])}
+        entry = {"kind": "action", "title": title, "command": shlex.join([script, "session", task, *extra])}
         problem = seed_problem(binding, task)
         if problem:
             entry["disabled"] = problem
@@ -647,7 +674,10 @@ def run_transition_tests(binding: Binding, runner=subprocess.run, wait=time.slee
     report["path"] = str(path)
     text = json.dumps(report, indent=2)
     path.write_text(text, encoding="utf-8")
-    (REPORTS / "last.json").write_text(text, encoding="utf-8")
+    # info reads last.json while a test may be writing it.
+    latest = REPORTS / f".last.{os.getpid()}.json"
+    latest.write_text(text, encoding="utf-8")
+    os.replace(latest, REPORTS / "last.json")
     counts = report["counts"]
     print(f"[dock] Transitions: {report['status']} · {counts['selected']} selected · {counts['passed']} passed · "
           f"{counts['failed']} failed · {counts['skipped']} skipped" + (f" ({report['error']})" if report.get("error") else ""))
@@ -683,7 +713,7 @@ def main(argv: list[str]) -> int:
         return handlers[command]()
     except BindingError as error:
         print(f"[dock] {error}")
-        return BUSY if "in use by" in str(error) else 1
+        return BUSY if isinstance(error, BusyError) else 1
 
 
 if __name__ == "__main__":

@@ -171,8 +171,9 @@ start_agent() {
   local label
   label=$(get_label_from_plist "$plist") || die "unable to read label for ${plist}"
   if agent_loaded "$label"; then
-    launchctl kickstart -kp "${DOMAIN}/${label}"
-    echo "Restarted ${label} via kickstart."
+    # -k replaces a running process; start must leave it intact.
+    launchctl kickstart -p "${DOMAIN}/${label}"
+    echo "Ensured ${label} is running."
   else
     launchctl bootstrap "$DOMAIN" "$plist"
     echo "Bootstrapped ${label} from ${plist}."

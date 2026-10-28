@@ -73,13 +73,13 @@ while [ $# -gt 0 ]; do
 done
 
 case "$CONFIG_DIR" in
-  ~/*) CONFIG_DIR="$HOME/${CONFIG_DIR#~/}" ;;
+  \~/*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
 esac
 if [[ "$CONFIG_DIR" != /* ]]; then
   CONFIG_DIR="$(pwd)/$CONFIG_DIR"
 fi
 case "$CODE_DIR" in
-  ~/*) CODE_DIR="$HOME/${CODE_DIR#~/}" ;;
+  \~/*) CODE_DIR="$HOME/${CODE_DIR#\~/}" ;;
 esac
 if [ -n "$CODE_DIR" ] && [[ "$CODE_DIR" != /* ]]; then
   CODE_DIR="$(pwd)/$CODE_DIR"
@@ -133,9 +133,9 @@ else
 fi
 AGENT_PATH="${BREW_PREFIX}/bin:${BREW_PREFIX}/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
 CUSTOM_PATH=""
-for bin_dir in "${BIN_DIRS[@]}"; do
+for bin_dir in ${BIN_DIRS[@]+"${BIN_DIRS[@]}"}; do
   case "$bin_dir" in
-    ~/*) bin_dir="$HOME/${bin_dir#~/}" ;;
+    \~/*) bin_dir="$HOME/${bin_dir#\~/}" ;;
   esac
   if [[ "$bin_dir" != /* ]]; then
     bin_dir="$(pwd)/$bin_dir"
@@ -150,6 +150,7 @@ install_agent() {
   local label="$1"
   local template="$SOURCE_ROOT/launch_agents/${label}.plist"
   local destination="$LAUNCH_AGENT_DIR/${label}.plist"
+  local agent_script rendered
   if [ ! -f "$template" ]; then
     echo_error "Launch agent template not found: $template"
     return 1
@@ -159,32 +160,53 @@ install_agent() {
     return 0
   fi
   mkdir -p "$LAUNCH_AGENT_DIR" "$LOG_DIR"
+  rendered="$(mktemp "$LAUNCH_AGENT_DIR/.${label}.XXXXXX")"
+  trap '[[ -z "${rendered:-}" ]] || rm -f "$rendered"' EXIT RETURN
+  cp "$template" "$rendered"
+  plutil -replace EnvironmentVariables.PATH -string "$AGENT_PATH" "$rendered"
+  plutil -replace EnvironmentVariables.BARISTA_PATH -string "$AGENT_PATH" "$rendered"
+  plutil -replace EnvironmentVariables.BARISTA_CONFIG_DIR -string "$CONFIG_DIR" "$rendered"
+  if [ -n "$CODE_DIR" ]; then
+    plutil -replace EnvironmentVariables.BARISTA_CODE_DIR -string "$CODE_DIR" "$rendered"
+  fi
+  if [ "$label" = "dev.barista.control" ]; then
+    agent_script="$CONFIG_DIR/launch_agents/barista-launch.sh"
+    plutil -replace StandardOutPath -string "$LOG_DIR/barista-control.out.log" "$rendered"
+    plutil -replace StandardErrorPath -string "$LOG_DIR/barista-control.err.log" "$rendered"
+  else
+    agent_script="$CONFIG_DIR/scripts/start_mouse_button_mapper.sh"
+    plutil -replace StandardOutPath -string "$LOG_DIR/barista-mouse-buttons.log" "$rendered"
+    plutil -replace StandardErrorPath -string "$LOG_DIR/barista-mouse-buttons.log" "$rendered"
+  fi
+  # launchd passes argv directly: paths with spaces remain one argument and no
+  # interactive/login shell can replace the rendered service environment.
+  python3 - "$rendered" "$agent_script" "$label" <<'PYPLIST'
+import plistlib, sys
+path, script, label = sys.argv[1:]
+with open(path, "rb") as handle:
+    data = plistlib.load(handle)
+data["ProgramArguments"] = ["/bin/bash", script]
+if label == "dev.barista.control":
+    data["ProgramArguments"].append("start")
+with open(path, "wb") as handle:
+    plistlib.dump(data, handle)
+PYPLIST
+  plutil -lint "$rendered" >/dev/null
+  chmod 644 "$rendered"
   if [ -f "$destination" ]; then
     cp "$destination" "${destination}.backup.$(date +%Y%m%d_%H%M%S)"
   fi
-  cp "$template" "$destination"
-  plutil -replace EnvironmentVariables.PATH -string "$AGENT_PATH" "$destination"
-  plutil -replace EnvironmentVariables.BARISTA_PATH -string "$AGENT_PATH" "$destination"
-  plutil -replace EnvironmentVariables.BARISTA_CONFIG_DIR -string "$CONFIG_DIR" "$destination"
-  if [ -n "$CODE_DIR" ]; then
-    plutil -replace EnvironmentVariables.BARISTA_CODE_DIR -string "$CODE_DIR" "$destination"
-  fi
-  if [ "$label" = "dev.barista.control" ]; then
-    plutil -replace ProgramArguments.2 -string "$CONFIG_DIR/launch_agents/barista-launch.sh start" "$destination"
-    plutil -replace StandardOutPath -string "$LOG_DIR/barista-control.out.log" "$destination"
-    plutil -replace StandardErrorPath -string "$LOG_DIR/barista-control.err.log" "$destination"
-  else
-    plutil -replace ProgramArguments.2 -string "$CONFIG_DIR/scripts/start_mouse_button_mapper.sh" "$destination"
-    plutil -replace StandardOutPath -string "$LOG_DIR/barista-mouse-buttons.log" "$destination"
-    plutil -replace StandardErrorPath -string "$LOG_DIR/barista-mouse-buttons.log" "$destination"
-  fi
+  mv "$rendered" "$destination"
+  rendered=""
+  trap - EXIT RETURN
   echo_success "Rendered $destination"
   if [ "$START_AGENT" -eq 1 ]; then
     launchctl bootout "${DOMAIN}/${label}" >/dev/null 2>&1 || true
     if launchctl bootstrap "$DOMAIN" "$destination" 2>/dev/null; then
       echo_success "Loaded $label"
     else
-      echo_warning "$label was rendered but launchctl could not load it"
+      echo_error "$label was rendered but launchctl could not load it"
+      return 1
     fi
   fi
 }
@@ -199,8 +221,8 @@ echo ""
 echo_success "Launch agent installation complete!"
 echo ""
 echo "The launch agent will:"
-echo "  - Start SketchyBar, Yabai, and skhd on login"
-echo "  - Manage all services together"
+echo "  - Start installed services in Yabai, skhd, SketchyBar order"
+echo "  - Respect window-manager mode and saved shortcut preference"
 echo ""
 echo "To manage manually:"
 echo "  ~/.config/sketchybar/launch_agents/barista-launch.sh {start|stop|restart|status}"

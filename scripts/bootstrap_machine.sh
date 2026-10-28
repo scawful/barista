@@ -233,7 +233,7 @@ else
   note "Would apply machine profile $PROFILE without reloading services"
 fi
 
-for pack_name in "${ENABLE_PACKS[@]}"; do
+for pack_name in ${ENABLE_PACKS[@]+"${ENABLE_PACKS[@]}"}; do
   pack_args=(--pack "$pack_name" --config-dir "$RUNTIME_DIR")
   if [ "$DRY_RUN" -eq 1 ]; then
     pack_args+=(--dry-run)
@@ -250,7 +250,7 @@ if [ "$INSTALL_AGENT" -eq 1 ]; then
   if [ -n "$CODE_DIR" ]; then
     agent_args+=(--code-dir "$CODE_DIR")
   fi
-  for bin_dir in "${BIN_DIRS[@]}"; do
+  for bin_dir in ${BIN_DIRS[@]+"${BIN_DIRS[@]}"}; do
     agent_args+=(--bin-dir "$bin_dir")
   done
   if [ "$DRY_RUN" -eq 1 ]; then

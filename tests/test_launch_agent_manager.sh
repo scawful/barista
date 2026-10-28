@@ -69,4 +69,24 @@ EOF
   exit 1
 }
 
+: > "$LOG"
+HOME="$HOME_DIR" PATH="$BIN_DIR:/usr/bin:/bin" TEST_AGENT_LOADED_STATUS=0 \
+  bash "$SCRIPT" start "$LABEL" >/dev/null
+expected_start="$(printf 'print gui/501/%s\nkickstart -p gui/501/%s' "$LABEL" "$LABEL")"
+[ "$(cat "$LOG")" = "$expected_start" ] || {
+  echo 'FAIL: start must preserve the loaded process without -k or bootstrap' >&2
+  cat "$LOG" >&2
+  exit 1
+}
+
+: > "$LOG"
+HOME="$HOME_DIR" PATH="$BIN_DIR:/usr/bin:/bin" TEST_AGENT_LOADED_STATUS=1 \
+  bash "$SCRIPT" start "$LABEL" >/dev/null
+expected_bootstrap="$(printf 'print gui/501/%s\nbootstrap gui/501 %s' "$LABEL" "$PLIST")"
+[ "$(cat "$LOG")" = "$expected_bootstrap" ] || {
+  echo 'FAIL: start must bootstrap an unloaded agent' >&2
+  cat "$LOG" >&2
+  exit 1
+}
+
 printf 'test_launch_agent_manager.sh: ok\n'

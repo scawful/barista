@@ -17,7 +17,7 @@ else
   YABAI_LABEL="com.koekeishiya.yabai"
 fi
 SKHD_LABEL="${BARISTA_SKHD_LABEL:-com.koekeishiya.skhd}"
-AGENTS=("$SKETCHYBAR_LABEL" "$YABAI_LABEL" "$SKHD_LABEL")
+AGENTS=("$YABAI_LABEL" "$SKHD_LABEL" "$SKETCHYBAR_LABEL")
 
 if [ -z "${HOMEBREW_PREFIX:-}" ] && command -v brew >/dev/null 2>&1; then
   HOMEBREW_PREFIX="$(brew --prefix)"
@@ -47,13 +47,8 @@ else
 fi
 export BARISTA_CONFIG_DIR="$CONFIG_DIR"
 
-if command -v launchctl >/dev/null 2>&1; then
-  launchctl setenv PATH "$PATH" >/dev/null 2>&1 || true
-  launchctl setenv BARISTA_CONFIG_DIR "$BARISTA_CONFIG_DIR" >/dev/null 2>&1 || true
-  if [ -n "${BARISTA_CODE_DIR:-}" ]; then
-    launchctl setenv BARISTA_CODE_DIR "$BARISTA_CODE_DIR" >/dev/null 2>&1 || true
-  fi
-fi
+# Keep runtime settings local to this supervisor. Global launchctl setenv
+# leaks Barista paths into unrelated applications and isolated test processes.
 
 log() {
   printf '[barista-agent] %s\n' "$*"
@@ -80,12 +75,17 @@ manage_label() {
 
   case "$action" in
     start|restart)
-      if ! launchctl kickstart -kp "${DOMAIN}/${label}" >/dev/null 2>&1; then
-        if plist=$(fallback_plist "$label"); then
-          launchctl bootstrap "$DOMAIN" "$plist"
+      if launchctl print "${DOMAIN}/${label}" >/dev/null 2>&1; then
+        if [[ "$action" == "restart" ]]; then
+          launchctl kickstart -kp "${DOMAIN}/${label}"
         else
-          launchctl bootstrap "$DOMAIN" "$HOME/Library/LaunchAgents/${label}.plist" 2>/dev/null || true
+          launchctl kickstart -p "${DOMAIN}/${label}"
         fi
+      elif plist=$(fallback_plist "$label"); then
+        launchctl bootstrap "$DOMAIN" "$plist"
+      else
+        echo "Missing LaunchAgent: $label" >&2
+        return 1
       fi
       ;;
     stop)
@@ -99,11 +99,67 @@ manage_label() {
 
 command="${1:-start}"
 
+if [[ "$command" == "start" || "$command" == "restart" ]]; then
+  # Read preferences without rewriting state or silently treating corrupt state
+  # as permission to start window-management services.
+  preferences="$(python3 - "$CONFIG_DIR/state.json" <<'PYSTATE'
+import json, sys
+
+# Same aliases as binary_resolver.normalize_window_manager_mode.
+ALIASES = {
+    "": "auto", "auto": "auto",
+    "off": "disabled", "false": "disabled", "none": "disabled", "disable": "disabled", "disabled": "disabled",
+    "opt": "optional", "optional": "optional",
+    "on": "required", "enable": "required", "enabled": "required", "require": "required", "required": "required",
+}
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        state = json.load(handle)
+except FileNotFoundError:
+    state = {}
+if not isinstance(state, dict):
+    raise ValueError("state must be an object")
+modes = state.get("modes") or {}
+toggles = state.get("toggles") or {}
+mode = ALIASES.get(str(modes.get("window_manager") or "auto").lower())
+if mode is None:
+    raise ValueError("invalid window manager mode")
+shortcuts = toggles.get("yabai_shortcuts", True)
+if not isinstance(shortcuts, bool):
+    raise ValueError("yabai_shortcuts must be a boolean")
+print(mode, "on" if shortcuts else "off")
+PYSTATE
+)"
+  read -r wm_mode shortcuts_enabled <<< "$preferences"
+  AGENTS=()
+  if [[ "$wm_mode" == "required" || "$wm_mode" == "auto" ]]; then
+    if [[ "$wm_mode" == "required" ]] || fallback_plist "$YABAI_LABEL" >/dev/null; then
+      AGENTS+=("$YABAI_LABEL")
+    fi
+  fi
+  if [[ "$wm_mode" != "disabled" && "$shortcuts_enabled" == "on" ]]; then
+    if [[ "$wm_mode" == "required" ]] || fallback_plist "$SKHD_LABEL" >/dev/null; then
+      AGENTS+=("$SKHD_LABEL")
+    fi
+  fi
+  AGENTS+=("$SKETCHYBAR_LABEL")
+fi
+
+# SketchyBar starts last, so an optional service's failure must not stop it.
+start_label() {
+  local action="$1" label="$2"
+  if [[ "$label" == "$SKETCHYBAR_LABEL" || "$wm_mode" == "required" ]]; then
+    manage_label "$action" "$label"
+  else
+    manage_label "$action" "$label" || log "Skipped ${label}: ${action} failed"
+  fi
+}
+
 case "$command" in
   start)
     for label in "${AGENTS[@]}"; do
       log "Starting ${label}"
-      manage_label start "$label"
+      start_label start "$label"
     done
     ;;
   stop)
@@ -115,7 +171,7 @@ case "$command" in
   restart)
     for label in "${AGENTS[@]}"; do
       log "Restarting ${label}"
-      manage_label restart "$label"
+      start_label restart "$label"
     done
     ;;
   status)

@@ -47,7 +47,7 @@ struct Volume: Identifiable, Equatable {
       let total = Int64(values.volumeTotalCapacity ?? 0)
       // A local volume without a size is a system mount, not a drive.
       guard total > 0 || !isLocal else { return nil }
-      let available = values.volumeAvailableCapacityForImportantUsage ?? values.volumeAvailableCapacity.map(Int64.init) ?? 0
+      let available = free(values)
       return Volume(url: url, name: values.volumeLocalizedName ?? url.lastPathComponent, total: total,
                     available: available, ejectable: values.volumeIsEjectable == true || values.volumeIsRemovable == true,
                     isLocal: isLocal, isInternal: values.volumeIsInternal ?? false,
@@ -64,7 +64,13 @@ struct Volume: Identifiable, Equatable {
   static func available(at url: URL) -> Int64? {
     let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey,
                                                    .volumeAvailableCapacityKey])
-    return values?.volumeAvailableCapacityForImportantUsage ?? values?.volumeAvailableCapacity.map(Int64.init)
+    return values.map(free)
+  }
+
+  /// The larger count: APFS's for important use adds purgeable space, but
+  /// exFAT and other non-APFS drives answer it with zero.
+  static func free(_ values: URLResourceValues) -> Int64 {
+    max(values.volumeAvailableCapacityForImportantUsage ?? 0, Int64(values.volumeAvailableCapacity ?? 0))
   }
 }
 

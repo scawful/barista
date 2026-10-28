@@ -1291,15 +1291,23 @@ private struct PathBar: View {
     let urls = components.indices.map { index in
       URL(fileURLWithPath: NSString.path(withComponents: Array(components.prefix(index + 1))))
     }
-    HStack(spacing: 2) {
-      ForEach(Array(urls.suffix(4).enumerated()), id: \.offset) { offset, url in
-        if offset > 0 { Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary) }
-        Button(DisplayNames.name(of: url)) { go(url) }
-          .fontWeight(url == location ? .semibold : .regular)
-          .lineLimit(1)
-      }
+    // A tiled window can be narrow: fewer folders, never names broken over lines.
+    ViewThatFits(in: .horizontal) {
+      bar(urls.suffix(4))
+      bar(urls.suffix(2))
+      bar(urls.suffix(1))
     }
     .buttonStyle(.borderless)
+  }
+
+  private func bar(_ urls: ArraySlice<URL>) -> some View {
+    HStack(spacing: 2) {
+      ForEach(Array(urls.enumerated()), id: \.offset) { offset, url in
+        if offset > 0 { Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary) }
+        Button { go(url) } label: { Text(DisplayNames.name(of: url)).lineLimit(1).fixedSize() }
+          .fontWeight(url == location ? .semibold : .regular)
+      }
+    }
   }
 }
 

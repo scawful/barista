@@ -45,7 +45,7 @@ BARISTA_INSTALL_NONINTERACTIVE=1 \
 
 ### Prerequisites
 
-- macOS 13+ (Ventura or later)
+- macOS 13+ (Ventura or later); the optional Barista dock (`barista-agent`) needs macOS 14+
 - Homebrew (for dependency management)
 - Git (for git clone method)
 

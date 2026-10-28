@@ -15,6 +15,7 @@ final class BrowserController {
   private var windows: [NSWindow] = []
   private var states: [ObjectIdentifier: BrowserState] = [:]
   private var keyMonitor: Any?
+  private var closeObservers: [ObjectIdentifier: NSObjectProtocol] = [:]
 
   /// Opens `url` in a new tab of the front browser, or a new browser when
   /// there is none or `newWindow`. A file opens its folder with it selected.
@@ -46,9 +47,11 @@ final class BrowserController {
     window.center()
     windows.append(window)
     states[ObjectIdentifier(window)] = state
-    NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window,
-                                           queue: .main) { [weak self] note in
+    closeObservers[ObjectIdentifier(window)] = NotificationCenter.default.addObserver(
+      forName: NSWindow.willCloseNotification, object: window, queue: .main
+    ) { [weak self] note in
       guard let self, let closing = note.object as? NSWindow else { return }
+      self.closeObservers.removeValue(forKey: ObjectIdentifier(closing)).map(NotificationCenter.default.removeObserver)
       self.windows.removeAll { $0 === closing }
       self.states[ObjectIdentifier(closing)] = nil
       if self.windows.isEmpty, let monitor = self.keyMonitor {
@@ -73,7 +76,8 @@ final class BrowserController {
       guard let self, let window = event.window, let state = self.states[ObjectIdentifier(window)] else {
         return event
       }
-      let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+      // Caps Lock, keypad, and fn bits would make every pattern below miss.
+      let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
       let typing = window.firstResponder is NSText
       let key = event.charactersIgnoringModifiers ?? ""
       switch (flags, event.keyCode, key) {
@@ -84,14 +88,12 @@ final class BrowserController {
       case (.command, _, "]"): state.forward()
       case (.command, _, "f"): state.focusSearch += 1
       case ([.command, .shift], _, "."), ([.command, .shift], _, ">"): state.hidden.toggle(); state.reload()
-      case (.control, 48, _): state.tabs.selectNeighbor(1); state.reload()
-      case ([.control, .shift], 48, _): state.tabs.selectNeighbor(-1); state.reload()
+      case (.control, 48, _): state.selectNeighborTab(1)
+      case ([.control, .shift], 48, _): state.selectNeighborTab(-1)
       case (.command, _, _) where Int(key).map({ (1...9).contains($0) }) == true:
-        let index = min(Int(key)! - 1, state.tabs.tabs.count - 1)
-        state.tabs.select(state.tabs.tabs[index].id)
-        state.reload()
-      case ([.command, .numericPad, .function], 126, _), (.command, 126, _): state.up()
-      case ([.command, .numericPad, .function], 125, _), (.command, 125, _): state.openSelection()
+        state.select(tab: state.tabs.tabs[min(Int(key)! - 1, state.tabs.tabs.count - 1)].id)
+      case (.command, 126, _): state.up()
+      case (.command, 125, _): state.openSelection()
       case ([], 36, _) where !typing, ([], 76, _) where !typing: state.openSelection()
       case ([], 49, _) where !typing: state.showPreview.toggle()
       case (.command, 51, _) where !typing: state.trashSelection()
@@ -170,11 +172,13 @@ final class BrowserState: ObservableObject {
     let from = location
     tabs.back()
     pendingSelection = from
+    query = ""
     reload()
   }
 
   func forward() {
     tabs.forward()
+    query = ""
     reload()
   }
 
@@ -193,13 +197,28 @@ final class BrowserState: ObservableObject {
     reload()
   }
 
+  /// The search filters one folder's listing, so it ends whenever the shown
+  /// folder changes.
   func select(tab id: UUID) {
     tabs.select(id)
+    query = ""
+    reload()
+  }
+
+  func selectNeighborTab(_ offset: Int) {
+    tabs.selectNeighbor(offset)
+    query = ""
     reload()
   }
 
   func closeTab(_ id: UUID) {
-    if tabs.close(id) { reload() } else { onCloseWindow?() }
+    let shown = tabs.selectedID
+    guard tabs.close(id) else {
+      onCloseWindow?()
+      return
+    }
+    if tabs.selectedID != shown { query = "" }
+    reload()
   }
 
   func open(_ entry: FileEntry) {

@@ -111,14 +111,18 @@ enum FileSortKey: String, CaseIterable {
 enum FileListing {
   /// Nil when the folder cannot be read (missing, or privacy access denied).
   static func load(_ folder: URL, hidden: Bool = false) -> [FileEntry]? {
-    let keys: [URLResourceKey] = [.localizedNameKey, .isDirectoryKey, .isPackageKey, .contentModificationDateKey,
-                                  .fileSizeKey, .localizedTypeDescriptionKey]
+    let keys: [URLResourceKey] = [.localizedNameKey, .isDirectoryKey, .isPackageKey, .isSymbolicLinkKey,
+                                  .contentModificationDateKey, .fileSizeKey, .localizedTypeDescriptionKey]
     guard let urls = try? FileManager.default.contentsOfDirectory(
       at: folder, includingPropertiesForKeys: keys, options: hidden ? [] : [.skipsHiddenFiles])
     else { return nil }
     return urls.map { url in
       let values = try? url.resourceValues(forKeys: Set(keys))
-      let isFolder = values?.isDirectory == true && values?.isPackage != true
+      // Resource values describe a symlink itself; its target decides whether it browses.
+      let target = values?.isSymbolicLink == true
+        ? try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+        : values
+      let isFolder = target?.isDirectory == true && target?.isPackage != true
       return FileEntry(url: url, name: values?.localizedName ?? url.lastPathComponent, isFolder: isFolder,
                        modified: values?.contentModificationDate ?? .distantPast,
                        size: isFolder ? nil : values?.fileSize.map(Int64.init),

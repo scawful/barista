@@ -66,4 +66,49 @@ final class FileBrowserModelTests: XCTestCase {
     XCTAssertEqual(try XCTUnwrap(FileListing.load(folder, hidden: true)).count, 4)
     XCTAssertNil(FileListing.load(folder.appendingPathComponent("missing")))
   }
+
+  func testSearchEndsWhenTheShownFolderChanges() {
+    let state = BrowserState(location: root)
+    let first = state.tabs.selectedID
+    state.newTab(at: root.appendingPathComponent("a"))
+    let second = state.tabs.selectedID
+    state.query = "x"
+    state.select(tab: first)
+    XCTAssertEqual(state.query, "")
+    state.query = "x"
+    state.selectNeighborTab(1)
+    XCTAssertEqual(state.query, "")
+    state.go(to: root.appendingPathComponent("a/b"))
+    state.query = "x"
+    state.back()
+    XCTAssertEqual(state.query, "")
+    state.query = "x"
+    state.forward()
+    XCTAssertEqual(state.query, "")
+    state.query = "x"
+    state.closeTab(first)
+    XCTAssertEqual(state.query, "x", "closing another tab keeps this tab's search")
+    state.newTab(at: root)
+    state.query = "x"
+    state.closeTab(state.tabs.selectedID)
+    XCTAssertEqual(state.tabs.selectedID, second)
+    XCTAssertEqual(state.query, "")
+  }
+
+  func testSymlinkedFoldersBrowseAndPackagesDoNot() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("barista-browser-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: folder.appendingPathComponent("real"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: folder.appendingPathComponent("Tool.app/Contents"),
+                                            withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    try Data().write(to: folder.appendingPathComponent("note.txt"))
+    try FileManager.default.createSymbolicLink(atPath: folder.appendingPathComponent("linked").path,
+                                               withDestinationPath: "real")
+    try FileManager.default.createSymbolicLink(atPath: folder.appendingPathComponent("note-link").path,
+                                               withDestinationPath: "note.txt")
+
+    let entries = try XCTUnwrap(FileListing.load(folder))
+    let folders = Set(entries.filter(\.isFolder).map(\.name))
+    XCTAssertEqual(folders, ["real", "linked"])
+  }
 }

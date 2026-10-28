@@ -331,12 +331,27 @@ def run_cli(argv):
     return 1
 
 
+def launch_tui(args):
+    # Homebrew points python3 at each new release with no packages installed,
+    # so the TUI runs from the environment install-tui.sh creates when it exists.
+    venv_dir = REPO_DIR / ".venv"
+    venv_python = venv_dir / "bin" / "python"
+    if venv_python.exists() and Path(sys.prefix).resolve() != venv_dir.resolve():
+        os.execv(str(venv_python), [str(venv_python), str(Path(__file__).resolve()), *args])
+    if args and args[0] in ("tui", "--tui"):
+        sys.argv = [sys.argv[0], *args[1:]]
+    try:
+        from tui.app import main
+    except ImportError as error:
+        print(f"barista: the TUI needs {error.name or 'its dependencies'} for {sys.executable}.\n"
+              f"Install them with: {REPO_DIR / 'scripts' / 'install-tui.sh'} --venv", file=sys.stderr)
+        sys.exit(1)
+    main()
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
     if not args or args[0] in ("tui", "--tui", "--config", "-c", "--version", "-v"):
-        if args and args[0] in ("tui", "--tui"):
-            sys.argv = [sys.argv[0], *args[1:]]
-        from tui.app import main
-        main()
+        launch_tui(args)
     else:
         sys.exit(run_cli(args))

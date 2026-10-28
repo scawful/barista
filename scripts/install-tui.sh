@@ -12,7 +12,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 REQUIREMENTS_FILE="$REPO_DIR/config/requirements.txt"
 AUTO_YES=0
-PYTHON_BIN="${BARISTA_PYTHON:-python3}"
+BASE_PYTHON="${BARISTA_PYTHON:-python3}"
+VENV_DIR="$REPO_DIR/.venv"
+# bin/barista runs the TUI from this environment when it exists.
+PYTHON_BIN="$BASE_PYTHON"
+if [ -z "${BARISTA_PYTHON:-}" ] && [ -x "$VENV_DIR/bin/python" ]; then
+    PYTHON_BIN="$VENV_DIR/bin/python"
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -144,6 +150,13 @@ check_deps() {
 
 # Install dependencies
 install_deps() {
+    # Homebrew's Python refuses plain pip installs (PEP 668).
+    if "$PYTHON_BIN" -c 'import os, sys, sysconfig; sys.exit(not (sys.prefix == sys.base_prefix and os.path.exists(os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED"))))'; then
+        echo ""
+        echo "$PYTHON_BIN is externally managed; installing into $VENV_DIR instead."
+        create_venv
+        return
+    fi
     echo ""
     echo "Installing dependencies..."
     
@@ -159,12 +172,10 @@ install_deps() {
 
 # Create virtual environment
 create_venv() {
-    VENV_DIR="$REPO_DIR/.venv"
-    
     echo ""
     echo "Creating virtual environment at $VENV_DIR..."
     
-    "$PYTHON_BIN" -m venv "$VENV_DIR"
+    "$BASE_PYTHON" -m venv "$VENV_DIR"
     # shellcheck disable=SC1091
     source "$VENV_DIR/bin/activate"
 
@@ -178,11 +189,7 @@ create_venv() {
     echo ""
     echo -e "${GREEN}Virtual environment created!${NC}"
     echo ""
-    echo "To activate:"
-    echo "  source $VENV_DIR/bin/activate"
-    echo ""
-    echo "To run barista:"
-    echo "  $REPO_DIR/bin/barista"
+    echo "$REPO_DIR/bin/barista uses it automatically."
 }
 
 # Main

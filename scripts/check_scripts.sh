@@ -149,9 +149,17 @@ printf '{}' > "$tmp_state"
 "$python_bin" scripts/machine_profile.py capabilities --format env >/dev/null
 "$python_bin" tests/test_focus_session.py >/dev/null
 "$python_bin" tests/test_task_snapshot.py >/dev/null
-"$python_bin" tests/test_tui_config.py >/dev/null
-"$python_bin" tests/test_tui_forward_compat.py >/dev/null
-"$python_bin" tests/test_tui_widgets.py >/dev/null
+tui_python="$python_bin"
+if [ -z "${BARISTA_PYTHON:-}" ] && [ -x .venv/bin/python ]; then
+  tui_python=.venv/bin/python
+fi
+if "$tui_python" -c 'import pydantic, textual' 2>/dev/null; then
+  "$tui_python" tests/test_tui_config.py >/dev/null
+  "$tui_python" tests/test_tui_forward_compat.py >/dev/null
+  "$tui_python" tests/test_tui_widgets.py >/dev/null
+else
+  echo "[warn] TUI dependencies missing for $tui_python; skipping TUI tests (scripts/install-tui.sh --venv)"
+fi
 bash tests/test_task_actions.sh >/dev/null
 bash tests/test_task_focus.sh >/dev/null
 "$python_bin" tests/test_agent_sessions.py >/dev/null

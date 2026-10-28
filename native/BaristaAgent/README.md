@@ -73,7 +73,7 @@ window, which is the point: native tabs are separate windows to yabai.
 
 From a shell, `barista-agent {view|browse|open} PATH` posts a distributed
 notification to the running agent (`scripts/barista_agent.sh view PATH` does
-the same).
+the same); `barista-agent group TITLE` opens a dock group's callout.
 
 ## How a frame is made
 

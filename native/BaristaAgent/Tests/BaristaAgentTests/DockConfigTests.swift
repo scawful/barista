@@ -185,6 +185,11 @@ final class DockConfigTests: XCTestCase {
     config.setHidden("z3dk-app", false)
     XCTAssertNil(config.groups.first { $0.key == "group:Tools" }?.items?.last?.hidden)
 
+    config.place("z3dk-app", before: "action:z3dk\tz3dk", inGroup: "group:Tools")
+    XCTAssertEqual(config.groups[2].items?.map(\.key), ["z3dk-app", "action:z3dk\tz3dk"])
+    config.place("z3dk-app", before: nil, inGroup: "group:Tools")
+    XCTAssertEqual(config.groups[2].items?.map(\.key), ["action:z3dk\tz3dk", "z3dk-app"])
+
     config.takeOut("z3dk-app", fromGroup: "group:Tools")
     XCTAssertEqual(config.pinned[0].items?.map(\.key), ["group:Emulators", "group:Tools", "z3dk-app"],
                    "taking out of a subgroup lands in its parent")
@@ -210,6 +215,11 @@ final class DockConfigTests: XCTestCase {
     XCTAssertTrue(group.isRunning, "a running app two levels down counts")
     XCTAssertTrue(group.contains(app: "logic"))
     XCTAssertFalse(group.contains(app: "music"))
+
+    XCTAssertEqual(DockTile.shortTitle("Oracle Tools", under: "Oracle of Secrets"), "Tools")
+    XCTAssertEqual(DockTile.shortTitle("studio desk", under: "Studio"), "desk")
+    XCTAssertNil(DockTile.shortTitle("Studio", under: "Studio Gear"), "never down to nothing")
+    XCTAssertNil(DockTile.shortTitle("Emulators", under: "Oracle of Secrets"))
   }
 
   func testDroppedWebLinksBecomeURLTiles() {

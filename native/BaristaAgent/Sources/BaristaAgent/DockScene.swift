@@ -77,9 +77,15 @@ final class DockScene: ObservableObject {
     var removing = false
   }
 
+  /// What a drag reorders: a top-level list, or the members of an open group.
+  enum Scope: Equatable {
+    case list(DockConfig.List)
+    case group(String)
+  }
+
   struct Drag: Equatable {
     let id: String
-    let list: DockConfig.List
+    let scope: Scope
     /// Screen coordinates, which stay put while the panel grows for the drag.
     let startMouse: CGPoint
     /// Where the tile was drawn when grabbed, so it stays under the pointer at that size.
@@ -92,7 +98,7 @@ final class DockScene: ObservableObject {
   }
 
   enum Outcome: Equatable {
-    case move(id: String, list: DockConfig.List, index: Int)
+    case move(id: String, scope: Scope, index: Int)
     case remove(id: String)
   }
 
@@ -213,22 +219,22 @@ final class DockScene: ObservableObject {
 
   // MARK: Dragging
 
-  /// Drag sideways to reorder within a list; drag well above the dock to remove.
-  /// `mouse` is in screen coordinates; `translation` is the gesture's, used only
-  /// to find where the drag began.
-  func dragChanged(id: String, list: DockConfig.List?, mouse: CGPoint, translation: CGSize) {
-    guard let list, revealed else { return }
+  /// Drag sideways to reorder within a list or an open group; drag well above
+  /// the dock to remove. `mouse` is in screen coordinates; `translation` is the
+  /// gesture's, used only to find where the drag began.
+  func dragChanged(id: String, scope: Scope?, mouse: CGPoint, translation: CGSize) {
+    guard let scope, revealed else { return }
     let start = drag?.startMouse
       ?? CGPoint(x: mouse.x - translation.width, y: mouse.y + translation.height)
-    var next = drag ?? Drag(id: id, list: list, startMouse: start, origin: shown[id] ?? .zero,
-                            target: index(of: id, in: list))
+    var next = drag ?? Drag(id: id, scope: scope, startMouse: start, origin: shown[id] ?? .zero,
+                            target: index(of: id, in: scope))
     next.translation = CGSize(width: mouse.x - start.x, height: start.y - mouse.y)
     next.removing = next.translation.height < -input.icon * 1.1
     if next.removing {
-      next.target = index(of: id, in: list)
+      next.target = index(of: id, in: scope)
     } else {
       let center = next.origin.midX + next.translation.width
-      next.target = ids(in: list).filter { $0 != id && restMidX($0) < center }.count
+      next.target = ids(in: scope).filter { $0 != id && restMidX($0) < center }.count
     }
     drag = next
     if !isLifted {
@@ -250,18 +256,19 @@ final class DockScene: ObservableObject {
       var next = input
       next.pinned.removeAll { $0 == drag.id }
       next.others.removeAll { $0 == drag.id }
+      next.expanded = next.expanded.mapValues { $0.filter { $0 != drag.id } }
       apply(next)
       onCommit(.remove(id: drag.id))
-    } else if commit, drag.target != index(of: drag.id, in: drag.list) {
+    } else if commit, drag.target != index(of: drag.id, in: drag.scope) {
       apply(reordered(input, drag: drag))
-      onCommit(.move(id: drag.id, list: drag.list, index: drag.target))
+      onCommit(.move(id: drag.id, scope: drag.scope, index: drag.target))
     }
     requestFrame()
   }
 
   /// Where a drop at canvas `x` lands in `list`.
   func insertionIndex(in list: DockConfig.List, x: CGFloat) -> Int {
-    ids(in: list).filter { restMidX($0) < x }.count
+    ids(in: .list(list)).filter { restMidX($0) < x }.count
   }
 
   // MARK: Frames
@@ -377,12 +384,15 @@ final class DockScene: ObservableObject {
     abs(Double(index) - Double(count - 1) / 2) * 0.016
   }
 
-  private func ids(in list: DockConfig.List) -> [String] {
-    list == .pinned ? input.pinned : input.others
+  private func ids(in scope: Scope) -> [String] {
+    switch scope {
+    case .list(let list): return list == .pinned ? input.pinned : input.others
+    case .group(let id): return input.expanded[id] ?? []
+    }
   }
 
-  private func index(of id: String, in list: DockConfig.List) -> Int {
-    ids(in: list).firstIndex(of: id) ?? 0
+  private func index(of id: String, in scope: Scope) -> Int {
+    ids(in: scope).firstIndex(of: id) ?? 0
   }
 
   /// An open group sits where its members are drawn.
@@ -396,12 +406,16 @@ final class DockScene: ObservableObject {
   /// `input` with the dragged tile moved to where it would land.
   private func reordered(_ input: Input, drag: Drag) -> Input {
     guard !drag.removing else { return input }
-    var ids = ids(in: drag.list)
+    var ids = ids(in: drag.scope)
     guard let from = ids.firstIndex(of: drag.id) else { return input }
     ids.remove(at: from)
     ids.insert(drag.id, at: min(drag.target, ids.count))
     var next = input
-    if drag.list == .pinned { next.pinned = ids } else { next.others = ids }
+    switch drag.scope {
+    case .list(.pinned): next.pinned = ids
+    case .list(.others): next.others = ids
+    case .group(let id): next.expanded[id] = ids
+    }
     return next
   }
 

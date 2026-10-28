@@ -134,7 +134,8 @@ struct DockView: View {
     DragGesture(minimumDistance: 6)
       .updating($gestureActive) { _, active, _ in active = true }
       .onChanged { value in
-        scene.dragChanged(id: tile.id, list: tile.list, mouse: NSEvent.mouseLocation, translation: value.translation)
+        scene.dragChanged(id: tile.id, scope: tile.dragScope, mouse: NSEvent.mouseLocation,
+                          translation: value.translation)
       }
       .onEnded { _ in scene.dragEnded(commit: true) }
   }

@@ -15,10 +15,21 @@ struct DockTile: Identifiable, Equatable {
   let isHidden: Bool
   /// A group's members; empty for every other kind.
   var children: [DockTile] = []
+  /// A subgroup's title without the words it shares with its parent's.
+  var shortName: String?
   /// The group holding this tile, for members drawn in an open group.
   var parentGroup: String?
 
   var isRunning: Bool { pid != nil || children.contains(where: \.isRunning) }
+
+  /// Group titles are unique across the dock, so a subgroup is often named
+  /// after its parent ("Oracle Tools" in "Oracle of Secrets"); it shows as "Tools".
+  static func shortTitle(_ title: String, under parent: String) -> String? {
+    let words = title.split(separator: " ")
+    let shared = zip(words, parent.split(separator: " ")).prefix { $0.lowercased() == $1.lowercased() }.count
+    guard shared > 0, shared < words.count else { return nil }
+    return words.dropFirst(shared).joined(separator: " ")
+  }
 
   /// Members of this group and of its subgroups, depth first.
   var descendants: [DockTile] { children.flatMap { [$0] + $0.descendants } }
@@ -32,6 +43,7 @@ struct DockTile: Identifiable, Equatable {
   }
 
   var name: String {
+    if let shortName { return shortName }
     if let title = item.title, !title.isEmpty { return title }
     if item.kind == .shelf { return "Shelf" }
     if item.kind == .controls { return "Controls" }
@@ -39,7 +51,7 @@ struct DockTile: Identifiable, Equatable {
     return item.command ?? item.url ?? ""
   }
 
-  /// The list a drag reorders; members of an open group stay in their group.
+  /// The top-level list holding this tile; nil for group members.
   var list: DockConfig.List? {
     guard parentGroup == nil else { return nil }
     switch section {
@@ -47,6 +59,11 @@ struct DockTile: Identifiable, Equatable {
     case .others: return .others
     case .running, .trash: return nil
     }
+  }
+
+  /// What dragging this tile reorders: its list, or its open group's members.
+  var dragScope: DockScene.Scope? {
+    parentGroup.map(DockScene.Scope.group) ?? list.map(DockScene.Scope.list)
   }
 
   var acceptsDrops: Bool {
@@ -322,15 +339,17 @@ final class DockStore: ObservableObject {
       return unclaimed.removeValue(forKey: key)
     }
 
-    func tiles(_ items: [DockItem], section: DockTile.Section, in parent: String? = nil) -> [DockTile] {
+    func tiles(_ items: [DockItem], section: DockTile.Section, in parent: DockTile? = nil) -> [DockTile] {
       items.map { item in
         var tile = self.tile(for: item, section: section, app: claim(item))
         if item.kind == .group {
-          let children = tiles(item.items ?? [], section: section, in: item.key)
+          if let parent { tile.shortName = DockTile.shortTitle(tile.name, under: parent.name) }
+          let children = tiles(item.items ?? [], section: section, in: tile)
           tile = DockTile(id: tile.id, item: item, url: nil, section: section, pid: nil,
-                          isActive: children.contains(where: \.isActive), isHidden: false, children: children)
+                          isActive: children.contains(where: \.isActive), isHidden: false, children: children,
+                          shortName: tile.shortName)
         }
-        tile.parentGroup = parent
+        tile.parentGroup = parent?.id
         return tile
       }
     }
@@ -520,9 +539,12 @@ final class DockStore: ObservableObject {
     }
   }
 
+  /// What a member dragged inside a group callout carries, before its ID.
+  static let memberDragPrefix = "barista-dock-member:"
+
   /// Text dropped on the shelf becomes a snippet; elsewhere it is ignored.
   func drop(text: String, on tile: DockTile) {
-    if tile.item.kind == .shelf { shelf.add(text: text) }
+    if tile.item.kind == .shelf, !text.hasPrefix(Self.memberDragPrefix) { shelf.add(text: text) }
   }
 
   func add(_ urls: [URL], to list: DockConfig.List, at index: Int?) {
@@ -553,8 +575,9 @@ final class DockStore: ObservableObject {
   }
 
   func rename(_ group: DockTile) {
-    guard let title = Self.prompt("Rename Group", message: "", value: group.name),
-          title != group.name else { return }
+    let current = group.item.title ?? group.name
+    guard let title = Self.prompt("Rename Group", message: "Group names are unique across the dock.", value: current),
+          title != current else { return }
     edit { config in
       if !config.renameGroup(group.id, to: title) { NSSound.beep() }
     }
@@ -574,9 +597,29 @@ final class DockStore: ObservableObject {
     edit { $0.remove(key: tile.id) }
   }
 
+  /// `index` counts what the dock draws: for a member, its group's visible members.
   func move(_ tile: DockTile, to index: Int) {
+    if let group = tile.parentGroup.flatMap(group(id:)) {
+      let rest = group.visibleChildren.map(\.id).filter { $0 != tile.id }
+      edit { $0.place(tile.id, before: index < rest.count ? rest[index] : nil, inGroup: group.id) }
+      return
+    }
     guard let list = tile.list else { return }
     edit { $0.move(key: tile.id, to: index, in: list) }
+  }
+
+  /// A member dropped on another in the group's callout: onto a subgroup it
+  /// moves in; onto anything else it takes that member's place.
+  func drop(member id: String, on target: DockTile, in group: DockTile) {
+    guard id != target.id, let member = group.children.first(where: { $0.id == id }) else { return }
+    if target.item.kind == .group {
+      addToGroup(member, group: target)
+      return
+    }
+    let ids = group.children.map(\.id)
+    guard let from = ids.firstIndex(of: id), let to = ids.firstIndex(of: target.id) else { return }
+    let before = from < to ? (to + 1 < ids.count ? ids[to + 1] : nil) : target.id
+    edit { $0.place(id, before: before, inGroup: group.id) }
   }
 
   func hide(_ tile: DockTile) { runningApplication(tile)?.hide() }

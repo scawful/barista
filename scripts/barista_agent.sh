@@ -150,8 +150,14 @@ case "${1:-}" in
     [ -x "$BINARY" ] || { echo "barista-agent is not built; run: $0 build" >&2; exit 1; }
     "$BINARY" "$1" "$2"
     ;;
+  group)
+    # A dock group's callout, by title (subgroups too), e.g. from a hotkey.
+    [ -n "${2:-}" ] || { echo "Usage: $0 group TITLE" >&2; exit 1; }
+    [ -x "$BINARY" ] || { echo "barista-agent is not built; run: $0 build" >&2; exit 1; }
+    "$BINARY" group "$2"
+    ;;
   *)
-    echo "Usage: $0 {build|dock {barista|native|toggle|status}|restart|view PATH|browse PATH|open PATH}" >&2
+    echo "Usage: $0 {build|dock {barista|native|toggle|status}|restart|view PATH|browse PATH|open PATH|group TITLE}" >&2
     exit 1
     ;;
 esac

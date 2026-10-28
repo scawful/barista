@@ -77,8 +77,17 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   from Dock.
 - Subgroups: a group inside a group is one cell, marked with a chevron, that
   opens in place with a back button and the parents as breadcrumbs; it runs,
-  badges, and polls like a top-level group. An open group draws only its own
-  members inline, subgroups as one tile. A member with `"hidden": true` stays
+  badges, and polls like a top-level group. Titles are unique across the
+  dock, so a subgroup shows without the words it shares with its parent
+  ("Oracle Tools" in "Oracle of Secrets" reads "Tools"); Rename… edits the
+  full title. An open group draws only its own members inline, subgroups as
+  one tile; drag them sideways to reorder the group, or up to remove them.
+  In a callout, drag a member onto another to take its place, or onto a
+  subgroup to move it in.
+- `barista_agent.sh group TITLE` (or `barista-agent group TITLE`) brings up
+  the dock with that group's callout open over its tile, or its parent's for
+  a subgroup, for hotkeys and bar menus. It stays until the pointer moves
+  away from it. A member with `"hidden": true` stays
   out of the grid, the inline tiles, and the group icon until the callout's
   Hidden toggle shows it (dimmed). A group holding more than 8 members,
   counting its subgroups' members, gets a search field: typing lists matching
@@ -368,7 +377,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   `barista-agent-viewer` (title `… - Barista Viewer`), which the agent adds
   when it opens one. Browser windows match no rule and tile. macOS window
   tabbing is off in the agent, so neither ever becomes several windows.
-- From a shell or skhd: `scripts/barista_agent.sh view|browse|open PATH`.
+- From a shell or skhd: `scripts/barista_agent.sh view|browse|open PATH`, or
+  `group TITLE` for a dock group's callout.
   `browse` on a file (or an app) shows it selected in its folder, like
   `open -R`.
 

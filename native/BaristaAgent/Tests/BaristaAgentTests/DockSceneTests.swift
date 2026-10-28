@@ -66,15 +66,15 @@ final class DockSceneTests: XCTestCase {
     scene.onCommit = { outcomes.append($0) }
 
     let start = CGPoint(x: 500, y: 20)
-    scene.dragChanged(id: "a", list: .pinned, mouse: start, translation: .zero)
-    scene.dragChanged(id: "a", list: .pinned, mouse: CGPoint(x: 620, y: 20), translation: CGSize(width: 120, height: 0))
+    scene.dragChanged(id: "a", scope: .list(.pinned), mouse: start, translation: .zero)
+    scene.dragChanged(id: "a", scope: .list(.pinned), mouse: CGPoint(x: 620, y: 20), translation: CGSize(width: 120, height: 0))
     run(scene, seconds: 0.5)
     XCTAssertEqual(scene.frame.items.prefix(4).map(\.id), ["b", "c", "a", "d"])
     XCTAssertEqual(scene.frame.draggedID, "a")
     XCTAssertEqual(lifts, [true])
 
     scene.dragEnded(commit: true)
-    XCTAssertEqual(outcomes, [.move(id: "a", list: .pinned, index: 2)])
+    XCTAssertEqual(outcomes, [.move(id: "a", scope: .list(.pinned), index: 2)])
     XCTAssertTrue(scene.isDragging, "the panel stays tall while the tile lands")
     run(scene, seconds: 1)
     XCTAssertEqual(lifts, [true, false])
@@ -87,15 +87,15 @@ final class DockSceneTests: XCTestCase {
     var outcomes: [DockScene.Outcome] = []
     scene.onCommit = { outcomes.append($0) }
 
-    scene.dragChanged(id: "c", list: .pinned, mouse: CGPoint(x: 500, y: 20), translation: .zero)
-    scene.dragChanged(id: "c", list: .pinned, mouse: CGPoint(x: 500, y: 90), translation: CGSize(width: 0, height: -70))
+    scene.dragChanged(id: "c", scope: .list(.pinned), mouse: CGPoint(x: 500, y: 20), translation: .zero)
+    scene.dragChanged(id: "c", scope: .list(.pinned), mouse: CGPoint(x: 500, y: 90), translation: CGSize(width: 0, height: -70))
     run(scene, seconds: 0.1)
     XCTAssertTrue(scene.frame.removing)
     scene.dragEnded(commit: false)
     XCTAssertEqual(outcomes, [])
 
-    scene.dragChanged(id: "c", list: .pinned, mouse: CGPoint(x: 500, y: 20), translation: .zero)
-    scene.dragChanged(id: "c", list: .pinned, mouse: CGPoint(x: 500, y: 90), translation: CGSize(width: 0, height: -70))
+    scene.dragChanged(id: "c", scope: .list(.pinned), mouse: CGPoint(x: 500, y: 20), translation: .zero)
+    scene.dragChanged(id: "c", scope: .list(.pinned), mouse: CGPoint(x: 500, y: 90), translation: CGSize(width: 0, height: -70))
     scene.dragEnded(commit: true)
     XCTAssertEqual(outcomes, [.remove(id: "c")])
     run(scene, seconds: 1)
@@ -135,13 +135,30 @@ final class DockSceneTests: XCTestCase {
     scene.onCommit = { outcomes.append($0) }
     let start = rect(scene, "b")
     let target = rect(scene, "a").midX - 10
-    scene.dragChanged(id: "b", list: .pinned, mouse: CGPoint(x: 500, y: 20), translation: .zero)
-    scene.dragChanged(id: "b", list: .pinned, mouse: CGPoint(x: 500 + target - start.midX, y: 20),
+    scene.dragChanged(id: "b", scope: .list(.pinned), mouse: CGPoint(x: 500, y: 20), translation: .zero)
+    scene.dragChanged(id: "b", scope: .list(.pinned), mouse: CGPoint(x: 500 + target - start.midX, y: 20),
                       translation: CGSize(width: target - start.midX, height: 0))
     scene.dragEnded(commit: true)
-    XCTAssertEqual(outcomes, [.move(id: "b", list: .pinned, index: 0)], "the open group counts as one slot")
+    XCTAssertEqual(outcomes, [.move(id: "b", scope: .list(.pinned), index: 0)], "the open group counts as one slot")
     run(scene, seconds: 1)
     XCTAssertEqual(scene.frame.items.prefix(3).map(\.id), ["b", "a", "divider.1"])
+
+    let member = rect(scene, "m1")
+    let past = rect(scene, "m2").midX + 10
+    scene.dragChanged(id: "m1", scope: .group("g"), mouse: CGPoint(x: 500, y: 20), translation: .zero)
+    scene.dragChanged(id: "m1", scope: .group("g"), mouse: CGPoint(x: 500 + past - member.midX, y: 20),
+                      translation: CGSize(width: past - member.midX, height: 0))
+    scene.dragEnded(commit: true)
+    XCTAssertEqual(outcomes.last, .move(id: "m1", scope: .group("g"), index: 1), "members reorder inside their group")
+    run(scene, seconds: 1)
+    XCTAssertEqual(scene.frame.items.map(\.id).filter { $0.hasPrefix("m") }, ["m2", "m1"])
+
+    scene.dragChanged(id: "m2", scope: .group("g"), mouse: CGPoint(x: 500, y: 20), translation: .zero)
+    scene.dragChanged(id: "m2", scope: .group("g"), mouse: CGPoint(x: 500, y: 90), translation: CGSize(width: 0, height: -70))
+    scene.dragEnded(commit: true)
+    XCTAssertEqual(outcomes.last, .remove(id: "m2"))
+    run(scene, seconds: 1)
+    XCTAssertFalse(scene.frame.items.contains { $0.id == "m2" })
   }
 
   func testAttentionHopsOnceAfterTheRevealLands() {

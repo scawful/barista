@@ -55,6 +55,9 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         request.route(path).perform()
       }
     }
+    DistributedNotificationCenter.default().addObserver(forName: groupRequest, object: nil, queue: .main) { [weak self] note in
+      if let title = note.object as? String { self?.dock.openGroup(titled: title) }
+    }
     BrowserController.shared.dockPlaces = { [weak self] in
       guard let self else { return [] }
       return (self.store.pinned + self.store.others).flatMap { [$0] + $0.descendants }
@@ -63,6 +66,22 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     }
     dock.start()
   }
+}
+
+/// `barista-agent group TITLE` opens that group's callout; its object is the title.
+let groupRequest = Notification.Name("dev.barista.agent.group")
+
+/// Hands a request to the running agent.
+func post(_ name: Notification.Name, _ object: String) {
+  let me = ProcessInfo.processInfo.processIdentifier
+  guard NSWorkspace.shared.runningApplications.contains(where: {
+    $0.localizedName == "barista-agent" && $0.processIdentifier != me
+  }) else {
+    FileHandle.standardError.write(Data("barista-agent is not running; start it with barista_agent.sh dock barista\n".utf8))
+    exit(1)
+  }
+  DistributedNotificationCenter.default().postNotificationName(name, object: object, userInfo: nil,
+                                                               deliverImmediately: true)
 }
 
 let arguments = Array(CommandLine.arguments.dropFirst())
@@ -76,16 +95,10 @@ case nil, "run":
 case let command? where OpenRequest(rawValue: command) != nil && arguments.count == 2:
   let path = URL(fileURLWithPath: arguments[1],
                  relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)).standardizedFileURL.path
-  let me = ProcessInfo.processInfo.processIdentifier
-  guard NSWorkspace.shared.runningApplications.contains(where: {
-    $0.localizedName == "barista-agent" && $0.processIdentifier != me
-  }) else {
-    FileHandle.standardError.write(Data("barista-agent is not running; start it with barista_agent.sh dock barista\n".utf8))
-    exit(1)
-  }
-  DistributedNotificationCenter.default().postNotificationName(
-    OpenRequest(rawValue: command)!.notification, object: path, userInfo: nil, deliverImmediately: true)
+  post(OpenRequest(rawValue: command)!.notification, path)
+case "group" where arguments.count == 2:
+  post(groupRequest, arguments[1])
 default:
-  FileHandle.standardError.write(Data("usage: barista-agent [run] | {view|browse|open} PATH\n".utf8))
+  FileHandle.standardError.write(Data("usage: barista-agent [run] | {view|browse|open} PATH | group TITLE\n".utf8))
   exit(2)
 }

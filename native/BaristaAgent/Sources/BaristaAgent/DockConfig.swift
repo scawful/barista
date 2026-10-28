@@ -266,6 +266,18 @@ struct DockConfig: Equatable {
     }
   }
 
+  /// Moves a member before another member of its group, or to the group's end.
+  mutating func place(_ key: String, before target: String?, inGroup groupKey: String) {
+    guard key != target else { return }
+    updateGroup(groupKey) { group in
+      var items = group.items ?? []
+      guard let from = items.firstIndex(where: { $0.key == key }) else { return }
+      let item = items.remove(at: from)
+      items.insert(item, at: target.flatMap { target in items.firstIndex { $0.key == target } } ?? items.count)
+      group.items = items
+    }
+  }
+
   /// Replaces a group with its members.
   mutating func ungroup(_ groupKey: String) {
     editList(holding: groupKey) { items, index in

@@ -1120,6 +1120,7 @@ struct GroupPopover: View {
                    image: store.image(for: place), theme: store.theme, width: width) { onOpen(place) }
             .opacity(place.item.hidden == true ? 0.45 : 1)
             .contextMenu { memberMenu(place, group: group) }
+            .modifier(MemberDrag(store: store, member: place, group: group))
         }
       }
       if !info.isEmpty {
@@ -1188,6 +1189,7 @@ struct GroupPopover: View {
     .opacity(member.item.hidden == true ? 0.45 : 1)
     .onTapGesture { onOpen(member) }
     .contextMenu { memberMenu(member, group: group) }
+    .modifier(MemberDrag(store: store, member: member, group: group))
   }
 
   /// Members by name, then menu entries by title, then status rows by text,
@@ -1412,6 +1414,38 @@ struct GroupPopover: View {
         onDismiss()
       }
     }
+  }
+}
+
+/// Drags a member within its group's callout: dropped on a subgroup it moves
+/// in, dropped on another member it takes that place. The payload is the
+/// member's ID behind a prefix, so text dragged in from elsewhere is refused.
+private struct MemberDrag: ViewModifier {
+  static let prefix = DockStore.memberDragPrefix
+
+  @ObservedObject var store: DockStore
+  let member: DockTile
+  let group: DockTile
+  @State private var targeted = false
+
+  func body(content: Content) -> some View {
+    content
+      .overlay {
+        if targeted {
+          RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(store.theme.accent, lineWidth: 2)
+        }
+      }
+      .onDrag { NSItemProvider(object: (Self.prefix + member.id) as NSString) }
+      .onDrop(of: [.plainText], isTargeted: $targeted) { providers in
+        guard let provider = providers.first, provider.canLoadObject(ofClass: NSString.self) else { return false }
+        _ = provider.loadObject(ofClass: NSString.self) { text, _ in
+          guard let text = text as? String, text.hasPrefix(Self.prefix) else { return }
+          let id = String(text.dropFirst(Self.prefix.count))
+          DispatchQueue.main.async { store.drop(member: id, on: member, in: group) }
+        }
+        return true
+      }
   }
 }
 

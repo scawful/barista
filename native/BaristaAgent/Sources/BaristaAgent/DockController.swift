@@ -282,13 +282,8 @@ final class DockController {
     let wasOpen = scene.openPopoverID == tile.id
     popover.close()
     guard !wasOpen, let screen else { return }
-    let frame = panel.frame
-    let canvas = scene.canvas
-    let point = NSPoint(x: frame.midX - canvas.width / 2 + anchor.x, y: frame.minY + canvas.height - anchor.y)
-    let onClose: () -> Void = { [weak self] in
-      self?.scene.openPopoverID = nil
-      self?.syncCard()
-    }
+    let point = screenPoint(anchor)
+    let onClose = popoverClosed
     card.hide()
     switch tile.item.kind {
     case .group:
@@ -306,13 +301,47 @@ final class DockController {
     scene.openPopoverID = tile.id
   }
 
+  /// A group's callout from outside the dock (`barista-agent group TITLE`):
+  /// the dock comes up and the callout opens over the tile showing the group,
+  /// its parent's for a closed subgroup. It stays until the pointer moves away.
+  func openGroup(titled title: String) {
+    guard let target = screen ?? NSScreen.main else { return }
+    if screen == nil { show(on: target) }
+    guard let group = store.groups.first(where: { $0.item.title == title || $0.name == title }) else {
+      NSSound.beep()
+      return
+    }
+    var shownID = group.id
+    while store.tilesByID[shownID] == nil, let parent = store.group(id: shownID)?.parentGroup { shownID = parent }
+    guard let rect = scene.restingRect(of: shownID) else { return }
+    popover.close()
+    card.hide()
+    popover.openGroup(group.id, store: store, anchor: screenPoint(CGPoint(x: rect.midX, y: rect.minY - 2)),
+                      on: target, onClose: popoverClosed)
+    scene.openPopoverID = shownID
+  }
+
+  /// A canvas point (top-left origin) on screen.
+  private func screenPoint(_ point: CGPoint) -> NSPoint {
+    let frame = panel.frame
+    let canvas = scene.canvas
+    return NSPoint(x: frame.midX - canvas.width / 2 + point.x, y: frame.minY + canvas.height - point.y)
+  }
+
+  private var popoverClosed: () -> Void {
+    { [weak self] in
+      self?.scene.openPopoverID = nil
+      self?.syncCard()
+    }
+  }
+
   private func commit(_ outcome: DockScene.Outcome) {
-    let tiles = store.sections.joined()
+    let tiles = store.tilesByID
     switch outcome {
     case .move(let id, _, let index):
-      if let tile = tiles.first(where: { $0.id == id }) { store.move(tile, to: index) }
+      if let tile = tiles[id] { store.move(tile, to: index) }
     case .remove(let id):
-      if let tile = tiles.first(where: { $0.id == id }) { store.remove(tile) }
+      if let tile = tiles[id] { store.remove(tile) }
     }
   }
 

@@ -1,8 +1,15 @@
 local spaces = require("spaces")
 
--- Never let a test write the real replay file under $HOME.
-local function scratch_replay_path()
-  return os.tmpname() .. ".yabai_signals.sh"
+-- Never let a test write the real replay file under $HOME. The scratch
+-- directory is removed afterwards even when the test fails.
+local function with_scratch_replay(fn)
+  local dir = os.tmpname()
+  os.remove(dir)
+  local ok, err = pcall(fn, dir .. "/state/yabai_signals.sh")
+  os.execute(string.format("rm -rf %q", dir))
+  if not ok then
+    error(err, 0)
+  end
 end
 
 run_test("spaces: display JSON IDs are numeric, sorted, and deduplicated", function()
@@ -33,6 +40,7 @@ run_test("spaces: display JSON IDs are numeric, sorted, and deduplicated", funct
 end)
 
 run_test("spaces: watch_spaces uses resolved yabai binary for signals", function()
+  with_scratch_replay(function(replay_path)
   local executed = nil
   local manager = spaces.create(
     "/tmp/config",
@@ -42,7 +50,7 @@ run_test("spaces: watch_spaces uses resolved yabai binary for signals", function
     function(cmd) executed = cmd end,
     function() return false end,
     false,
-    scratch_replay_path()
+    replay_path
   )
 
   manager.watch_spaces()
@@ -52,22 +60,22 @@ run_test("spaces: watch_spaces uses resolved yabai binary for signals", function
   assert_true(executed:find("event=space_changed", 1, true) ~= nil, "space_changed signal should be registered")
   assert_true(executed:find("BARISTA_REASON", 1, true) ~= nil and executed:find("space_changed", 1, true) ~= nil, "space_changed should route through refresh_spaces diff path")
   assert_true(executed:find("refresh_spaces.sh", 1, true) ~= nil, "signals should call refresh_spaces.sh")
+  end)
 end)
 
 run_test("spaces: watch_spaces saves its signals for yabai to replay after a restart", function()
-  local dir = os.tmpname()
-  os.remove(dir)
-  local executed = nil
-  local manager = spaces.create("/tmp/config", "/tmp/plugins", "/opt/homebrew/bin/sketchybar", "/custom/bin/yabai",
-    function(cmd) executed = cmd end, function() return false end, false, dir .. "/state/yabai_signals.sh")
+  local executed, replay = nil, nil
+  with_scratch_replay(function(replay_path)
+    local manager = spaces.create("/tmp/config", "/tmp/plugins", "/opt/homebrew/bin/sketchybar", "/custom/bin/yabai",
+      function(cmd) executed = cmd end, function() return false end, false, replay_path)
 
-  manager.watch_spaces()
+    manager.watch_spaces()
 
-  local file = io.open(dir .. "/state/yabai_signals.sh")
-  assert_true(file ~= nil, "watch_spaces should write the replay script")
-  local replay = file:read("*a")
-  file:close()
-  os.execute(string.format("rm -rf %q", dir))
+    local file = io.open(replay_path)
+    assert_true(file ~= nil, "watch_spaces should write the replay script")
+    replay = file:read("*a")
+    file:close()
+  end)
   assert_true(replay:find("event=mission_control_exit", 1, true) ~= nil, "replay should include the Mission Control guard")
   for command in executed:gmatch("[^;]+;?") do
     local line = command:gsub("^%s+", ""):gsub(";$", "")
@@ -76,6 +84,7 @@ run_test("spaces: watch_spaces saves its signals for yabai to replay after a res
 end)
 
 run_test("spaces: Lua-only refresh paths disable compiled helpers", function()
+  with_scratch_replay(function(replay_path)
   local executed = {}
   local manager = spaces.create(
     "/tmp/config",
@@ -85,7 +94,7 @@ run_test("spaces: Lua-only refresh paths disable compiled helpers", function()
     function(cmd) table.insert(executed, cmd) end,
     function() return false end,
     true,
-    scratch_replay_path()
+    replay_path
   )
 
   manager.refresh_spaces()
@@ -99,4 +108,5 @@ run_test("spaces: Lua-only refresh paths disable compiled helpers", function()
     executed[2]:find("/usr/bin/env BARISTA_LUA_ONLY=1", 1, true) ~= nil,
     "Lua-only yabai signal actions should propagate the compiled-helper gate"
   )
+  end)
 end)

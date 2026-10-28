@@ -58,6 +58,20 @@ cat > "$WINDOWS_JSON_FILE" <<'JSON'
     "frame": {"x": 800, "y": 0, "w": 800, "h": 900}
   },
   {
+    "id": 150,
+    "pid": 1500,
+    "app": "Ghostty",
+    "title": "barista-scratch-term2",
+    "space": 2,
+    "display": 1,
+    "has-focus": false,
+    "is-floating": false,
+    "is-minimized": true,
+    "is-hidden": false,
+    "stack-index": 0,
+    "frame": {"x": 100, "y": 100, "w": 600, "h": 400}
+  },
+  {
     "id": 205,
     "pid": 2005,
     "app": "Ghostty",

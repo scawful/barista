@@ -13,8 +13,9 @@ YABAI_BIN="${BARISTA_YABAI_BIN:-${YABAI_BIN:-$(command -v yabai 2>/dev/null || t
 JQ_BIN="${BARISTA_JQ_BIN:-${JQ_BIN:-$(command -v jq 2>/dev/null || true)}}"
 OPEN_BIN="${BARISTA_OPEN_BIN:-/usr/bin/open}"
 GHOSTTY_APP="${BARISTA_GHOSTTY_APP:-/Applications/Ghostty.app}"
-MARKS_FILE="${BARISTA_MARKS_FILE:-/tmp/barista_window_marks_${UID}.json}"
-SCRATCH_PREV_FOCUS_FILE="${BARISTA_SCRATCH_PREV_FOCUS_FILE:-/tmp/barista_scratch_prev_${UID}}"
+# TMPDIR is per user on macOS; a shared /tmp path could be planted as a symlink.
+MARKS_FILE="${BARISTA_MARKS_FILE:-${TMPDIR:-/tmp}/barista_window_marks_${UID}.json}"
+SCRATCH_PREV_FOCUS_FILE="${BARISTA_SCRATCH_PREV_FOCUS_FILE:-${TMPDIR:-/tmp}/barista_scratch_prev_${UID}}"
 
 expand_tilde() {
   local raw="${1:-}"
@@ -188,7 +189,8 @@ scratchpad_grid_spec() {
 find_window_by_tag() {
   local tag="$1"
   query_windows_json | "$JQ_BIN" -c --arg tag "$tag" '
-    [ .[] | select((.title // "") | ascii_downcase | contains($tag | ascii_downcase)) ]
+    # Whole words only, so scratchpad "term" never claims "barista-scratch-term2".
+    [ .[] | select([(.title // "") | ascii_downcase | splits("\\s+")] | any(. == ($tag | ascii_downcase))) ]
     | sort_by(if ."has-focus" == true then 0 else 1 end, .id)
     | .[0] // empty
   ' 2>/dev/null || true
@@ -274,7 +276,9 @@ open_in_emacs() {
   if [[ -n "$ec_bin" ]]; then
     local args=(-n -c)
     if [[ -n "$frame_title" ]]; then
-      args+=(-F "((name . \"$frame_title\") (title . \"$frame_title\"))")
+      local quoted
+      quoted="$(elisp_string "$frame_title")"
+      args+=(-F "((name . $quoted) (title . $quoted))")
     fi
     if [[ -n "$elisp" ]]; then
       "$ec_bin" "${args[@]}" -e "$elisp" >/dev/null 2>&1
@@ -616,6 +620,11 @@ cmd_mark() {
 
 command="${1:-}"
 shift || true
+case "$command" in
+  context|scratchpad|emacs|files|mark)
+    [[ -n "$JQ_BIN" ]] || { echo "barista workflow: jq is required (brew install jq)" >&2; exit 1; }
+    ;;
+esac
 case "$command" in
   context) cmd_context "$@" ;;
   scratchpad) cmd_scratchpad "$@" ;;

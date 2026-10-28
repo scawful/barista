@@ -141,6 +141,7 @@ struct ColumnBrowser: View {
 /// ⇧-clicks, and double-click are the table's.
 private struct LiveColumn: View {
   @ObservedObject var state: BrowserState
+  @FocusState private var focused: Bool
 
   var body: some View {
     ScrollViewReader { proxy in
@@ -153,6 +154,7 @@ private struct LiveColumn: View {
         }
       }
       .listStyle(.plain)
+      .focused($focused)
       .contextMenu(forSelectionType: URL.self) { urls in
         EntryMenu(state: state, urls: urls)
       } primaryAction: { urls in
@@ -160,6 +162,10 @@ private struct LiveColumn: View {
         state.openSelection()
       }
       .onDrop(of: [.fileURL], isTargeted: nil, perform: state.drop)
+      .onAppear { focused = true }
+      .onChange(of: state.focusList) { focused = true }
+      // A click in a side column moves the live column; the keys follow it.
+      .onChange(of: state.location) { focused = true }
       .onChange(of: state.scrollTarget) {
         guard let target = state.scrollTarget else { return }
         DispatchQueue.main.async { proxy.scrollTo(target, anchor: .center) }

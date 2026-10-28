@@ -215,4 +215,40 @@ final class PreviewTests: XCTestCase {
     XCTAssertEqual(loaded.handoffs.map(\.lastPathComponent), ["menu_2026-10-27"])
     XCTAssertTrue(AFSContext.load(folder.appendingPathComponent("missing")).isEmpty)
   }
+
+  func testContextActionsWriteWhatAFSWrites() throws {
+    let task = try write("p/.context/items/task-abc123.json", Data("""
+      {"id": "abc123", "title": "Fix menu", "status": "pending", "priority": 2,
+       "context": {"evidence": "scratchpad/x.md"}, "created_at": "2026-10-27T01:00:00+00:00"}
+      """.utf8))
+    _ = try write("p/.context/items/task-other.json", Data(#"{"id": "nope", "title": "Mismatched", "status": "pending"}"#.utf8))
+    _ = try write("p/.context/hivemind/Codex-A/m1.json", Data("""
+      {"id": "m1", "from": "Codex-A", "to": "Codex-B / Claude C, all", "payload": {"text": "hi"}}
+      """.utf8))
+    _ = try write("p/.context/hivemind/.acks/m1.json", Data("""
+      {"msg_id": "m1", "acks": [{"by": "codex-b", "status": "done"}, {"by": "codex-b", "status": "read"},
+                               {"by": "claude-c", "status": "read"}]}
+      """.utf8))
+    let context = AFSContext.load(folder.appendingPathComponent("p/.context"))
+    XCTAssertEqual(context.active.map(\.taskID), ["abc123", nil], "only a task whose id matches its file name")
+    let message = try XCTUnwrap(context.messages.first)
+    XCTAssertEqual(message.recipients, ["Codex-B", "Claude C"], "a broadcast part names nobody")
+    XCTAssertEqual(message.recipients.map(message.state(of:)), ["done", "read"], "done outlasts a later read")
+    XCTAssertEqual(AFSContext.agentName(" Codex RC_Planning "), "codex-rc-planning")
+
+    let now = Date(timeIntervalSince1970: 1_761_650_000.25)
+    try AFSActions.setStatus(task, to: "in_progress", now: now)
+    let saved = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: task)) as? [String: Any])
+    XCTAssertEqual(saved["status"] as? String, "in_progress")
+    XCTAssertEqual(saved["updated_at"] as? String, "2025-10-28T11:13:20.250000+00:00", "Python's isoformat")
+    XCTAssertEqual((saved["context"] as? [String: String])?["evidence"], "scratchpad/x.md", "the rest is kept")
+    XCTAssertEqual(saved["created_at"] as? String, "2026-10-27T01:00:00+00:00")
+    XCTAssertThrowsError(try AFSActions.setStatus(task, to: "closed")) {
+      XCTAssertEqual($0 as? AFSActions.Failure, .status("closed"))
+    }
+    let other = folder.appendingPathComponent("p/.context/items/task-other.json")
+    XCTAssertThrowsError(try AFSActions.setStatus(other, to: "done")) {
+      XCTAssertEqual($0 as? AFSActions.Failure, .notATask("task-other.json"))
+    }
+  }
 }

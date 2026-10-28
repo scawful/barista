@@ -132,6 +132,7 @@ final class BrowserController {
       case (.command, _, "k"), ([.command, .shift], _, "g"), ([.command, .shift], _, "G"): state.jumping = true
       case (.command, _, "i") where !typing: state.getInfo()
       case (.command, 51, _) where !typing: state.trashSelection()
+      case (.command, _, "a") where !typing: state.selection = Set(state.shown.map(\.url))
       case (.command, _, "c") where !typing && !state.selection.isEmpty: state.copySelection()
       case (.command, _, "d") where !typing && !state.selection.isEmpty: state.duplicateSelection()
       case (.command, _, "v") where !typing: state.paste(move: false)
@@ -168,6 +169,8 @@ final class BrowserState: ObservableObject {
   @Published var focusSearch = 0
   /// The entry whose name is being edited in place.
   @Published var renaming: URL?
+  /// Bumped to give the list keyboard focus, as after Return ends a rename.
+  @Published var focusList = 0
   /// A failed file operation, shown as an alert.
   @Published var problem: String?
   /// The repo holding the shown folder, and its worktrees.
@@ -842,6 +845,7 @@ private struct PathBar: View {
 
 private struct FileTable: View {
   @ObservedObject var state: BrowserState
+  @FocusState private var focused: Bool
 
   /// Read from the state, so a table made again (after an unreadable folder)
   /// shows the sort the list still has.
@@ -869,9 +873,15 @@ private struct FileTable: View {
   var body: some View {
     ScrollViewReader { proxy in
       table
+        .focused($focused)
         .onChange(of: state.scrollTarget) { scroll(proxy) }
-        // A new window's listing can land before the table is shown.
-        .onAppear { scroll(proxy) }
+        .onChange(of: state.focusList) { focused = true }
+        // A new window's listing can land before the table is shown. The
+        // list takes the keys, so arrows work without a click first.
+        .onAppear {
+          scroll(proxy)
+          focused = true
+        }
     }
   }
 
@@ -1135,8 +1145,16 @@ struct RenameField: View {
     TextField("Name", text: $text)
       .textFieldStyle(.plain)
       .focused($focused)
-      .onSubmit { state.commitRename(entry.url, to: text) }
-      .onExitCommand { state.renaming = nil }
+      // Return and Escape hand the keys back to the list; a click elsewhere
+      // keeps focus where it went.
+      .onSubmit {
+        state.commitRename(entry.url, to: text)
+        state.focusList += 1
+      }
+      .onExitCommand {
+        state.renaming = nil
+        state.focusList += 1
+      }
       .onChange(of: focused) { if !focused { state.commitRename(entry.url, to: text) } }
       // The row is still being laid out when the field appears, and focus
       // selects the whole name before the stem can be selected.

@@ -239,8 +239,9 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   the live column, so search, file operations, and git work as in the list;
   the folders above it (from Home, or the root outside it) are columns to
   its left, a selected folder's contents a column to its right, → enters
-  and ← goes up. Icons take ⌘- and ⇧-clicks and all four arrows. Until a
-  list is clicked, ↑ and ↓ still move its selection. The right-click menu
+  and ← goes up. Icons take ⌘- and ⇧-clicks and all four arrows. The list
+  takes keyboard focus when a window opens and again when a rename ends, so
+  arrows work without a click. ⌘A selects everything shown. The right-click menu
   has Rename, Open With, Open in Cursor or Emacs, Terminal Here, and Copy Relative
   Path (relative to the enclosing git repo or worktree). Right-click on empty
   space for the folder's own menu. Name clashes keep both (`name 2`), copies
@@ -297,7 +298,12 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   shows that context: the scratchpad's `state.md`, unfinished items by
   priority with a done count, the newest hivemind messages, scratchpad
   notes, and handoffs. It reads those entry points only, never the whole
-  tree; items and messages open in a tab with the file selected.
+  tree; items and messages open in a tab with the file selected. Each
+  message lists its recipients with their ack state. Right-click an item to
+  mark it pending, in progress, done, or failed (the task file is rewritten
+  as `TaskQueue` would, with a new `updated_at`), or a message to mark it
+  done for a recipient through `afs messages ack --done`. That entry needs
+  the `afs` CLI, found through `AFS_ROOT`, `PATH`, or the usual checkouts.
 - yabai: viewer windows float on the raised layer through the rule
   `barista-agent-viewer` (title `… - Barista Viewer`), which the agent adds
   when it opens one. Browser windows match no rule and tile. macOS window
@@ -389,7 +395,6 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
 
 ## Next slices
 
-- Barista Files: acting on AFS items (status, ack) from the context panel.
 - EventKit reminders and calendar into the agent cache, surfaced by the
   existing calendar/task popups.
 - halext-org API client in the agent (admin status, reminders sync).

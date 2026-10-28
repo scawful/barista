@@ -2,7 +2,7 @@
 
 # Try to load scripting addition (requires sudoers NOPASSWD config for yabai)
 # Register Dock restart hook even if the initial load fails (Dock might not be ready yet).
-yabai -m signal --add label=load-sa event=dock_did_restart action="sudo /opt/homebrew/bin/yabai --load-sa" 2>/dev/null
+yabai -m signal --add label=load-sa event=dock_did_restart action="sudo -n /opt/homebrew/bin/yabai --load-sa" 2>/dev/null
 if sudo -n /opt/homebrew/bin/yabai --load-sa >/dev/null 2>&1; then
   true
 else
@@ -11,7 +11,6 @@ fi
 
 yabai -m config window_animation_duration 0.0
 yabai -m config window_animation_easing   ease_out_quint
-yabai -m config layout                    bsp
 yabai -m config auto_balance              off
 # window_topmost was removed in yabai 7.x; use window_shadow instead to keep floats unobtrusive
 yabai -m config window_shadow             off
@@ -36,10 +35,21 @@ yabai -m config split_ratio               0.50
 # Reserve space for sketchybar (28px height matches bar_height in state.json)
 yabai -m config external_bar all:28:0
 
+# --- Shared window layer ---
+# Without a rule yabai puts tiled windows on sub-layer below and every other
+# window on normal, so on a float (manual) space any app without a rule sat
+# permanently above apps ruled below (Claude, Yaze). One shared layer lets
+# focus decide. Keep this first: later rules (and Barista's app levels,
+# restored at the end) override it.
+yabai -m rule --add label="barista-level-base" app=".*" sub-layer=below
+
 # --- Tiling Rules ---
 # Manage (Tile) these apps explicitly if needed, but default is to tile everything unless excluded.
 # yabai -m rule --add app="^Code$" manage=on
 # yabai -m rule --add app="^Terminal$" manage=on
+
+# Claude stays movable/tilable without floating above tiled windows.
+yabai -m rule --add label="claude-window-layer" app="^Claude$" role="^AXWindow$" subrole="^AXStandardWindow$" sub-layer=below sticky=off
 
 # --- Floating Rules (manage=off) ---
 # System / Utilities
@@ -49,7 +59,9 @@ yabai -m rule --add app="^Finder$" manage=off
 yabai -m rule --add label="About This Mac" app="System Information" title="About This Mac" manage=off
 
 # Apps that behave better floating
-yabai -m rule --add app="^(Mesen|Mesen2.*)$" manage=off
+# Match tiled/editor windows so Emacs participates in focus-based stacking.
+yabai -m rule --add label="emacs-window-layer" app="^Emacs$" manage=off sub-layer=below sticky=off
+yabai -m rule --add app="^(Mesen|Mesen2.*)$" manage=off sub-layer=below
 # Yaze uses ImGui utility windows, so keep it unmanaged while matching the
 # tiled-window sub-layer. This prevents the main editor from staying above
 # unrelated windows.
@@ -88,30 +100,57 @@ UNMANAGED_APPS_SCRIPT="$HOME/.config/scripts/update_unmanaged_apps.sh"
 
 # Apply additional unmanaged app rules from the config app if provided
 if [ -x "$UNMANAGED_APPS_SCRIPT" ]; then
-  "$UNMANAGED_APPS_SCRIPT" --from-yabairc >/dev/null 2>&1 &
+  "$UNMANAGED_APPS_SCRIPT" --from-yabairc || echo "yabai: unmanaged app helper failed" >&2
 elif [ -r "$UNMANAGED_APPS_CONF" ]; then
-  while IFS= read -r unmanaged_app; do
+  while IFS= read -r unmanaged_app || [ -n "$unmanaged_app" ]; do
     unmanaged_app="${unmanaged_app#"${unmanaged_app%%[![:space:]]*}"}"
     unmanaged_app="${unmanaged_app%"${unmanaged_app##*[![:space:]]}"}"
     [ -z "$unmanaged_app" ] && continue
     case "$unmanaged_app" in \#*) continue ;; esac
-    # ... (Keep existing parsing logic if simpler, or just rely on above rules) ...
-    label="${unmanaged_app//[^A-Za-z0-9]/_}"
-    [ -z "$label" ] && label="app"
-    # yabai -m rule --add label="unmanaged-${label}" app="^${escaped}$" manage=off
+    label="$(printf '%s' "$unmanaged_app" | tr -c '[:alnum:]' '_')"
+    [ -n "$label" ] || label="app"
+    escaped="$(printf '%s' "$unmanaged_app" | sed 's/[][\\.^$*+?(){}|]/\\&/g')"
+    # Leave layering to existing app rules, including Yaze and Mesen below.
+    yabai -m rule --add label="unmanaged-${label}" app="^${escaped}$" manage=off
   done < "$UNMANAGED_APPS_CONF"
 fi
 
-# --- Ensure BSP on all spaces ---
-# Keep every current Mission Control space in the default tiled layout on startup.
-space_indices=""
-if command -v jq >/dev/null 2>&1; then
-  space_indices="$(yabai -m query --spaces 2>/dev/null | jq -r '.[].index // empty' 2>/dev/null | /usr/bin/sort -n | /usr/bin/uniq)"
-fi
-[ -n "$space_indices" ] || space_indices="1 2 3 4 5 6 7"
+# Restore only saved choices, after the base rules so explicit app defaults win.
+# New space choices follow their UUID across Mission Control reorders.
+BARISTA_RUNTIME="${BARISTA_CONFIG_DIR:-$HOME/.config/sketchybar}"
+RESTORE_SCRIPT="$BARISTA_RUNTIME/scripts/yabai_restore.py"
 
-for sid in $space_indices; do
-  yabai -m space "$sid" --layout bsp 2>/dev/null || true
-done
+# A restart forgets every signal, and SketchyBar registers Barista's (spaces,
+# displays, the Mission Control guard) only when it loads. Replay them when the
+# bar is already running; a bar that starts later registers its own.
+SIGNAL_REPLAY="$HOME/.local/state/barista/yabai_signals.sh"
+replay_barista_signals() {
+  if [ -f "$SIGNAL_REPLAY" ] && pgrep -x sketchybar >/dev/null 2>&1; then
+    /bin/sh "$SIGNAL_REPLAY" || echo "yabai: Barista's space signals could not be restored" >&2
+  fi
+}
+
+if [ -f "$RESTORE_SCRIPT" ]; then
+  if ! python3 "$RESTORE_SCRIPT" --startup; then
+    echo "yabai: base configuration loaded; saved preferences could not be fully restored" >&2
+    replay_barista_signals
+    return 1 2>/dev/null || exit 1
+  fi
+fi
+
+# Saved spaces now have explicit per-space layouts; the default applies only
+# to spaces without a saved choice. Applying this earlier can retile Manual.
+if ! yabai -m config layout bsp; then
+  echo "yabai: default layout could not be configured" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
+# Rules reach only new windows. Once every space has its layout, move open
+# windows to their rules' layer (tiling put them on below). Best effort.
+if [ -f "$RESTORE_SCRIPT" ]; then
+  python3 "$RESTORE_SCRIPT" --restack || echo "yabai: open windows keep their old stacking" >&2
+fi
+
+replay_barista_signals
 
 echo "yabai: configuration loaded successfully"

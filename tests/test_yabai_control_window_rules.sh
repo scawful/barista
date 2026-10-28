@@ -134,7 +134,7 @@ mkdir -p "$BIN_DIR"
   printf '%s\n' '  exit 0'
   printf '%s\n' 'fi'
   printf '%s\n' ''
-  printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "space" ] && [ "${3:-}" = "--balance" ]; then'
+  printf '%s\n' 'if [ "${1:-}" = "-m" ] && [ "${2:-}" = "space" ] && [ "${3:-}" = "1" ] && [ "${4:-}" = "--balance" ]; then'
   printf '%s\n' '  write_state balanced true'
   printf '%s\n' '  exit 0'
   printf '%s\n' 'fi'
@@ -270,9 +270,9 @@ printf '%s\n' 'space=1' 'display=1' 'floating=false' 'fullscreen=false' 'sub_lay
 : > "$LOG_FILE"
 run_control window-adopt-space-mode
 assert_log_contains "-m query --spaces --space 1"
-assert_log_contains "-m window 42 --sub-layer auto"
-grep -Fxq 'sub_layer=auto' "$STATE_FILE" || {
-  echo "FAIL: expected sub_layer=auto after adopting current managed space mode" >&2
+assert_log_contains "-m window 42 --sub-layer below"
+grep -Fxq 'sub_layer=below' "$STATE_FILE" || {
+  echo "FAIL: expected sub_layer=below after adopting current managed space mode" >&2
   cat "$STATE_FILE" >&2
   exit 1
 }
@@ -290,9 +290,9 @@ grep -Fxq 'sub_layer=above' "$STATE_FILE" || {
 : > "$LOG_FILE"
 run_control window-toggle-topmost
 assert_log_contains "-m query --windows --window"
-assert_log_contains "-m window 42 --sub-layer auto"
-grep -Fxq 'sub_layer=auto' "$STATE_FILE" || {
-  echo "FAIL: expected sub_layer=auto after disabling topmost" >&2
+assert_log_contains "-m window 42 --sub-layer below"
+grep -Fxq 'sub_layer=below' "$STATE_FILE" || {
+  echo "FAIL: expected sub_layer=below after disabling topmost" >&2
   cat "$STATE_FILE" >&2
   exit 1
 }
@@ -301,14 +301,14 @@ printf '%s\n' 'space=1' 'display=1' 'floating=false' 'fullscreen=false' 'sub_lay
 : > "$LOG_FILE"
 run_control window-preset-utility
 assert_log_contains "-m window 42 --toggle float"
-assert_log_contains "-m window 42 --sub-layer auto"
+assert_log_contains "-m window 42 --sub-layer below"
 assert_log_contains "-m window 42 --grid 4:4:1:1:2:2"
 grep -Fxq 'floating=true' "$STATE_FILE" || {
   echo "FAIL: utility preset should float the window" >&2
   cat "$STATE_FILE" >&2
   exit 1
 }
-grep -Fxq 'sub_layer=auto' "$STATE_FILE" || {
+grep -Fxq 'sub_layer=below' "$STATE_FILE" || {
   echo "FAIL: utility preset should clear topmost" >&2
   cat "$STATE_FILE" >&2
   exit 1
@@ -318,8 +318,8 @@ printf '%s\n' 'space=1' 'display=1' 'floating=true' 'fullscreen=false' 'sub_laye
 : > "$LOG_FILE"
 run_control window-preset-focus
 assert_log_contains "-m window 42 --toggle float"
-assert_log_contains "-m window 42 --sub-layer auto"
-assert_log_contains "-m space --balance"
+assert_log_contains "-m window 42 --sub-layer below"
+assert_log_contains "-m space 1 --balance"
 grep -Fxq 'floating=false' "$STATE_FILE" || {
   echo "FAIL: focus preset should tile the window on a managed space" >&2
   cat "$STATE_FILE" >&2
@@ -344,13 +344,13 @@ printf '%s\n' 'space=1' 'display=1' 'floating=true' 'fullscreen=false' 'sub_laye
 : > "$LOG_FILE"
 run_control window-preset-tile-here
 assert_log_contains "-m window 42 --toggle float"
-assert_log_contains "-m window 42 --sub-layer auto"
+assert_log_contains "-m window 42 --sub-layer below"
 grep -Fxq 'floating=false' "$STATE_FILE" || {
   echo "FAIL: tile-here preset should adopt managed tiling" >&2
   cat "$STATE_FILE" >&2
   exit 1
 }
-grep -Fxq 'sub_layer=auto' "$STATE_FILE" || {
+grep -Fxq 'sub_layer=below' "$STATE_FILE" || {
   echo "FAIL: tile-here preset should clear topmost" >&2
   cat "$STATE_FILE" >&2
   exit 1

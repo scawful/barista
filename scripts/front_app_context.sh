@@ -280,12 +280,32 @@ window_stack_label() {
 build_state_label() {
   local window_json="${1:-}"
   local space_type="${2:-}"
-  local floating sticky fullscreen stack_label label
+  local floating sticky fullscreen stack_label stack_idx stack_total stack_badge="" label
 
   floating="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."is-floating" // false' 2>/dev/null || echo false)"
   sticky="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."is-sticky" // false' 2>/dev/null || echo false)"
   fullscreen="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."has-fullscreen-zoom" // ."is-native-fullscreen" // false' 2>/dev/null || echo false)"
+  stack_idx="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '."stack-index" // 0' 2>/dev/null || echo 0)"
   stack_label="$(window_stack_label "$window_json")"
+
+  if [ "${stack_idx:-0}" -gt 0 ] 2>/dev/null; then
+    local stack_ind_enabled="true"
+    if [ -r "${STATE_FILE:-}" ]; then
+      stack_ind_enabled="$("$JQ_BIN" -r 'if .toggles.stack_indicator == false then "false" else "true" end' "$STATE_FILE" 2>/dev/null || echo true)"
+    fi
+    if [ "$stack_ind_enabled" = "true" ]; then
+      # Windows in one yabai stack share a frame; a bsp space can hold several stacks.
+      stack_total="$(query_all_windows_json 2>/dev/null | "$JQ_BIN" -r --argjson win "$window_json" '
+        [ .[] | select(.space == $win.space and ((."stack-index" // 0) > 0) and .frame == $win.frame) ] | length
+      ' 2>/dev/null || echo 0)"
+      if [ "${stack_total:-0}" -ge "$stack_idx" ] 2>/dev/null && [ "${stack_total:-0}" -gt 0 ] 2>/dev/null; then
+        stack_badge="[${stack_idx}/${stack_total}]"
+      else
+        stack_badge="[#${stack_idx}]"
+      fi
+      emit stack_badge "$stack_badge"
+    fi
+  fi
 
   if [ "$fullscreen" = "true" ]; then
     emit state_icon "󰊓"
@@ -293,6 +313,9 @@ build_state_label() {
   elif [ "$floating" = "true" ]; then
     emit state_icon "󰒄"
     label="Floating"
+  elif [ -n "$stack_badge" ]; then
+    emit state_icon "󰓩"
+    label="Stacked $stack_badge"
   else
     emit state_icon "󰆾"
     label="Tiled"
@@ -384,12 +407,16 @@ main() {
 
   if [ -n "$window_json" ]; then
     emit window_available "true"
+    emit window_id "$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.id // empty' 2>/dev/null || true)"
+    emit window_space_type "$window_space_type"
     build_state_label "$window_json" "$window_space_type"
     emit location_label "Space ${window_space:-${current_space_index:-?}} · Display ${window_display:-${current_display_index:-?}}"
     exit 0
   fi
 
   emit window_available "false"
+  emit window_id ""
+  emit window_space_type ""
   emit state_icon "󰋽"
   emit state_label "No managed window"
   emit location_label "Space ${current_space_index:-?} · Display ${current_display_index:-?}"

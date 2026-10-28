@@ -11,6 +11,7 @@ EXPECTED_JSON='[
   {"label":"Finder","app":"^Finder$","sub_layer":"normal"},
   {"label":"Barista","app":"^Barista$","sub_layer":"normal"},
   {"label":"Yaze","app":"^Yaze$","sub_layer":"below"},
+  {"label":"Mesen","app":"^(Mesen|Mesen2.*)$","sub_layer":"below"},
   {"label":"Cortex","app":"^Cortex$","sub_layer":"normal"}
 ]'
 
@@ -23,6 +24,8 @@ grep -Fq 'yabai -m rule --add app="^Yaze$" manage=off sub-layer=below' "$YABAIRC
   echo "FAIL: shipped yabairc must keep Yaze below unrelated windows" >&2
   exit 1
 }
+grep -Fq 'yabai -m rule --add app="^(Mesen|Mesen2.*)$" manage=off sub-layer=below' "$YABAIRC"
+grep -Fq '{"label":"Mesen","app":"^(Mesen|Mesen2.*)$","sub_layer":"below"}' "$SCRIPT"
 
 mkdir -p "$BIN_DIR"
 
@@ -35,7 +38,8 @@ case "$*" in
 [
   {"app":"^Finder$","title":"","manage":false,"sub-layer":"below"},
   {"app":"^Barista$","title":"","manage":false,"sub-layer":"normal"},
-  {"app":"^Yaze$","title":"","manage":false,"sub-layer":"below"}
+  {"app":"^Yaze$","title":"","manage":false,"sub-layer":"below"},
+  {"app":"^(Mesen|Mesen2.*)$","title":"","manage":false,"sub-layer":"below"}
 ]
 JSON
     ;;
@@ -46,7 +50,9 @@ JSON
   {"id":2,"app":"ghostty","title":"","sub-layer":"above","layer":"normal","is-minimized":false},
   {"id":3,"app":"Cortex Helper","title":"hello","sub-layer":"normal","layer":"normal","is-minimized":false},
   {"id":4,"app":"Oracle Helper","title":"","sub-layer":"normal","layer":"normal","is-minimized":true},
-  {"id":5,"app":"Yaze","title":"Yet Another Zelda3 Editor","sub-layer":"below","layer":"normal","is-minimized":false}
+  {"id":5,"app":"Yaze","title":"Yet Another Zelda3 Editor","sub-layer":"below","layer":"normal","is-minimized":false},
+  {"id":6,"app":"Mesen2 OoS","title":"Oracle","sub-layer":"below","layer":"normal","is-minimized":false},
+  {"id":7,"app":"Claude","title":"Claude","sub-layer":"normal","layer":"above","is-minimized":false}
 ]
 JSON
     ;;
@@ -74,7 +80,7 @@ set -e
   printf '%s\n' "$TEXT_OUTPUT" >&2
   exit 1
 }
-printf '%s\n' "$TEXT_OUTPUT" | grep -Fq 'expected unmanaged rules: 3/4 present' || {
+printf '%s\n' "$TEXT_OUTPUT" | grep -Fq 'expected unmanaged rules: 4/5 present' || {
   echo "FAIL: expected-rule count missing" >&2
   printf '%s\n' "$TEXT_OUTPUT" >&2
   exit 1
@@ -110,10 +116,11 @@ payload = json.loads(os.environ["RULES_AUDIT_JSON"])
 summary = payload["summary"]
 types = {item["type"] for item in payload["findings"]}
 assert summary["errors"] == 2, summary
-assert summary["warnings"] == 2, summary
+assert summary["warnings"] == 3, summary
 assert summary["info"] == 1, summary
-assert {"missing-rule", "rule-without-normal", "live-policy-mismatch", "manual-topmost", "app-variant-review"} <= types
+assert {"missing-rule", "rule-without-normal", "live-policy-mismatch", "manual-topmost", "app-topmost", "app-variant-review"} <= types
 assert not any(item.get("label") == "Yaze" for item in payload["findings"]), payload
+assert not any(item.get("label") == "Mesen" for item in payload["findings"]), payload
 PY
 
 printf 'test_yabai_control_rules_audit.sh: ok\n'

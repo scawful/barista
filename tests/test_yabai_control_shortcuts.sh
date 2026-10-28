@@ -69,22 +69,22 @@ run_control() {
 }
 
 TEXT_OUTPUT="$(run_control shortcuts)"
-printf '%s\n' "$TEXT_OUTPUT" | grep -Fq 'summary: active=5 disabled=1 duplicates=1 raw_yabai=1 missing_targets=1' || {
+grep -Fq 'summary: active=5 disabled=1 duplicates=1 raw_yabai=1 missing_targets=1' <<< "$TEXT_OUTPUT" || {
   echo "FAIL: shortcut summary did not match expected counts" >&2
   printf '%s\n' "$TEXT_OUTPUT" >&2
   exit 1
 }
-printf '%s\n' "$TEXT_OUTPUT" | grep -Fq 'missing=' || {
+grep -Fq 'missing=' <<< "$TEXT_OUTPUT" || {
   echo "FAIL: missing target should be reported" >&2
   printf '%s\n' "$TEXT_OUTPUT" >&2
   exit 1
 }
-printf '%s\n' "$TEXT_OUTPUT" | grep -Fq 'raw_yabai=1' || {
+grep -Fq 'raw_yabai=1' <<< "$TEXT_OUTPUT" || {
   echo "FAIL: raw yabai command should be counted" >&2
   printf '%s\n' "$TEXT_OUTPUT" >&2
   exit 1
 }
-if printf '%s\n' "$TEXT_OUTPUT" | grep -Fq 'Alternative:'; then
+if grep -Fq 'Alternative:' <<< "$TEXT_OUTPUT"; then
   echo "FAIL: commented section headings should not be parsed as bindings" >&2
   printf '%s\n' "$TEXT_OUTPUT" >&2
   exit 1

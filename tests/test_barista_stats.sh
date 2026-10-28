@@ -93,4 +93,13 @@ assert_contains "$show_output" "build: 1 (avg 7ms, last 7ms)" "full rebuild buil
 assert_contains "$show_output" "decision: 1 (avg 7ms, last 7ms)" "full rebuild decision phase should be summarized"
 assert_contains "$show_output" "Space refresh overhead: 1 (avg 17ms, last 17ms)" "space refresh overhead summary should be reported"
 
+json_output="$(CONFIG_DIR="$TMP_DIR" "$SCRIPT" show --json)"
+assert_eq "$(printf '%s' "$json_output" | jq -r '.reloads.count')" "1" "json output should include reload count"
+assert_eq "$(printf '%s' "$json_output" | jq -r '.events.space_topology_refresh.count')" "2" "json output should include space_topology_refresh count"
+assert_eq "$(printf '%s' "$json_output" | jq -r '.topology_strategies.full_rebuild.last_ms')" "45" "json output should include strategy breakdown"
+
+BARISTA_STATS_MAX_BYTES=200 BARISTA_STATS_KEEP_LINES=3 CONFIG_DIR="$TMP_DIR" "$SCRIPT" event trim_check 5 ok >/dev/null
+trimmed_lines="$(wc -l < "$TMP_DIR/.barista_stats.log" | tr -d ' ')"
+assert_eq "$trimmed_lines" "3" "log rotation should bound log lines when max bytes is exceeded"
+
 printf 'test_barista_stats.sh: ok\n'

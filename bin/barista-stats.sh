@@ -7,6 +7,8 @@ set -euo pipefail
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
 STATS_FILE="${CONFIG_DIR}/.barista_stats.json"
 LOG_FILE="${CONFIG_DIR}/.barista_stats.log"
+STATS_MAX_BYTES="${BARISTA_STATS_MAX_BYTES:-524288}"
+STATS_KEEP_LINES="${BARISTA_STATS_KEEP_LINES:-2000}"
 
 # Initialize stats file if it doesn't exist
 init_stats() {
@@ -48,6 +50,41 @@ ensure_log_format() {
     fi
 }
 
+rotate_log_if_needed() {
+    [ -f "$LOG_FILE" ] || return 0
+    local max_bytes="${STATS_MAX_BYTES:-524288}"
+    local keep_lines="${STATS_KEEP_LINES:-2000}"
+    case "$max_bytes" in ''|*[!0-9]*) max_bytes=524288 ;; esac
+    case "$keep_lines" in ''|*[!0-9]*) keep_lines=2000 ;; esac
+    [ "$max_bytes" -gt 0 ] || return 0
+    [ "$keep_lines" -gt 0 ] || keep_lines=2000
+
+    local file_bytes
+    file_bytes="$(wc -c < "$LOG_FILE" 2>/dev/null | tr -d ' ' || printf '0')"
+    if [ "${file_bytes:-0}" -gt "$max_bytes" ] 2>/dev/null; then
+        local tmp_file="${LOG_FILE}.tmp.$$"
+        if tail -n "$keep_lines" "$LOG_FILE" > "$tmp_file" 2>/dev/null; then
+            mv "$tmp_file" "$LOG_FILE" 2>/dev/null || rm -f "$tmp_file" 2>/dev/null || true
+        else
+            rm -f "$tmp_file" 2>/dev/null || true
+        fi
+    fi
+}
+
+prune_log() {
+    local keep_lines="${1:-${STATS_KEEP_LINES:-2000}}"
+    case "$keep_lines" in ''|*[!0-9]*) keep_lines=2000 ;; esac
+    [ "$keep_lines" -gt 0 ] || keep_lines=2000
+    rm -f "${LOG_FILE}".*.bak 2>/dev/null || true
+    [ -f "$LOG_FILE" ] || return 0
+    local tmp_file="${LOG_FILE}.tmp.$$"
+    if tail -n "$keep_lines" "$LOG_FILE" > "$tmp_file" 2>/dev/null; then
+        mv "$tmp_file" "$LOG_FILE" 2>/dev/null || rm -f "$tmp_file" 2>/dev/null || true
+    else
+        rm -f "$tmp_file" 2>/dev/null || true
+    fi
+}
+
 # Log an event as JSONL
 log_event() {
     local event_type="$1"
@@ -64,6 +101,7 @@ log_event() {
        --argjson timestamp "$timestamp" \
        --argjson payload "$payload_json" \
        '$payload + {timestamp: $timestamp, event: $event}' >> "$LOG_FILE"
+    rotate_log_if_needed
 }
 
 event_payload_json() {
@@ -125,82 +163,7 @@ track_events_batch() {
             "$timestamp" \
             "$event_name" >> "$LOG_FILE"
     done
-}
-
-summarize_event() {
-    local event_name="$1"
-    [ -f "$LOG_FILE" ] || return 1
-    jq -sr --arg event "$event_name" '
-      [ .[] | select(.event == $event and (.duration_ms? != null)) | .duration_ms ] as $durations
-      | if ($durations | length) > 0 then
-          [
-            ($durations | length),
-            (((($durations | add) / ($durations | length)) * 100 | round) / 100),
-            ($durations[-1])
-          ] | @tsv
-        else
-          empty
-        end
-    ' "$LOG_FILE"
-}
-
-summarize_event_by_strategy() {
-    local event_name="$1"
-    [ -f "$LOG_FILE" ] || return 1
-    jq -sr --arg event "$event_name" '
-      [ .[] | select(.event == $event and (.duration_ms? != null) and (.strategy? != null)) ]
-      | group_by(.strategy)
-      | map({
-          strategy: .[0].strategy,
-          count: length,
-          avg: (((map(.duration_ms) | add) / length) * 100 | round) / 100,
-          last: .[-1].duration_ms
-        })
-      | .[]
-      | "\(.strategy)\t\(.count)\t\(.avg)\t\(.last)"
-    ' "$LOG_FILE"
-}
-
-summarize_event_field_for_strategy() {
-    local event_name="$1"
-    local strategy_name="$2"
-    local field_name="$3"
-    [ -f "$LOG_FILE" ] || return 1
-    jq -sr \
-      --arg event "$event_name" \
-      --arg strategy "$strategy_name" \
-      --arg field "$field_name" '
-      [ .[] | select(.event == $event and .strategy? == $strategy and .[$field]? != null) | .[$field] ] as $values
-      | if ($values | length) > 0 then
-          [
-            ($values | length),
-            (((($values | add) / ($values | length)) * 100 | round) / 100),
-            ($values[-1])
-          ] | @tsv
-        else
-          empty
-        end
-    ' "$LOG_FILE"
-}
-
-summarize_event_field() {
-    local event_name="$1"
-    local field_name="$2"
-    [ -f "$LOG_FILE" ] || return 1
-    jq -sr \
-      --arg event "$event_name" \
-      --arg field "$field_name" '
-      [ .[] | select(.event == $event and .[$field]? != null) | .[$field] ] as $values
-      | if ($values | length) > 0 then
-          [
-            ($values | length),
-            (((($values | add) / ($values | length)) * 100 | round) / 100),
-            ($values[-1])
-          ] | @tsv
-        else
-          empty
-        end
-    ' "$LOG_FILE"
+    rotate_log_if_needed
 }
 
 # Update reload stats
@@ -254,8 +217,75 @@ track_update() {
     log_event "update" "$(jq -cn --arg widget "$widget_name" '{widget: $widget}')"
 }
 
-# Display statistics
+show_stats_json() {
+    local stats_json='{}'
+    if [ -f "$STATS_FILE" ]; then
+        stats_json="$(cat "$STATS_FILE" 2>/dev/null || printf '{}')"
+    fi
+    if [ ! -f "$LOG_FILE" ]; then
+        jq -cn --argjson stats "$stats_json" '$stats + {events: {}}'
+        return 0
+    fi
+    jq -sr --argjson stats "$stats_json" '
+      . as $rows
+      | def summary($vals):
+          if ($vals | length) > 0 then
+            {
+              count: ($vals | length),
+              avg_ms: (((($vals | add) / ($vals | length)) * 100 | round) / 100),
+              last_ms: $vals[-1]
+            }
+          else null end;
+        def event_vals($ev):
+          [ $rows[] | select(.event == $ev and (.duration_ms? != null)) | .duration_ms ];
+        ($stats + {
+          log_entries: ($rows | length),
+          events: (
+            reduce (
+              "reload_prep_time",
+              "reload_daemon_stop_time",
+              "config_build_time",
+              "config_build_wall_time",
+              "config_menu_render_time",
+              "config_left_layout_time",
+              "config_left_layout_build_time",
+              "config_left_layout_apply_time",
+              "config_left_layout_front_app_time",
+              "config_left_layout_triforce_time",
+              "config_left_layout_spaces_time",
+              "config_left_layout_control_center_time",
+              "config_left_layout_group_time",
+              "config_right_layout_time",
+              "config_right_layout_build_time",
+              "config_right_layout_apply_time",
+              "config_registry_time",
+              "reload_stats_flush_time",
+              "space_topology_refresh",
+              "space_refresh_overhead",
+              "space_visual_refresh"
+            ) as $ev ({};
+              (event_vals($ev)) as $v
+              | if ($v | length) > 0 then . + {($ev): summary($v)} else . end
+            )
+          ),
+          topology_strategies: (
+            [ $rows[] | select(.event == "space_topology_refresh" and (.duration_ms != null) and (.strategy != null)) ]
+            | group_by(.strategy)
+            | reduce .[] as $g ({};
+                ($g[0].strategy) as $st
+                | . + {($st): summary([ $g[].duration_ms ])}
+              )
+          )
+        })
+    ' "$LOG_FILE"
+}
+
+# Display statistics (single jq pass over STATS_FILE + single jq pass over LOG_FILE)
 show_stats() {
+    if [ "${1:-}" = "--json" ]; then
+        show_stats_json
+        return 0
+    fi
     if [ ! -f "$STATS_FILE" ]; then
         echo "No statistics available yet."
         echo "Statistics are tracked automatically when sketchybar reloads."
@@ -266,10 +296,19 @@ show_stats() {
     echo "============================"
     echo ""
     
-    # Reload stats
-    local reload_count=$(jq -r '.reloads.count // 0' "$STATS_FILE" 2>/dev/null || echo "0")
-    local last_reload=$(jq -r '.reloads.last_reload // "never"' "$STATS_FILE" 2>/dev/null || echo "never")
-    local reloads_per_hour=$(jq -r '.reloads.reloads_per_hour // 0' "$STATS_FILE" 2>/dev/null || echo "0")
+    local reload_count="0" last_reload="never" reloads_per_hour="0" total_updates="0" avg_reload_time="0" last_reload_time="0"
+    local header_tsv=""
+    header_tsv="$(jq -r '[
+      (.reloads.count // 0 | tostring),
+      (.reloads.last_reload // "never" | tostring),
+      (.reloads.reloads_per_hour // 0 | tostring),
+      (.updates.total // 0 | tostring),
+      (.performance.avg_reload_time // 0 | tostring),
+      (.performance.last_reload_time // 0 | tostring)
+    ] | @tsv' "$STATS_FILE" 2>/dev/null || true)"
+    if [ -n "$header_tsv" ]; then
+        IFS=$'\t' read -r reload_count last_reload reloads_per_hour total_updates avg_reload_time last_reload_time <<< "$header_tsv"
+    fi
     
     echo "Reload Statistics:"
     echo "  Total reloads: $reload_count"
@@ -282,227 +321,90 @@ show_stats() {
     echo "  Reloads per hour: $reloads_per_hour"
     echo ""
     
-    # Update stats
-    local total_updates=$(jq -r '.updates.total // 0' "$STATS_FILE" 2>/dev/null || echo "0")
     echo "Update Statistics:"
     echo "  Total updates: $total_updates"
     echo "  Updates by widget:"
     jq -r '.updates.by_widget // {} | to_entries | .[] | "    \(.key): \(.value)"' "$STATS_FILE" 2>/dev/null || echo "    (none)"
     echo ""
     
-    # Performance metrics
     echo "Performance Metrics:"
-    local avg_reload_time=$(jq -r '.performance.avg_reload_time // 0' "$STATS_FILE" 2>/dev/null || echo "0")
-    local last_reload_time=$(jq -r '.performance.last_reload_time // 0' "$STATS_FILE" 2>/dev/null || echo "0")
     echo "  Average reload time: ${avg_reload_time}ms"
     echo "  Last reload time: ${last_reload_time}ms"
-    local config_build_stats
-    local reload_prep_stats
-    local reload_daemon_stop_stats
-    local reload_stats_flush_stats
-    local config_build_wall_stats
-    reload_prep_stats="$(summarize_event "reload_prep_time" 2>/dev/null || true)"
-    if [ -n "$reload_prep_stats" ]; then
-        local phase_count phase_avg phase_last
-        read -r phase_count phase_avg phase_last <<< "$reload_prep_stats"
-        echo "  Reload prep time: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-    fi
-    reload_daemon_stop_stats="$(summarize_event "reload_daemon_stop_time" 2>/dev/null || true)"
-    if [ -n "$reload_daemon_stop_stats" ]; then
-        local phase_count phase_avg phase_last
-        read -r phase_count phase_avg phase_last <<< "$reload_daemon_stop_stats"
-        echo "  Reload daemon stop: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-    fi
-    config_build_stats="$(summarize_event "config_build_time" 2>/dev/null || true)"
-    if [ -n "$config_build_stats" ]; then
-        local config_count config_avg config_last
-        read -r config_count config_avg config_last <<< "$config_build_stats"
-        echo "  Config build time: ${config_count} (avg ${config_avg}ms, last ${config_last}ms)"
-        config_build_wall_stats="$(summarize_event "config_build_wall_time" 2>/dev/null || true)"
-        if [ -n "$config_build_wall_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_build_wall_stats"
-            echo "    wall: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        local config_menu_stats
-        local config_left_stats
-        local config_left_build_stats
-        local config_left_apply_stats
-        local config_left_front_app_stats
-        local config_left_triforce_stats
-        local config_left_spaces_stats
-        local config_left_control_center_stats
-        local config_left_group_stats
-        local config_right_stats
-        local config_right_build_stats
-        local config_right_apply_stats
-        local config_registry_stats
-        config_menu_stats="$(summarize_event "config_menu_render_time" 2>/dev/null || true)"
-        if [ -n "$config_menu_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_menu_stats"
-            echo "    menu render: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        config_left_stats="$(summarize_event "config_left_layout_time" 2>/dev/null || true)"
-        if [ -n "$config_left_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_left_stats"
-            echo "    left layout: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        config_left_build_stats="$(summarize_event "config_left_layout_build_time" 2>/dev/null || true)"
-        if [ -n "$config_left_build_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_left_build_stats"
-            echo "      build: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        config_left_apply_stats="$(summarize_event "config_left_layout_apply_time" 2>/dev/null || true)"
-        if [ -n "$config_left_apply_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_left_apply_stats"
-            echo "      apply: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        config_left_front_app_stats="$(summarize_event "config_left_layout_front_app_time" 2>/dev/null || true)"
-        if [ -n "$config_left_front_app_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_left_front_app_stats"
-            echo "      front_app: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        config_left_triforce_stats="$(summarize_event "config_left_layout_triforce_time" 2>/dev/null || true)"
-        if [ -n "$config_left_triforce_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_left_triforce_stats"
-            echo "      triforce: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        config_left_spaces_stats="$(summarize_event "config_left_layout_spaces_time" 2>/dev/null || true)"
-        if [ -n "$config_left_spaces_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_left_spaces_stats"
-            echo "      spaces: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        config_left_control_center_stats="$(summarize_event "config_left_layout_control_center_time" 2>/dev/null || true)"
-        if [ -n "$config_left_control_center_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_left_control_center_stats"
-            echo "      control_center: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        config_left_group_stats="$(summarize_event "config_left_layout_group_time" 2>/dev/null || true)"
-        if [ -n "$config_left_group_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_left_group_stats"
-            echo "      group: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        config_right_stats="$(summarize_event "config_right_layout_time" 2>/dev/null || true)"
-        if [ -n "$config_right_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_right_stats"
-            echo "    right layout: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        config_right_build_stats="$(summarize_event "config_right_layout_build_time" 2>/dev/null || true)"
-        if [ -n "$config_right_build_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_right_build_stats"
-            echo "      build: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        config_right_apply_stats="$(summarize_event "config_right_layout_apply_time" 2>/dev/null || true)"
-        if [ -n "$config_right_apply_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_right_apply_stats"
-            echo "      apply: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        config_registry_stats="$(summarize_event "config_registry_time" 2>/dev/null || true)"
-        if [ -n "$config_registry_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$config_registry_stats"
-            echo "    registry: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-    fi
-    reload_stats_flush_stats="$(summarize_event "reload_stats_flush_time" 2>/dev/null || true)"
-    if [ -n "$reload_stats_flush_stats" ]; then
-        local phase_count phase_avg phase_last
-        read -r phase_count phase_avg phase_last <<< "$reload_stats_flush_stats"
-        echo "  Reload stats flush: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-    fi
-    local topology_stats
-    topology_stats="$(summarize_event "space_topology_refresh" 2>/dev/null || true)"
-    if [ -n "$topology_stats" ]; then
-        local topology_count topology_avg topology_last
-        read -r topology_count topology_avg topology_last <<< "$topology_stats"
-        echo "  Space topology refreshes: ${topology_count} (avg ${topology_avg}ms, last ${topology_last}ms)"
-        local topology_strategy_stats
-        topology_strategy_stats="$(summarize_event_by_strategy "space_topology_refresh" 2>/dev/null || true)"
-        if [ -n "$topology_strategy_stats" ]; then
-            while IFS=$'\t' read -r strategy count avg last; do
-                [ -n "$strategy" ] || continue
-                echo "    ${strategy}: ${count} (avg ${avg}ms, last ${last}ms)"
-            done <<< "$topology_strategy_stats"
-        fi
-        local full_rebuild_prepare_stats
-        local full_rebuild_apply_stats
-        full_rebuild_prepare_stats="$(summarize_event_field_for_strategy "space_topology_refresh" "full_rebuild" "prepare_ms" 2>/dev/null || true)"
-        if [ -n "$full_rebuild_prepare_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$full_rebuild_prepare_stats"
-            echo "      prepare: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        full_rebuild_apply_stats="$(summarize_event_field_for_strategy "space_topology_refresh" "full_rebuild" "apply_ms" 2>/dev/null || true)"
-        if [ -n "$full_rebuild_apply_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$full_rebuild_apply_stats"
-            echo "      apply: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        local full_rebuild_discovery_stats
-        local full_rebuild_build_stats
-        local full_rebuild_decision_stats
-        full_rebuild_discovery_stats="$(summarize_event_field_for_strategy "space_topology_refresh" "full_rebuild" "discovery_ms" 2>/dev/null || true)"
-        if [ -n "$full_rebuild_discovery_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$full_rebuild_discovery_stats"
-            echo "      discovery: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        full_rebuild_build_stats="$(summarize_event_field_for_strategy "space_topology_refresh" "full_rebuild" "build_ms" 2>/dev/null || true)"
-        if [ -n "$full_rebuild_build_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$full_rebuild_build_stats"
-            echo "      build: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-        full_rebuild_decision_stats="$(summarize_event_field_for_strategy "space_topology_refresh" "full_rebuild" "decision_ms" 2>/dev/null || true)"
-        if [ -n "$full_rebuild_decision_stats" ]; then
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$full_rebuild_decision_stats"
-            echo "      decision: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        fi
-    fi
-    local overhead_stats
-    overhead_stats="$(summarize_event "space_refresh_overhead" 2>/dev/null || true)"
-    if [ -n "$overhead_stats" ]; then
-        local overhead_count overhead_avg overhead_last
-        read -r overhead_count overhead_avg overhead_last <<< "$overhead_stats"
-        echo "  Space refresh overhead: ${overhead_count} (avg ${overhead_avg}ms, last ${overhead_last}ms)"
-    fi
-    local visual_stats
-    visual_stats="$(summarize_event "space_visual_refresh" 2>/dev/null || true)"
-    if [ -n "$visual_stats" ]; then
-        local visual_count visual_avg visual_last
-        read -r visual_count visual_avg visual_last <<< "$visual_stats"
-        echo "  Space visual refreshes: ${visual_count} (avg ${visual_avg}ms, last ${visual_last}ms)"
-        local visual_field_stats
-        local field label
-        for field in spaces_ms lookup_ms state_ms loop_ms app_ms glyph_ms style_ms apply_ms; do
-            visual_field_stats="$(summarize_event_field "space_visual_refresh" "$field" 2>/dev/null || true)"
-            [ -n "$visual_field_stats" ] || continue
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$visual_field_stats"
-            label="${field%_ms}"
-            echo "    ${label}: ${phase_count} (avg ${phase_avg}ms, last ${phase_last}ms)"
-        done
-        for field in style_writes style_skips; do
-            visual_field_stats="$(summarize_event_field "space_visual_refresh" "$field" 2>/dev/null || true)"
-            [ -n "$visual_field_stats" ] || continue
-            local phase_count phase_avg phase_last
-            read -r phase_count phase_avg phase_last <<< "$visual_field_stats"
-            label="${field#style_}"
-            echo "    style ${label}: ${phase_count} (avg ${phase_avg}, last ${phase_last})"
-        done
+    if [ -f "$LOG_FILE" ]; then
+        jq -sr '
+          . as $rows
+          | def fmt_ms($label; $vals):
+              if ($vals | length) > 0 then
+                "\($label): \($vals | length) (avg \(((($vals | add) / ($vals | length)) * 100 | round) / 100)ms, last \($vals[-1])ms)"
+              else empty end;
+            def fmt_raw($label; $vals):
+              if ($vals | length) > 0 then
+                "\($label): \($vals | length) (avg \(((($vals | add) / ($vals | length)) * 100 | round) / 100), last \($vals[-1]))"
+              else empty end;
+            def ev_vals($ev):
+              [ $rows[] | select(.event == $ev and (.duration_ms != null)) | .duration_ms ];
+            def fld_vals($ev; $fld):
+              [ $rows[] | select(.event == $ev and (.[$fld] != null)) | .[$fld] ];
+            def strat_fld_vals($ev; $st; $fld):
+              [ $rows[] | select(.event == $ev and .strategy == $st and (.[$fld] != null)) | .[$fld] ];
+            [
+              fmt_ms("  Reload prep time"; ev_vals("reload_prep_time")),
+              fmt_ms("  Reload daemon stop"; ev_vals("reload_daemon_stop_time")),
+              (
+                (ev_vals("config_build_time")) as $cb
+                | if ($cb | length) > 0 then (
+                    fmt_ms("  Config build time"; $cb),
+                    fmt_ms("    wall"; ev_vals("config_build_wall_time")),
+                    fmt_ms("    menu render"; ev_vals("config_menu_render_time")),
+                    fmt_ms("    left layout"; ev_vals("config_left_layout_time")),
+                    fmt_ms("      build"; ev_vals("config_left_layout_build_time")),
+                    fmt_ms("      apply"; ev_vals("config_left_layout_apply_time")),
+                    fmt_ms("      front_app"; ev_vals("config_left_layout_front_app_time")),
+                    fmt_ms("      triforce"; ev_vals("config_left_layout_triforce_time")),
+                    fmt_ms("      spaces"; ev_vals("config_left_layout_spaces_time")),
+                    fmt_ms("      control_center"; ev_vals("config_left_layout_control_center_time")),
+                    fmt_ms("      group"; ev_vals("config_left_layout_group_time")),
+                    fmt_ms("    right layout"; ev_vals("config_right_layout_time")),
+                    fmt_ms("      build"; ev_vals("config_right_layout_build_time")),
+                    fmt_ms("      apply"; ev_vals("config_right_layout_apply_time")),
+                    fmt_ms("    registry"; ev_vals("config_registry_time"))
+                  ) else empty end
+              ),
+              fmt_ms("  Reload stats flush"; ev_vals("reload_stats_flush_time")),
+              (
+                (ev_vals("space_topology_refresh")) as $topo
+                | if ($topo | length) > 0 then (
+                    fmt_ms("  Space topology refreshes"; $topo),
+                    (
+                      [ $rows[] | select(.event == "space_topology_refresh" and (.duration_ms? != null) and (.strategy? != null)) ]
+                      | group_by(.strategy)[]
+                      | fmt_ms("    \(.[0].strategy)"; [ .[].duration_ms ])
+                    ),
+                    fmt_ms("      prepare"; strat_fld_vals("space_topology_refresh"; "full_rebuild"; "prepare_ms")),
+                    fmt_ms("      apply"; strat_fld_vals("space_topology_refresh"; "full_rebuild"; "apply_ms")),
+                    fmt_ms("      discovery"; strat_fld_vals("space_topology_refresh"; "full_rebuild"; "discovery_ms")),
+                    fmt_ms("      build"; strat_fld_vals("space_topology_refresh"; "full_rebuild"; "build_ms")),
+                    fmt_ms("      decision"; strat_fld_vals("space_topology_refresh"; "full_rebuild"; "decision_ms"))
+                  ) else empty end
+              ),
+              fmt_ms("  Space refresh overhead"; ev_vals("space_refresh_overhead")),
+              (
+                (ev_vals("space_visual_refresh")) as $vis
+                | if ($vis | length) > 0 then (
+                    fmt_ms("  Space visual refreshes"; $vis),
+                    (
+                      ("spaces_ms", "lookup_ms", "state_ms", "loop_ms", "app_ms", "glyph_ms", "style_ms", "apply_ms") as $f
+                      | fmt_ms("    \($f | sub("_ms$"; ""))"; fld_vals("space_visual_refresh"; $f))
+                    ),
+                    (
+                      ("style_writes", "style_skips") as $f
+                      | fmt_raw("    style \($f | sub("^style_"; ""))"; fld_vals("space_visual_refresh"; $f))
+                    )
+                  ) else empty end
+              )
+            ]
+          | .[]
+        ' "$LOG_FILE" 2>/dev/null || true
     fi
     echo ""
     
@@ -535,15 +437,22 @@ case "${1:-show}" in
     events-batch)
         track_events_batch
         ;;
+    json)
+        show_stats_json
+        ;;
+    prune|compact)
+        prune_log "${2:-}"
+        ;;
     show|stats)
-        show_stats
+        shift || true
+        show_stats "$@"
         ;;
     reset)
-        rm -f "$STATS_FILE" "$LOG_FILE"
+        rm -f "$STATS_FILE" "$LOG_FILE" "${LOG_FILE}".*.bak
         echo "Statistics reset."
         ;;
     *)
-        echo "Usage: $0 {reload|reload-time <ms>|update <widget>|event <name> <duration_ms> [details]|events-batch|show|reset}"
+        echo "Usage: $0 {reload|reload-time <ms>|update <widget>|event <name> <duration_ms> [details]|events-batch|show [--json]|json|prune [lines]|reset}"
         echo ""
         echo "Commands:"
         echo "  reload          - Track a reload event"

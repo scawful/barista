@@ -1,25 +1,338 @@
 #!/usr/bin/env python3
 """
-Barista - SketchyBar Configuration TUI
-
-A terminal-based configuration tool for barista/sketchybar.
-No compilation required - works with pure Python.
+Barista - Unified CLI & SketchyBar Configuration TUI
 
 Usage:
-    barista              # Launch TUI
-    barista --version    # Show version
-    barista --help       # Show help
+    barista                        # Launch interactive TUI
+    barista status [--json]        # Inspect live Yabai + Barista status
+    barista spaces [--json]        # List spaces, saved modes, UUIDs, locks
+    barista windows [--json]       # List windows, layers, app defaults
+    barista rules [--json]         # Audit live Yabai rules and drift
+    barista shortcuts [--json]     # Inspect skhd shortcuts
+    barista space <subcommand>     # Control spaces & space policies
+    barista window <subcommand>    # Control windows & presets
+    barista app-default <...>      # Manage per-app tiling/floating rules
+    barista state <...>            # Inspect, validate, or restore state.json
+    barista stats [show|--json]    # View or prune performance metrics
+    barista reload                 # Reload SketchyBar
+    barista doctor [--fix]         # Run window manager diagnostics
 """
 
-import sys
+import json
 import os
+from pathlib import Path
+import subprocess
+import sys
 
-# Add the parent directory to path so we can import tui module
-script_dir = os.path.dirname(os.path.abspath(__file__))
-repo_dir = os.path.dirname(script_dir)
-sys.path.insert(0, repo_dir)
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_DIR = SCRIPT_DIR.parent
+sys.path.insert(0, str(REPO_DIR))
 
-from tui.app import main
+USAGE = """Usage: barista [command] [args...]
+
+When invoked with no arguments (or `tui` / `--config`), launches the interactive TUI.
+
+Agent & Power-User CLI Commands:
+  tui [--config <path>]                  Launch interactive configuration TUI
+  status [--json]                        Show live Yabai + Barista space/window/policy status
+  spaces [--json]                        List live spaces with layout, saved mode, UUID, and lock state
+  windows [--json]                       List live windows with space, layer, floating, and app-default state
+  rules [--json]                         Audit live Yabai rules and window policy drift
+  shortcuts [--json]                     List and audit active/disabled skhd keyboard shortcuts
+
+  space focus <index|prev|next|recent|first|last|app <AppName>>
+  space create [--display <index|active>] [--force]
+  space destroy [space] [--force]
+  space layout [space] <bsp|stack|float|toggle>
+  space move-left [space] | move-right [space]
+  space move-display-prev [space] | move-display-next [space]
+  space swap <space1> <space2> [--force]
+  space balance | rotate | mirror-x | mirror-y | toggle-padding-gap | monocle
+  space lock <space-or-uuid> | unlock <space-or-uuid>
+  space policy [list [--json]|get <key>|set <key> <value>]
+  space prune [--dry-run]
+
+  window focus <west|east|north|south|next|stack-next|stack-prev>
+  window swap <west|east|north|south|recent|master>
+  window zoom-master | stack-next | stack-prev | resize <west|south|north|east> [step]
+  window space <index|prev|next|float>
+  window display <prev|next>
+  window toggle <float|sticky|fullscreen|pip|topmost>
+  window preset <utility|focus|presentation|tile-here>
+  window adopt [space]
+  window center | minimize | close
+
+  scratchpad <toggle|show|hide|list> [term|emacs|files|<name>]
+  emacs <here|dired|magit|capture> [path|key]
+  files <browse [dir]|windows [jump|summon]>
+  mark <set|focus|summon|list|clear> [key]
+  context [--json]
+
+  feature [list [--json]|<toggle_key> [on|off|toggle]]
+  workflow [list [--json]|get <section.key>|set <section.key> <value>]
+  app-default [list|set <App Name> <float|tile>|unset <App Name>|current <float|tile|unset>]
+  app-level [list|set <App Name> <normal|raised|top>|unset <App Name>|current <normal|raised|top|unset>]
+  wm-mode [show|required|optional|disabled|auto]
+  state [show|get <key>|validate|restore [--dry-run] [--rules-only]]
+  stats [show [--json]|json|prune [lines]|reset]
+  reload                                 Reload SketchyBar configuration
+  doctor [--fix] [--probe-focus]         Run Yabai/skhd/space diagnostics
+"""
+
+
+def resolve_paths():
+    config_dir = Path(
+        os.environ.get("BARISTA_CONFIG_DIR")
+        or os.environ.get("CONFIG_DIR")
+        or os.path.expanduser("~/.config/sketchybar")
+    )
+    state_file = Path(os.environ.get("BARISTA_STATE_FILE") or (config_dir / "state.json"))
+    return config_dir, state_file
+
+
+def exec_script(script_path, args, extra_env=None):
+    config_dir, state_file = resolve_paths()
+    env = dict(os.environ)
+    env["BARISTA_CONFIG_DIR"] = str(config_dir)
+    env["CONFIG_DIR"] = str(config_dir)
+    env["BARISTA_STATE_FILE"] = str(state_file)
+    if extra_env:
+        env.update(extra_env)
+    os.execve(str(script_path), [str(script_path), *args], env)
+
+
+def run_cli(argv):
+    config_dir, state_file = resolve_paths()
+    yabai_control = REPO_DIR / "scripts" / "yabai_control.sh"
+    space_action = REPO_DIR / "scripts" / "space_action.sh"
+    set_space_mode = REPO_DIR / "plugins" / "set_space_mode.sh"
+    yabai_state = REPO_DIR / "scripts" / "yabai_state.py"
+    yabai_restore = REPO_DIR / "scripts" / "yabai_restore.py"
+    stats_script = REPO_DIR / "bin" / "barista-stats.sh"
+
+    cmd = argv[0]
+    rest = argv[1:]
+
+    if cmd in ("help", "--help", "-h"):
+        print(USAGE, end="")
+        return 0
+
+    if cmd in ("status", "spaces", "windows", "shortcuts", "wm-mode"):
+        exec_script(yabai_control, [cmd, *rest])
+
+    if cmd in ("rules", "rules-audit"):
+        exec_script(yabai_control, ["rules-audit", *rest])
+
+    if cmd == "app-default":
+        if rest and rest[0] == "current":
+            exec_script(yabai_control, ["app-default-current", *rest[1:]])
+        exec_script(yabai_control, ["app-default", *rest])
+
+    if cmd == "app-level":
+        if rest and rest[0] == "current":
+            exec_script(yabai_control, ["app-level-current", *rest[1:]])
+        exec_script(yabai_control, ["app-level", *rest])
+
+    if cmd == "space":
+        sub = rest[0] if rest else "list"
+        args = rest[1:]
+        if sub in ("list", "ls"):
+            exec_script(yabai_control, ["spaces", *args])
+        elif sub == "focus":
+            target = args[0] if args else ""
+            if target == "prev":
+                exec_script(yabai_control, ["space-focus-prev-wrap"])
+            elif target == "next":
+                exec_script(yabai_control, ["space-focus-next-wrap"])
+            elif target in ("recent", "first", "last"):
+                exec_script(yabai_control, [f"space-{target}"])
+            elif target == "app":
+                exec_script(yabai_control, ["space-focus-app", *args[1:]])
+            else:
+                exec_script(yabai_control, ["space-focus", target])
+        elif sub == "create":
+            exec_script(yabai_control, ["space-create", *args])
+        elif sub in ("destroy", "close"):
+            exec_script(yabai_control, ["space-destroy", *args])
+        elif sub in ("layout", "mode"):
+            if len(args) == 1:
+                if args[0] == "toggle":
+                    exec_script(yabai_control, ["toggle-layout"])
+                exec_script(set_space_mode, ["current", args[0]])
+            elif len(args) >= 2:
+                exec_script(set_space_mode, [args[0], args[1]])
+            else:
+                print("Usage: barista space layout [space] <bsp|stack|float|toggle>", file=sys.stderr)
+                return 1
+        elif sub in ("move-left", "move-right", "move-display-prev", "move-display-next", "prune", "lock", "unlock", "policy"):
+            exec_script(yabai_control, [f"space-{sub}", *args])
+        elif sub == "swap":
+            if len(args) < 2:
+                print("Usage: barista space swap <space1> <space2> [--force]", file=sys.stderr)
+                return 1
+            force = "1" if ("--force" in args[2:] or "-f" in args[2:]) else "0"
+            env = dict(os.environ, CONFIG_DIR=str(config_dir), BARISTA_CONFIG_DIR=str(config_dir), BARISTA_SPACE_FORCE=force)
+            subprocess.run([str(space_action), "swap-arm", "--space", args[0]], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return subprocess.run([str(space_action), "click", "--space", args[1]], env=env).returncode
+        elif sub == "balance":
+            exec_script(yabai_control, ["balance"])
+        elif sub == "rotate":
+            exec_script(yabai_control, ["space-rotate"])
+        elif sub in ("mirror", "mirror-x"):
+            exec_script(yabai_control, ["space-mirror-x"])
+        elif sub == "mirror-y":
+            exec_script(yabai_control, ["space-mirror-y"])
+        elif sub in ("toggle-padding-gap", "padding-gap"):
+            exec_script(yabai_control, ["space-toggle-padding-gap"])
+        elif sub in ("monocle", "toggle-monocle"):
+            exec_script(yabai_control, ["space-toggle-monocle"])
+        else:
+            print(f"Unknown space subcommand: {sub}", file=sys.stderr)
+            print(USAGE, file=sys.stderr, end="")
+            return 1
+
+    if cmd == "window":
+        sub = rest[0] if rest else "list"
+        args = rest[1:]
+        if sub in ("list", "ls"):
+            exec_script(yabai_control, ["windows", *args])
+        elif sub == "focus":
+            direction = args[0] if args else "next"
+            if direction == "next":
+                exec_script(yabai_control, ["window-focus-next-wrap"])
+            elif direction in ("stack-next", "stack-prev"):
+                exec_script(yabai_control, [f"window-{direction}"])
+            elif direction in ("west", "east", "north", "south"):
+                exec_script(yabai_control, [f"window-focus-{direction}"])
+            else:
+                print("Usage: barista window focus <west|east|north|south|next|stack-next|stack-prev>", file=sys.stderr)
+                return 1
+        elif sub == "swap":
+            direction = args[0] if args else "recent"
+            if direction in ("master", "zoom-master"):
+                exec_script(yabai_control, ["window-zoom-master"])
+            elif direction in ("west", "east", "north", "south", "recent"):
+                exec_script(yabai_control, [f"window-swap-{direction}"])
+            else:
+                print("Usage: barista window swap <west|east|north|south|recent|master>", file=sys.stderr)
+                return 1
+        elif sub in ("zoom-master", "master"):
+            exec_script(yabai_control, ["window-zoom-master"])
+        elif sub in ("stack-next", "stack-prev"):
+            exec_script(yabai_control, [f"window-{sub}"])
+        elif sub == "resize":
+            exec_script(yabai_control, ["window-resize", *args])
+        elif sub == "space":
+            target = args[0] if args else ""
+            if target in ("prev", "next"):
+                exec_script(yabai_control, [f"window-space-{target}-wrap"])
+            elif target == "float":
+                exec_script(yabai_control, ["window-space-float"])
+            else:
+                exec_script(yabai_control, ["window-space", target])
+        elif sub == "display":
+            direction = args[0] if args else "next"
+            if direction in ("prev", "next"):
+                exec_script(yabai_control, [f"window-display-{direction}"])
+            else:
+                print("Usage: barista window display <prev|next>", file=sys.stderr)
+                return 1
+        elif sub == "toggle":
+            prop = args[0] if args else ""
+            if prop in ("float", "sticky", "fullscreen", "pip", "topmost"):
+                exec_script(yabai_control, [f"window-toggle-{prop}"])
+            else:
+                print("Usage: barista window toggle <float|sticky|fullscreen|pip|topmost>", file=sys.stderr)
+                return 1
+        elif sub == "preset":
+            preset = args[0] if args else ""
+            if preset in ("utility", "focus", "presentation", "tile-here"):
+                exec_script(yabai_control, [f"window-preset-{preset}"])
+            else:
+                print("Usage: barista window preset <utility|focus|presentation|tile-here>", file=sys.stderr)
+                return 1
+        elif sub == "adopt":
+            exec_script(yabai_control, ["window-adopt-space-mode", *(args[:1])])
+        elif sub in ("center", "minimize", "close"):
+            exec_script(yabai_control, [f"window-{sub}"])
+        else:
+            print(f"Unknown window subcommand: {sub}", file=sys.stderr)
+            print(USAGE, file=sys.stderr, end="")
+            return 1
+
+    if cmd == "state":
+        sub = rest[0] if rest else "show"
+        args = rest[1:]
+        if sub == "show":
+            if state_file.is_file():
+                print(state_file.read_text(encoding="utf-8"), end="")
+            else:
+                print("{}")
+            return 0
+        elif sub == "get":
+            if not args:
+                print("Usage: barista state get <dotted.key>", file=sys.stderr)
+                return 1
+            key = args[0].lstrip(".")
+            data = json.loads(state_file.read_text(encoding="utf-8")) if state_file.is_file() else {}
+            cur = data
+            for part in (key.split(".") if key else []):
+                if isinstance(cur, dict) and part in cur:
+                    cur = cur[part]
+                else:
+                    return 1
+            if isinstance(cur, (dict, list)):
+                print(json.dumps(cur, indent=2))
+            else:
+                print(cur)
+            return 0
+        elif sub == "validate":
+            for check in ("space-check", "app-check", "shortcuts-check"):
+                rc = subprocess.run([sys.executable, str(yabai_state), str(state_file), check]).returncode
+                if rc != 0:
+                    return rc
+            print(json.dumps({"valid": True, "state_file": str(state_file)}))
+            return 0
+        elif sub == "restore":
+            os.execv(sys.executable, [sys.executable, str(yabai_restore), "--state-file", str(state_file), *args])
+        else:
+            print("Usage: barista state [show|get <key>|validate|restore [--dry-run] [--rules-only]]", file=sys.stderr)
+            return 1
+
+    if cmd == "stats":
+        exec_script(stats_script, rest or ["show"])
+
+    workflow_aliases = {"context": "context", "scratchpad": "scratchpad", "emacs": "emacs",
+                        "files": "files", "file": "files", "mark": "mark", "marks": "mark"}
+    if cmd in workflow_aliases:
+        exec_script(REPO_DIR / "scripts" / "barista_workflow.sh", [workflow_aliases[cmd], *rest])
+
+    if cmd in ("feature", "features", "toggle"):
+        exec_script(yabai_control, ["feature-toggle", *rest])
+
+    if cmd == "workflow":
+        exec_script(yabai_control, ["workflow-policy", *rest])
+
+    if cmd == "reload":
+        reload_script = config_dir / "plugins" / "reload_sketchybar.sh"
+        if not reload_script.is_file():
+            reload_script = REPO_DIR / "plugins" / "reload_sketchybar.sh"
+        exec_script(reload_script, rest)
+
+    if cmd == "doctor":
+        exec_script(yabai_control, ["doctor", *rest])
+
+    print(f"Unknown command: {cmd}", file=sys.stderr)
+    print(USAGE, file=sys.stderr, end="")
+    return 1
+
 
 if __name__ == "__main__":
-    main()
+    args = sys.argv[1:]
+    if not args or args[0] in ("tui", "--tui", "--config", "-c", "--version", "-v"):
+        if args and args[0] in ("tui", "--tui"):
+            sys.argv = [sys.argv[0], *args[1:]]
+        from tui.app import main
+        main()
+    else:
+        sys.exit(run_cli(args))

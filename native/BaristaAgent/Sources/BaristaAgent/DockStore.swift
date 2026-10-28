@@ -17,6 +17,9 @@ struct DockTile: Identifiable, Equatable {
   var children: [DockTile] = []
   /// A subgroup's title without the words it shares with its parent's.
   var shortName: String?
+  /// Finder's name for `url`, looked up once when the tile is made: views
+  /// read `name` every frame, and Launch Services takes milliseconds per app.
+  var fileName: String?
   /// The group holding this tile, for members drawn in an open group.
   var parentGroup: String?
 
@@ -47,6 +50,7 @@ struct DockTile: Identifiable, Equatable {
     if let title = item.title, !title.isEmpty { return title }
     if item.kind == .shelf { return "Shelf" }
     if item.kind == .controls { return "Controls" }
+    if let fileName { return fileName }
     if let url, url.isFileURL { return FileManager.default.displayName(atPath: url.path) }
     return item.command ?? item.url ?? ""
   }
@@ -108,7 +112,11 @@ final class DockStore: ObservableObject {
   private var themeStamp: String?
   private var agentStamp: Date?
   private var resolvedURLs: [String: URL] = [:]
+  /// Finder names by path; cleared with `resolvedURLs` when the config reloads.
+  private var fileNames: [String: String] = [:]
   private var images: [String: TileImage] = [:]
+  /// Tiles whose icons `warmImages` has yet to draw, last first.
+  private var unwarmed: [DockTile] = []
   private var observers: [NSObjectProtocol] = []
   /// Observations don't retain what they watch, so each keeps its app alive.
   private var policyWatches: [pid_t: (app: NSRunningApplication, watch: NSKeyValueObservation)] = [:]
@@ -187,6 +195,26 @@ final class DockStore: ObservableObject {
     actions.refreshBadges(commands(\.badgeCommand))
     actions.refreshInfos(commands(\.infoCommand))
     actions.refreshMenus(commands(\.menuCommand))
+    warmImages()
+  }
+
+  /// Drawing every workspace icon takes a few hundred milliseconds, which the
+  /// first reveal would otherwise spend at once. Icons are drawn here a few
+  /// milliseconds at a time, outside menu tracking and drags.
+  /// Members go before their groups, whose grids would otherwise draw them in one turn.
+  private func warmImages() {
+    let idle = unwarmed.isEmpty
+    unwarmed = sections.joined().flatMap { $0.descendants.reversed() + [$0] }.reversed()
+    if idle { warmNextImages() }
+  }
+
+  private func warmNextImages() {
+    let start = CFAbsoluteTimeGetCurrent()
+    while !unwarmed.isEmpty, CFAbsoluteTimeGetCurrent() - start < 0.008 {
+      _ = image(for: unwarmed.removeLast())
+    }
+    guard !unwarmed.isEmpty else { return }
+    RunLoop.main.perform(inModes: [.default]) { [weak self] in self?.warmNextImages() }
   }
 
   /// A tile's badge: its badge command's output, the shelf's item count, or
@@ -768,6 +796,7 @@ final class DockStore: ObservableObject {
 
   private func applySettings() {
     resolvedURLs = [:]
+    fileNames = [:]
     if config.settings != settings { settings = config.settings }
   }
 
@@ -829,8 +858,17 @@ final class DockStore: ObservableObject {
   }
 
   private func tile(for item: DockItem, section: DockTile.Section, app: NSRunningApplication?) -> DockTile {
-    DockTile(id: item.key, item: item, url: resolvedURL(for: item), section: section,
-             pid: app?.processIdentifier, isActive: app?.isActive ?? false, isHidden: app?.isHidden ?? false)
+    let url = resolvedURL(for: item)
+    var tile = DockTile(id: item.key, item: item, url: url, section: section,
+                        pid: app?.processIdentifier, isActive: app?.isActive ?? false, isHidden: app?.isHidden ?? false)
+    if (item.title ?? "").isEmpty, let url, url.isFileURL {
+      tile.fileName = fileNames[url.path] ?? {
+        let name = FileManager.default.displayName(atPath: url.path)
+        fileNames[url.path] = name
+        return name
+      }()
+    }
+    return tile
   }
 
   /// Apps that moved since they were pinned are found again by bundle id.

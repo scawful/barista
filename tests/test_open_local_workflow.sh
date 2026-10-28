@@ -17,7 +17,7 @@ cat >"$BIN_DIR/open" <<'SH'
 #!/usr/bin/env bash
 printf 'open:%s\n' "$*" >>"${WORKFLOW_TEST_LOG:?}"
 SH
-for name in antigravity claude ws stop-agents; do
+for name in antigravity claude cortex ws stop-agents; do
   cat >"$BIN_DIR/$name" <<'SH'
 #!/usr/bin/env bash
 printf 'tool:%s:%s\n' "$(basename "$0")" "$*" >>"${WORKFLOW_TEST_LOG:?}"
@@ -35,6 +35,7 @@ run_workflow() {
     BARISTA_OPEN_BIN="$BIN_DIR/open" \
     ANTIGRAVITY_LAUNCHER="$BIN_DIR/antigravity" \
     CLAUDE_LAUNCHER="$BIN_DIR/claude" \
+    BARISTA_CORTEX_BIN="$BIN_DIR/cortex" \
     WS_LAUNCHER="$BIN_DIR/ws" \
     STOP_AGENTS_LAUNCHER="$BIN_DIR/stop-agents" \
     bash "$RUNNER" "$@"
@@ -42,12 +43,18 @@ run_workflow() {
 
 run_workflow antigravity
 run_workflow claude-code
+run_workflow cortex
 run_workflow workspace-navigator
 run_workflow open-path "$TMP_DIR/workspace"
 run_workflow stop-managed-agents
 
 grep -Fq "$BIN_DIR/antigravity" "$LOG_FILE"
 grep -Fq "$BIN_DIR/claude" "$LOG_FILE"
+for _ in {1..50}; do
+  grep -Fqx 'tool:cortex:' "$LOG_FILE" && break
+  sleep 0.01
+done
+grep -Fqx 'tool:cortex:' "$LOG_FILE"
 grep -Eq "$BIN_DIR/ws.*explore" "$LOG_FILE"
 grep -Fqx "open:$TMP_DIR/workspace" "$LOG_FILE"
 grep -Fqx 'tool:stop-agents:--managed' "$LOG_FILE"

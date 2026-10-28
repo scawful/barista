@@ -25,6 +25,15 @@ oracle.config = {
   status_script = os.getenv("BARISTA_ORACLE_STATUS_SCRIPT")
     or state_paths.oracle_status_script
     or (ORACLE_DIR .. "/Scripts/Build/oos-triforce.sh"),
+  ganondorf_launcher = os.getenv("BARISTA_GANONDORF_LAUNCHER")
+    or state_paths.ganondorf_launcher
+    or "",
+  -- The working yaze project: Lyra Sea sidecar ($A0-$BF) + native maps.
+  lyra_project = os.getenv("BARISTA_ORACLE_LYRA_PROJECT")
+    or state_paths.oracle_lyra_project
+    or ((os.getenv("HOME") or "") .. "/Zelda/Projects/Oracle-of-Secrets/Oracle-Working/Oracle-of-Secrets-Working.yaze"),
+  project_launcher = os.getenv("BARISTA_ORACLE_PROJECT_LAUNCHER")
+    or state_paths.oracle_project_launcher,
   handoff = ORACLE_DIR .. "/.context/scratchpad/agent_handoff.md",
   tracker = ORACLE_DIR .. "/oracle.org",
   workflow_plan = ORACLE_DIR .. "/Docs/Planning/Plans/development_workflow_alignment_2026-03-28.md",
@@ -215,6 +224,34 @@ local function detect_rom_version(repo_path)
   return best
 end
 
+-- Newest dev build, the same pick as `oos-triforce.sh launch test`: the
+-- Roms/TestBuilds/<name>/ folder whose oos*x.sfc changed last. Agents put a
+-- build there when the user should try it before it is staged for playtest.
+local function detect_dev_build(repo_path)
+  local handle = io.popen(string.format(
+    "ls -t %s/Roms/TestBuilds/*/oos*x.sfc 2>/dev/null",
+    shell_quote(repo_path)
+  ))
+  if not handle then
+    return nil
+  end
+  local newest = handle:read("*l")
+  handle:close()
+  if not newest or newest == "" then
+    return nil
+  end
+  return newest:match("/Roms/TestBuilds/([^/]+)/[^/]+$")
+end
+
+-- "kydreeok-pr209-2026-10-19" -> "Dev kydreeok-pr209" (the date is in the folder).
+local function dev_build_label(name)
+  if not name or name == "" then
+    return "Dev build"
+  end
+  local short = name:gsub("%-%d%d%d%d%-%d%d%-%d%d$", "")
+  return "Dev " .. short
+end
+
 local function finishline_color(level)
   local colors = {
     ok = "0xffa6e3a1",
@@ -311,6 +348,8 @@ local function build_state(ctx)
   local ui = ui_config(ctx)
 
   local yaze_action = ""
+  local lyra_project_action = ""
+  local lyra_project_label = "Edit Lyra Sea"
   local yaze_enabled = not (ctx and ctx.integration_flags and ctx.integration_flags.yaze == false)
   if yaze_enabled then
     local yaze_app, yaze_ok = locator.resolve_yaze_app(ctx or {})
@@ -320,12 +359,41 @@ local function build_state(ctx)
     elseif yaze_launcher_ok and yaze_launcher then
       yaze_action = binary_action(yaze_launcher)
     end
+    -- Opens the working project on the first Lyra Sea map ($A0 = 160).
+    local lyra_project = (ctx and type(ctx.paths) == "table" and ctx.paths.lyra_project)
+      or oracle.config.lyra_project
+    local project_launcher = oracle.config.project_launcher
+    if ctx and type(ctx.paths) == "table" and ctx.paths.oracle_project_launcher ~= nil then
+      project_launcher = ctx.paths.oracle_project_launcher
+    end
+    if project_launcher ~= nil and project_launcher ~= "" then
+      lyra_project_label = "Edit Oracle Project"
+      if type(project_launcher) == "string" and path_is_executable(project_launcher) then
+        lyra_project_action = string.format(
+          "(%s >/tmp/oos-open-oracle.log 2>&1 &)", bash_literal(project_launcher))
+      end
+    elseif yaze_ok and yaze_app and path_exists(lyra_project, false) then
+      lyra_project_action = string.format(
+        "open -n -a %s --args --rom_file=%s --editor=Overworld --map=160 --startup_welcome=hide --startup_dashboard=hide",
+        shell_quote(yaze_app), shell_quote(lyra_project))
+    end
   end
 
+  -- The Dock app, the same bundle the play window and Dev builds open
+  -- (Oracle Scripts/Mesen2/mesen2_launch_instance.sh default). mesen-run is
+  -- the fallback; SketchyBar's PATH often lacks the dotfiles bin.
   local mesen_action = ""
-  local mesen_run_bin, mesen_run_ok = locator.resolve_mesen_run(ctx or {})
-  if mesen_run_ok and mesen_run_bin then
-    mesen_action = binary_action(mesen_run_bin)
+  local mesen_app = (ctx and type(ctx.paths) == "table" and ctx.paths.mesen_app)
+    or os.getenv("BARISTA_MESEN_APP")
+    or state_paths.mesen_app
+    or "/Applications/Mesen2 OOS.app"
+  if path_exists(mesen_app, true) then
+    mesen_action = open_app_action(mesen_app)
+  else
+    local mesen_run_bin, mesen_run_ok = locator.resolve_mesen_run(ctx or {})
+    if mesen_run_ok and mesen_run_bin then
+      mesen_action = binary_action(mesen_run_bin)
+    end
   end
 
   local z3ed_action = ""
@@ -348,6 +416,27 @@ local function build_state(ctx)
       channel
     ))
   end
+  -- The user's Mesen play window (Oracle Scripts/Mesen2/oos_play.py, instance
+  -- oos-rc-play): open it on the latest staged playtest build, or offer /
+  -- load that build into the open window. Logs to /tmp/oos-play.log.
+  local function play_window_action(flag)
+    return repo_action(string.format(
+      "nohup python3 ./Scripts/Mesen2/oos_play.py %s>/tmp/oos-play.log 2>&1 &",
+      flag ~= "" and (flag .. " ") or ""
+    ))
+  end
+  local ganondorf_action = ""
+  local ganondorf_launcher = locator.expand_path(oracle.config.ganondorf_launcher)
+  local launcher_executable = ganondorf_launcher and path_exists(ganondorf_launcher)
+    and os.execute("test -x " .. bash_literal(ganondorf_launcher))
+  if launcher_executable == true or launcher_executable == 0 then
+    local controller = (ctx and ctx.CONFIG_DIR or locator.resolve_config_dir()) .. "/plugins/oracle_triforce.sh"
+    ganondorf_action = "bash -lc " .. bash_literal(string.format(
+      "nohup env BARISTA_GANONDORF_LAUNCHER=%s %s launch_ganondorf >/tmp/oos-launch-ganondorf.log 2>&1 &",
+      bash_literal(ganondorf_launcher),
+      bash_literal(controller)
+    ))
+  end
   local density = current_density(ctx and ctx.state or {})
   local widget_icon = ui.triforce.icon
   if widget_icon == "" then
@@ -366,12 +455,17 @@ local function build_state(ctx)
     repo_ok = repo_ok,
     ui = ui,
     yaze_action = yaze_action,
+    lyra_project_action = lyra_project_action,
+    lyra_project_label = lyra_project_label,
     mesen_action = mesen_action,
     z3ed_action = z3ed_action,
-    launch_stable_action = launch_action("stable"),
+    play_window_action = play_window_action(""),
+    play_now_action = play_window_action("--now"),
     launch_test_action = launch_action("test"),
+    ganondorf_action = ganondorf_action,
     menu_title = menu_title,
     rom_label = rom_label,
+    dev_label = dev_build_label(repo_ok and detect_dev_build(oracle.config.repo_path) or nil),
     show_label = ui.triforce.show_label,
     widget_label = widget_label,
     widget_label_override = ui.triforce.label,
@@ -433,15 +527,31 @@ function oracle.build_menu_model(ctx)
 
   local sections = {}
 
-  local stable_label = state.rom_label and ("Launch " .. state.rom_label) or "Launch stable build"
-  local test_label = state.rom_label and ("Launch " .. state.rom_label .. " (test)") or "Launch test build"
+  -- Play = the staged playtest build in the play window (shared save).
+  -- Dev = the newest Roms/TestBuilds build in its own instance
+  -- (oos-<user>-test), so it never touches the play save. The old "stable"
+  -- row opened Roms/oos168x.sfc, which nothing rebuilds any more.
   local play_entries = {
-    make_entry("launch_stable", stable_label, "󰐃", state.launch_stable_action, { prominent = true }),
-    make_entry("launch_test", test_label, "󰙨", state.launch_test_action),
+    -- Icon + label filled by plugins/oracle_triforce.sh from
+    -- `oos_play.py --status --json` (icon = window state, label = build).
+    make_entry("play_status", "—", "󰍹", ""),
+    make_entry("play_latest", "Play", "󰐊", state.play_window_action, { prominent = true }),
+    make_entry("play_now", "Load now", "󰑐", state.play_now_action),
+    -- Label refreshed by plugins/oracle_triforce.sh when the popup opens.
+    make_entry("launch_test", state.dev_label, "󰙨", state.launch_test_action, { prominent = true }),
   }
+  if state.ganondorf_action ~= "" then
+    table.insert(play_entries, make_entry("launch_ganondorf", "Ganondorf test", "󰙨", state.ganondorf_action, { prominent = true }))
+  end
   add_section(sections, "play", play_entries)
 
   local app_entries = {}
+  if state.lyra_project_action ~= "" then
+    table.insert(app_entries, make_entry("lyra_project", state.lyra_project_label, "󰯙", state.lyra_project_action, {
+      icon_color = theme_color(ctx, "BLUE"),
+      prominent = true,
+    }))
+  end
   if state.yaze_action ~= "" then
     table.insert(app_entries, make_entry("yaze", "Yaze", "󰯙", state.yaze_action, {
       icon_color = theme_color(ctx, "YELLOW"),

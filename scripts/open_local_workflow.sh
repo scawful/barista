@@ -20,6 +20,7 @@ usage() {
     "Workflows:" \
     "  antigravity         Launch Antigravity in a terminal" \
     "  claude-code        Launch Claude Code in a terminal" \
+    "  cortex             Launch the local Cortex host" \
     "  workspace-navigator Open the ws workspace explorer" \
     "  open-path PATH       Open a validated local path" \
     "  stop-managed-agents Stop only registered autonomous agent trees" \
@@ -146,6 +147,18 @@ case "$workflow" in
       exit 127
     }
     terminal_cli_session "$binary"
+    ;;
+  cortex)
+    binary="$(resolve_executable "${BARISTA_CORTEX_BIN:-${CORTEX_BIN:-}}" \
+      "$HOME/.local/bin/cortex" "$SRC_DIR/lab/cortex/cortex" \
+      "$SRC_DIR/lab/cortex/.build/arm64-apple-macosx/release/cortex" \
+      "$SRC_DIR/lab/cortex/.build/arm64-apple-macosx/debug/cortex" \
+      "$SRC_DIR/cortex/cortex" cortex || true)"
+    [[ -n "$binary" ]] || {
+      echo "Cortex launcher not found" >&2
+      exit 127
+    }
+    background_exec "$binary"
     ;;
   workspace-navigator|ws)
     binary="$(resolve_executable "${WS_LAUNCHER:-}" \

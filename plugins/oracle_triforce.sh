@@ -12,6 +12,17 @@ STATUS_TIMEOUT="${BARISTA_ORACLE_STATUS_TIMEOUT:-4}"
 LABEL_OVERRIDE="${BARISTA_TRIFORCE_LABEL_OVERRIDE:-}"
 REFRESH_LOCK_FILE="${BARISTA_TRIFORCE_REFRESH_LOCK_FILE:-${TMPDIR:-/tmp}/barista_triforce_refresh.${UID:-0}.lock}"
 
+# The packet owns its ROM, checkpoint and private Mesen profile. Keep this
+# explicit launcher separate from both oos-rc-play and the newest Dev build.
+if [ "${1:-}" = "launch_ganondorf" ]; then
+  launcher="${BARISTA_GANONDORF_LAUNCHER:-}"
+  if [ -z "$launcher" ] || [ ! -f "$launcher" ] || [ ! -x "$launcher" ]; then
+    printf 'Ganondorf launcher is unavailable: %s\n' "$launcher" >&2
+    exit 1
+  fi
+  exec "$launcher"
+fi
+
 # Invoked indirectly by the EXIT trap in refresh_triforce.
 # shellcheck disable=SC2329
 release_refresh_lock() {
@@ -135,6 +146,13 @@ emit(
     )
 
     if [ "${#update_args[@]}" -gt 0 ]; then
+      update_args+=(--set oracle.triforce.play.launch_test "label=$(dev_label)")
+      local play_fields
+      play_fields="$(play_status_fields)"
+      if [ -n "$play_fields" ]; then
+        update_args+=(--set oracle.triforce.play.play_status
+          "icon=$(play_status_icon "${play_fields%% *}")" "label=${play_fields#* }")
+      fi
       sketchybar "${update_args[@]}"
     fi
     return
@@ -144,6 +162,49 @@ emit(
     "$TRIFORCE_WIDGET_BIN"
   fi
 )
+
+# "<state> <short label>" for the Mesen play window, from Oracle's
+# Scripts/Mesen2/oos_play.py; empty when unavailable or slower than STATUS_TIMEOUT.
+play_status_fields() {
+  local repo="${ORACLE_REPO_PATH:-$HOME/src/hobby/oracle-of-secrets}"
+  local play_script="$repo/Scripts/Mesen2/oos_play.py"
+  [ -f "$play_script" ] && [ -n "$PYTHON_BIN" ] || return 0
+  "$PYTHON_BIN" - "$play_script" "$STATUS_TIMEOUT" 2>/dev/null <<'PY' || true
+import json, subprocess, sys
+try:
+    out = subprocess.run([sys.executable, sys.argv[1], "--status", "--json"], capture_output=True,
+                         text=True, timeout=float(sys.argv[2]), check=True).stdout
+    status = json.loads(out)
+    print(status["state"], status["short"][:14])
+except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+    pass
+PY
+}
+
+play_status_icon() {
+  case "$1" in
+    current) printf '󰍹' ;;   # window open on the latest build
+    outdated) printf '󰚰' ;;  # a newer build is ready
+    *) printf '󰶐' ;;         # window closed
+  esac
+}
+
+# Dev row label: the newest Roms/TestBuilds build, the one
+# `oos-triforce.sh launch test` opens (newest oos*x.sfc by mtime). Sent in the
+# refresh's single batched SketchyBar call.
+dev_label() {
+  local repo="${ORACLE_REPO_PATH:-$HOME/src/hobby/oracle-of-secrets}"
+  local newest name label="Dev build"
+  # shellcheck disable=SC2012
+  newest=$(ls -t "$repo"/Roms/TestBuilds/*/oos*x.sfc 2>/dev/null | head -n 1) || true
+  if [ -n "$newest" ]; then
+    name="${newest%/*}"
+    name="${name##*/}"
+    name=$(printf '%s' "$name" | sed -E 's/-[0-9]{4}-[0-9]{2}-[0-9]{2}$//')
+    label="Dev $name"
+  fi
+  printf '%s' "${label:0:28}"
+}
 
 case "${SENDER:-}" in
   "mouse.entered")

@@ -111,6 +111,30 @@ reset_logs() {
   : > "$WIDGET_LOG"
 }
 
+# The optional fight packet is executed literally, including spaces and shell
+# metacharacters in its path. It must never route through the shared Play row.
+GANONDORF_LAUNCHER="$TMP_DIR/Play Ganondorf's \$(literal).command"
+GANONDORF_LOG="$TMP_DIR/ganondorf.log"
+cat > "$GANONDORF_LAUNCHER" <<EOF
+#!/bin/bash
+printf 'packet\n' > "$GANONDORF_LOG"
+printf '%s\n' "\$#" >> "$GANONDORF_LOG"
+EOF
+chmod +x "$GANONDORF_LAUNCHER"
+BARISTA_GANONDORF_LAUNCHER="$GANONDORF_LAUNCHER" "$SCRIPT" launch_ganondorf
+if [ "$(cat "$GANONDORF_LOG")" != $'packet\n0' ]; then
+  echo "FAIL: Ganondorf action should execute the exact configured packet without extra arguments" >&2
+  exit 1
+fi
+if BARISTA_GANONDORF_LAUNCHER="$TMP_DIR/missing.command" "$SCRIPT" launch_ganondorf >"$TMP_DIR/missing.out" 2>&1; then
+  echo "FAIL: missing Ganondorf packet should fail explicitly" >&2
+  exit 1
+fi
+if [ -s "$SKETCHYBAR_LOG" ] || [ -s "$STATUS_LOG" ]; then
+  echo "FAIL: private packet launch should not collect shared Play status" >&2
+  exit 1
+fi
+
 # Hover remains cheap and never invokes the Oracle status producer.
 run_plugin mouse.entered
 grep -Fq $'ARG\tbackground.drawing=on' "$SKETCHYBAR_LOG" || {
@@ -136,7 +160,12 @@ if [ -s "$SKETCHYBAR_LOG" ] || [ -s "$STATUS_LOG" ]; then
 fi
 
 # Popup-open refresh takes one canonical snapshot and applies every dynamic
-# target through one SketchyBar client call.
+# target, including the play window status, through one SketchyBar client call.
+mkdir -p "$TMP_DIR/Scripts/Mesen2"
+cat > "$TMP_DIR/Scripts/Mesen2/oos_play.py" <<'EOF'
+import json
+print(json.dumps({"state": "outdated", "short": "oos168x ready to reload"}))
+EOF
 reset_logs
 run_plugin popup_refresh
 if [ "$(grep -c '^CALL$' "$SKETCHYBAR_LOG")" -ne 1 ]; then
@@ -151,7 +180,11 @@ grep -Fqx "$EXPECTED_REPO_PATH"$'\tstatus-json --barista' "$STATUS_LOG" || {
 for expected in \
   $'ARG\tlabel=M0*' \
   $'ARG\ticon.color=0xfff9e2af' \
-  $'ARG\toracle.triforce.header'; do
+  $'ARG\toracle.triforce.header' \
+  $'ARG\toracle.triforce.play.launch_test' \
+  $'ARG\tlabel=Dev build' \
+  $'ARG\toracle.triforce.play.play_status' \
+  $'ARG\tlabel=oos168x ready '; do
   grep -Fqx "$expected" "$SKETCHYBAR_LOG" || {
     echo "FAIL: missing batched refresh argument: $expected" >&2
     exit 1

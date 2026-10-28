@@ -179,19 +179,10 @@ run_test("oracle integration: triforce widget uses runtime overrides", function(
   assert_true(widget.click_script:match("BARISTA_TRIFORCE_ACTION=click") == nil, "clicks should not route toggle ownership through the controller")
 end)
 
-run_test("oracle integration: launch rows name the newest ROM without a status snapshot", function()
-  local root = make_fixture_root()
-  local fixtures = { "oos168x.sfc", "oos170x.sfc", "oos171.sfc", "oos169x_old.sfc" }
-  assert_true(command_ok(os.execute(string.format("mkdir -p %q", root .. "/Roms"))), "Roms fixture should be created")
-  for _, name in ipairs(fixtures) do
-    local handle = io.open(root .. "/Roms/" .. name, "w")
-    assert_true(handle ~= nil, "ROM fixture should be writable")
-    handle:close()
-  end
-
+local function dev_row_label(root)
   local saved_repo = oracle.config.repo_path
   oracle.config.repo_path = root
-  local ok, err = pcall(function()
+  local ok, result = pcall(function()
     local items = oracle.create_triforce_popup_items(build_ctx({
       oracle_status_snapshot = {},
     }))
@@ -199,17 +190,117 @@ run_test("oracle integration: launch rows name the newest ROM without a status s
     for _, item in ipairs(items) do
       by_name[item.name] = item
     end
-
-    local stable = by_name["oracle.triforce.play.launch_stable"]
-    local test = by_name["oracle.triforce.play.launch_test"]
-    assert_true(stable ~= nil and test ~= nil, "both launch rows should exist before any status refresh")
-    assert_equal(stable.label, "Launch oos170x.sfc", "stable row should name the highest patched ROM in Roms")
-    assert_equal(test.label, "Launch oos170x.sfc (test)", "test row should name the same ROM version")
+    assert_nil(by_name["oracle.triforce.play.launch_stable"], "the stale stable row should be gone")
     assert_nil(by_name["oracle.triforce.focus"], "focus row should be gone")
-    assert_nil(by_name["oracle.triforce.rom"], "ROM row should be gone; the launch rows name the ROM")
+    assert_nil(by_name["oracle.triforce.rom"], "ROM row should be gone")
+    local dev = by_name["oracle.triforce.play.launch_test"]
+    assert_true(dev ~= nil, "dev row should exist before any status refresh")
+    return dev.label
   end)
   oracle.config.repo_path = saved_repo
-  assert_true(ok, tostring(err))
+  assert_true(ok, tostring(result))
+  return result
+end
+
+run_test("oracle integration: dev row names the newest Roms/TestBuilds build", function()
+  local root = make_fixture_root()
+  local fixtures = {
+    { "old-fix-2026-09-01", "oos168x.sfc", "202609010000" },
+    { "kydreeok-pr209-2026-10-19", "oos168x.sfc", "202610190000" },
+    { "notes-only", "random.sfc", "202610200000" }, -- not oos*x.sfc: the launcher skips it
+  }
+  for _, fixture in ipairs(fixtures) do
+    local dir = root .. "/Roms/TestBuilds/" .. fixture[1]
+    assert_true(command_ok(os.execute(string.format("mkdir -p %q", dir))), "TestBuilds fixture should be created")
+    assert_true(command_ok(os.execute(string.format("touch -t %s %q", fixture[3], dir .. "/" .. fixture[2]))), "ROM fixture should be created")
+  end
+  assert_equal(dev_row_label(root), "Dev kydreeok-pr209", "dev row should name the newest oos*x.sfc folder without its date")
+end)
+
+run_test("oracle integration: dev row falls back without test builds", function()
+  local root = make_fixture_root()
+  assert_true(command_ok(os.execute(string.format("mkdir -p %q", root .. "/Roms"))), "Roms fixture should be created")
+  assert_equal(dev_row_label(root), "Dev build", "dev row should keep a generic label")
+end)
+
+run_test("oracle integration: Ganondorf row uses its configured private launcher", function()
+  local root = make_fixture_root()
+  local launcher = root .. "/Play Ganondorf's $(literal).command"
+  local file = assert(io.open(launcher, "w"))
+  file:write("#!/bin/sh\nexit 0\n")
+  file:close()
+  local quoted_launcher = "'" .. launcher:gsub("'", "'\"'\"'") .. "'"
+  assert_true(command_ok(os.execute("chmod +x " .. quoted_launcher)), "packet launcher should be executable")
+  local saved = oracle.config.ganondorf_launcher
+  oracle.config.ganondorf_launcher = launcher
+  local ok, result = pcall(function()
+    local items = oracle.create_triforce_popup_items(build_ctx())
+    local row
+    for _, item in ipairs(items) do
+      if item.name == "oracle.triforce.play.launch_ganondorf" then row = item end
+    end
+    assert_true(row ~= nil, "configured executable packet should add the Ganondorf row")
+    assert_equal(row.label, "Ganondorf test", "row should name the fight")
+    assert_true(row.click_script:find("launch_ganondorf", 1, true) ~= nil, "row should use the private packet action")
+    assert_true(row.click_script:find("BARISTA_GANONDORF_LAUNCHER", 1, true) ~= nil, "row should forward its launcher path")
+    assert_true(row.click_script:find("/tmp/oos-launch-ganondorf.log", 1, true) ~= nil, "launch should have a dedicated log")
+    assert_true(row.click_script:find("popup.drawing=off", 1, true) ~= nil, "launch should close the popup")
+    assert_true(row.click_script:find("oos_play.py", 1, true) == nil, "private packet should stay separate from the Play window")
+  end)
+  oracle.config.ganondorf_launcher = saved
+  assert_true(ok, tostring(result))
+end)
+
+run_test("oracle integration: missing Ganondorf packet omits the optional row", function()
+  local saved = oracle.config.ganondorf_launcher
+  oracle.config.ganondorf_launcher = "/missing/Play Ganondorf.command"
+  local ok, result = pcall(function()
+    for _, item in ipairs(oracle.create_triforce_popup_items(build_ctx())) do
+      assert_true(item.name ~= "oracle.triforce.play.launch_ganondorf", "missing packet should not create a dead menu action")
+    end
+  end)
+  oracle.config.ganondorf_launcher = saved
+  assert_true(ok, tostring(result))
+end)
+
+run_test("oracle integration: play window rows run oos_play.py", function()
+  local items = oracle.create_triforce_popup_items(build_ctx({
+    oracle_status_snapshot = {},
+  }))
+  local by_name = {}
+  for _, item in ipairs(items) do
+    by_name[item.name] = item
+  end
+
+  local status = by_name["oracle.triforce.play.play_status"]
+  local latest = by_name["oracle.triforce.play.play_latest"]
+  local now = by_name["oracle.triforce.play.play_now"]
+  assert_true(status ~= nil and latest ~= nil and now ~= nil, "play window rows should exist")
+  assert_equal(status.label, "—", "status row starts with a placeholder until refresh")
+  assert_equal(latest.label, "Play", "play row label stays short")
+  assert_equal(now.label, "Load now", "load row label stays short")
+  local latest_click = latest.click_script or ""
+  local now_click = now.click_script or ""
+  assert_true(latest_click:find("oos_play.py", 1, true) ~= nil, "Play latest should run oos_play.py")
+  assert_true(latest_click:find("--now", 1, true) == nil, "Play latest should offer, not force-load")
+  assert_true(now_click:find("oos_play.py --now", 1, true) ~= nil, "Load latest now should pass --now")
+  assert_true(latest_click:find("/tmp/oos-play.log", 1, true) ~= nil, "play rows should log to /tmp/oos-play.log")
+  assert_true(by_name["oracle.triforce.play.launch_test"] ~= nil, "the dev row should stay next to the play rows")
+end)
+
+run_test("oracle integration: mesen row falls back to mesen-run without the app", function()
+  local root = make_fixture_root()
+  local mesen_run = root .. "/mesen-run"
+  local mesen_file = io.open(mesen_run, "w")
+  assert_true(mesen_file ~= nil, "mesen fixture should be writable")
+  mesen_file:write("#!/bin/sh\nexit 0\n")
+  mesen_file:close()
+  assert_true(command_ok(os.execute(string.format("chmod +x %q", mesen_run))), "mesen fixture should be executable")
+
+  local model = oracle.build_menu_model(build_ctx({
+    paths = { mesen_run = mesen_run, mesen_app = root .. "/missing/Mesen2 OOS.app" },
+  }))
+  assert_equal(model.state.mesen_action, string.format("%q", mesen_run), "mesen row should run mesen-run when the app is missing")
 end)
 
 run_test("oracle integration: configured anchor label is passed to refresh", function()
@@ -221,6 +312,56 @@ run_test("oracle integration: configured anchor label is passed to refresh", fun
   assert_equal(widget.label.string, "Zelda $(echo unsafe)", "configured label should render before refresh")
   assert_equal(widget.label.drawing, true, "configured label should honor show_label")
   assert_true(widget.click_script:find("BARISTA_TRIFORCE_LABEL_OVERRIDE='Zelda $(echo unsafe)'", 1, true) ~= nil, "async refresh should preserve and quote the configured label")
+end)
+
+run_test("oracle integration: guarded project launcher does not need a global Yaze app", function()
+  local root = make_fixture_root()
+  local launcher = root .. "/Open Oracle.command"
+  local file = assert(io.open(launcher, "w"))
+  file:write("#!/bin/sh\nexit 0\n")
+  file:close()
+  assert_true(command_ok(os.execute(string.format("chmod +x %q", launcher))), "launcher fixture executable")
+  local locator = require("tool_locator")
+  local resolve = locator.resolve_yaze_app
+  locator.resolve_yaze_app = function() return nil, false end
+  local ok, items = pcall(oracle.create_triforce_popup_items, build_ctx({
+    paths = { oracle_project_launcher = launcher },
+  }))
+  locator.resolve_yaze_app = resolve
+  assert_true(ok, "project model should build without global Yaze")
+  local project
+  for _, item in ipairs(items) do
+    if item.name == "oracle.triforce.apps.lyra_project" then project = item end
+  end
+  assert_true(project ~= nil, "guarded project row should exist")
+  assert_equal(project.label, "Edit Oracle Project", "unified project label")
+  assert_true(project.click_script:find("('" .. launcher .. "' >/tmp/oos-open-oracle.log 2>&1 &)", 1, true) ~= nil, "quoted launcher should run asynchronously")
+  assert_nil(project.click_script:find("open -n", 1, true), "no global app invocation")
+  assert_nil(project.click_script:find("--rom_file=", 1, true), "launcher owns project selection")
+  assert_nil(project.click_script:find("--editor=", 1, true), "launcher owns startup editor")
+  assert_true(project.click_script:find("popup.drawing=off", 1, true) ~= nil, "popup should close after dispatch")
+end)
+
+run_test("oracle integration: configured bad project launcher never falls back", function()
+  local root = make_fixture_root()
+  local global_app = root .. "/yaze.app"
+  assert_true(command_ok(os.execute(string.format("mkdir -p %q", global_app))), "global app fixture")
+  local project = root .. "/working.yaze"
+  local descriptor = assert(io.open(project, "w"))
+  descriptor:write("[project]\n")
+  descriptor:close()
+  local plain = root .. "/not-executable.command"
+  local file = assert(io.open(plain, "w"))
+  file:write("not executable\n")
+  file:close()
+  for _, launcher in ipairs({ root .. "/missing.command", plain, false, true }) do
+    local items = oracle.create_triforce_popup_items(build_ctx({
+      paths = { oracle_project_launcher = launcher, lyra_project = project, yaze_app = global_app },
+    }))
+    for _, item in ipairs(items) do
+      assert_true(item.name ~= "oracle.triforce.apps.lyra_project", "bad configured launcher must not select the legacy project")
+    end
+  end
 end)
 
 run_test("oracle integration: triforce popup uses apple-style sections and Oracle launchers", function()
@@ -242,12 +383,23 @@ run_test("oracle integration: triforce popup uses apple-style sections and Oracl
   mesen_file:close()
   assert_true(command_ok(os.execute(string.format("chmod +x %q", mesen_run))), "mesen fixture should be executable")
 
+  local mesen_app = root .. "/Mesen2 OOS.app"
+  assert_true(command_ok(os.execute(string.format("mkdir -p %q", mesen_app))), "mesen app fixture should be created")
+  local lyra_project = root .. "/Oracle-of-Secrets-Working.yaze"
+  local lyra_file = io.open(lyra_project, "w")
+  assert_true(lyra_file ~= nil, "lyra project fixture should be writable")
+  lyra_file:write("[project]\n")
+  lyra_file:close()
+
   local items = oracle.create_triforce_popup_items(build_ctx({
     paths = {
       ghostty_app = ghostty_app,
       yaze_app = yaze_app,
+      lyra_project = lyra_project,
+      oracle_project_launcher = "",
       z3ed = z3ed,
       mesen_run = mesen_run,
+      mesen_app = mesen_app,
     },
   }))
   local by_name = {}
@@ -265,18 +417,15 @@ run_test("oracle integration: triforce popup uses apple-style sections and Oracl
   assert_true(by_name["oracle.triforce.sep.apps"] ~= nil, "section separator should exist")
   assert_true(by_name["oracle.triforce.play.header"].background.drawing == true, "section headers should draw a background like the apple menu")
   assert_equal(by_name["oracle.triforce.play.header"].background.height, 25, "section header height should follow menu_style")
-  local stable = by_name["oracle.triforce.play.launch_stable"]
   local test = by_name["oracle.triforce.play.launch_test"]
-  assert_true(stable ~= nil, "stable launch row should exist")
-  assert_equal(stable.background.height, 23, "action rows should use menu item height")
-  assert_equal(stable.label, "Launch oos168x.sfc", "stable launch row should name the patched ROM")
-  assert_true(stable.click_script:find("./Scripts/Build/oos-triforce.sh launch stable", 1, true) ~= nil, "stable row should launch through the Oracle runner")
-  assert_true(stable.click_script:find(">/tmp/oos-launch-stable.log 2>&1 &", 1, true) ~= nil, "stable launch should run in the background with a log")
-  assert_true(stable.hover == true, "popup actions should opt into hover treatment")
-  assert_true(stable.click_script:find("popup%.drawing=off", 1, false) ~= nil, "popup actions should close the triforce popup after firing")
-  assert_true(test ~= nil, "test launch row should exist")
-  assert_equal(test.label, "Launch oos168x.sfc (test)", "test launch row should mark the test build")
-  assert_true(test.click_script:find("./Scripts/Build/oos-triforce.sh launch test", 1, true) ~= nil, "test row should launch the newest test build")
+  assert_nil(by_name["oracle.triforce.play.launch_stable"], "stale stable launch row should be gone")
+  assert_true(test ~= nil, "dev launch row should exist")
+  assert_equal(test.background.height, 23, "action rows should use menu item height")
+  assert_true(test.label:find("^Dev ") ~= nil, "dev launch row should be marked Dev")
+  assert_true(test.click_script:find("./Scripts/Build/oos-triforce.sh launch test", 1, true) ~= nil, "dev row should launch the newest test build")
+  assert_true(test.click_script:find(">/tmp/oos-launch-test.log 2>&1 &", 1, true) ~= nil, "dev launch should run in the background with a log")
+  assert_true(test.hover == true, "popup actions should opt into hover treatment")
+  assert_true(test.click_script:find("popup%.drawing=off", 1, false) ~= nil, "popup actions should close the triforce popup after firing")
   assert_nil(by_name["oracle.triforce.play.continue"], "continue row should be gone")
   assert_nil(by_name["oracle.triforce.play.patch_continue"], "patch + launch row should be gone")
   assert_nil(by_name["oracle.triforce.play.verify"], "verify row should not be in the shallow popup")
@@ -295,7 +444,14 @@ run_test("oracle integration: triforce popup uses apple-style sections and Oracl
   assert_true(by_name["oracle.triforce.apps.mesen_oos"] ~= nil, "mesen row should exist in the apps section")
   assert_equal(by_name["oracle.triforce.apps.mesen_oos"].label, "Mesen2 OoS", "mesen row should use the app label")
   assert_equal(by_name["oracle.triforce.apps.mesen_oos"].icon.color, "0xfff38ba8", "mesen row should keep the apple-menu icon color")
+  assert_true(by_name["oracle.triforce.apps.mesen_oos"].click_script:find("open \"" .. mesen_app .. "\"", 1, true) ~= nil, "mesen row should open the app bundle the launcher uses")
   assert_true(by_name["oracle.triforce.apps.yaze"].hover == true, "launcher rows should use apple-style hover behavior")
+  local lyra = by_name["oracle.triforce.apps.lyra_project"]
+  assert_true(lyra ~= nil, "Edit Lyra Sea row should exist in the apps section")
+  assert_equal(lyra.label, "Edit Lyra Sea", "lyra row should use its label")
+  assert_true(lyra.click_script:find("open -n -a \"" .. yaze_app .. "\"", 1, true) ~= nil, "lyra row should open the resolved yaze app")
+  assert_true(lyra.click_script:find("--rom_file=\"" .. lyra_project .. "\"", 1, true) ~= nil, "lyra row should pass the working project")
+  assert_true(lyra.click_script:find("--editor=Overworld --map=160", 1, true) ~= nil, "lyra row should open the first Lyra Sea map")
   assert_nil(by_name["oracle.triforce.tools"], "tools submenu should be gone")
   assert_nil(by_name["oracle.triforce.queue"], "queue submenu should be gone")
   assert_nil(by_name["oracle.triforce.sessions"], "sessions submenu should be gone")

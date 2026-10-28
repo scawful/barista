@@ -270,6 +270,17 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   that line. Both skip `.git`, and skip what `.gitignore` ignores unless
   hidden files are shown (⇧⌘.); results stop at 1000. Escape clears the
   search; ⌘R (or Show in Enclosing Folder) shows a result in its folder.
+- The sidebar's Storage section lists mounted volumes with a usage bar
+  (orange past 75 % used, red past 90 %) and free space as Finder counts
+  it, purgeable space included; it reloads on mount and unmount and at
+  most every 10 seconds otherwise. Right-click a volume for Show Largest
+  Folders (in Home, for the startup volume), Get Info, or Eject. Calculate
+  Sizes in the status bar (or Calculate All Sizes on the empty-space menu)
+  walks each shown folder in the background, one at a time, and keeps
+  going as you sort: folders get a size, Size sorting ranks them, the
+  Size column draws a bar against the largest, and the status bar adds
+  the folder's total. Leaving the folder stops the walk; the setting stays
+  on for the next one. The status bar also shows the volume's free space.
 - ⌘I (or Get Info on either right-click menu) shows kind, size (a folder's
   is measured in the background and stops when the sheet closes), where,
   created and modified dates, permissions, a symlink's target, and the last

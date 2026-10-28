@@ -99,8 +99,9 @@ struct FileEntry: Identifiable, Equatable {
   /// A folder you browse into; packages such as apps open instead.
   let isFolder: Bool
   let modified: Date
-  /// Nil for folders, whose size would mean walking them.
-  let size: Int64?
+  /// Nil for folders, whose size means walking them, until Calculate All
+  /// Sizes measures them.
+  var size: Int64?
   let kind: String
   /// A contents search's first match in the file: its line number and text.
   var line: Int?

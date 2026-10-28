@@ -177,6 +177,15 @@ final class BrowserState: ObservableObject {
   @Published var showBoard = true
   /// The task or page the board's preview shows.
   @Published private(set) var picked: FileEntry?
+  /// Finder's Calculate All Sizes: folders get their size, so sorting by
+  /// size ranks what's taking the space.
+  @Published var measuringSizes = false { didSet { if measuringSizes != oldValue { measureSizes() } } }
+  /// Folders still being measured.
+  @Published private(set) var sizesPending = 0
+  /// The biggest shown size, which the size bars are drawn against.
+  @Published private(set) var largestSize: Int64 = 0
+  /// Free space on the shown folder's volume.
+  @Published private(set) var available: Int64?
   /// Icons per row in the icon view, for the up and down arrows.
   var gridColumns = 1
   @Published private(set) var shown: [FileEntry] = []
@@ -213,6 +222,11 @@ final class BrowserState: ObservableObject {
   private var searchWork: DispatchWorkItem?
   /// Where a shift-click's range starts in the icon view.
   private var anchor: URL?
+  /// Folder sizes by path, for the folder they were measured in.
+  private var measured: [String: Int64] = [:]
+  private var measuredIn: String?
+  private var measuring: Set<String> = []
+  private var sizeRuns: [SizeRun] = []
 
   init(location: URL, selecting: URL? = nil) {
     tabs = BrowserTabs(location)
@@ -235,6 +249,12 @@ final class BrowserState: ObservableObject {
       worktrees = []
     }
     if let context = contextRoot, !folder.isWithin(context.deletingLastPathComponent()) { contextRoot = nil }
+    if measuredIn != folder.path {
+      stopMeasuring()
+      measured = [:]
+      measuredIn = folder.path
+    }
+    VolumeMonitor.shared.refresh()
     watcher = FileWatcher(url: folder) { [weak self] in self?.scheduleReload() }
     if isDeepSearch { search() }
     DispatchQueue.global(qos: .userInitiated).async {
@@ -242,17 +262,20 @@ final class BrowserState: ObservableObject {
       let workspace = Workspace.load(folder)
       DispatchQueue.main.async { [weak self] in
         guard let self, self.generation == token else { return }
-        self.entries = listing
+        self.entries = listing.map { $0.map(self.withMeasuredSize) }
         self.refreshShown()
         self.show(workspace)
+        if self.measuringSizes { self.measureSizes() }
         // Search results are the rows then; their own run settles the selection.
         if !self.isDeepSearch { self.settleSelection() }
       }
       // After the listing is shown: git should never hold it up.
       let inspected = Git.inspect(folder)
       let context = AFSContext.find(from: folder)
+      let available = Volume.available(at: folder)
       DispatchQueue.main.async { [weak self] in
         guard let self, self.generation == token else { return }
+        if self.available != available { self.available = available }
         if self.contextRoot != context { self.contextRoot = context }
         if self.git != inspected?.status { self.git = inspected?.status }
         if self.worktrees != inspected?.worktrees ?? [] { self.worktrees = inspected?.worktrees ?? [] }
@@ -343,6 +366,65 @@ final class BrowserState: ObservableObject {
   private func refreshShown() {
     shown = FileListing.sorted(results ?? FileListing.filtered(entries ?? [], query: query),
                                by: sortKey, ascending: ascending)
+    largestSize = shown.compactMap(\.size).max() ?? 0
+  }
+
+  private func withMeasuredSize(_ entry: FileEntry) -> FileEntry {
+    guard entry.isFolder else { return entry }
+    var sized = entry
+    sized.size = measured[entry.url.path]
+    return sized
+  }
+
+  /// Measures the shown folders not yet measured, one after another; a
+  /// reload while that runs adds only what's new.
+  private func measureSizes() {
+    guard measuringSizes else {
+      stopMeasuring()
+      entries = entries?.map { entry in
+        var unsized = entry
+        if entry.isFolder { unsized.size = nil }
+        return unsized
+      }
+      refreshShown()
+      return
+    }
+    let folders = (entries ?? []).filter(\.isFolder).map(\.url.path)
+      .filter { measured[$0] == nil && !measuring.contains($0) }
+    guard !folders.isEmpty else { return }
+    measuring.formUnion(folders)
+    sizesPending = measuring.count
+    let run = SizeRun()
+    sizeRuns.append(run)
+    DispatchQueue.global(qos: .utility).async {
+      for path in folders {
+        guard let size = FolderSize.measure([URL(fileURLWithPath: path)], cancelled: { run.cancelled }) else { return }
+        DispatchQueue.main.async { [weak self] in self?.record(path, bytes: size.bytes) }
+      }
+    }
+  }
+
+  private func record(_ path: String, bytes: Int64) {
+    guard measuring.remove(path) != nil else { return }
+    measured[path] = bytes
+    sizesPending = measuring.count
+    entries = entries?.map(withMeasuredSize)
+    refreshShown()
+  }
+
+  private func stopMeasuring() {
+    sizeRuns.forEach { $0.cancel() }
+    sizeRuns = []
+    measuring = []
+    sizesPending = 0
+  }
+
+  /// The biggest folders first, as a disk-usage tool shows them.
+  func showLargest(in folder: URL) {
+    go(to: folder)
+    sortKey = .size
+    ascending = false
+    measuringSizes = true
   }
 
   func go(to url: URL, selecting: URL? = nil) {
@@ -695,6 +777,7 @@ final class BrowserState: ObservableObject {
 
 struct BrowserView: View {
   @ObservedObject var state: BrowserState
+  @ObservedObject private var volumes = VolumeMonitor.shared
   @FocusState private var searchFocused: Bool
 
   var body: some View {
@@ -828,6 +911,11 @@ struct BrowserView: View {
           ForEach(dock, id: \.url) { place in placeRow(place) }
         }
       }
+      if !volumes.volumes.isEmpty {
+        Section("Storage") {
+          ForEach(volumes.volumes) { volume in volumeRow(volume) }
+        }
+      }
       // Last, so entering or leaving a repo never moves the places above.
       if let git = state.git {
         Section("Repository") {
@@ -871,6 +959,39 @@ struct BrowserView: View {
     .contextMenu { RepoMenu(root: git.root, branch: git.branch) }
   }
 
+  private func volumeRow(_ volume: Volume) -> some View {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    // The startup volume's own folders are mostly the system's; Home is where yours are.
+    let largest = volume.url.path == "/" ? home : volume.url
+    return VStack(alignment: .leading, spacing: 3) {
+      Label {
+        Text(volume.name)
+      } icon: {
+        Image(nsImage: NSWorkspace.shared.icon(forFile: volume.url.path)).resizable().frame(width: 16, height: 16)
+      }
+      .fontWeight(state.location.path == volume.url.standardizedFileURL.path ? .semibold : .regular)
+      ProgressView(value: volume.fraction)
+        .controlSize(.small)
+        .tint(volume.fraction > 0.9 ? .red : volume.fraction > 0.75 ? .orange : .accentColor)
+      Text("\(Self.bytes(volume.available)) free")
+        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+    }
+    .help("\(Self.bytes(volume.used)) of \(Self.bytes(volume.total)) used; right-click to find the largest folders")
+    .contentShape(Rectangle())
+    .onTapGesture { state.go(to: volume.url) }
+    .contextMenu {
+      Button(volume.url.path == "/" ? "Show Largest Folders in Home" : "Show Largest Folders") {
+        state.showLargest(in: largest)
+      }
+      Button("Get Info") { state.inspecting = [volume.url] }
+      if volume.ejectable {
+        Button("Eject") { VolumeMonitor.eject(volume) { state.problem = $0 } }
+      }
+    }
+  }
+
+  static func bytes(_ count: Int64) -> String { ByteCountFormatter.string(fromByteCount: count, countStyle: .file) }
+
   private func placeRow(_ place: (name: String, url: URL)) -> some View {
     Label {
       Text(place.name)
@@ -911,9 +1032,22 @@ struct BrowserView: View {
         let noun = state.isDeepSearch ? "result" : "item"
         Text("\(count) \(noun)\(count == 1 ? "" : "s")"
              + (state.selection.isEmpty ? "" : ", \(state.selection.count) selected"))
+        if state.measuringSizes && state.sizesPending == 0 {
+          Text("· \(Self.bytes(state.shown.compactMap(\.size).reduce(0, +))) in all")
+        }
       }
       if state.hidden { Text("· hidden files shown") }
       Spacer()
+      if state.sizesPending > 0 {
+        ProgressView().controlSize(.mini)
+        Text("measuring \(state.sizesPending) folder\(state.sizesPending == 1 ? "" : "s")")
+      }
+      if !state.boardShown {
+        Button(state.measuringSizes ? "Hide Folder Sizes" : "Calculate Sizes") { state.measuringSizes.toggle() }
+          .buttonStyle(.borderless).font(.caption)
+          .help("Measures every folder shown, so sorting by Size ranks what takes the space")
+      }
+      if let available = state.available { Text("\(Self.bytes(available)) available") }
     }
     .font(.caption)
     .foregroundStyle(.secondary)
@@ -1026,6 +1160,15 @@ private struct FileTable: View {
       TableColumn("Size", value: \.sortableSize) { entry in
         Text(entry.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "--")
           .foregroundStyle(.secondary)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(alignment: .leading) {
+            if state.measuringSizes, let size = entry.size, state.largestSize > 0 {
+              GeometryReader { geometry in
+                RoundedRectangle(cornerRadius: 2).fill(Color.accentColor.opacity(0.25))
+                  .frame(width: geometry.size.width * CGFloat(size) / CGFloat(state.largestSize))
+              }
+            }
+          }
       }
       .width(min: 50, ideal: 70)
       TableColumn("Kind", value: \.kind) { entry in
@@ -1125,6 +1268,7 @@ struct EntryMenu: View {
     Picker("Sort By", selection: $state.sortKey) {
       ForEach(FileSortKey.allCases) { Text($0.title).tag($0) }
     }
+    Toggle("Calculate All Sizes", isOn: $state.measuringSizes)
     Divider()
     ToolButtons(urls: [state.location], directory: state.location)
     Divider()

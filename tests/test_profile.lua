@@ -104,6 +104,17 @@ run_test("merge_config: widgets merge (only nil keys)", function()
   assert_equal(result.widgets.battery, true, "new widget set")
 end)
 
+run_test("merge_config: state defaults do not shadow profile widgets", function()
+  local state = require("state")
+  for _, name in ipairs({ "minimal", "cozy", "work", "personal" }) do
+    local selected = require("profiles." .. name)
+    local result = profile.merge_config(state.normalize({}), selected)
+    for key, value in pairs(selected.widgets or {}) do
+      assert_equal(result.widgets[key], value, name .. " widgets." .. key)
+    end
+  end
+end)
+
 run_test("merge_config: modes merge (auto overridden)", function()
   local base = { modes = { window_manager = "auto" } }
   local prof = { modes = { window_manager = "disabled" } }

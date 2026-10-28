@@ -8,7 +8,9 @@ _d="${0%/*}"
 [ -z "$_d" ] && _d="."
 [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
 
-NAME="${NAME:-lmstudio}"
+# The Local Models submenu row inside the agents popup; click scripts run with
+# NAME set to the clicked row, so the target is fixed.
+ROW="${BARISTA_LMSTUDIO_ROW:-lmstudio}"
 ACTION="${1:-refresh}"
 CONTROL_SCRIPT="${SCRIPTS_DIR}/lmstudio_control.sh"
 SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-${SKETCHYBAR_BIN:-}}"
@@ -67,45 +69,6 @@ current_model_deeplink() {
   printf 'lmstudio://open_from_hf?model=%s' "$encoded"
 }
 
-model_short_name() {
-  local identifier="$1"
-  case "$identifier" in
-    *"scawfulbot-qwen3-8b-v1-mlx-long"*) printf '%s' "long" ;;
-    *"scawfulbot-qwen3-8b-v1-mlx"*) printf '%s' "mlx" ;;
-    *"scawful@q4_k_m"*|*"scawfulbot-qwen3-8b-v1-q4_k_m"*) printf '%s' "gguf" ;;
-    *"scawful-echo-mlx"*|*"echo-v1"*) printf '%s' "echo" ;;
-    *"scawful-echo.gguf"*|*"scawful-echo"*) printf '%s' "echo" ;;
-    *"oracle-tools-7b"*) printf '%s' "oracle" ;;
-    *"scawful-memory"*) printf '%s' "memory" ;;
-    *"scawful-muse"*) printf '%s' "muse" ;;
-    *"router-v1-q8"*) printf '%s' "router" ;;
-    *"qwen2.5-coder-7b"*) printf '%s' "coder" ;;
-    *"zelda-nayru"*) printf '%s' "nayru" ;;
-    *"zelda-din"*) printf '%s' "din" ;;
-    *"zelda-farore"*) printf '%s' "farore" ;;
-    *"zelda-veran"*) printf '%s' "veran" ;;
-    *"zelda-hylia"*) printf '%s' "hylia" ;;
-    *"zelda-majora"*) printf '%s' "majora" ;;
-    *"zelda-scribe"*) printf '%s' "scribe" ;;
-    *)
-      local base="${identifier##*/}"
-      base="${base%.gguf}"
-      base="${base%.safetensors}"
-      base="${base%.bin}"
-      base="${base#gguf-}"
-      base="${base#mlx-}"
-      base="${base#scawful-}"
-      base="${base#zelda-}"
-      base="${base%%-*}"
-      if [[ -z "$base" ]]; then
-        printf '%s' "model"
-      else
-        printf '%s' "${base:0:6}"
-      fi
-      ;;
-  esac
-}
-
 model_long_name() {
   local identifier="$1"
   case "$identifier" in
@@ -150,52 +113,32 @@ model_color() {
   esac
 }
 
-join_by() {
-  local delimiter="$1"
-  shift
-  local first=1
-  local value
-  for value in "$@"; do
-    if [[ $first -eq 1 ]]; then
-      printf '%s' "$value"
-      first=0
-    else
-      printf '%s%s' "$delimiter" "$value"
-    fi
-  done
-}
-
 update_widget() {
-  local label="$1"
-  local icon_color="$2"
-  local state_label="$3"
+  local icon_color="$1"
+  local state_label="$2"
 
-  "$SKETCHYBAR_BIN" --set "$NAME" \
-    icon="󰭻" \
-    icon.color="$icon_color" \
-    label="$label" \
-    label.color="0xffcdd6f4" >/dev/null 2>&1 || true
+  "$SKETCHYBAR_BIN" --set "$ROW" icon.color="$icon_color" >/dev/null 2>&1 || true
 
   set_popup_item "lmstudio.state" "label=$state_label" "icon.color=$icon_color"
 }
 
 refresh_status() {
   if ! command -v lms >/dev/null 2>&1; then
-    update_widget "n/a" "0xfff38ba8" "LM Studio CLI unavailable"
+    update_widget "0xfff38ba8" "No LM Studio CLI"
     return 0
   fi
 
   local json
   json="$(loaded_models_json)"
   if [[ -z "$json" ]]; then
-    update_widget "err" "0xfff38ba8" "LM Studio service unavailable"
+    update_widget "0xfff38ba8" "LM Studio down"
     return 0
   fi
 
   local count
   count="$(printf '%s' "$json" | jq 'length' 2>/dev/null || printf '0')"
   if [[ "$count" == "0" ]]; then
-    update_widget "off" "0xff6c7086" "No models loaded"
+    update_widget "0xff6c7086" "None loaded"
     return 0
   fi
 
@@ -206,31 +149,17 @@ refresh_status() {
   done < <(loaded_identifiers "$json")
 
   if [[ "${#identifiers[@]}" -eq 0 ]]; then
-    update_widget "on" "0xff94e2d5" "Loaded: model"
+    update_widget "0xff94e2d5" "Loaded"
     return 0
   fi
 
   local primary="${identifiers[0]}"
-  local primary_short primary_long color
-  primary_short="$(model_short_name "$primary")"
-  primary_long="$(model_long_name "$primary")"
-  color="$(model_color "$primary")"
-
-  if [[ "${#identifiers[@]}" -eq 1 ]]; then
-    update_widget "$primary_short" "$color" "Loaded: $primary_long"
-    return 0
+  local label
+  label="$(model_long_name "$primary")"
+  if [[ "${#identifiers[@]}" -gt 1 ]]; then
+    label="$label +$(( ${#identifiers[@]} - 1 ))"
   fi
-
-  local -a long_names=()
-  for line in "${identifiers[@]}"; do
-    long_names+=("$(model_long_name "$line")")
-  done
-
-  local short_bar="$primary_short"
-  if [[ "${#short_bar}" -gt 6 ]]; then
-    short_bar="${short_bar:0:6}"
-  fi
-  update_widget "${short_bar}+" "$color" "Loaded (${#identifiers[@]}): $(join_by ', ' "${long_names[@]}")"
+  update_widget "$(model_color "$primary")" "$label"
 }
 
 open_current() {
@@ -260,50 +189,22 @@ open_current() {
 
   open -ga "LM Studio" >/dev/null 2>&1 || true
   osascript -e 'tell application "LM Studio" to activate' >/dev/null 2>&1 || true
-
-  local label
-  if [[ "${#identifiers[@]}" -eq 1 ]]; then
-    label="$(model_long_name "${identifiers[0]}")"
-  else
-    local -a names=()
-    for line in "${identifiers[@]}"; do
-      names+=("$(model_long_name "$line")")
-    done
-    label="$(join_by ', ' "${names[@]}")"
-  fi
-
-  set_popup_item "lmstudio.state" "label=Loaded: $label"
+  refresh_status
 }
 
 run_action_async() {
   local mode="$1"
   if [[ ! -x "$CONTROL_SCRIPT" ]]; then
-    update_widget "err" "0xfff38ba8" "LM Studio control script missing"
+    update_widget "0xfff38ba8" "Control script missing"
     return 1
   fi
 
-  update_widget "..." "0xfff9e2af" "Switching model..."
+  update_widget "0xfff9e2af" "Switching…"
   (
     "$CONTROL_SCRIPT" "$mode" >/tmp/barista-lmstudio-control.log 2>&1 || true
     "$0" refresh >/dev/null 2>&1 || true
   ) >/dev/null 2>&1 &
 }
-
-case "${SENDER:-}" in
-  mouse.entered)
-    highlight_with_timeout "$NAME" "background.drawing=on background.color=$HIGHLIGHT" "background.drawing=off"
-    exit 0
-    ;;
-  mouse.exited)
-    clear_highlight "$NAME" "background.drawing=off"
-    exit 0
-    ;;
-  mouse.exited.global)
-    "$SKETCHYBAR_BIN" --set "$NAME" popup.drawing=off >/dev/null 2>&1 || true
-    clear_highlight "$NAME" "background.drawing=off"
-    exit 0
-    ;;
-esac
 
 case "$ACTION" in
   refresh|"")

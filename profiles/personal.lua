@@ -54,7 +54,7 @@ profile.appearance = {
 
 -- Widget configuration
 profile.widgets = {
-  lmstudio = true,
+  agents = true,          -- Codex/Claude/Cursor/Gemini sessions, usage, local models
   afs_approvals = true,   -- badge for pending AFS agent-gate approvals (hidden when 0)
   clock = true,
   battery = true,

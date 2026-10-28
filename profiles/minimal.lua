@@ -45,7 +45,7 @@ profile.appearance = {
 
 -- Widget configuration (all enabled)
 profile.widgets = {
-  lmstudio = false,
+  agents = false,
   afs_approvals = false,
   clock = true,
   battery = true,

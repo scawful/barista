@@ -314,7 +314,8 @@ def apply_basic_variant_state(state: dict[str, Any], variant: str, payload: dict
         toggles[key] = value
 
     widgets = ensure_dict(state, "widgets")
-    widgets["lmstudio"] = variant == "personal"
+    widgets.pop("lmstudio", None)
+    widgets["agents"] = variant == "personal"
 
     machine = ensure_dict(state, "machine")
     machine["profile_variant"] = payload["profile_variant"]

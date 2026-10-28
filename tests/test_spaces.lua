@@ -110,3 +110,18 @@ run_test("spaces: Lua-only refresh paths disable compiled helpers", function()
   )
   end)
 end)
+
+run_test("spaces: display-scoped widgets cover every space SketchyBar can mask", function()
+  local yabai_queried = false
+  local manager = spaces.create("/tmp/config", "/tmp/plugins", "/opt/homebrew/bin/sketchybar", "/custom/bin/yabai",
+    function() end, function() yabai_queried = true; return true end, false, "/dev/null")
+  local list = manager.get_associated_spaces()
+  local indexes = {}
+  for index in list:gmatch("%d+") do
+    table.insert(indexes, tonumber(index))
+  end
+  assert_equal(#indexes, 31, "the list should name spaces 1-31, including ones created after load")
+  assert_equal(indexes[1], 1, "the list should start at space 1")
+  assert_equal(indexes[31], 31, "space 31 is the last bit of SketchyBar's 32-bit mask")
+  assert_true(not yabai_queried, "the list should not depend on the spaces live at load")
+end)

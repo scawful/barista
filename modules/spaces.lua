@@ -78,70 +78,15 @@ local function create(CONFIG_DIR, PLUGIN_DIR, SKETCHYBAR_BIN, YABAI_BIN, shell_e
     return normalize_display_ids(result, "index")
   end
 
+  -- SketchyBar ignores associated_space=all once ignore_association is off, and
+  -- stores the list as a 32-bit mask (1 << index). Name every index it can hold
+  -- so display-scoped widgets also appear on spaces created after the bar loads.
   local function get_associated_spaces()
-    local function parse_space_indexes(cmd)
-      local handle = io.popen(cmd)
-      if not handle then
-        return nil
-      end
-      local output = handle:read("*a") or ""
-      handle:close()
-      if output == "" then
-        return nil
-      end
-      local ok_json, json = pcall(require, "json")
-      if not ok_json or type(json.decode) ~= "function" then
-        return nil
-      end
-      local ok, decoded = pcall(json.decode, output)
-      if not ok or type(decoded) ~= "table" then
-        return nil
-      end
-      local ids = {}
-      local seen = {}
-      for _, entry in ipairs(decoded) do
-        local index = nil
-        if type(entry) == "table" then
-          index = tonumber(entry.index or entry["arrangement-id"] or entry.id)
-        elseif type(entry) == "number" then
-          index = entry
-        end
-        if index and index > 0 and index == math.floor(index) and not seen[index] then
-          seen[index] = true
-          table.insert(ids, index)
-        end
-      end
-      if #ids == 0 then
-        return nil
-      end
-      table.sort(ids)
-      local parts = {}
-      for _, id in ipairs(ids) do
-        table.insert(parts, tostring(id))
-      end
-      return table.concat(parts, ",")
+    local parts = {}
+    for index = 1, 31 do
+      parts[index] = tostring(index)
     end
-
-    if yabai_available() and YABAI_BIN then
-      local list = parse_space_indexes(
-        string.format("%q -m query --spaces 2>/dev/null", YABAI_BIN)
-      )
-      if list then
-        return list
-      end
-    end
-
-    local list = parse_space_indexes(
-      string.format("%q --query spaces 2>/dev/null", SKETCHYBAR_BIN)
-    )
-    if list then
-      return list
-    end
-
-    -- SketchyBar treats associated_space=all as a no-op once ignore_association
-    -- is off; fall back to a generous explicit range so display-scoped widgets
-    -- still appear on every space of their target monitor.
-    return "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16"
+    return table.concat(parts, ",")
   end
 
   local function get_associated_displays()

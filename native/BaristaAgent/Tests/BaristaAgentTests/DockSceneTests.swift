@@ -58,6 +58,18 @@ final class DockSceneTests: XCTestCase {
     XCTAssertEqual(scene.frame.hoveredID, "b")
   }
 
+  func testCalloutAnchorFollowsTheTileAsDrawn() {
+    let scene = revealed()
+    let rest = rect(scene, "b")
+    XCTAssertEqual(scene.anchor(of: "b"), CGPoint(x: rest.midX, y: min(rest.minY, scene.frame.bar.minY) - 2))
+    scene.setPointer(CGPoint(x: rest.midX, y: rest.midY))
+    run(scene, seconds: 0.5)
+    let grown = rect(scene, "b")
+    XCTAssertEqual(scene.anchor(of: "b"), CGPoint(x: grown.midX, y: grown.minY - 2),
+                   "a magnified tile rises above the bar, and so does its callout")
+    XCTAssertNil(scene.anchor(of: "missing"))
+  }
+
   func testDragReordersCommitsAndLowersThePanelAfterLanding() {
     let scene = revealed()
     var lifts: [Bool] = []

@@ -172,8 +172,11 @@ final class DockStore: ObservableObject {
     [pinned, running, others + (trash.map { [$0] } ?? [])]
   }
 
-  /// Every drawable tile by ID, including the members of open groups.
-  var tilesByID: [String: DockTile] {
+  /// Every drawable tile by ID, including the members of open groups. The
+  /// dock reads it every frame, so `refresh` builds it when the tiles change.
+  private(set) var tilesByID: [String: DockTile] = [:]
+
+  private func indexTiles() {
     var tiles: [String: DockTile] = [:]
     for tile in sections.joined() {
       tiles[tile.id] = tiles[tile.id] ?? tile
@@ -181,7 +184,7 @@ final class DockStore: ObservableObject {
         for child in tile.visibleChildren { tiles[child.id] = tiles[child.id] ?? child }
       }
     }
-    return tiles
+    tilesByID = tiles
   }
 
   /// Runs on every reveal; rereads the config and theme only when their files changed.
@@ -399,11 +402,14 @@ final class DockStore: ObservableObject {
       return space?.matches(group.item.spaces ?? []) ?? false
     }.map(\.id))
 
+    let changed = pinned != self.pinned || running != self.running || others != self.others
+      || trash != self.trash || expanded != self.expanded
     if pinned != self.pinned { self.pinned = pinned }
     if running != self.running { self.running = running }
     if others != self.others { self.others = others }
     if trash != self.trash { self.trash = trash }
     if expanded != self.expanded { self.expanded = expanded }
+    if changed { indexTiles() }
   }
 
   /// Closing the last window of a menu bar app (LM Studio, Docker) turns it

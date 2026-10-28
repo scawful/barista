@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 final class DockActions {
-  var activate: (DockTile, CGPoint) -> Void = { _, _ in }
+  var activate: (DockTile) -> Void = { _ in }
   var useNativeDock: () -> Void = {}
 }
 
@@ -147,7 +147,7 @@ final class DockController {
     clock = FrameClock(view: host) { [weak self] now in self?.scene.step(now: now) ?? false }
 
     actions.useNativeDock = onUseNativeDock
-    actions.activate = { [weak self] tile, anchor in self?.activate(tile, anchor: anchor) }
+    actions.activate = { [weak self] tile in self?.activate(tile) }
     host.onPointer = { [weak self] point in self?.pointerChanged(point) }
     scene.requestFrame = { [weak self] in self?.clock?.start() }
     scene.onLiftChange = { [weak self] _ in
@@ -271,7 +271,7 @@ final class DockController {
     })
   }
 
-  private func activate(_ tile: DockTile, anchor: CGPoint) {
+  private func activate(_ tile: DockTile) {
     let opensPopover = [.group, .shelf, .controls].contains(tile.item.kind)
       || (tile.item.kind == .folder && tile.section != .trash)
     guard opensPopover else {
@@ -281,7 +281,7 @@ final class DockController {
     }
     let wasOpen = scene.openPopoverID == tile.id
     popover.close()
-    guard !wasOpen, let screen else { return }
+    guard !wasOpen, let screen, let anchor = scene.anchor(of: tile.id) else { return }
     let point = screenPoint(anchor)
     let onClose = popoverClosed
     card.hide()

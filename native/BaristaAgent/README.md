@@ -140,6 +140,13 @@ Workspace icons carry many representations and would otherwise be redrawn at
 each new size. The cache key covers the tile, its icon spec, its path, the
 pixel size, and the Trash's full or empty state, so it never needs flushing.
 
+`DockView` redraws every frame while the dock moves, but each tile is an
+Equatable `DockTileView` holding only what it draws (the cached bitmap, its
+size, badge, and state). A frame that only moves a tile skips its body, and
+callout anchors are read from the scene on click rather than baked into the
+tile. `DockStore.tilesByID` is built when `refresh` changes the tiles, not
+per frame.
+
 ## Popovers
 
 `PopoverController` sizes the callout once with a centered arrow, clamps it
@@ -147,7 +154,10 @@ to the screen, and renders it again with the arrow over the tile. It appears
 through a Core Animation spring and fade on the host layer, which runs on the
 render server and stays smooth while SwiftUI lays out the cells. SwiftUI
 hover does not work in windows of an app that is never active, so cells
-hit-test `PopoverPointer` instead.
+hit-test `PopoverPointer` instead. It reaches them as a plain environment
+value, and each `PointerHover` keeps its own hovered state, so a mouse move
+redraws only the cells it enters or leaves. Observing the pointer redrew
+every cell on every move.
 
 ## Testing live
 

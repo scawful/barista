@@ -77,8 +77,21 @@ func copyText(_ text: String) {
 
 /// Pointer position inside a popover. SwiftUI hover is unreliable in windows
 /// of an app that is never active, so cells test this against their frames.
-final class PopoverPointer: ObservableObject {
+/// It reaches them as a plain environment value: observing it would redraw
+/// every cell on every mouse move.
+final class PopoverPointer {
   @Published var location: CGPoint?
+}
+
+private struct PopoverPointerKey: EnvironmentKey {
+  static let defaultValue = PopoverPointer()
+}
+
+extension EnvironmentValues {
+  var popoverPointer: PopoverPointer {
+    get { self[PopoverPointerKey.self] }
+    set { self[PopoverPointerKey.self] = newValue }
+  }
 }
 
 /// One callout at a time above a dock tile: a folder's contents, the shelf,
@@ -473,12 +486,12 @@ final class PopoverController {
   private func present<Content: View>(animated: Bool, content: @escaping (CGFloat?) -> Content) {
     guard let (anchor, screen) = placement else { return }
     let pointer = PopoverPointer()
-    let host = DockHostingView(rootView: AnyView(content(nil).environmentObject(pointer)))
+    let host = DockHostingView(rootView: AnyView(content(nil).environment(\.popoverPointer, pointer)))
     host.onPointer = { pointer.location = $0 }
     let size = host.fittingSize
     let bounds = screen.frame
     let x = min(max(anchor.x - size.width / 2, bounds.minX), bounds.maxX - size.width).rounded()
-    host.rootView = AnyView(content(anchor.x - x - Self.shadowRoom).environmentObject(pointer))
+    host.rootView = AnyView(content(anchor.x - x - Self.shadowRoom).environment(\.popoverPointer, pointer))
     host.wantsLayer = true
     let frame = NSRect(x: x, y: (anchor.y + 2 - Self.shadowRoom).rounded(), width: size.width, height: size.height)
     show(host, frame: frame)
@@ -641,15 +654,27 @@ struct CalloutTitle<Icon: View>: View {
   }
 }
 
-/// True while the popover pointer is over this view.
+/// True while the popover pointer is over this view. A mouse move redraws
+/// only the views it enters or leaves.
 struct PointerHover<Content: View>: View {
-  @EnvironmentObject private var pointer: PopoverPointer
+  @Environment(\.popoverPointer) private var pointer
   @ViewBuilder let content: (Bool) -> Content
+  @State private var hovered = false
+  @State private var frame = CGRect.null
 
   var body: some View {
-    GeometryReader { proxy in
-      content(pointer.location.map { proxy.frame(in: .global).contains($0) } ?? false)
-    }
+    content(hovered)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
+        frame = rect
+        update(pointer.location)
+      }
+      .onReceive(pointer.$location, perform: update)
+  }
+
+  private func update(_ location: CGPoint?) {
+    let inside = location.map(frame.contains) ?? false
+    if inside != hovered { hovered = inside }
   }
 }
 

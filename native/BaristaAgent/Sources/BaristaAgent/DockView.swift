@@ -31,7 +31,7 @@ struct DockView: View {
             .position(x: item.rect.midX, y: item.rect.midY)
         case .tile(let id):
           if let tile = tiles[id] {
-            tileView(tile, rect: item.rect, frame: frame)
+            tileView(tile, size: item.rect.size, frame: frame)
               .modifier(rise)
               .position(x: item.rect.midX, y: item.rect.midY)
               .zIndex(id == frame.draggedID ? 1 : 0)
@@ -58,74 +58,21 @@ struct DockView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
   }
 
-  private func tileView(_ tile: DockTile, rect: CGRect, frame: DockScene.Frame) -> some View {
+  private func tileView(_ tile: DockTile, size: CGSize, frame: DockScene.Frame) -> some View {
     let dragged = frame.draggedID == tile.id
-    let removing = dragged && frame.removing
-    let highlighted = frame.hoveredID == tile.id || dropTarget == tile.id || scene.openPopoverID == tile.id
-    let anchor = CGPoint(x: rect.midX, y: min(rect.minY, frame.bar.minY) - 2)
-    return ZStack {
-      RoundedRectangle(cornerRadius: 9, style: .continuous)
-        .fill(highlighted ? store.theme.hover : .clear)
-      TileIcon(image: store.image(for: tile), theme: store.theme)
-        .padding(DockLayout.inset)
-        .opacity(tile.isHidden ? 0.55 : 1)
-      if let state = store.actionState(for: tile) {
-        ActionStatus(state: state, theme: store.theme, side: rect.width - DockLayout.inset * 2)
-      }
-    }
-    .overlay(alignment: .topTrailing) {
-      if let text = store.badgeText(for: tile) {
-        TileBadge(text: text, color: store.badgeColor(for: tile), height: max(14, rect.width * 0.3))
-          .offset(x: 3, y: -3)
-      } else if store.hasFinished(tile) {
-        Circle()
-          .fill(store.theme.success)
-          .overlay(Circle().strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
-          .frame(width: 10, height: 10)
-          .offset(x: 2, y: -2)
-      }
-    }
-    .frame(width: rect.width, height: rect.height)
-    .overlay(alignment: .bottom) {
-      Circle()
-        .fill(tile.isActive ? store.theme.accent : store.theme.label.opacity(0.55))
-        .frame(width: 4, height: 4)
-        .opacity(tile.isRunning && !dragged ? 1 : 0)
-        .offset(y: DockLayout.indicator - 1)
-    }
-    .overlay(alignment: .top) {
-      if removing {
-        Text("Remove")
-          .font(.system(size: 11, weight: .semibold))
-          .foregroundColor(.white)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 3)
-          .background(Capsule().fill(Color.black.opacity(0.65)))
-          .fixedSize()
-          .offset(y: -24)
-      }
-    }
-    .opacity(removing ? 0.6 : 1)
-    .contentShape(Rectangle())
-    .onTapGesture { actions.activate(tile, anchor) }
-    .gesture(reorderGesture(tile))
-    .onDrop(of: Self.dropTypes(for: tile), isTargeted: Binding(
-      get: { dropTarget == tile.id },
-      set: { targeted in
-        if targeted { dropTarget = tile.id } else if dropTarget == tile.id { dropTarget = nil }
-      })) { providers in
-      Self.loadURLs(providers) { urls in
-        let files = urls.filter(\.isFileURL)
-        if !files.isEmpty {
-          store.drop(files, on: tile)
-        } else if tile.item.kind == .shelf {
-          Self.loadText(providers) { store.drop(text: $0, on: tile) }
-        }
-      }
-      return true
-    }
-    .contextMenu { DockMenu(store: store, tile: tile, anchor: anchor, actions: actions) }
-    .help(tile.name)
+    let badge = store.badgeText(for: tile)
+    let face = TileFace(image: store.image(for: tile), theme: store.theme, size: size,
+                        highlighted: frame.hoveredID == tile.id || dropTarget == tile.id
+                          || scene.openPopoverID == tile.id,
+                        dimmed: tile.isHidden, state: store.actionState(for: tile),
+                        badge: badge, badgeColor: badge == nil ? .clear : store.badgeColor(for: tile),
+                        finished: badge == nil && store.hasFinished(tile),
+                        running: tile.isRunning && !dragged, active: tile.isActive,
+                        removing: dragged && frame.removing)
+    return DockTileView(tile: tile, face: face, store: store, actions: actions, dropTarget: $dropTarget)
+      .equatable()
+      // Its state is the dock's, which ends a cancelled drag even if this tile is gone.
+      .gesture(reorderGesture(tile))
   }
 
   /// The gesture's own coordinates move while the panel grows for the drag,
@@ -140,7 +87,7 @@ struct DockView: View {
       .onEnded { _ in scene.dragEnded(commit: true) }
   }
 
-  private static func loadURLs(_ providers: [NSItemProvider], completion: @escaping ([URL]) -> Void) {
+  fileprivate static func loadURLs(_ providers: [NSItemProvider], completion: @escaping ([URL]) -> Void) {
     var urls = [URL?](repeating: nil, count: providers.count)
     let lock = NSLock()
     let group = DispatchGroup()
@@ -154,6 +101,47 @@ struct DockView: View {
       }
     }
     group.notify(queue: .main) { completion(urls.compactMap { $0 }) }
+  }
+
+}
+
+/// A tile and what clicking, dropping on, and right-clicking it do.
+/// Equatable on what it draws, so the frames that only move a tile, most of
+/// a magnification sweep, skip its body.
+private struct DockTileView: View, Equatable {
+  let tile: DockTile
+  let face: TileFace
+  let store: DockStore
+  let actions: DockActions
+  let dropTarget: Binding<String?>
+
+  static func == (lhs: Self, rhs: Self) -> Bool { lhs.tile == rhs.tile && lhs.face == rhs.face }
+
+  var body: some View {
+    face
+      .contentShape(Rectangle())
+      .onTapGesture { actions.activate(tile) }
+      .onDrop(of: Self.dropTypes(for: tile), isTargeted: Binding(
+        get: { dropTarget.wrappedValue == tile.id },
+        set: { targeted in
+          if targeted {
+            dropTarget.wrappedValue = tile.id
+          } else if dropTarget.wrappedValue == tile.id {
+            dropTarget.wrappedValue = nil
+          }
+        })) { providers in
+        DockView.loadURLs(providers) { urls in
+          let files = urls.filter(\.isFileURL)
+          if !files.isEmpty {
+            store.drop(files, on: tile)
+          } else if tile.item.kind == .shelf {
+            Self.loadText(providers) { store.drop(text: $0, on: tile) }
+          }
+        }
+        return true
+      }
+      .contextMenu { DockMenu(store: store, tile: tile, actions: actions) }
+      .help(tile.name)
   }
 
   /// The shelf also takes text, such as a selection dragged from a browser.
@@ -171,11 +159,73 @@ struct DockView: View {
   }
 }
 
+/// A tile's picture, badge, and running dot.
+private struct TileFace: View, Equatable {
+  let image: TileImage
+  let theme: DockTheme
+  let size: CGSize
+  let highlighted: Bool
+  let dimmed: Bool
+  let state: ActionRunner.State?
+  let badge: String?
+  let badgeColor: Color
+  /// A green dot for a finished agent session; a badge takes its place.
+  let finished: Bool
+  let running: Bool
+  let active: Bool
+  let removing: Bool
+
+  var body: some View {
+    ZStack {
+      RoundedRectangle(cornerRadius: 9, style: .continuous)
+        .fill(highlighted ? theme.hover : .clear)
+      TileIcon(image: image, theme: theme)
+        .padding(DockLayout.inset)
+        .opacity(dimmed ? 0.55 : 1)
+      if let state {
+        ActionStatus(state: state, theme: theme, side: size.width - DockLayout.inset * 2)
+      }
+    }
+    .overlay(alignment: .topTrailing) {
+      if let badge {
+        TileBadge(text: badge, color: badgeColor, height: max(14, size.width * 0.3))
+          .offset(x: 3, y: -3)
+      } else if finished {
+        Circle()
+          .fill(theme.success)
+          .overlay(Circle().strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
+          .frame(width: 10, height: 10)
+          .offset(x: 2, y: -2)
+      }
+    }
+    .frame(width: size.width, height: size.height)
+    .overlay(alignment: .bottom) {
+      Circle()
+        .fill(active ? theme.accent : theme.label.opacity(0.55))
+        .frame(width: 4, height: 4)
+        .opacity(running ? 1 : 0)
+        .offset(y: DockLayout.indicator - 1)
+    }
+    .overlay(alignment: .top) {
+      if removing {
+        Text("Remove")
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundColor(.white)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 3)
+          .background(Capsule().fill(Color.black.opacity(0.65)))
+          .fixedSize()
+          .offset(y: -24)
+      }
+    }
+    .opacity(removing ? 0.6 : 1)
+  }
+}
+
 /// A tile's right-click menu.
 private struct DockMenu: View {
   @ObservedObject var store: DockStore
   let tile: DockTile
-  let anchor: CGPoint
   let actions: DockActions
 
   var body: some View {
@@ -231,7 +281,7 @@ private struct DockMenu: View {
     case (_, .app):
       EmptyView()
     case (_, .group):
-      Button("Open") { actions.activate(tile, anchor) }
+      Button("Open") { actions.activate(tile) }
       Button("Rename…") { store.rename(tile) }
       Button("Ungroup") { store.ungroup(tile) }
       Divider()
@@ -257,12 +307,12 @@ private struct DockMenu: View {
       Divider()
       Button("Remove from Dock") { store.remove(tile) }
     case (_, .shelf):
-      Button("Open Shelf") { actions.activate(tile, anchor) }
+      Button("Open Shelf") { actions.activate(tile) }
       if !store.shelf.entries.isEmpty { Button("Clear Shelf") { store.shelf.clear() } }
       Divider()
       Button("Remove from Dock") { store.remove(tile) }
     case (_, .controls):
-      Button("Open Controls") { actions.activate(tile, anchor) }
+      Button("Open Controls") { actions.activate(tile) }
       Button("System Settings…") {
         if let pane = SettingsPane.named("Settings") { NSWorkspace.shared.open(pane.url) }
       }

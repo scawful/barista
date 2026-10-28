@@ -1,7 +1,8 @@
 import AppKit
 
-/// What a tile draws; `TileIcon` renders each case.
-enum TileImage {
+/// What a tile draws; `TileIcon` renders each case. Bitmaps compare by
+/// identity: the store hands out the same one until the picture changes.
+enum TileImage: Equatable {
   case image(NSImage)
   case symbol(String)
   /// A group's first few member icons, drawn as a small grid.

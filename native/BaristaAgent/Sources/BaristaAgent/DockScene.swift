@@ -172,6 +172,13 @@ final class DockScene: ObservableObject {
     restFrames[id]
   }
 
+  /// Where a tile's callout points: above the tile as drawn now, or above
+  /// the bar under a magnified tile.
+  func anchor(of id: String) -> CGPoint? {
+    guard let rect = frame.items.first(where: { $0.id == id })?.rect else { return nil }
+    return CGPoint(x: rect.midX, y: min(rect.minY, frame.bar.minY) - 2)
+  }
+
   /// The pointer in canvas coordinates, or nil when it left the dock.
   func setPointer(_ point: CGPoint?) {
     guard point != pointer else { return }

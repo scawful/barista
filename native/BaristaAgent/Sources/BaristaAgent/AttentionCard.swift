@@ -40,7 +40,7 @@ final class AttentionCardController {
                                 NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
                                 self?.hide()
                               } })
-        .environmentObject(pointer))
+        .environment(\.popoverPointer, pointer))
     }
     let host = DockHostingView(rootView: view(nil))
     host.onPointer = { pointer.location = $0 }

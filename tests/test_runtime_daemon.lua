@@ -43,6 +43,7 @@ run_test("runtime_daemon.stop_runtime_context_daemon: stops helper family", func
   local removed = {}
 
   local stopped = runtime_daemon.stop_runtime_context_daemon({
+    config_dir = "/Users/example/.config/sketchybar",
     pid_file = "/tmp/runtime-context-test.pid",
     start_token_file = "/tmp/runtime-context-test.start",
     read_text = function(path)
@@ -72,7 +73,11 @@ run_test("runtime_daemon.stop_runtime_context_daemon: stops helper family", func
   assert_equal(#killed, 2, "expected targeted pid stop and stale family cleanup")
   assert_equal(killed[1].reason, "stopped", "first reason")
   assert_equal(killed[2].reason, "killed_stale", "second reason")
-  assert_equal(table.concat(seen_fragments, "|"), "runtime_context.sh daemon|runtime_context.sh refresh front-app|runtime_context.sh fresh-front-app|runtime_context_helper daemon|runtime_context_helper refresh-front-app|runtime_context_helper fresh-front-app", "family fragments")
+  assert_equal(#seen_fragments, 9, "shell plus installed/build helper family")
+  for _, fragment in ipairs(seen_fragments) do
+    assert_true(fragment:find("/Users/example/.config/sketchybar/", 1, true) == 1,
+      "cleanup must stay inside the selected runtime")
+  end
 end)
 
 run_test("runtime_daemon.ensure_runtime_context_daemon: superseded launcher does not start", function()
@@ -170,4 +175,68 @@ run_test("runtime_daemon.ensure_runtime_context_daemon: lua-only launch disables
     type(launched) == "string" and launched:find("/usr/bin/env BARISTA_LUA_ONLY=1", 1, true) ~= nil,
     "lua-only launch should export the helper-disable flag"
   )
+end)
+
+run_test("runtime_daemon process identity: excludes commands that mention another daemon", function()
+  local root = "/Users/example/Config With Spaces"
+  local shell = root .. "/scripts/runtime_context.sh daemon"
+  local helper = root .. "/bin/runtime_context_helper daemon"
+  local fragments = { shell, helper }
+  assert_true(runtime_daemon.matches_daemon_process("/bin/bash " .. shell, fragments), "shell daemon")
+  assert_true(runtime_daemon.matches_daemon_process(helper, fragments), "native helper")
+  assert_true(not runtime_daemon.matches_daemon_process("/bin/zsh -c " .. shell, fragments), "shell command text")
+  assert_true(not runtime_daemon.matches_daemon_process("rg " .. helper, fragments), "search text")
+  assert_true(not runtime_daemon.matches_daemon_process("/other/config/bin/runtime_context_helper daemon", fragments), "other config")
+  assert_true(not runtime_daemon.matches_daemon_process(helper .. " --other", fragments), "unexpected process args")
+  assert_true(not runtime_daemon.matches_daemon_process(helper, {}), "missing identity must fail closed")
+end)
+
+run_test("runtime_daemon cleanup: never escalates a pid whose command changed", function()
+  local original_popen, original_execute = io.popen, os.execute
+  local commands, reads = {}, 0
+  local ok, err = pcall(function()
+    io.popen = function(command)
+      assert_true(command:find("ps -p 424242", 1, true) ~= nil, "only fixture pid queried")
+      reads = reads + 1
+      local value = reads == 1 and "/fixture/bin/widget_manager daemon" or "/unrelated/editor"
+      return { read = function() return value end, close = function() return true end }
+    end
+    os.execute = function(command)
+      table.insert(commands, command)
+      return true
+    end
+    runtime_daemon.stop_widget_daemon({
+      config_dir = "/fixture",
+      read_text = function() return nil end,
+      matching_pids = function() return { "424242" } end,
+      remove = function() return true end,
+    })
+  end)
+  io.popen, os.execute = original_popen, original_execute
+  assert_true(ok, tostring(err))
+  assert_equal(commands[1], "kill 424242 >/dev/null 2>&1", "TERM existing fixture process")
+  assert_equal(#commands, 2, "TERM plus wait; changed command must not receive KILL")
+end)
+
+run_test("runtime_daemon cleanup: stale discovery never terminates an unrelated process", function()
+  local original_popen, original_execute = io.popen, os.execute
+  local commands = {}
+  local ok, err = pcall(function()
+    io.popen = function()
+      return { read = function() return "/unrelated/editor" end, close = function() return true end }
+    end
+    os.execute = function(command)
+      table.insert(commands, command)
+      return true
+    end
+    runtime_daemon.stop_widget_daemon({
+      config_dir = "/fixture",
+      read_text = function() return nil end,
+      matching_pids = function() return { "424242" } end,
+      remove = function() return true end,
+    })
+  end)
+  io.popen, os.execute = original_popen, original_execute
+  assert_true(ok, tostring(err))
+  assert_equal(#commands, 0, "reused pid must not receive any signal")
 end)

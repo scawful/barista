@@ -82,20 +82,31 @@ local function collect_fragments(primary, extras)
   return fragments
 end
 
+-- ps exposes command arguments too. A substring can match an editor, rg, or
+-- shell command that merely mentions a daemon, so require the whole invocation.
 local function command_matches(command, fragments)
-  if not command or command == "" then
+  command = trim(command)
+  if not command or command == "" or not fragments or #fragments == 0 then
     return false
   end
-  if not fragments or #fragments == 0 then
-    return true
+  local executable, arguments = command:match("^(%S+)%s+(.+)$")
+  local interpreter = executable and executable:match("([^/]+)$")
+  if interpreter == "bash" or interpreter == "sh" or interpreter == "zsh" then
+    -- Daemon shell scripts appear as /bin/bash /path/script daemon. Never
+    -- interpret -c command strings or shell options as a daemon script path.
+    if arguments:sub(1, 1) ~= "-" then
+      command = arguments
+    end
   end
   for _, fragment in ipairs(fragments) do
-    if command:find(fragment, 1, true) then
+    if command == fragment then
       return true
     end
   end
   return false
 end
+
+runtime_daemon.matches_daemon_process = command_matches
 
 local function process_command(pid)
   local handle = io.popen(string.format("ps -p %s -o command= 2>/dev/null", tostring(pid)))
@@ -152,17 +163,21 @@ local function matching_pids(expected_fragment, extra_fragments)
   return pids
 end
 
-local function kill_pids(pids, tracef, reason, trace_prefix)
+local function kill_pids(pids, tracef, reason, trace_prefix, fragments)
   local seen = {}
   local killed_any = false
   trace_prefix = trace_prefix or "runtime_daemon:daemon"
   for _, pid in ipairs(pids or {}) do
     if pid and pid ~= "" and not seen[pid] then
-      seen[pid] = true
-      os.execute(string.format("kill %s >/dev/null 2>&1", pid))
-      killed_any = true
-      if type(tracef) == "function" then
-        tracef(string.format("%s_%s %s", trace_prefix, reason or "killed", pid))
+      -- Verify again after discovery, then retain identity through escalation.
+      local command = process_command(pid)
+      if command_matches(command, fragments) then
+        seen[pid] = command
+        os.execute(string.format("kill %s >/dev/null 2>&1", pid))
+        killed_any = true
+        if type(tracef) == "function" then
+          tracef(string.format("%s_%s %s", trace_prefix, reason or "killed", pid))
+        end
       end
     end
   end
@@ -172,8 +187,8 @@ local function kill_pids(pids, tracef, reason, trace_prefix)
   end
 
   os.execute("sleep 0.05")
-  for pid in pairs(seen) do
-    if process_command(pid) then
+  for pid, command in pairs(seen) do
+    if process_command(pid) == command then
       os.execute(string.format("kill -9 %s >/dev/null 2>&1", pid))
       if type(tracef) == "function" then
         tracef(string.format("%s_%s_force %s", trace_prefix, reason or "killed", pid))
@@ -257,7 +272,7 @@ local function ensure_named_daemon(name, command, expected_fragment, opts)
     local alive, existing_command = running(previous_pid, fragments)
     if alive then
       if force_restart then
-        killer({ previous_pid }, tracef, "restarting", trace_prefix)
+        killer({ previous_pid }, tracef, "restarting", trace_prefix, fragments)
       else
         tracef(trace_prefix .. "_already_running " .. previous_pid)
         return true, "already_running"
@@ -265,7 +280,7 @@ local function ensure_named_daemon(name, command, expected_fragment, opts)
     else
       local old_alive = running(previous_pid, fragments)
       if old_alive then
-        killer({ previous_pid }, tracef, "killed_previous", trace_prefix)
+        killer({ previous_pid }, tracef, "killed_previous", trace_prefix, fragments)
       elseif existing_command then
         tracef(trace_prefix .. "_pid_mismatch " .. previous_pid)
       end
@@ -273,7 +288,7 @@ local function ensure_named_daemon(name, command, expected_fragment, opts)
   end
 
   if force_restart then
-    killer(find_pids(fragments), tracef, "killed_stale", trace_prefix)
+    killer(find_pids(fragments), tracef, "killed_stale", trace_prefix, fragments)
   end
 
   local launch_token = unique_start_token(name)
@@ -332,13 +347,13 @@ local function stop_named_daemon(name, expected_fragment, opts)
   if pid then
     local alive = running(pid, fragments)
     if alive then
-      killer({ pid }, tracef, "stopped", string.format("runtime_daemon:%s", name:gsub("[^%w]+", "_")))
+      killer({ pid }, tracef, "stopped", string.format("runtime_daemon:%s", name:gsub("[^%w]+", "_")), fragments)
       stopped = true
     end
   end
   local stale = find_pids(fragments)
   if #stale > 0 then
-    killer(stale, tracef, "killed_stale", string.format("runtime_daemon:%s", name:gsub("[^%w]+", "_")))
+    killer(stale, tracef, "killed_stale", string.format("runtime_daemon:%s", name:gsub("[^%w]+", "_")), fragments)
     stopped = true
   end
   remove(file)
@@ -350,13 +365,46 @@ function runtime_daemon.ensure_widget_daemon(binary_path, opts)
   if not binary_path or binary_path == "" then
     return false, "missing_binary"
   end
+  opts = type(opts) == "table" and opts or {}
   local expected_fragment = tostring(binary_path) .. " daemon"
-  local command = string.format("%s daemon", shell_quote(binary_path))
+  local env_prefix = type(opts.env_prefix) == "string" and opts.env_prefix or ""
+  local command = string.format("%s%s daemon", env_prefix, shell_quote(binary_path))
   return ensure_named_daemon("widget-manager", command, expected_fragment, opts)
 end
 
+local function config_dir(opts)
+  return opts.config_dir or os.getenv("BARISTA_CONFIG_DIR")
+    or ((os.getenv("HOME") or "") .. "/.config/sketchybar")
+end
+
 function runtime_daemon.stop_widget_daemon(opts)
-  return stop_named_daemon("widget-manager", "widget_manager daemon", opts)
+  opts = type(opts) == "table" and opts or {}
+  local root = config_dir(opts)
+  local selected = opts.binary_path or (root .. "/build/bin/widget_manager")
+  opts.match_fragments = opts.match_fragments or {
+    root .. "/build/bin/widget_manager daemon",
+    root .. "/bin/widget_manager daemon",
+  }
+  return stop_named_daemon("widget-manager", selected .. " daemon", opts)
+end
+
+local function runtime_context_fragments(script_path, opts)
+  local root = opts.config_dir or script_path:match("^(.*)/scripts/[^/]+$") or config_dir(opts)
+  local fragments = {}
+  for _, path in ipairs({
+    script_path,
+    opts.helper_path or (root .. "/bin/runtime_context_helper"),
+    root .. "/build/bin/runtime_context_helper",
+  }) do
+    for _, action in ipairs({ "daemon", "refresh-front-app", "fresh-front-app" }) do
+      if path == script_path and action == "refresh-front-app" then
+        table.insert(fragments, path .. " refresh front-app")
+      else
+        table.insert(fragments, path .. " " .. action)
+      end
+    end
+  end
+  return fragments
 end
 
 function runtime_daemon.ensure_runtime_context_daemon(script_path, opts)
@@ -371,28 +419,15 @@ function runtime_daemon.ensure_runtime_context_daemon(script_path, opts)
   else
     command = string.format("%s daemon", shell_quote(script_path))
   end
-  opts.match_fragments = opts.match_fragments or {
-    "runtime_context.sh daemon",
-    "runtime_context.sh refresh front-app",
-    "runtime_context.sh fresh-front-app",
-    "runtime_context_helper daemon",
-    "runtime_context_helper refresh-front-app",
-    "runtime_context_helper fresh-front-app",
-  }
+  opts.match_fragments = opts.match_fragments or runtime_context_fragments(script_path, opts)
   return ensure_named_daemon("runtime-context", command, expected_fragment, opts)
 end
 
 function runtime_daemon.stop_runtime_context_daemon(opts)
   opts = type(opts) == "table" and opts or {}
-  opts.match_fragments = opts.match_fragments or {
-    "runtime_context.sh daemon",
-    "runtime_context.sh refresh front-app",
-    "runtime_context.sh fresh-front-app",
-    "runtime_context_helper daemon",
-    "runtime_context_helper refresh-front-app",
-    "runtime_context_helper fresh-front-app",
-  }
-  return stop_named_daemon("runtime-context", "runtime_context.sh daemon", opts)
+  local script_path = opts.script_path or (config_dir(opts) .. "/scripts/runtime_context.sh")
+  opts.match_fragments = opts.match_fragments or runtime_context_fragments(script_path, opts)
+  return stop_named_daemon("runtime-context", script_path .. " daemon", opts)
 end
 
 return runtime_daemon

@@ -108,6 +108,34 @@ final class SearchTests: XCTestCase {
     XCTAssertNil(Syntax.of(URL(fileURLWithPath: "/x/README")))
   }
 
+  /// Spins the main run loop until `condition` holds, as the browser's
+  /// background listing and search report back on the main queue.
+  private func wait(_ what: String, _ condition: () -> Bool) {
+    let deadline = Date().addingTimeInterval(5)
+    while !condition() && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+    XCTAssertTrue(condition(), what)
+  }
+
+  func testRenamingASearchResultKeepsItSelected() throws {
+    try XCTSkipIf(Tool.find("fd") == nil, "fd is not installed")
+    try write("Core/sram.asm", "x")
+    let state = BrowserState(location: folder)
+    state.reload()
+    state.scope = .subfolders
+    state.query = "sram"
+    wait("the search finds the file") { state.shown.map(\.name) == ["Core/sram.asm"] }
+    XCTAssertFalse(state.acceptsDrops, "a drop on results from many folders has no one place to go")
+
+    let found = try XCTUnwrap(state.shown.first?.url)
+    state.beginRename(found)
+    state.commitRename(found, to: "sram2.asm")
+    wait("the renamed result is selected once the search runs again") {
+      state.shown.map(\.name) == ["Core/sram2.asm"] && state.selectedURLs.map(\.lastPathComponent) == ["sram2.asm"]
+    }
+    state.query = ""
+    XCTAssertTrue(state.acceptsDrops)
+  }
+
   func testTabHistoryIgnoresATrailingSlash() {
     var tab = BrowserTab(URL(fileURLWithPath: "/tmp/a"))
     tab.go(to: URL(string: "file:///tmp/a/")!)

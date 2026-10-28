@@ -207,14 +207,8 @@ final class BrowserState: ObservableObject {
         guard let self, self.generation == token else { return }
         self.entries = listing
         self.refreshShown()
-        let present = Set(self.shown.map(\.url))
-        if let pending = self.pendingSelection {
-          self.selection = pending.intersection(present)
-          self.pendingSelection = nil
-          self.scrollTarget = self.selectedURLs.first
-        } else {
-          self.selection = self.selection.intersection(present)
-        }
+        // Search results are the rows then; their own run settles the selection.
+        if !self.isDeepSearch { self.settleSelection() }
       }
       // After the listing is shown: git should never hold it up.
       let inspected = Git.inspect(folder)
@@ -275,11 +269,24 @@ final class BrowserState: ObservableObject {
         self.searching = false
         self.searchNote = output.complete ? nil : "Showing the first \(FileSearch.limit)"
         self.refreshShown()
-        self.selection = self.selection.intersection(self.shown.map(\.url))
+        self.settleSelection()
       }
     }
     searchWork = work
     DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.2, execute: work)
+  }
+
+  /// Once new rows are shown: select what an action asked for (a renamed or
+  /// made file, the folder you came up from), else keep what's still there.
+  private func settleSelection() {
+    let present = Set(shown.map(\.url))
+    if let pending = pendingSelection {
+      selection = pending.intersection(present)
+      pendingSelection = nil
+      scrollTarget = selectedURLs.first
+    } else {
+      selection = selection.intersection(present)
+    }
   }
 
   /// Goes to the same place in another worktree, or its top when that
@@ -323,6 +330,7 @@ final class BrowserState: ObservableObject {
 
   func forward() {
     tabs.forward()
+    pendingSelection = nil
     query = ""
     reload()
   }
@@ -344,12 +352,14 @@ final class BrowserState: ObservableObject {
   /// folder changes.
   func select(tab id: UUID) {
     tabs.select(id)
+    pendingSelection = nil
     query = ""
     reload()
   }
 
   func selectNeighborTab(_ offset: Int) {
     tabs.selectNeighbor(offset)
+    pendingSelection = nil
     query = ""
     reload()
   }
@@ -439,7 +449,7 @@ final class BrowserState: ObservableObject {
   }
 
   func duplicateSelection() {
-    perform(selectedURLs) { try FileOperations.duplicate($0) }
+    perform(selectedURLs, operation: FileOperations.duplicate)
   }
 
   static let fileURLsOnly: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
@@ -452,19 +462,24 @@ final class BrowserState: ObservableObject {
   /// folder, or move with `move` (⌥⌘V). Copying this folder's own files
   /// duplicates them.
   func paste(move: Bool) {
-    let urls = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: Self.fileURLsOnly) as? [URL] ?? []
+    let pasteboard = NSPasteboard.general
+    let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: Self.fileURLsOnly) as? [URL] ?? []
+    let copied = pasteboard.changeCount
     let target = location
-    perform(urls) { url in
-      if url.deletingLastPathComponent().standardizedFileURL == target.standardizedFileURL {
+    perform(urls, operation: { url in
+      if url.deletingLastPathComponent().standardizedFileURL.path == target.path {
         return move ? url : try FileOperations.duplicate(url)
       }
       return try FileOperations.place(url, in: target, move: move)
-    }
+    }, then: {
+      // Moved files are gone from where the clipboard says, as after Finder's move.
+      if move && pasteboard.changeCount == copied { pasteboard.clearContents() }
+    })
   }
 
   /// Runs `operation` on each URL off the main thread, then selects what it
-  /// made and reports what failed.
-  private func perform(_ urls: [URL], _ operation: @escaping (URL) throws -> URL) {
+  /// made and reports what failed; `then` runs when nothing did.
+  private func perform(_ urls: [URL], operation: @escaping (URL) throws -> URL, then: (() -> Void)? = nil) {
     guard !urls.isEmpty else { return }
     DispatchQueue.global(qos: .userInitiated).async {
       var made: [URL] = []
@@ -474,26 +489,29 @@ final class BrowserState: ObservableObject {
       }
       DispatchQueue.main.async { [weak self] in
         guard let self else { return }
-        if !failures.isEmpty { self.problem = failures.joined(separator: "\n") }
+        if failures.isEmpty { then?() } else { self.problem = failures.joined(separator: "\n") }
         if !made.isEmpty { self.pendingSelection = Set(made) }
         self.reload()
       }
     }
   }
 
+  /// Search results come from many folders, so a drop on them has no one
+  /// place to go; a row dragged a little and let go would move out of its own.
+  var acceptsDrops: Bool { !isDeepSearch }
+
   /// Dropped files move within a volume and copy across volumes, as in Finder.
   func receive(_ urls: [URL]) {
+    guard acceptsDrops else { return }
     let target = location
     func volume(_ url: URL) -> AnyHashable? {
       (try? url.resourceValues(forKeys: [.volumeIdentifierKey]))?.volumeIdentifier as? AnyHashable
     }
-    let incoming = urls.filter { $0.deletingLastPathComponent().standardizedFileURL != target.standardizedFileURL }
-    let moves = incoming.filter { volume($0) != nil && volume($0) == volume(target) }
-    let copies = incoming.filter { !moves.contains($0) }
-    DispatchQueue.global(qos: .userInitiated).async {
-      if !moves.isEmpty { DockStore.transfer(moves, into: target, move: true) }
-      if !copies.isEmpty { DockStore.transfer(copies, into: target, move: false) }
-    }
+    let here = volume(target)
+    let incoming = urls.filter { $0.deletingLastPathComponent().standardizedFileURL.path != target.path }
+    perform(incoming, operation: { url in
+      try FileOperations.place(url, in: target, move: here != nil && volume(url) == here)
+    })
   }
 
   static let standardPlaces: [(name: String, url: URL)] = {
@@ -736,7 +754,29 @@ private struct PathBar: View {
 
 private struct FileTable: View {
   @ObservedObject var state: BrowserState
-  @State private var order = [KeyPathComparator(\FileEntry.name)]
+
+  /// Read from the state, so a table made again (after an unreadable folder)
+  /// shows the sort the list still has.
+  private var order: Binding<[KeyPathComparator<FileEntry>]> {
+    Binding {
+      let order: SortOrder = state.ascending ? .forward : .reverse
+      switch state.sortKey {
+      case .name: return [KeyPathComparator(\FileEntry.name, order: order)]
+      case .modified: return [KeyPathComparator(\FileEntry.modified, order: order)]
+      case .size: return [KeyPathComparator(\FileEntry.sortableSize, order: order)]
+      case .kind: return [KeyPathComparator(\FileEntry.kind, order: order)]
+      }
+    } set: { comparators in
+      guard let first = comparators.first else { return }
+      state.ascending = first.order == .forward
+      switch first.keyPath {
+      case \FileEntry.modified: state.sortKey = .modified
+      case \FileEntry.sortableSize: state.sortKey = .size
+      case \FileEntry.kind: state.sortKey = .kind
+      default: state.sortKey = .name
+      }
+    }
+  }
 
   var body: some View {
     ScrollViewReader { proxy in
@@ -754,7 +794,7 @@ private struct FileTable: View {
   }
 
   private var table: some View {
-    Table(of: FileEntry.self, selection: $state.selection, sortOrder: $order) {
+    Table(of: FileEntry.self, selection: $state.selection, sortOrder: order) {
       TableColumn("Name", value: \.name) { entry in
         HStack(spacing: 6) {
           Image(nsImage: NSWorkspace.shared.icon(forFile: entry.url.path)).resizable().frame(width: 16, height: 16)
@@ -806,17 +846,8 @@ private struct FileTable: View {
       state.selection = urls
       state.openSelection()
     }
-    .onChange(of: order) {
-      guard let first = order.first else { return }
-      state.ascending = first.order == .forward
-      switch first.keyPath {
-      case \FileEntry.modified: state.sortKey = .modified
-      case \FileEntry.sortableSize: state.sortKey = .size
-      case \FileEntry.kind: state.sortKey = .kind
-      default: state.sortKey = .name
-      }
-    }
     .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+      guard state.acceptsDrops else { return false }
       var urls: [URL] = []
       let group = DispatchGroup()
       for provider in providers {
@@ -838,9 +869,8 @@ private struct FileTable: View {
     } else {
       let sorted = urls.sorted { $0.path < $1.path }
       let single = urls.count == 1 ? urls.first : nil
-      let singleFolder = single.flatMap { url in
-        (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true ? url : nil
-      }
+      // As the listing decided: an app or other package opens, it isn't browsed.
+      let singleFolder = single.flatMap { url in state.shown.first { $0.url == url }?.isFolder == true ? url : nil }
       Button("Open") {
         state.selection = urls
         state.openSelection()

@@ -198,7 +198,11 @@ struct ContextPanel: View {
     })
     .task(id: root) {
       let root = self.root
-      context = await Task.detached(priority: .userInitiated) { AFSContext.load(root) }.value
+      // The panel stays when the root changes; another project's context mustn't show meanwhile.
+      if context?.root != root { context = nil }
+      let loaded = await Task.detached(priority: .userInitiated) { AFSContext.load(root) }.value
+      guard !Task.isCancelled else { return }
+      context = loaded
     }
   }
 

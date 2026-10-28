@@ -436,7 +436,7 @@ private struct MarkdownImage: View {
       .frame(maxWidth: .infinity, alignment: .leading)
     } else {
       let url = URL(fileURLWithPath: source.removingPercentEncoding ?? source, relativeTo: base).standardizedFileURL
-      if let image = NSImage(contentsOf: url) {
+      if let image = Self.image(url) {
         Image(nsImage: image).resizable().scaledToFit()
           .frame(maxWidth: image.size.width, alignment: .leading)
           .onTapGesture { ViewerController.shared.open(url) }
@@ -445,6 +445,19 @@ private struct MarkdownImage: View {
         Label(alt.isEmpty ? url.lastPathComponent : alt, systemImage: "photo").foregroundStyle(.secondary)
       }
     }
+  }
+
+  private static let cache = NSCache<NSString, NSImage>()
+
+  /// A lazy stack draws a block again each time it scrolls back in; the file
+  /// is read once per version, keyed by its modification date.
+  private static func image(_ url: URL) -> NSImage? {
+    let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    let key = "\(url.path)\u{0}\(modified?.timeIntervalSinceReferenceDate ?? 0)" as NSString
+    if let cached = cache.object(forKey: key) { return cached }
+    guard let image = NSImage(contentsOf: url) else { return nil }
+    cache.setObject(image, forKey: key)
+    return image
   }
 }
 

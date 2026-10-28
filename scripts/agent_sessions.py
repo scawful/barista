@@ -39,6 +39,7 @@ import shlex
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 from contextlib import closing
 from pathlib import Path
@@ -92,10 +93,14 @@ def clip(text: str, limit: int = 40) -> str:
 
 def first_json_line(path: Path, limit: int = 65536) -> dict:
     try:
-        with path.open("r", encoding="utf-8", errors="replace") as handle:
-            return json.loads(handle.readline(limit))
-    except (OSError, ValueError):
+        with path.open("rb") as handle:
+            return json_record(handle.readline(limit))
+    except OSError:
         return {}
+
+
+def as_dict(value) -> dict:
+    return value if isinstance(value, dict) else {}
 
 
 def tail_lines(path: Path, size: int) -> list[bytes]:
@@ -148,10 +153,11 @@ def cursor_plan(path: Path) -> str:
     record = json_record(lines[-1]) if lines else {}
     if record.get("role") != "assistant":
         return ""
-    blocks = [block for block in (record.get("message") or {}).get("content") or [] if isinstance(block, dict)]
+    content = as_dict(record.get("message")).get("content")
+    blocks = [block for block in (content if isinstance(content, list) else []) if isinstance(block, dict)]
     if not blocks or blocks[-1].get("type") != "tool_use" or blocks[-1].get("name") != "CreatePlan":
         return ""
-    return f"Plan ready: {(blocks[-1].get('input') or {}).get('name') or 'review'}"
+    return f"Plan ready: {as_dict(blocks[-1].get('input')).get('name') or 'review'}"
 
 
 def sqlite_rows(path: Path, query: str, params: list[str]) -> list[tuple]:
@@ -180,7 +186,10 @@ def recent_day_dirs(root: Path, now: float, days: int) -> list[Path]:
 
 
 def codex_threads(paths: list[str]) -> dict[str, tuple[bool, str]]:
-    databases = sorted((HOME / ".codex").glob("state_*.sqlite"))
+    def version(path: Path) -> int:
+        suffix = path.stem.removeprefix("state_")
+        return int(suffix) if suffix.isdigit() else -1
+    databases = sorted((HOME / ".codex").glob("state_*.sqlite"), key=version)
     if not databases:
         return {}
     rows = sqlite_rows(databases[-1],
@@ -300,9 +309,12 @@ def claude_sessions(now: float) -> list[dict]:
     for path in (HOME / ".claude" / "sessions").glob("*.json"):
         data = read_json(path)
         pid = data.get("pid")
-        if isinstance(pid, int) and pid_alive(pid):
+        # os.kill(0) and os.kill(-1) succeed, and bool is an int.
+        if type(pid) is int and pid > 0 and pid_alive(pid):
+            if not isinstance(data.get("sessionId"), str):
+                data["sessionId"] = None
             live.append(data)
-    records = claude_desktop_records({data.get("sessionId") for data in live} - {None})
+    records = claude_desktop_records({data["sessionId"] for data in live} - {None})
     sessions = []
     for data in live:
         pid = data["pid"]
@@ -310,7 +322,8 @@ def claude_sessions(now: float) -> list[dict]:
         if record.get("isArchived"):
             continue
         desktop = data.get("entrypoint") == "claude-desktop"
-        updated = (data.get("updatedAt") or 0) / 1000
+        updated_ms = data.get("updatedAt")
+        updated = updated_ms / 1000 if isinstance(updated_ms, (int, float)) else 0
         status = data.get("status") or ""
         waiting = status == "waiting"
         sessions.append({
@@ -343,8 +356,8 @@ def decode_project(name: str) -> str:
 
 
 def cursor_title(path: Path) -> str:
-    message = first_json_line(path).get("message") or {}
-    for block in message.get("content") or []:
+    content = as_dict(first_json_line(path).get("message")).get("content")
+    for block in content if isinstance(content, list) else []:
         if isinstance(block, dict) and block.get("type") == "text":
             match = USER_QUERY.search(block.get("text") or "")
             if match:
@@ -417,7 +430,10 @@ def gemini_sessions(processes: dict[int, tuple[int, str]]) -> list[dict]:
     sessions = []
     for pid, (_, args) in processes.items():
         argv = args.split()
-        if any(Path(arg).name == "gemini" for arg in argv[:2]):
+        # The CLI runs as `gemini …` or `node …/gemini …`; `rg gemini` is not a session.
+        launcher = Path(argv[0]).name if argv else ""
+        script = Path(argv[1]).name if len(argv) > 1 else ""
+        if launcher == "gemini" or (launcher in ("node", "bun") and script == "gemini"):
             sessions.append({
                 "id": f"gemini:{pid}",
                 "tool": "gemini",
@@ -519,10 +535,16 @@ def write_badges(snap: dict) -> None:
     usage = {TOOLS[tool]["open"][4:]: text for tool, text in snap["usage"].items()
              if text and TOOLS[tool]["open"].startswith("app:")}
     BADGES_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temp = BADGES_FILE.with_suffix(".tmp")
-    temp.write_text(json.dumps({"updated": int(time.time()), "needs": needs, "sessions": sessions,
-                                "usage": usage}) + "\n", encoding="utf-8")
-    os.replace(temp, BADGES_FILE)
+    payload = json.dumps({"updated": int(time.time()), "needs": needs, "sessions": sessions,
+                          "usage": usage}) + "\n"
+    fd, temp = tempfile.mkstemp(dir=BADGES_FILE.parent, prefix=f".{BADGES_FILE.name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+        os.replace(temp, BADGES_FILE)
+    except BaseException:
+        Path(temp).unlink(missing_ok=True)
+        raise
 
 
 def window_for_pid(pid: int, processes: dict[int, tuple[int, str]]) -> int | None:

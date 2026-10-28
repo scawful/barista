@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
+import contextlib
 import datetime as dt
+import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -73,6 +76,14 @@ class AgentSessionsTests(unittest.TestCase):
                                 text=True, env=env, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         return result
+
+    def load_module(self):
+        os.environ["BARISTA_AGENTS_HOME"] = str(self.home)
+        self.addCleanup(os.environ.pop, "BARISTA_AGENTS_HOME", None)
+        spec = importlib.util.spec_from_file_location("agent_sessions_under_test", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
 
     def test_snapshot_counts_live_sessions_only(self):
         snap = json.loads(self.run_script("json").stdout)
@@ -214,16 +225,45 @@ class AgentSessionsTests(unittest.TestCase):
         dock = {s["id"]: s for s in badges["sessions"]}
         self.assertEqual(dock["cursor:plan"]["needs"], "Plan ready: Dock modes")
 
-    def test_a_broken_source_or_missing_bar_still_writes_the_dock_feed(self):
-        (self.home / ".claude" / "sessions" / "live.json").write_text(json.dumps({
-            "pid": os.getpid(), "sessionId": "cli-live", "updatedAt": "soon",
+    def test_malformed_sessions_or_a_missing_bar_still_write_the_dock_feed(self):
+        sessions = self.home / ".claude" / "sessions"
+        (sessions / "live.json").write_text(json.dumps({
+            "pid": os.getpid(), "sessionId": ["not", "a", "string"], "updatedAt": "soon",
         }), encoding="utf-8")
+        for name, pid in (("zero", 0), ("group", -1), ("flag", True)):
+            (sessions / f"{name}.json").write_text(json.dumps({"pid": pid, "sessionId": name}), encoding="utf-8")
         result = self.run_script("apply", extra_env={"BARISTA_SKETCHYBAR_BIN": str(self.home / "missing")})
-        self.assertIn("claude_sessions failed", result.stderr)
         self.assertIn("could not update the bar", result.stderr)
+        self.assertNotIn("failed", result.stderr, "a malformed record costs that record, not its tool")
         badges = json.loads((self.home / "badges.json").read_text(encoding="utf-8"))
-        tools = {s["id"].split(":")[0] for s in badges["sessions"]}
-        self.assertEqual(tools, {"codex", "cursor"}, "only the broken source drops out")
+        claude = [s["id"] for s in badges["sessions"] if s["id"].startswith("claude:")]
+        self.assertEqual(claude, [f"claude:{os.getpid()}"], "pids 0, -1, and true are never live")
+        self.assertEqual({s["id"].split(":")[0] for s in badges["sessions"]}, {"codex", "cursor", "claude"})
+
+    def test_a_failing_source_costs_only_its_own_sessions(self):
+        module = self.load_module()
+
+        def claude_sessions():
+            raise RuntimeError("format changed")
+        error = io.StringIO()
+        with contextlib.redirect_stderr(error):
+            self.assertEqual(module.guarded(claude_sessions, default=[]), [])
+        self.assertIn("claude_sessions failed", error.getvalue())
+
+    def test_only_the_gemini_cli_counts_as_gemini(self):
+        module = self.load_module()
+        processes = {1: (0, "gemini"), 2: (0, "/opt/homebrew/bin/node /opt/homebrew/bin/gemini chat"),
+                     3: (0, "rg gemini"), 4: (0, "vim gemini"), 5: (0, "man gemini")}
+        self.assertEqual([s["id"] for s in module.gemini_sessions(processes)], ["gemini:1", "gemini:2"])
+
+    def test_the_newest_codex_database_wins_by_number(self):
+        module = self.load_module()
+        for version in (5, 10, 9):
+            (self.home / ".codex" / f"state_{version}.sqlite").write_bytes(b"")
+        seen = []
+        module.sqlite_rows = lambda path, query, params: seen.append(path.name) or []
+        module.codex_threads(["/rollout"])
+        self.assertEqual(seen, ["state_10.sqlite"])
 
     def test_quiet_transcripts_are_not_working(self):
         quiet = time.time() - 300

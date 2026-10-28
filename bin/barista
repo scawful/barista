@@ -274,7 +274,11 @@ def run_cli(argv):
                 print("Usage: barista state get <dotted.key>", file=sys.stderr)
                 return 1
             key = args[0].lstrip(".")
-            data = json.loads(state_file.read_text(encoding="utf-8")) if state_file.is_file() else {}
+            try:
+                data = json.loads(state_file.read_text(encoding="utf-8")) if state_file.is_file() else {}
+            except (OSError, ValueError) as error:
+                print(f"barista: cannot read {state_file}: {error}", file=sys.stderr)
+                return 1
             cur = data
             for part in (key.split(".") if key else []):
                 if isinstance(cur, dict) and part in cur:

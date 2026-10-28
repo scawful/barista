@@ -39,26 +39,83 @@ printf 'legacy:%s\n' "$*" >> "${BARISTA_ORACLE_TEST_LOG:?}"
 EOF
 chmod +x "$FAKE_LEGACY_GUI"
 
+FAKE_OPEN="$BIN_DIR/open"
+cat > "$FAKE_OPEN" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+printf 'open:%s\n' "$*" >> "${BARISTA_ORACLE_TEST_LOG:?}"
+EOF
+chmod +x "$FAKE_OPEN"
+
+OAM_CLIENT="$CODE_DIR/hobby/oracle-agent-manager/client"
+OAM_APP_DIR="$OAM_CLIENT/build/Oracle Agent Manager.app"
+
+make_fake_oam() {
+  local path="$1" tag="$2"
+  mkdir -p "$(dirname "$path")"
+  printf '#!/bin/bash\nprintf "%s:\\n" >> "${BARISTA_ORACLE_TEST_LOG:?}"\n' "$tag" > "$path"
+  chmod +x "$path"
+}
+
 run_launcher() {
-  local fake_cortex_exit="${2:-0}"
+  local cortex_cli="$1" fake_cortex_exit="${2:-0}"
+  shift
+  [[ $# -gt 0 ]] && shift
   HOME="$TEST_HOME" \
     TMPDIR="$TMP_DIR" \
     PATH="/usr/bin:/bin" \
     BARISTA_CONFIG_DIR="$CONFIG_DIR" \
     BARISTA_CODE_DIR="$CODE_DIR" \
+    BARISTA_OPEN_BIN="$FAKE_OPEN" \
     BARISTA_ORACLE_TEST_LOG="$LOG_FILE" \
     BARISTA_FAKE_CORTEX_EXIT="$fake_cortex_exit" \
-    CORTEX_CLI="$1" \
-    "$SCRIPT" >/dev/null 2>&1
+    CORTEX_CLI="$cortex_cli" \
+    OAM_APP="" \
+    "$SCRIPT" "$@" >/dev/null 2>&1
 }
 
-wait_for_legacy() {
+wait_for_log() {
+  local needle="$1"
   for _ in $(seq 1 40); do
-    grep -Fq 'legacy:' "$LOG_FILE" && return 0
+    grep -Fq "$needle" "$LOG_FILE" && return 0
     sleep 0.05
   done
   return 1
 }
+
+wait_for_legacy() {
+  wait_for_log 'legacy:'
+}
+
+fail() {
+  echo "FAIL: $1" >&2
+  cat "$LOG_FILE" >&2
+  exit 1
+}
+
+# OAM SwiftUI client: bundled app first, then release, then debug binary; Cortex untouched.
+make_fake_oam "$OAM_CLIENT/.build/debug/oam" "oam-debug"
+: > "$LOG_FILE"
+run_launcher "$FAKE_CORTEX_CLI" 0
+wait_for_log 'oam-debug:' || fail "debug oam binary should launch when it is the only OAM build"
+grep -Fq 'cortex:' "$LOG_FILE" && fail "Cortex must not run when an OAM build exists"
+
+make_fake_oam "$OAM_CLIENT/.build/release/oam" "oam-release"
+: > "$LOG_FILE"
+run_launcher "$FAKE_CORTEX_CLI" 0
+wait_for_log 'oam-release:' || fail "release oam binary should win over debug"
+grep -Fq 'oam-debug:' "$LOG_FILE" && fail "debug oam must not launch when release exists"
+
+make_fake_oam "$OAM_APP_DIR/Contents/MacOS/oam" "oam-app-direct"
+: > "$LOG_FILE"
+run_launcher "$FAKE_CORTEX_CLI" 0
+[ "$(cat "$LOG_FILE")" = "open:$OAM_APP_DIR" ] || fail "bundled app should open through LaunchServices only"
+
+: > "$LOG_FILE"
+run_launcher "$FAKE_CORTEX_CLI" 0 --hub
+[ "$(cat "$LOG_FILE")" = "cortex:oracle" ] || fail "--hub should skip the OAM GUI"
+
+rm -rf "$OAM_CLIENT"
 
 : > "$LOG_FILE"
 run_launcher "$FAKE_CORTEX_CLI"

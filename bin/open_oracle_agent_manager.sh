@@ -6,6 +6,8 @@ CONFIG_DIR="${BARISTA_CONFIG_DIR:-${CONFIG_DIR:-$HOME/.config/sketchybar}}"
 STATE_FILE="$CONFIG_DIR/state.json"
 CODE_DIR_DEFAULT="${BARISTA_CODE_DIR:-${CODE_DIR:-$HOME/src}}"
 LOG_FILE="${TMPDIR:-/tmp}/oracle_agent_manager.log"
+OPEN_BIN="${BARISTA_OPEN_BIN:-/usr/bin/open}"
+OAM_APP_NAME="Oracle Agent Manager.app"
 
 MODE="gui"
 
@@ -33,6 +35,35 @@ if [[ "$STATE_CODE_DIR" == "null" ]]; then
   STATE_CODE_DIR=""
 fi
 CODE_DIR="${STATE_CODE_DIR:-$CODE_DIR_DEFAULT}"
+OAM_CLIENT_DIR="$CODE_DIR/hobby/oracle-agent-manager/client"
+
+resolve_oam_app() {
+  local candidates=(
+    "${OAM_APP:-}"
+    "$OAM_CLIENT_DIR/build/$OAM_APP_NAME"
+    "$HOME/Applications/$OAM_APP_NAME"
+  )
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -n "$candidate" && -x "$candidate/Contents/MacOS/oam" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+resolve_oam_client_binary() {
+  local candidate
+  for candidate in "$OAM_CLIENT_DIR/.build/release/oam" "$OAM_CLIENT_DIR/.build/debug/oam"; do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 
 resolve_cortex_cli() {
   local candidates=(
@@ -53,7 +84,7 @@ resolve_cortex_cli() {
   command -v cortex-cli 2>/dev/null || return 1
 }
 
-resolve_oam_binary() {
+resolve_legacy_binary() {
   local mode="$1"
   local candidates=()
   if [[ "$mode" == "hub" ]]; then
@@ -86,26 +117,38 @@ launch_binary() {
   disown
 }
 
+if [[ "$MODE" == "gui" ]]; then
+  if app="$(resolve_oam_app)"; then
+    echo "[oracle-agent-manager] Opening $app"
+    "$OPEN_BIN" "$app"
+    exit 0
+  fi
+  if bin="$(resolve_oam_client_binary)"; then
+    launch_binary "$bin"
+    exit 0
+  fi
+fi
+
 if cortex_cli="$(resolve_cortex_cli)"; then
-  echo "[oracle-agent-manager] Opening Oracle in Cortex via $cortex_cli"
+  echo "[oracle-agent-manager] OAM client not built; opening Oracle in Cortex via $cortex_cli"
   if "$cortex_cli" oracle; then
     exit 0
   fi
   echo "[oracle-agent-manager] Cortex Oracle launch failed; trying legacy Oracle Agent Manager" >&2
 fi
 
-if bin="$(resolve_oam_binary "$MODE" 2>/dev/null)"; then
+if bin="$(resolve_legacy_binary "$MODE" 2>/dev/null)"; then
   launch_binary "$bin"
   exit 0
 fi
 
 if [[ "$MODE" == "gui" ]]; then
   echo "[oracle-agent-manager] GUI binary not found, trying oracle_hub" >&2
-  if bin="$(resolve_oam_binary hub 2>/dev/null)"; then
+  if bin="$(resolve_legacy_binary hub 2>/dev/null)"; then
     launch_binary "$bin"
     exit 0
   fi
 fi
 
-echo "[oracle-agent-manager] No Oracle Agent Manager binary found under $CODE_DIR/hobby/oracle-agent-manager" >&2
+echo "[oracle-agent-manager] Nothing to launch; build the client with $OAM_CLIENT_DIR/scripts/bundle_app.sh" >&2
 exit 1

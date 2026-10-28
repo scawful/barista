@@ -8,7 +8,8 @@
 This document is historical. Barista owns SketchyBar's glanceable status,
 popups, and quick launch; Cortex owns the native host/runtime, and Oracle inside
 Cortex owns persistent AI workflow. `bin/open_oracle_agent_manager.sh` prefers
-that Cortex surface and keeps the legacy Oracle Agent Manager as a fallback.
+the SwiftUI Oracle Agent Manager client and falls back to Cortex, then the
+legacy C++ Oracle Agent Manager.
 The completion badges, prototype paths, and
 replacement claims below describe the 2026-01 experiment, not the current source
 tree. Do not use them as an install or implementation checklist; start with

@@ -148,7 +148,7 @@ From the project root:
 ./bin/open_oracle_agent_manager.sh
 ```
 
-This is the supported entry point for Oracle Hub.
+This is the supported entry point for Oracle Agent Manager (see the Zelda Workbench section of the top-level README for launch order).
 
 ### App Bundle
 

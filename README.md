@@ -194,15 +194,20 @@ or `brew services` for the three daemons, not both.
 Barista now treats Zelda hacking as a two-layer surface:
 
 - The left-bar `Triforce` widget is the shallow launcher.
-- Oracle Hub is the deeper workflow surface.
+- Oracle Agent Manager (OAM) is the deeper workflow surface: a SwiftUI client in
+  `hobby/oracle-agent-manager/client` over `z3cli --serve` for training, models, and emulators.
 
-Use Oracle Hub when you want session planning, Oracle status, build/test buttons, and tool launchers:
+Open it from the dock's **Oracle Tools → Agent Manager**, the control panel, or:
 
 ```bash
 ./bin/open_oracle_agent_manager.sh
 ```
 
-Oracle Hub is intended to replace deep SketchyBar popup interaction for Oracle work. The SketchyBar side should stay shallow and quick, but it now keeps one launcher section for the core Zelda tools that belong beside the session controls.
+The launcher opens `client/build/Oracle Agent Manager.app` (built by
+`client/scripts/bundle_app.sh`), then a bare `oam` release/debug build, and falls
+back to `cortex-cli oracle` and the legacy C++ binaries only when no OAM build exists.
+
+OAM is intended to replace deep SketchyBar popup interaction for Oracle work. The SketchyBar side should stay shallow and quick, but it now keeps one launcher section for the core Zelda tools that belong beside the session controls.
 Those Zelda launchers live in the Triforce popup rather than being duplicated in the Apple menu.
 
 In practice, the Triforce popup should stay close to:

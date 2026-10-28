@@ -128,7 +128,7 @@ resolve_app_icon() {
     "LM Studio"|"lm studio") echo "󰭻" ;;
 
     # Zelda / Oracle tooling
-    "Oracle Agent Manager"|"oracle_manager_gui"|"oracle_hub"|"Oracle") echo "󰯙" ;;
+    "Oracle Agent Manager"|"oam"|"oracle_manager_gui"|"oracle_hub"|"Oracle") echo "󰯙" ;;
 
     # Games
     "Steam") echo "" ;;

@@ -69,7 +69,7 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
                    ],
                    @[
                      [self actionButtonWithTitle:@"Open README" action:@selector(openReadme:)],
-                     [self actionButtonWithTitle:@"Open Oracle Hub" action:@selector(openOracleAgentManager:)]
+                     [self actionButtonWithTitle:@"Open Oracle Agent Manager" action:@selector(openOracleAgentManager:)]
                    ]
                  ]
                    toStack:rootStack];
@@ -233,10 +233,10 @@ static NSString *const BaristaSelectTabNotification = @"BaristaSelectTabNotifica
   (void)sender;
   NSError *error = nil;
   if ([[BaristaCommandBus sharedBus] openOracleAgentManagerWithError:&error]) {
-    self.statusLabel.stringValue = @"Oracle Hub launch requested.";
+    self.statusLabel.stringValue = @"Oracle Agent Manager launch requested.";
     self.statusLabel.textColor = [NSColor secondaryLabelColor];
   } else {
-    self.statusLabel.stringValue = error.localizedDescription ?: @"Oracle Hub launch failed.";
+    self.statusLabel.stringValue = error.localizedDescription ?: @"Oracle Agent Manager launch failed.";
     self.statusLabel.textColor = [NSColor systemOrangeColor];
   }
 }

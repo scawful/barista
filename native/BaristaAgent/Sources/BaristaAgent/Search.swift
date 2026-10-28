@@ -63,12 +63,12 @@ enum FileSearch {
   /// Listing entries for the hits, named by their path under `root`.
   /// Blocking: one stat per hit.
   static func entries(_ lines: [String], root: URL) -> [FileEntry] {
-    lines.compactMap(hit).map { hit in
+    FileListing.ranked(lines.compactMap(hit).map { hit in
       var entry = FileListing.entry(hit.url, name: PopoverController.relativePath(hit.url, from: root))
       entry.line = hit.line
       entry.match = hit.text
       return entry
-    }
+    })
   }
 }
 

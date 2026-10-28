@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 final class BrowserController {
   static let shared = BrowserController()
   static let titleSuffix = " - Barista Files"
+  private static let frameName = "Barista Files"
 
   /// Folders the dock shows, added under the standard places.
   var dockPlaces: () -> [(name: String, url: URL)] = { [] }
@@ -51,7 +52,11 @@ final class BrowserController {
     state.onTitle = { [weak window] name in window?.title = name + Self.titleSuffix }
     state.onCloseWindow = { [weak window] in window?.performClose(nil) }
     state.reload()
-    window.center()
+    if !window.setFrameUsingName(Self.frameName) { window.center() }
+    // The first browser keeps its frame across launches; one opened beside it cascades.
+    if !window.setFrameAutosaveName(Self.frameName), let last = windows.last {
+      window.setFrameTopLeftPoint(window.cascadeTopLeft(from: NSPoint(x: last.frame.minX, y: last.frame.maxY)))
+    }
     windows.append(window)
     states[ObjectIdentifier(window)] = state
     closeObservers[ObjectIdentifier(window)] = NotificationCenter.default.addObserver(
@@ -153,6 +158,8 @@ final class BrowserController {
       case ([.command, .option], _, "c") where !typing: state.copyPathnames()
       case ([.command, .control], _, "n") where !typing: state.newFolderWithSelection()
       case (.command, _, "e") where !typing: state.ejectSelectionOrShown()
+      case (.command, _, "="), ([.command, .shift], _, "+"): state.stepIconSize(1)
+      case (.command, _, "-"): state.stepIconSize(-1)
       case ([.command, .shift], 51, _) where !typing: self.emptyTrash(from: window)
       case ([], _, _) where !typing && !state.boardShown && Self.typesToSelect(key),
            ([.shift], _, _) where !typing && !state.boardShown && Self.typesToSelect(key):
@@ -217,6 +224,19 @@ final class BrowserController {
       view.addItem(item(layout.title, "\(index + 1)", [.command, .option]) { $0.layout = layout })
     }
     view.addItem(.separator())
+    let sort = NSMenu(title: "Sort By")
+    for key in FileSortKey.allCases {
+      sort.addItem(item(key.title) { state in
+        if state.sortKey == key { state.ascending.toggle() } else { state.sortKey = key; state.ascending = key.ascendsByDefault }
+      })
+    }
+    let sortHolder = NSMenuItem(title: "Sort By", action: nil, keyEquivalent: "")
+    sortHolder.submenu = sort
+    view.addItem(sortHolder)
+    view.addItem(item("Bigger Icons", "=") { $0.stepIconSize(1) })
+    view.addItem(item("Smaller Icons", "-") { $0.stepIconSize(-1) })
+    view.addItem(item("Use as Defaults") { $0.useAsDefaults() })
+    view.addItem(.separator())
     view.addItem(item("Show or Hide Sidebar", "s", [.command, .option]) { $0.showSidebar.toggle() })
     view.addItem(item("Show or Hide Preview", "p", [.command, .shift]) { $0.showPreview.toggle() })
     view.addItem(item("Show or Hide Hidden Files", ".", [.command, .shift]) { $0.hidden.toggle(); $0.reload() })
@@ -258,8 +278,10 @@ final class BrowserState: ObservableObject {
   /// The folder's first listing is taking a while.
   @Published private(set) var loading = false
   @Published var selection: Set<URL> = []
-  @Published var sortKey = FileSortKey.name { didSet { refreshShown() } }
-  @Published var ascending = true { didSet { refreshShown() } }
+  @Published var sortKey = FileSortKey.name { didSet { sortChanged { $0.sortKey = sortKey } } }
+  @Published var ascending = true { didSet { sortChanged { $0.ascending = ascending } } }
+  /// Points per icon in the icon view, in `FolderView.iconStep` steps.
+  @Published var iconSize = FolderView.fallback.iconSize ?? 64 { didSet { remember { $0.iconSize = iconSize } } }
   @Published var query = "" { didSet { search() } }
   @Published var scope = SearchScope.folder { didSet { if scope != oldValue { search() } } }
   /// fd or rg is running for the query.
@@ -267,12 +289,18 @@ final class BrowserState: ObservableObject {
   /// Why a deep search's results are partial or missing.
   @Published private(set) var searchNote: String?
   @Published var hidden = false
-  @Published var showSidebar = true
-  @Published var showPreview = true
-  @Published var layout = BrowserLayout.remembered {
+  @Published var showSidebar = UserDefaults.standard.object(forKey: "BaristaFilesShowSidebar") as? Bool ?? true {
+    didSet { UserDefaults.standard.set(showSidebar, forKey: "BaristaFilesShowSidebar") }
+  }
+  @Published var showPreview = UserDefaults.standard.object(forKey: "BaristaFilesShowPreview") as? Bool ?? true {
+    didSet { UserDefaults.standard.set(showPreview, forKey: "BaristaFilesShowPreview") }
+  }
+  /// Picking one in a folder makes the folder always open that way.
+  @Published var layout = BrowserLayout.list {
     didSet {
-      UserDefaults.standard.set(layout.rawValue, forKey: BrowserLayout.defaultsKey)
+      guard !applyingView else { return }
       showBoard = false
+      remember { $0.layout = layout }
     }
   }
   /// The shown folder as a board, when it has a tasks file at its top.
@@ -316,6 +344,15 @@ final class BrowserState: ObservableObject {
   var onCloseWindow: (() -> Void)?
   var onQuickLook: (() -> Void)?
   private var watcher: FileWatcher?
+  /// The folder whose view is applied, and the layout the window had
+  /// before it, which the folder keeps unless it has its own.
+  private var viewedFolder: String?
+  private var inheritedLayout: BrowserLayout?
+  /// Set while a folder's view is applied, so applying it isn't saved as a choice.
+  private var applyingView = false
+  /// What Finder recorded, by folder, as last read. Every visit reads it
+  /// again off the main thread; this answers until then.
+  private static var finderViews: [String: FolderView.Finder] = [:]
   /// The folder (and hidden setting) the rows list, which trails `location`
   /// while a listing loads.
   private var listedFolder: String?
@@ -338,9 +375,13 @@ final class BrowserState: ObservableObject {
   private var measuring: Set<String> = []
   private var sizeRuns: [SizeRun] = []
 
-  init(location: URL, selecting: URL? = nil) {
+  private let views: FolderViews
+
+  init(location: URL, selecting: URL? = nil, views: FolderViews = .shared) {
     tabs = BrowserTabs(location)
     pendingSelection = selecting.map { [$0] }
+    self.views = views
+    layout = views.defaults.layout ?? .list
   }
 
   var location: URL { tabs.selected.location }
@@ -351,6 +392,7 @@ final class BrowserState: ObservableObject {
     let token = generation
     let folder = location
     let hidden = self.hidden
+    applyView(for: folder)
     onTitle?(DisplayNames.name(of: folder))
     // Until git and the context are read again, the old ones must not show
     // against a folder outside them.
@@ -385,9 +427,11 @@ final class BrowserState: ObservableObject {
     DispatchQueue.global(qos: .userInitiated).async {
       let listing = FileListing.load(folder, hidden: hidden)
       let workspace = Workspace.load(folder)
+      let finder = FolderView.Finder.read(folder)
       DispatchQueue.main.async { [weak self] in
         guard let self, self.generation == token else { return }
         if let listing { ListingCache.shared.store(listing, for: folder, hidden: hidden) }
+        self.finderRead(finder, for: folder)
         self.loading = false
         self.show(listing, listed: listed, final: true)
         self.show(workspace)
@@ -512,6 +556,56 @@ final class BrowserState: ObservableObject {
     largestSize = shown.compactMap(\.size).max() ?? 0
   }
 
+  /// The shown folder's view, when the shown folder changes (or `again`,
+  /// when what Finder recorded for it did).
+  private func applyView(for folder: URL, again: Bool = false) {
+    if !again {
+      guard folder.path != viewedFolder else { return }
+      inheritedLayout = viewedFolder == nil ? nil : layout
+      viewedFolder = folder.path
+    }
+    let view = views.view(for: folder, current: inheritedLayout, finder: Self.finderViews[folder.path])
+    let resorts = (view.sortKey ?? sortKey) != sortKey || (view.ascending ?? ascending) != ascending
+    applyingView = true
+    if let new = view.layout, new != layout { layout = new }
+    if let new = view.sortKey, new != sortKey { sortKey = new }
+    if let new = view.ascending, new != ascending { ascending = new }
+    if let new = view.iconSize, new != iconSize { iconSize = new }
+    applyingView = false
+    if resorts { refreshShown() }
+  }
+
+  private func finderRead(_ finder: FolderView.Finder, for folder: URL) {
+    let known = Self.finderViews[folder.path]
+    Self.finderViews[folder.path] = finder
+    if known != finder && viewedFolder == folder.path { applyView(for: folder, again: true) }
+  }
+
+  private func sortChanged(_ change: (inout FolderView) -> Void) {
+    guard !applyingView else { return }
+    refreshShown()
+    remember(change)
+  }
+
+  /// A view choice made in the shown folder, kept for it.
+  private func remember(_ change: (inout FolderView) -> Void) {
+    guard !applyingView else { return }
+    views.update(location, change)
+  }
+
+  /// One `FolderView.iconStep` bigger (1) or smaller (-1); icons only.
+  func stepIconSize(_ steps: Double) {
+    guard layout == .icons, !boardShown else { return NSSound.beep() }
+    let size = FolderView.iconSize(iconSize + steps * FolderView.iconStep)
+    if size != iconSize { iconSize = size }
+  }
+
+  /// Finder's View → Use as Defaults: folders without a choice of their
+  /// own, and new windows, look like this one.
+  func useAsDefaults() {
+    views.defaults = FolderView(layout: layout, sortKey: sortKey, ascending: ascending, iconSize: iconSize)
+  }
+
   private func withMeasuredSize(_ entry: FileEntry) -> FileEntry {
     guard entry.isFolder else { return entry }
     var sized = entry
@@ -562,11 +656,15 @@ final class BrowserState: ObservableObject {
     sizesPending = 0
   }
 
-  /// The biggest folders first, as a disk-usage tool shows them.
+  /// The biggest folders first, as a disk-usage tool shows them. Not kept
+  /// as the folder's sort: it's a one-off look.
   func showLargest(in folder: URL) {
     go(to: folder)
+    applyingView = true
     sortKey = .size
     ascending = false
+    applyingView = false
+    refreshShown()
     measuringSizes = true
   }
 
@@ -639,9 +737,13 @@ final class BrowserState: ObservableObject {
     reload()
   }
 
+  /// A folder browses; a file opens with Barista's app for it, else in the
+  /// viewer when it can show it, else with the system's default.
   func open(_ entry: FileEntry) {
     if entry.isFolder {
       go(to: entry.url)
+    } else if let app = OpenRules.app(for: entry.url) {
+      NSWorkspace.shared.open([entry.url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
     } else if !ViewerController.shared.open(entry.url) {
       NSWorkspace.shared.open(entry.url)
     }
@@ -981,6 +1083,10 @@ struct BrowserView: View {
   @ObservedObject private var volumes = VolumeMonitor.shared
   @ObservedObject private var places = PlacesMonitor.shared
   @FocusState private var searchFocused: Bool
+  @AppStorage("BaristaFilesSidebarWidth") private var sidebarWidth = 180.0
+  @AppStorage("BaristaFilesPreviewWidth") private var previewWidth = 320.0
+  private static let sidebarWidths: ClosedRange<Double> = 140...360
+  private static let previewWidths: ClosedRange<Double> = 200...720
 
   var body: some View {
     VStack(spacing: 0) {
@@ -988,12 +1094,21 @@ struct BrowserView: View {
       if state.tabs.tabs.count > 1 { tabStrip }
       if !state.query.isEmpty { scopeBar }
       Divider()
-      HSplitView {
-        if state.showSidebar { sidebar.frame(minWidth: 140, idealWidth: 170, maxWidth: 260) }
-        listing.frame(minWidth: 360)
-        if state.showPreview {
-          // Capped, so a wider window widens the list rather than the preview.
-          BrowserPreview(entry: selectedEntry, state: state).frame(minWidth: 220, idealWidth: 320, maxWidth: 560)
+      GeometryReader { geometry in
+        // A tiled window can be narrow: the panes give way so the list keeps room.
+        let total = geometry.size.width
+        let side = state.showSidebar ? min(sidebarWidth, total * 0.35) : 0
+        let preview = state.showPreview ? min(previewWidth, max(160, total - side - 320)) : 0
+        HStack(spacing: 0) {
+          if state.showSidebar {
+            sidebar.frame(width: side)
+            PaneHandle(width: $sidebarWidth, range: Self.sidebarWidths, direction: 1)
+          }
+          listing.frame(maxWidth: .infinity)
+          if state.showPreview {
+            PaneHandle(width: $previewWidth, range: Self.previewWidths, direction: -1)
+            BrowserPreview(entry: selectedEntry, state: state).frame(width: preview)
+          }
         }
       }
       Divider()
@@ -1267,6 +1382,15 @@ struct BrowserView: View {
         ProgressView().controlSize(.mini)
         Text("measuring \(state.sizesPending) folder\(state.sizesPending == 1 ? "" : "s")")
       }
+      if !state.boardShown && state.layout == .icons {
+        HStack(spacing: 4) {
+          Image(systemName: "square.grid.3x3").imageScale(.small)
+          Slider(value: $state.iconSize, in: FolderView.iconSizes, step: FolderView.iconStep).controlSize(.mini)
+          Image(systemName: "square.grid.2x2").imageScale(.medium)
+        }
+        .frame(width: 110)
+        .help("Icon size for this folder (⌘- and ⌘=)")
+      }
       if !state.boardShown {
         Button(state.measuringSizes ? "Hide Folder Sizes" : "Calculate Sizes") { state.measuringSizes.toggle() }
           .buttonStyle(.borderless).font(.caption)
@@ -1278,6 +1402,35 @@ struct BrowserView: View {
     .foregroundStyle(.secondary)
     .padding(.horizontal, 12)
     .frame(height: 22)
+  }
+}
+
+/// The line between two panes, dragged to resize the pane on one side;
+/// `direction` is 1 when that pane is to its left, -1 when to its right.
+private struct PaneHandle: View {
+  @Binding var width: Double
+  let range: ClosedRange<Double>
+  let direction: Double
+  @State private var start: Double?
+
+  var body: some View {
+    Rectangle()
+      .fill(Color(nsColor: .separatorColor))
+      .frame(width: 1)
+      .overlay {
+        // Wider than the line, so it's easy to grab.
+        Color.clear.frame(width: 8).contentShape(Rectangle())
+          .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+          .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+            .onChanged { drag in
+              let base = start ?? width
+              start = base
+              width = min(max(base + direction * drag.translation.width, range.lowerBound), range.upperBound)
+              NSCursor.resizeLeftRight.set()
+            }
+            .onEnded { _ in start = nil })
+      }
+      .zIndex(1)
   }
 }
 
@@ -1314,6 +1467,9 @@ private struct PathBar: View {
 private struct FileTable: View {
   @ObservedObject var state: BrowserState
   @FocusState private var focused: Bool
+  /// Which columns show, in what order and how wide, for every list.
+  @AppStorage("BaristaFilesColumns") private var savedColumns = Data()
+  @State private var columns = TableColumnCustomization<FileEntry>()
 
   /// Read from the state, so a table made again (after an unreadable folder)
   /// shows the sort the list still has.
@@ -1323,6 +1479,8 @@ private struct FileTable: View {
       switch state.sortKey {
       case .name: return [KeyPathComparator(\FileEntry.name, order: order)]
       case .modified: return [KeyPathComparator(\FileEntry.modified, order: order)]
+      case .created: return [KeyPathComparator(\FileEntry.created, order: order)]
+      case .added: return [KeyPathComparator(\FileEntry.added, order: order)]
       case .size: return [KeyPathComparator(\FileEntry.sortableSize, order: order)]
       case .kind: return [KeyPathComparator(\FileEntry.kind, order: order)]
       }
@@ -1331,6 +1489,8 @@ private struct FileTable: View {
       state.ascending = first.order == .forward
       switch first.keyPath {
       case \FileEntry.modified: state.sortKey = .modified
+      case \FileEntry.created: state.sortKey = .created
+      case \FileEntry.added: state.sortKey = .added
       case \FileEntry.sortableSize: state.sortKey = .size
       case \FileEntry.kind: state.sortKey = .kind
       default: state.sortKey = .name
@@ -1347,9 +1507,13 @@ private struct FileTable: View {
         // A new window's listing can land before the table is shown. The
         // list takes the keys, so arrows work without a click first.
         .onAppear {
+          if let saved = try? JSONDecoder().decode(TableColumnCustomization<FileEntry>.self, from: savedColumns) {
+            columns = saved
+          }
           scroll(proxy)
           focused = true
         }
+        .onChange(of: columns) { savedColumns = (try? JSONEncoder().encode(columns)) ?? savedColumns }
     }
   }
 
@@ -1360,7 +1524,7 @@ private struct FileTable: View {
   }
 
   private var table: some View {
-    Table(of: FileEntry.self, selection: $state.selection, sortOrder: order) {
+    Table(of: FileEntry.self, selection: $state.selection, sortOrder: order, columnCustomization: $columns) {
       TableColumn("Name", value: \.name) { entry in
         HStack(spacing: 6) {
           FileIcon(url: entry.url, points: 16)
@@ -1386,10 +1550,19 @@ private struct FileTable: View {
       // Without its own minimum, Name is the column that gives way in a
       // narrow window; these minimums add up to about the list's.
       .width(min: 150, ideal: 280)
-      TableColumn("Date Modified", value: \.modified) { entry in
-        Text(entry.modified, format: .dateTime.year().month().day().hour().minute()).foregroundStyle(.secondary)
-      }
-      .width(min: 90, ideal: 150)
+      .customizationID("name")
+      .disabledCustomizationBehavior(.visibility)
+      TableColumn("Date Modified", value: \.modified) { entry in dateText(entry.modified) }
+        .width(min: 90, ideal: 150)
+        .customizationID("modified")
+      TableColumn("Date Created", value: \.created) { entry in dateText(entry.created) }
+        .width(min: 90, ideal: 150)
+        .customizationID("created")
+        .defaultVisibility(.hidden)
+      TableColumn("Date Added", value: \.added) { entry in dateText(entry.added) }
+        .width(min: 90, ideal: 150)
+        .customizationID("added")
+        .defaultVisibility(.hidden)
       TableColumn("Size", value: \.sortableSize) { entry in
         Text(entry.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "--")
           .foregroundStyle(.secondary)
@@ -1404,10 +1577,12 @@ private struct FileTable: View {
           }
       }
       .width(min: 50, ideal: 70)
+      .customizationID("size")
       TableColumn("Kind", value: \.kind) { entry in
         Text(entry.kind).foregroundStyle(.secondary).lineLimit(1)
       }
       .width(min: 60, ideal: 120)
+      .customizationID("kind")
     } rows: {
       ForEach(state.shown) { entry in
         TableRow(entry).itemProvider { NSItemProvider(object: entry.url as NSURL) }
@@ -1420,6 +1595,13 @@ private struct FileTable: View {
       state.openSelection()
     }
     .onDrop(of: [.fileURL], isTargeted: nil, perform: state.drop)
+  }
+
+  private static let dateStyle = Date.FormatStyle.dateTime.year().month().day().hour().minute()
+
+  /// A volume that keeps no creation or added date answers nothing.
+  private func dateText(_ date: Date) -> some View {
+    Text(date == .distantPast ? "--" : date.formatted(Self.dateStyle)).foregroundStyle(.secondary)
   }
 }
 
@@ -1445,7 +1627,7 @@ struct EntryMenu: View {
       if let singleFolder {
         Button("Open in New Tab") { state.newTab(at: singleFolder) }
       } else if let single {
-        OpenWithMenu(url: single)
+        OpenWithMenu(state: state, url: single)
       }
       if let single, single.deletingLastPathComponent().standardizedFileURL.path != state.location.path {
         Button("Show in Enclosing Folder") {
@@ -1514,6 +1696,8 @@ struct EntryMenu: View {
       ForEach(FileSortKey.allCases) { Text($0.title).tag($0) }
     }
     Toggle("Calculate All Sizes", isOn: $state.measuringSizes)
+    Button("Use as Defaults") { state.useAsDefaults() }
+      .help("Folders you haven't set a view for, and new windows, look like this one")
     Divider()
     ToolButtons(urls: [state.location], directory: state.location)
     Divider()
@@ -1590,33 +1774,6 @@ struct ROMApp {
     NSWorkspace.shared.openApplication(at: app, configuration: configuration) { _, error in
       if let error { DockStore.log("could not open \(rom.path) with \(app.path): \(error)") }
     }
-  }
-}
-
-/// The apps that open `url`, its default first, as in Finder's Open With.
-private struct OpenWithMenu: View {
-  let url: URL
-
-  var body: some View {
-    let preferred = NSWorkspace.shared.urlForApplication(toOpen: url)
-    let others = NSWorkspace.shared.urlsForApplications(toOpen: url).filter { $0 != preferred }.prefix(20)
-    Menu("Open With") {
-      if let preferred {
-        Button("\(Self.name(preferred)) (default)") { open(with: preferred) }
-        if !others.isEmpty { Divider() }
-      }
-      ForEach(Array(others), id: \.self) { app in
-        Button(Self.name(app)) { open(with: app) }
-      }
-    }
-  }
-
-  private func open(with app: URL) {
-    NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
-  }
-
-  private static func name(_ app: URL) -> String {
-    FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
   }
 }
 

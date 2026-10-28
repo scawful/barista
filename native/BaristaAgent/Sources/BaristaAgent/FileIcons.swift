@@ -16,7 +16,11 @@ final class FileIcons: @unchecked Sendable {
     return queue
   }()
 
-  private init() { cache.countLimit = 4000 }
+  /// Big icon-view sizes are 256 px a side, so bytes bound it as well as count.
+  private init() {
+    cache.countLimit = 4000
+    cache.totalCostLimit = 128 << 20
+  }
 
   private static func key(_ url: URL, _ points: CGFloat) -> NSString { "\(Int(points))|\(url.path)" as NSString }
 
@@ -29,10 +33,10 @@ final class FileIcons: @unchecked Sendable {
     let run = SizeRun()
     return await withTaskCancellationHandler {
       await withCheckedContinuation { (continuation: CheckedContinuation<NSImage?, Never>) in
-        queue.addOperation { [cache] in
+        queue.addOperation { [self] in
           guard !run.cancelled else { return continuation.resume(returning: nil) }
           let image = Self.draw(NSWorkspace.shared.icon(forFile: url.path), points: points)
-          if let image { cache.setObject(image, forKey: Self.key(url, points)) }
+          if let image { self.cache.setObject(image, forKey: Self.key(url, points), cost: Int(points * points) * 16) }
           continuation.resume(returning: image)
         }
       }
@@ -68,7 +72,8 @@ struct FileIcon: View {
       }
     }
     .frame(width: points, height: points)
-    .task(id: url) {
+    // The icon at the old size stays, scaled, until the new one is drawn.
+    .task(id: "\(Int(points))|\(url.path)") {
       if let loaded = await FileIcons.shared.icon(for: url, points: points) { image = loaded }
     }
   }

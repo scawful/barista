@@ -100,6 +100,9 @@ struct FileEntry: Identifiable, Equatable {
   /// A folder you browse into; packages such as apps open instead.
   let isFolder: Bool
   let modified: Date
+  var created = Date.distantPast
+  /// When it was put in this folder, as Finder's Date Added.
+  var added = Date.distantPast
   /// Nil for folders, whose size means walking them, until Calculate All
   /// Sizes measures them.
   var size: Int64?
@@ -107,11 +110,13 @@ struct FileEntry: Identifiable, Equatable {
   /// A contents search's first match in the file: its line number and text.
   var line: Int?
   var match: String?
+  /// Its place in Finder's name order among the rows it was listed with.
+  var nameOrder: Int?
   var id: URL { url }
 }
 
-enum FileSortKey: String, CaseIterable, Identifiable {
-  case name, modified, size, kind
+enum FileSortKey: String, CaseIterable, Identifiable, Codable {
+  case name, modified, created, added, size, kind
 
   var id: Self { self }
 
@@ -119,16 +124,23 @@ enum FileSortKey: String, CaseIterable, Identifiable {
     switch self {
     case .name: return "Name"
     case .modified: return "Date Modified"
+    case .created: return "Date Created"
+    case .added: return "Date Added"
     case .size: return "Size"
     case .kind: return "Kind"
     }
   }
+
+  /// Finder's direction when it arranges by this: newest and largest first.
+  var ascendsByDefault: Bool { self == .name || self == .kind }
 }
 
 /// How a browser draws its folder, as Finder's View menu offers.
-enum BrowserLayout: String, CaseIterable, Identifiable {
+enum BrowserLayout: String, CaseIterable, Identifiable, Codable {
   case list, icons, columns
 
+  /// The layout picked last before folders had views of their own; the
+  /// default until View → Use as Defaults sets one.
   static let defaultsKey = "BaristaFilesLayout"
 
   var id: Self { self }
@@ -147,11 +159,6 @@ enum BrowserLayout: String, CaseIterable, Identifiable {
     case .icons: return "square.grid.2x2"
     case .columns: return "rectangle.split.3x1"
     }
-  }
-
-  /// The last one chosen, for new windows.
-  static var remembered: BrowserLayout {
-    UserDefaults.standard.string(forKey: defaultsKey).flatMap(BrowserLayout.init) ?? .list
   }
 
   /// The folders drawn as columns before `location`'s own: its enclosing
@@ -192,7 +199,8 @@ enum FileListing {
   /// Not the localized type description: asked per file, it costs more than
   /// every other key together, and files with one extension share it.
   private static let keys: [URLResourceKey] = [.localizedNameKey, .isDirectoryKey, .isPackageKey, .isSymbolicLinkKey,
-                                               .contentModificationDateKey, .fileSizeKey, .isExecutableKey]
+                                               .contentModificationDateKey, .creationDateKey, .addedToDirectoryDateKey,
+                                               .fileSizeKey, .isExecutableKey]
   private static let kindLock = NSLock()
   private static var kinds: [String: String] = [:]
 
@@ -212,7 +220,17 @@ enum FileListing {
     guard let urls = try? FileManager.default.contentsOfDirectory(
       at: folder, includingPropertiesForKeys: keys, options: hidden ? [] : [.skipsHiddenFiles])
     else { return nil }
-    return urls.map { entry($0) }
+    return ranked(urls.map { entry($0) })
+  }
+
+  /// `entries` with their `nameOrder`, worked out once off the main thread.
+  /// Finder's name comparison is most of a sort's cost, and the rows sort
+  /// again on every filter keystroke and every folder size measured.
+  static func ranked(_ entries: [FileEntry]) -> [FileEntry] {
+    let order = entries.indices.sorted { entries[$0].name.localizedStandardCompare(entries[$1].name) == .orderedAscending }
+    var ranked = entries
+    for (rank, index) in order.enumerated() { ranked[index].nameOrder = rank }
+    return ranked
   }
 
   /// `url` as a row, under its localized name unless `name` is given.
@@ -225,29 +243,37 @@ enum FileListing {
     let isFolder = target?.isDirectory == true && target?.isPackage != true
     return FileEntry(url: url, name: name ?? values?.localizedName ?? url.lastPathComponent, isFolder: isFolder,
                      modified: values?.contentModificationDate ?? .distantPast,
+                     created: values?.creationDate ?? .distantPast,
+                     added: values?.addedToDirectoryDate ?? .distantPast,
                      size: isFolder ? nil : values?.fileSize.map(Int64.init),
                      kind: kind(of: url, isFolder: isFolder, isExecutable: values?.isExecutable == true))
   }
 
   /// Folders come first for a name sort, as in Finder; ties fall back to name.
+  /// Sorts positions by plain numbers taken out first: rows are big structs
+  /// that cost retains to move, and string keys cost a hash per comparison.
   static func sorted(_ entries: [FileEntry], by key: FileSortKey, ascending: Bool = true) -> [FileEntry] {
-    func byName(_ a: FileEntry, _ b: FileEntry) -> Bool {
-      a.name.localizedStandardCompare(b.name) == .orderedAscending
+    let names = (entries.allSatisfy { $0.nameOrder != nil } ? entries : ranked(entries)).map { $0.nameOrder ?? 0 }
+    let value: [Double]
+    switch key {
+    case .name: value = names.map(Double.init)
+    case .modified: value = entries.map { $0.modified.timeIntervalSinceReferenceDate }
+    case .created: value = entries.map { $0.created.timeIntervalSinceReferenceDate }
+    case .added: value = entries.map { $0.added.timeIntervalSinceReferenceDate }
+    case .size: value = entries.map { Double($0.size ?? -1) }
+    case .kind:
+      // Few kinds, however many rows: each compared once here, not per pair.
+      let kinds = Dictionary(uniqueKeysWithValues: Set(entries.map(\.kind))
+        .sorted { $0.localizedStandardCompare($1) == .orderedAscending }.enumerated().map { ($1, Double($0)) })
+      value = entries.map { kinds[$0.kind] ?? 0 }
     }
-    return entries.sorted { a, b in
-      if key == .name, a.isFolder != b.isFolder { return a.isFolder }
-      let order: ComparisonResult
-      switch key {
-      case .name: order = a.name.localizedStandardCompare(b.name)
-      case .modified: order = a.modified == b.modified ? .orderedSame : a.modified < b.modified ? .orderedAscending : .orderedDescending
-      case .size:
-        let (left, right) = (a.size ?? -1, b.size ?? -1)
-        order = left == right ? .orderedSame : left < right ? .orderedAscending : .orderedDescending
-      case .kind: order = a.kind.localizedStandardCompare(b.kind)
-      }
-      if order == .orderedSame { return byName(a, b) }
-      return ascending ? order == .orderedAscending : order == .orderedDescending
+    let folders = key == .name ? entries.map(\.isFolder) : []
+    let order = entries.indices.sorted { a, b in
+      if key == .name, folders[a] != folders[b] { return folders[a] }
+      if value[a] != value[b] { return ascending ? value[a] < value[b] : value[a] > value[b] }
+      return names[a] < names[b]
     }
+    return order.map { entries[$0] }
   }
 
   static func filtered(_ entries: [FileEntry], query: String) -> [FileEntry] {

@@ -4,18 +4,25 @@ import SwiftUI
 /// The icon view: the shown rows as a grid, with Finder's clicks and arrows.
 struct IconGrid: View {
   @ObservedObject var state: BrowserState
-  private static let cell = CGSize(width: 96, height: 96)
   private static let spacing: CGFloat = 8
+
+  /// Room for two lines of name under the icon, and no narrower than a
+  /// name needs at the smallest size.
+  private var cell: CGSize {
+    let icon = CGFloat(state.iconSize)
+    return CGSize(width: max(88, icon + 40), height: icon + 44)
+  }
 
   var body: some View {
     GeometryReader { geometry in
-      let columns = max(1, Int((geometry.size.width - Self.spacing) / (Self.cell.width + Self.spacing)))
+      let cell = self.cell
+      let columns = max(1, Int((geometry.size.width - Self.spacing) / (cell.width + Self.spacing)))
       ScrollViewReader { proxy in
         ScrollView {
-          LazyVGrid(columns: Array(repeating: GridItem(.fixed(Self.cell.width), spacing: Self.spacing), count: columns),
+          LazyVGrid(columns: Array(repeating: GridItem(.fixed(cell.width), spacing: Self.spacing), count: columns),
                     spacing: Self.spacing) {
             ForEach(state.shown) { entry in
-              IconCell(state: state, entry: entry, size: Self.cell).id(entry.url)
+              IconCell(state: state, entry: entry, size: cell).id(entry.url)
             }
           }
           .padding(Self.spacing)
@@ -52,7 +59,7 @@ private struct IconCell: View {
   var body: some View {
     let selected = state.selection.contains(entry.url)
     VStack(spacing: 4) {
-      FileIcon(url: entry.url, points: 52)
+      FileIcon(url: entry.url, points: size.height - 44)
         .overlay(alignment: .bottomTrailing) {
           if let mark = state.git?.mark(for: entry.url, isFolder: entry.isFolder) {
             Text(mark.letter)

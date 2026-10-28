@@ -82,6 +82,8 @@ struct GetInfoView: View {
   let close: () -> Void
   @State private var info: FileInfo?
   @State private var measured: (bytes: Int64, items: Int)?
+  @State private var opener: String?
+  @State private var problem: String?
 
   private var single: URL? { urls.count == 1 ? urls.first : nil }
 
@@ -105,10 +107,12 @@ struct GetInfoView: View {
           if !info.permissions.isEmpty { row("Permissions", info.permissions, mono: true) }
           if let target = info.linkTarget { row("Links to", target) }
           if let commit = info.lastCommit { row("Last commit", commit) }
+          if let single, !info.isFolder { openerRow(single) }
         }
       }
       .font(.callout)
       .textSelection(.enabled)
+      if let problem { Text(problem).font(.callout).foregroundStyle(.red) }
       HStack {
         Spacer()
         Button("Done", action: close).keyboardShortcut(.defaultAction)
@@ -143,6 +147,25 @@ struct GetInfoView: View {
     let parents = Set(urls.map { $0.deletingLastPathComponent().path })
     guard parents.count == 1, let parent = parents.first else { return "Several folders" }
     return (parent as NSString).abbreviatingWithTildeInPath
+  }
+
+  /// Finder's Open With section: what opens it here, and changing that for
+  /// files like it.
+  private func openerRow(_ file: URL) -> some View {
+    GridRow(alignment: .firstTextBaseline) {
+      Text("Opens with").foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+      HStack(spacing: 8) {
+        Text(opener ?? DefaultApps.opener(for: file))
+        Menu("Change") {
+          ChangeAppMenu(file: file, folder: file.deletingLastPathComponent(), apps: DefaultApps.choices(for: file),
+                        rule: OpenRules.rule(for: file, in: OpenRules.load()), problem: { problem = $0 }) {
+            problem = nil
+            opener = DefaultApps.opener(for: file)
+          }
+        }
+        .menuStyle(.borderlessButton).fixedSize()
+      }
+    }
   }
 
   private func row(_ label: String, _ value: String, mono: Bool = false) -> some View {

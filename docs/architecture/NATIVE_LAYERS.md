@@ -280,12 +280,32 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   up, tabs, and revisits show their rows at once while the folder is read
   again. A folder that takes over 0.1 s the first time shows Loading…
   instead of the last folder's rows. git status is skipped on network
-  mounts.
+  mounts. Each row's place in name order is worked out once, off the main
+  thread, so re-sorting on a filter keystroke or a measured folder size
+  compares numbers, not names (2,800 rows: about 15 ms to 1 ms).
+- Views are remembered per folder. Picking a layout in a folder makes it
+  always open that way, as Finder's "Always open in"; other folders keep
+  the window's layout, and columns stay columns while browsing. Sort and
+  icon size (the status-bar slider, or ⌘- and ⌘=) are the folder's own.
+  Barista's choices live in its defaults; where it has none, it reads what
+  Finder recorded in `.DS_Store` (the parent's record under the folder's
+  name, or the folder's own `.`), off the main thread, and never writes
+  one. View → Use as Defaults sets the view for everything else and for
+  new windows. The window's frame, the sidebar and preview widths (drag
+  the lines between panes), and the list's columns (right-click a header
+  to show Date Created or Date Added; drag to reorder or resize) are kept
+  too.
+- Open With lists Barista's own choice first, then the default. Always
+  Open With is Finder's Change All (the system default for the type, after
+  a confirmation). In Barista, Open .ext With sets Barista's app for the
+  extension in the shown folder or everywhere, kept in
+  `~/.config/barista/files.json`; opening a file uses the deepest folder's
+  rule, then the viewer for Markdown and images, then the default. Get Info
+  shows what opens the file and changes it the same ways.
   Return renames in place, as in Finder: the name up to its extension is
   selected, so typing keeps `.asm`; ⌘O, ⌘↓, or a double-click opens. The
   folder shows as a list, icons, or columns (⌥⌘1–3, since ⌘1–9 pick tabs;
-  the toolbar picker; or View on the empty-space menu, beside Sort By), and
-  new windows open in the last one chosen. In columns the shown folder is
+  the toolbar picker; or View on the empty-space menu, beside Sort By). In columns the shown folder is
   the live column, so search, file operations, and git work as in the list;
   the folders above it (from Home, or the root outside it) are columns to
   its left, a selected folder's contents a column to its right, → enters

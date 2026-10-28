@@ -251,6 +251,18 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   goes straight there. Candidates are the places, zoxide's folders by
   frecency, and every repo under `~/src` (found with `fd`), read again after
   five minutes. Folders you browse are added to zoxide, as `cd` does.
+- The preview pane renders Markdown and org (headings, lists, src blocks,
+  tables, links), shows code and other text unwrapped in a monospaced view
+  (first 256 KB), indents minified JSON, and reads a SNES ROM's internal
+  header: title, LoROM/HiROM/ExHiROM, ROM and SRAM size, region, version,
+  and the stored checksum against the computed one (skipped when the size
+  has no standard mirroring). Images and anything else fall back to details.
+- With nothing selected inside a folder that has an AFS `.context` (the
+  nearest one above it with entries, Home's excepted), the preview pane
+  shows that context: the scratchpad's `state.md`, unfinished items by
+  priority with a done count, the newest hivemind messages, scratchpad
+  notes, and handoffs. It reads those entry points only, never the whole
+  tree; items and messages open in a tab with the file selected.
 - yabai: viewer windows float on the raised layer through the rule
   `barista-agent-viewer` (title `… - Barista Viewer`), which the agent adds
   when it opens one. Browser windows match no rule and tile. macOS window
@@ -340,9 +352,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
 
 ## Next slices
 
-- Barista Files: Get Info, column and icon views, previews for org, code,
-  JSON, and ROMs, and a panel for a repo's `.context` (AFS scratchpad,
-  items, handoffs).
+- Barista Files: Get Info, column and icon views, syntax colors for code
+  previews, and acting on AFS items (status, ack) from the context panel.
 - EventKit reminders and calendar into the agent cache, surfaced by the
   existing calendar/task popups.
 - halext-org API client in the agent (admin status, reminders sync).

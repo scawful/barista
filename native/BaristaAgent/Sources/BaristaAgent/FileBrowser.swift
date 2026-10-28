@@ -145,6 +145,8 @@ final class BrowserState: ObservableObject {
   /// The repo holding the shown folder, and its worktrees.
   @Published private(set) var git: GitStatus?
   @Published private(set) var worktrees: [GitWorktree] = []
+  /// The nearest AFS `.context` folder, shown when nothing is selected.
+  @Published private(set) var contextRoot: URL?
   @Published var jumping = false
   var places: () -> [(name: String, url: URL)] = { [] }
   var onTitle: ((String) -> Void)?
@@ -185,8 +187,10 @@ final class BrowserState: ObservableObject {
       }
       // After the listing is shown: git should never hold it up.
       let inspected = Git.inspect(folder)
+      let context = AFSContext.find(from: folder)
       DispatchQueue.main.async { [weak self] in
         guard let self, self.generation == token else { return }
+        if self.contextRoot != context { self.contextRoot = context }
         if self.git != inspected?.status { self.git = inspected?.status }
         if self.worktrees != inspected?.worktrees ?? [] { self.worktrees = inspected?.worktrees ?? [] }
       }
@@ -421,7 +425,8 @@ struct BrowserView: View {
         sidebar.frame(minWidth: 140, idealWidth: 170, maxWidth: 260)
         listing.frame(minWidth: 320)
         if state.showPreview {
-          BrowserPreview(entry: selectedEntry).frame(minWidth: 220, idealWidth: 300)
+          // Capped, so a wider window widens the list rather than the preview.
+          BrowserPreview(entry: selectedEntry, state: state).frame(minWidth: 220, idealWidth: 320, maxWidth: 560)
         }
       }
       Divider()
@@ -890,53 +895,5 @@ private extension GitMark {
     case .conflicted: return "Conflicted"
     case .inside: return "Has changes inside"
     }
-  }
-}
-
-/// The selected file: Markdown and images render, anything else shows its
-/// icon and details.
-private struct BrowserPreview: View {
-  let entry: FileEntry?
-
-  var body: some View {
-    Group {
-      if let entry {
-        switch entry.isFolder ? nil : ViewerKind.of(entry.url) {
-        case .markdown:
-          let text = (try? String(contentsOf: entry.url, encoding: .utf8)) ?? ""
-          MarkdownDocumentView(blocks: Markdown.parse(String(text.prefix(200_000))),
-                               base: entry.url.deletingLastPathComponent(),
-                               open: { $0.perform() })
-        case .image:
-          if let image = NSImage(contentsOf: entry.url) {
-            Image(nsImage: image).resizable().scaledToFit().padding(12)
-              .frame(maxWidth: .infinity, maxHeight: .infinity)
-          } else {
-            details(entry)
-          }
-        case nil:
-          details(entry)
-        }
-      } else {
-        Text("Select a file to preview it.").foregroundStyle(.secondary)
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-      }
-    }
-    .background(Color.primary.opacity(0.02))
-  }
-
-  private func details(_ entry: FileEntry) -> some View {
-    VStack(spacing: 8) {
-      Image(nsImage: NSWorkspace.shared.icon(forFile: entry.url.path)).resizable().frame(width: 96, height: 96)
-      Text(entry.name).font(.headline).multilineTextAlignment(.center)
-      Text(entry.kind).foregroundStyle(.secondary)
-      if let size = entry.size {
-        Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file)).foregroundStyle(.secondary)
-      }
-      Text(entry.modified, format: .dateTime).foregroundStyle(.secondary)
-    }
-    .font(.callout)
-    .padding()
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 }

@@ -48,6 +48,8 @@ The agent runs as `dev.barista.agent` and logs to
 | `FileBrowser.swift` | The Barista Files window: path bar, tabs, sidebar, table, preview, in-place rename, and `BrowserWindow`, which drives the Quick Look panel. |
 | `Git.swift` | Barista Files' git: porcelain v2 status and worktree parsing, `Git.inspect` (no optional locks), and `Tool` for running Homebrew tools from launchd. |
 | `Jump.swift` | ⌘K: candidate ranking, `JumpIndex` (places, zoxide, repos under `~/src`), and the sheet. |
+| `Preview.swift` | Barista Files' preview pane: `Preview.load` (Markdown, org, text, JSON, ROM, image), `Org` to Markdown, and `SNESHeader`. |
+| `ContextPanel.swift` | `AFSContext` (finding and reading a `.context`'s entry points) and the panel shown when nothing is selected. |
 | `AgentWindows.swift` | Focus for the agent's titled windows, the regular activation policy (⌘Tab) while one is open, and the hidden Edit menu that makes ⌘C work in them. |
 
 ## Viewer and Barista Files

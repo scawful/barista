@@ -298,7 +298,7 @@ struct MarkdownDocumentView: View {
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 12) {
+      LazyVStack(alignment: .leading, spacing: 12) {
         ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
           MarkdownBlockView(block: block, base: base)
         }
@@ -316,7 +316,7 @@ struct MarkdownDocumentView: View {
   }
 }
 
-private struct MarkdownBlockView: View {
+struct MarkdownBlockView: View {
   let block: MarkdownBlock
   let base: URL
 

@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 
+import contextlib
 import importlib.util
+import io
+import json
 import os
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -73,6 +78,63 @@ class DockStudioTests(unittest.TestCase):
         self.assertEqual(rows, [{"title": "Studio ready", "detail": "doctor", "tone": "ok",
                                  "action": "Studio Doctor"}])
 
+    def test_a_dangling_project_does_not_hide_the_others(self):
+        good = self.music / "Logic/good.logicx"
+        good.mkdir(parents=True)
+        (self.music / "Logic/gone.logicx").symlink_to(self.music / "nowhere")
+        self.assertEqual([path.name for path, _ in self.studio.logic_projects()], ["good.logicx"])
+
+    def test_cli_output_of_the_wrong_shape_is_ignored(self):
+        for text in (None, "", "not json", "[1, 2]", "null"):
+            self.assertIsNone(self.studio.json_object(text))
+        rows = self.studio.status_rows({"devices": "broken", "summary": []},
+                                       {"status": "warning", "recommended_action": "fix it"}, None, [], None, 0)
+        self.assertEqual(rows[0]["title"], "Gear · nothing connected")
+        self.assertEqual(rows[1]["title"], "Studio ready")
+
+    def test_ages_under_an_hour_count_minutes(self):
+        self.assertEqual(self.studio.age(30), "just now")
+        self.assertEqual(self.studio.age(50 * 60), "50m ago")
+        self.assertEqual(self.studio.age(3 * 3600), "3h ago")
+
+    def test_a_hung_cli_is_killed_with_everything_it_started(self):
+        marker = self.music / "grandchild.pid"
+        script = self.music / "slow-studio"
+        script.write_text(f"#!/bin/sh\nsleep 30 &\necho $! > '{marker}'\nwait\n")
+        script.chmod(0o755)
+        started = time.monotonic()
+        self.assertIsNone(self.studio.run_studio(str(script), [], 0.5))
+        # A grandchild left alive holds stdout open, so this also proves it died.
+        self.assertLess(time.monotonic() - started, 5)
+        pid = int(marker.read_text())
+        with self.assertRaises(ProcessLookupError):
+            for _ in range(20):
+                os.kill(pid, 0)
+                time.sleep(0.05)
+
+    def test_info_always_prints_rows(self):
+        script = self.music / "broken-studio"
+        script.write_text("#!/bin/sh\necho '[\"not\", \"an object\"]'\n")
+        script.chmod(0o755)
+        os.environ["BARISTA_STUDIO_BIN"] = str(script)
+        self.addCleanup(os.environ.pop, "BARISTA_STUDIO_BIN", None)
+        result = subprocess.run([sys.executable, str(SCRIPT), "info"], capture_output=True, text=True,
+                                env=dict(os.environ), timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["rows"][0]["title"], "Studio status unavailable")
+
+    def test_an_unexpected_error_still_prints_a_row(self):
+        os.environ["BARISTA_STUDIO_BIN"] = "/usr/bin/true"
+        self.addCleanup(os.environ.pop, "BARISTA_STUDIO_BIN", None)
+
+        def broken(*_):
+            raise KeyError("surprise")
+        self.studio.status_rows = broken
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(self.studio.main(["info"]), 0)
+        self.assertEqual(json.loads(output.getvalue())["rows"],
+                         [{"title": "Studio status unavailable", "tone": "warn", "detail": "KeyError"}])
 
 if __name__ == "__main__":
     unittest.main()

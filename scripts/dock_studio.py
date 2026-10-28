@@ -17,18 +17,21 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 MUSIC = Path(os.environ.get("BARISTA_MUSIC_DIR") or "~/Music").expanduser()
-# The dock kills info commands after 5 s; every query shares this budget.
-TIMEOUT = 4.0
+# The dock kills info commands after 5 s; the CLI queries share this budget,
+# leaving room for Python startup and the Logic folder scan.
+TIMEOUT = 3.5
 DOCTOR_ACTION = "Studio Doctor"
 SONG_ACTION = "Next Song"
 NOW_STALE_DAYS = 14
 RECENT_PROJECTS = 8
+UNAVAILABLE = {"title": "Studio status unavailable", "tone": "warn"}
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
@@ -41,11 +44,32 @@ def studio_bin() -> str | None:
     return shutil.which("studio") or (str(fallback) if fallback.exists() else None)
 
 
-def run_studio(binary: str, args: list[str], timeout: float) -> str:
+def run_studio(binary: str, args: list[str], timeout: float) -> str | None:
+    """stdout, or None on failure. `studio` is a shell script, so a timeout
+    kills its whole process group rather than orphaning what it started."""
     env = dict(os.environ, NO_COLOR="1", COLUMNS="200", TERM="dumb")
-    result = subprocess.run([binary, *args], cwd=MUSIC, env=env, capture_output=True,
-                            text=True, timeout=max(timeout, 0.1))
-    return result.stdout
+    try:
+        proc = subprocess.Popen([binary, *args], cwd=MUSIC, env=env, text=True, start_new_session=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    except OSError:
+        return None
+    try:
+        stdout, _ = proc.communicate(timeout=max(timeout, 0.1))
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            pass
+        proc.communicate()
+        return None
+    return stdout
+
+
+def mtime(path: Path) -> float | None:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
 
 
 def logic_projects(limit: int = RECENT_PROJECTS) -> list[tuple[Path, float]]:
@@ -55,15 +79,26 @@ def logic_projects(limit: int = RECENT_PROJECTS) -> list[tuple[Path, float]]:
         if not root.is_dir():
             continue
         for bundle in [*root.glob("*.logicx"), *root.glob("*/*.logicx")]:
-            stamps = [bundle.stat().st_mtime]
-            stamps += [data.stat().st_mtime for data in bundle.glob("Alternatives/*/ProjectData")]
-            found[bundle] = max(stamps)
+            stamps = [mtime(bundle), *(mtime(data) for data in bundle.glob("Alternatives/*/ProjectData"))]
+            stamps = [stamp for stamp in stamps if stamp is not None]
+            if stamps:
+                found[bundle] = max(stamps)
     return sorted(found.items(), key=lambda item: item[1], reverse=True)[:limit]
 
 
+def json_object(text: str | None) -> dict | None:
+    try:
+        value = json.loads(text) if text else None
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
 def age(seconds: float) -> str:
-    if seconds < 3600:
+    if seconds < 120:
         return "just now"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}m ago"
     if seconds < 86400:
         return f"{int(seconds // 3600)}h ago"
     return f"{int(seconds // 86400)}d ago"
@@ -86,9 +121,12 @@ def status_rows(devices: dict | None, doctor: dict | None, song: tuple[str, str]
                 projects: list[tuple[Path, float]], now_md: float | None, now: float) -> list[dict]:
     rows = []
     if devices is not None:
-        connected = [d.get("display_name") or d.get("device_id", "?")
-                     for d in devices.get("devices", []) if d.get("connected")]
-        inputs = (devices.get("summary") or {}).get("audio_inputs")
+        entries = devices.get("devices")
+        connected = [str(d.get("display_name") or d.get("device_id") or "?")
+                     for d in (entries if isinstance(entries, list) else [])
+                     if isinstance(d, dict) and d.get("connected")]
+        summary = devices.get("summary")
+        inputs = summary.get("audio_inputs") if isinstance(summary, dict) else None
         rows.append({
             "title": f"Gear · {len(connected)} connected" if connected else "Gear · nothing connected",
             "detail": ", ".join(connected[:2]) + (f" +{len(connected) - 2}" if len(connected) > 2 else "")
@@ -98,7 +136,8 @@ def status_rows(devices: dict | None, doctor: dict | None, song: tuple[str, str]
         })
     if doctor is not None:
         status = doctor.get("status") or "unknown"
-        advice = (doctor.get("recommended_action") or {}).get("label")
+        recommended = doctor.get("recommended_action")
+        advice = recommended.get("label") if isinstance(recommended, dict) else None
         if status == "ok" or not advice:
             rows.append({"title": "Studio ready", "detail": "doctor", "tone": "ok" if status == "ok" else "none",
                          "action": DOCTOR_ACTION})
@@ -123,7 +162,6 @@ def status_rows(devices: dict | None, doctor: dict | None, song: tuple[str, str]
 def cmd_info() -> int:
     deadline = time.monotonic() + TIMEOUT
     binary = studio_bin()
-    devices = doctor = song = None
     if binary is None:
         print(json.dumps({"rows": [{"title": "studio CLI not found", "detail": "Music/Studio/Tools",
                                     "tone": "error", "open": str(MUSIC)}]}))
@@ -132,26 +170,11 @@ def cmd_info() -> int:
         jobs = {name: pool.submit(run_studio, binary, args, deadline - time.monotonic())
                 for name, args in (("devices", ["devices", "--json"]), ("doctor", ["doctor", "--json"]),
                                    ("song", ["song", "next"]))}
-        results = {}
-        for name, job in jobs.items():
-            try:
-                results[name] = job.result(timeout=max(deadline - time.monotonic(), 0.1))
-            except (OSError, subprocess.SubprocessError, concurrent.futures.TimeoutError):
-                results[name] = None
-    for name in ("devices", "doctor"):
-        try:
-            value = json.loads(results[name]) if results[name] else None
-        except ValueError:
-            value = None
-        if name == "devices":
-            devices = value
-        else:
-            doctor = value
+        results = {name: job.result() for name, job in jobs.items()}
     song = song_line(results["song"]) if results["song"] else None
-    now_md = MUSIC / "NOW.md"
-    rows = status_rows(devices, doctor, song, logic_projects(1),
-                       now_md.stat().st_mtime if now_md.exists() else None, time.time())
-    print(json.dumps({"rows": rows or [{"title": "Studio status unavailable", "tone": "warn"}]}))
+    rows = status_rows(json_object(results["devices"]), json_object(results["doctor"]), song,
+                       logic_projects(1), mtime(MUSIC / "NOW.md"), time.time())
+    print(json.dumps({"rows": rows or [UNAVAILABLE]}))
     return 0
 
 
@@ -167,7 +190,12 @@ def cmd_logic_menu() -> int:
 def main(argv: list[str]) -> int:
     command = argv[0] if argv else "info"
     if command == "info":
-        return cmd_info()
+        # The dock shows nothing for a failed info command; say so in a row instead.
+        try:
+            return cmd_info()
+        except Exception as error:
+            print(json.dumps({"rows": [dict(UNAVAILABLE, detail=type(error).__name__)]}))
+            return 0
     if command == "logic-menu":
         return cmd_logic_menu()
     print(__doc__.strip(), file=sys.stderr)

@@ -304,6 +304,28 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   as `TaskQueue` would, with a new `updated_at`), or a message to mark it
   done for a recipient through `afs messages ack --done`. That entry needs
   the `afs` CLI, found through `AFS_ROOT`, `PATH`, or the usual checkouts.
+- A folder with `tasks.org` or `tasks.md` at its top is a workspace, and
+  shows as a board instead of a listing (⌥⌘4, or the first view segment;
+  any other view leaves it, and each workspace you enter starts on it).
+  Make Workspace Here, on the empty-space menu, adds `tasks.org` and
+  `notes` and `ideas` folders. Tasks come from the org and Markdown files
+  at the top: org headings with a TODO keyword (`* NEXT [#A] title :tag:`,
+  with `DEADLINE:` or `SCHEDULED:` as the due date) and checkboxes in
+  either format (`- [ ] [WAITING] title #tag due:2026-11-01`), skipping
+  code blocks. They sit in halext-org's four columns, To Do, Doing,
+  Blocked, and Done (NEXT is to do; ACTIVE, DOING, and `[-]` doing;
+  WAITING, BLOCKED, and HOLD blocked; CANCELLED done; the newest 50 done
+  show). Dragging a card to another column or Move to … on its menu
+  rewrites its line in place: a keyword that already means the new state
+  stays, otherwise TODO, ACTIVE, WAITING, or DONE is written; a ticked box
+  keeps its tag. The line is found again by its text if lines above it
+  moved, and the change is refused if it was edited. Click a card to
+  preview its file, double-click to edit it at that line (Cursor's `-g`,
+  else `emacsclient +line`). Notes list `notes/` newest first with their
+  title and first line; ideas show `ideas/` as cards, images as
+  thumbnails. The field above the board appends a task to the tasks file,
+  or starts a note or idea in the tasks file's format and opens it for
+  writing.
 - yabai: viewer windows float on the raised layer through the rule
   `barista-agent-viewer` (title `… - Barista Viewer`), which the agent adds
   when it opens one. Browser windows match no rule and tile. macOS window

@@ -97,6 +97,12 @@ final class BrowserController {
       let typing = window.firstResponder is NSText
       let key = event.charactersIgnoringModifiers ?? ""
       switch (flags, event.keyCode, key) {
+      // The board has no file selection for these to act on.
+      case _ where state.boardShown && !typing
+        && (flags.isEmpty && [36, 49, 76, 123, 124, 125, 126].contains(event.keyCode)
+            || flags == .command && ([51, 125].contains(event.keyCode) || ["a", "c", "d", "o", "r"].contains(key))):
+        return event
+      case ([.command, .option], _, "4") where state.workspace != nil: state.showBoard.toggle()
       case (.command, _, "t"): state.newTab(at: state.tabs.selected.location)
       case (.command, _, "w"): state.closeTab(state.tabs.selectedID)
       case (.command, _, "n"): self.open(state.tabs.selected.location, newWindow: true)
@@ -160,8 +166,17 @@ final class BrowserState: ObservableObject {
   @Published var hidden = false
   @Published var showPreview = true
   @Published var layout = BrowserLayout.remembered {
-    didSet { UserDefaults.standard.set(layout.rawValue, forKey: BrowserLayout.defaultsKey) }
+    didSet {
+      UserDefaults.standard.set(layout.rawValue, forKey: BrowserLayout.defaultsKey)
+      showBoard = false
+    }
   }
+  /// The shown folder as a board, when it has a tasks file at its top.
+  @Published private(set) var workspace: Workspace?
+  /// The board in place of the listing; on again in each workspace you enter.
+  @Published var showBoard = true
+  /// The task or page the board's preview shows.
+  @Published private(set) var picked: FileEntry?
   /// Icons per row in the icon view, for the up and down arrows.
   var gridColumns = 1
   @Published private(set) var shown: [FileEntry] = []
@@ -224,10 +239,12 @@ final class BrowserState: ObservableObject {
     if isDeepSearch { search() }
     DispatchQueue.global(qos: .userInitiated).async {
       let listing = FileListing.load(folder, hidden: hidden)
+      let workspace = Workspace.load(folder)
       DispatchQueue.main.async { [weak self] in
         guard let self, self.generation == token else { return }
         self.entries = listing
         self.refreshShown()
+        self.show(workspace)
         // Search results are the rows then; their own run settles the selection.
         if !self.isDeepSearch { self.settleSelection() }
       }
@@ -454,6 +471,70 @@ final class BrowserState: ObservableObject {
     }
   }
 
+  var boardShown: Bool { workspace != nil && showBoard }
+
+  private func show(_ loaded: Workspace?) {
+    if loaded?.root != workspace?.root {
+      showBoard = true
+      picked = nil
+    }
+    workspace = loaded
+    // Read again, so a file changed under the preview shows the change.
+    if let picked, FileManager.default.fileExists(atPath: picked.url.path) {
+      pick(picked.url, line: picked.line)
+    } else {
+      picked = nil
+    }
+  }
+
+  /// 1-based `line`, which a text preview scrolls to.
+  func pick(_ url: URL, line: Int? = nil) {
+    var entry = FileListing.entry(url)
+    entry.line = line
+    picked = entry
+  }
+
+  func move(_ tasks: [WorkspaceTask], to target: TaskState) {
+    do {
+      for task in tasks where task.state != target { try TaskFile.set(task, to: target) }
+    } catch {
+      problem = error.localizedDescription
+    }
+    reload()
+  }
+
+  func capture(task title: String) {
+    do {
+      try workspace?.capture(task: title)
+    } catch {
+      problem = error.localizedDescription
+    }
+    reload()
+  }
+
+  /// Starts a page and opens it for writing below its title.
+  func capture(page title: String, in shelf: Workspace.Shelf) {
+    guard let workspace else { return }
+    do {
+      let url = try workspace.capture(page: title, in: shelf)
+      pick(url)
+      Editor.edit(url, line: 3)
+    } catch {
+      problem = error.localizedDescription
+    }
+    reload()
+  }
+
+  func makeWorkspace() {
+    do {
+      try Workspace.make(in: location)
+      showBoard = true
+    } catch {
+      problem = error.localizedDescription
+    }
+    reload()
+  }
+
   func beginRename(_ url: URL) {
     selection = [url]
     renaming = url
@@ -648,7 +729,8 @@ struct BrowserView: View {
   }
 
   private var selectedEntry: FileEntry? {
-    state.selection.count == 1 ? state.shown.first { state.selection.contains($0.url) } : nil
+    if state.boardShown { return state.picked }
+    return state.selection.count == 1 ? state.shown.first { state.selection.contains($0.url) } : nil
   }
 
   private var toolbar: some View {
@@ -661,11 +743,23 @@ struct BrowserView: View {
         .disabled(state.tabs.selected.parent == nil).help("Enclosing Folder (⌘↑)")
       PathBar(location: state.location) { state.go(to: $0) }
       Spacer(minLength: 8)
-      Picker("View", selection: $state.layout) {
-        ForEach(BrowserLayout.allCases) { Image(systemName: $0.symbol).help("View \($0.title)").tag($0) }
+      // Nil is the board, so while it shows any layout leaves it.
+      let shown = Binding<BrowserLayout?> {
+        state.boardShown ? nil : state.layout
+      } set: { layout in
+        if let layout { state.layout = layout } else { state.showBoard = true }
+      }
+      Picker("View", selection: shown) {
+        if state.workspace != nil {
+          Image(systemName: "checklist").accessibilityLabel("Board").help("View as Board").tag(BrowserLayout?.none)
+        }
+        ForEach(BrowserLayout.allCases) {
+          Image(systemName: $0.symbol).help("View \($0.title)").tag(BrowserLayout?.some($0))
+        }
       }
       .pickerStyle(.segmented).labelsHidden().fixedSize()
-      .help("List, icons, or columns (⌥⌘1, ⌥⌘2, ⌥⌘3)")
+      .help(state.workspace == nil ? "List, icons, or columns (⌥⌘1, ⌥⌘2, ⌥⌘3)"
+            : "Board, list, icons, or columns (⌥⌘4, ⌥⌘1, ⌥⌘2, ⌥⌘3)")
       Button { state.jumping = true } label: { Image(systemName: "arrow.up.forward.square") }
         .help("Jump to a Folder (⌘K)")
       TextField("Search", text: $state.query)
@@ -796,6 +890,8 @@ struct BrowserView: View {
            : "This folder was moved or deleted.")
         .foregroundStyle(.secondary).multilineTextAlignment(.center).padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    } else if state.boardShown, let workspace = state.workspace {
+      WorkspaceBoard(state: state, workspace: workspace)
     } else {
       switch state.layout {
       case .list: FileTable(state: state)
@@ -807,10 +903,15 @@ struct BrowserView: View {
 
   private var statusBar: some View {
     HStack {
-      let count = state.shown.count
-      let noun = state.isDeepSearch ? "result" : "item"
-      Text("\(count) \(noun)\(count == 1 ? "" : "s")"
-           + (state.selection.isEmpty ? "" : ", \(state.selection.count) selected"))
+      if state.boardShown, let workspace = state.workspace {
+        let open = workspace.tasks.filter { $0.state != .done }.count
+        Text("\(open) open task\(open == 1 ? "" : "s") · \(workspace.notes.count) notes · \(workspace.ideas.count) ideas")
+      } else {
+        let count = state.shown.count
+        let noun = state.isDeepSearch ? "result" : "item"
+        Text("\(count) \(noun)\(count == 1 ? "" : "s")"
+             + (state.selection.isEmpty ? "" : ", \(state.selection.count) selected"))
+      }
       if state.hidden { Text("· hidden files shown") }
       Spacer()
     }
@@ -1013,6 +1114,10 @@ struct EntryMenu: View {
     Button("Paste") { state.paste(move: false) }.disabled(!state.canPaste)
     Button("Move Items Here") { state.paste(move: true) }.disabled(!state.canPaste)
     Button("Get Info") { state.inspecting = [state.location] }
+    if state.workspace == nil {
+      Button("Make Workspace Here") { state.makeWorkspace() }
+        .help("Adds tasks.org and notes and ideas folders, and shows them as a board")
+    }
     Divider()
     Picker("View", selection: $state.layout) {
       ForEach(BrowserLayout.allCases) { Text($0.title).tag($0) }

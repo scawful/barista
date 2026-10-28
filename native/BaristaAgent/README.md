@@ -54,6 +54,8 @@ The agent runs as `dev.barista.agent` and logs to
 | `Syntax.swift` | Regex coloring for code previews: 65816/asar, and comment, string, keyword, and number rules for other languages. |
 | `GetInfo.swift` | ⌘I: `FileInfo`, `FolderSize` (cancellable), and the sheet. |
 | `ContextPanel.swift` | `AFSContext` (finding and reading a `.context`'s entry points) and the panel shown when nothing is selected. |
+| `Workspace.swift` | Workspace folders: `TaskFile` reads and rewrites org and Markdown task lines, `PageSummary` titles notes and ideas, and `Editor` opens a file at a line in Cursor or Emacs. |
+| `WorkspaceBoard.swift` | The board shown in place of the listing in a workspace: task columns by state, notes, ideas, and capture. |
 | `AgentWindows.swift` | Focus for the agent's titled windows, the regular activation policy (⌘Tab) while one is open, and the hidden Edit menu that makes ⌘C work in them. |
 
 ## Viewer and Barista Files

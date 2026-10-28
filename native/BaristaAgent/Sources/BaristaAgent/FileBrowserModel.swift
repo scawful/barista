@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 /// One tab's place and its back/forward history.
 struct BrowserTab: Identifiable, Equatable {
@@ -188,10 +189,25 @@ enum BrowserLayout: String, CaseIterable, Identifiable {
 }
 
 enum FileListing {
-  /// Nil when the folder cannot be read (missing, or privacy access denied).
+  /// Not the localized type description: asked per file, it costs more than
+  /// every other key together, and files with one extension share it.
   private static let keys: [URLResourceKey] = [.localizedNameKey, .isDirectoryKey, .isPackageKey, .isSymbolicLinkKey,
-                                               .contentModificationDateKey, .fileSizeKey, .localizedTypeDescriptionKey]
+                                               .contentModificationDateKey, .fileSizeKey, .isExecutableKey]
+  private static let kindLock = NSLock()
+  private static var kinds: [String: String] = [:]
 
+  /// Finder's Kind, looked up once per extension.
+  static func kind(of url: URL, isFolder: Bool, isExecutable: Bool) -> String {
+    if isFolder { return "Folder" }
+    let ext = url.pathExtension.lowercased()
+    if ext.isEmpty { return isExecutable ? "Unix Executable File" : "Document" }
+    if let kind = kindLock.withLock({ kinds[ext] }) { return kind }
+    let kind = UTType(filenameExtension: ext)?.localizedDescription ?? "Document"
+    kindLock.withLock { kinds[ext] = kind }
+    return kind
+  }
+
+  /// Nil when the folder cannot be read (missing, or privacy access denied).
   static func load(_ folder: URL, hidden: Bool = false) -> [FileEntry]? {
     guard let urls = try? FileManager.default.contentsOfDirectory(
       at: folder, includingPropertiesForKeys: keys, options: hidden ? [] : [.skipsHiddenFiles])
@@ -210,7 +226,7 @@ enum FileListing {
     return FileEntry(url: url, name: name ?? values?.localizedName ?? url.lastPathComponent, isFolder: isFolder,
                      modified: values?.contentModificationDate ?? .distantPast,
                      size: isFolder ? nil : values?.fileSize.map(Int64.init),
-                     kind: values?.localizedTypeDescription ?? "")
+                     kind: kind(of: url, isFolder: isFolder, isExecutable: values?.isExecutable == true))
   }
 
   /// Folders come first for a name sort, as in Finder; ties fall back to name.
@@ -238,6 +254,33 @@ enum FileListing {
     let query = query.trimmingCharacters(in: .whitespaces)
     guard !query.isEmpty else { return entries }
     return entries.filter { $0.name.localizedCaseInsensitiveContains(query) }
+  }
+}
+
+/// The last listing of recent folders, shown at once when you come back to
+/// one while it is read again. Main thread only.
+struct ListingCache {
+  static var shared = ListingCache()
+
+  let limit: Int
+  private var listings: [String: [FileEntry]] = [:]
+  /// Least recently stored first.
+  private var order: [String] = []
+
+  init(limit: Int = 48) { self.limit = limit }
+
+  private static func key(_ folder: URL, _ hidden: Bool) -> String {
+    "\(hidden ? 1 : 0)|\(folder.standardizedFileURL.path)"
+  }
+
+  func entries(for folder: URL, hidden: Bool) -> [FileEntry]? { listings[Self.key(folder, hidden)] }
+
+  mutating func store(_ entries: [FileEntry], for folder: URL, hidden: Bool) {
+    let key = Self.key(folder, hidden)
+    order.removeAll { $0 == key }
+    order.append(key)
+    listings[key] = entries
+    while order.count > limit { listings[order.removeFirst()] = nil }
   }
 }
 
@@ -279,8 +322,8 @@ enum FileOperations {
     { FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path) }
   }
 
-  static func makeFolder(in folder: URL) throws -> URL {
-    let url = folder.appendingPathComponent(available("untitled folder", ext: "", exists: free(in: folder)))
+  static func makeFolder(in folder: URL, named name: String = "untitled folder") throws -> URL {
+    let url = folder.appendingPathComponent(available(name, ext: "", exists: free(in: folder)))
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
     return url
   }
@@ -357,6 +400,6 @@ extension URL {
   /// True for `folder` itself and anything under it.
   func isWithin(_ folder: URL) -> Bool {
     let path = standardizedFileURL.path, base = folder.standardizedFileURL.path
-    return path == base || path.hasPrefix(base + "/")
+    return path == base || path.hasPrefix(base == "/" ? "/" : base + "/")
   }
 }

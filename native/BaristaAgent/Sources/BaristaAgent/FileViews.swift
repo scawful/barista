@@ -52,8 +52,7 @@ private struct IconCell: View {
   var body: some View {
     let selected = state.selection.contains(entry.url)
     VStack(spacing: 4) {
-      Image(nsImage: NSWorkspace.shared.icon(forFile: entry.url.path))
-        .resizable().frame(width: 52, height: 52)
+      FileIcon(url: entry.url, points: 52)
         .overlay(alignment: .bottomTrailing) {
           if let mark = state.git?.mark(for: entry.url, isFolder: entry.isFolder) {
             Text(mark.letter)
@@ -64,7 +63,7 @@ private struct IconCell: View {
               .help(mark.help)
           }
         }
-      if state.renaming == entry.url {
+      if state.isRenaming(entry.url) {
         RenameField(state: state, entry: entry).multilineTextAlignment(.center).font(.caption)
       } else {
         Text(entry.name)
@@ -148,7 +147,7 @@ private struct LiveColumn: View {
       List(selection: $state.selection) {
         ForEach(state.shown) { entry in
           ColumnRow(entry: entry, mark: state.git?.mark(for: entry.url, isFolder: entry.isFolder),
-                    rename: state.renaming == entry.url ? RenameField(state: state, entry: entry) : nil)
+                    rename: state.isRenaming(entry.url) ? RenameField(state: state, entry: entry) : nil)
           .tag(entry.url)
           .itemProvider { NSItemProvider(object: entry.url as NSURL) }
         }
@@ -201,7 +200,11 @@ private struct FolderColumn: View {
       }
       .task(id: "\(folder.path)\0\(state.hidden)\0\(state.sortKey)\0\(state.ascending)") {
         let (folder, hidden) = (folder, state.hidden)
+        if let cached = ListingCache.shared.entries(for: folder, hidden: hidden) {
+          entries = FileListing.sorted(cached, by: state.sortKey, ascending: state.ascending)
+        }
         let listing = await Task.detached(priority: .userInitiated) { FileListing.load(folder, hidden: hidden) }.value
+        if let listing { ListingCache.shared.store(listing, for: folder, hidden: hidden) }
         entries = FileListing.sorted(listing ?? [], by: state.sortKey, ascending: state.ascending)
         if let chosen { DispatchQueue.main.async { proxy.scrollTo(chosen.path, anchor: .center) } }
       }
@@ -218,7 +221,7 @@ private struct ColumnRow: View {
 
   var body: some View {
     HStack(spacing: 6) {
-      Image(nsImage: NSWorkspace.shared.icon(forFile: entry.url.path)).resizable().frame(width: 16, height: 16)
+      FileIcon(url: entry.url, points: 16)
       if let rename {
         rename
       } else {

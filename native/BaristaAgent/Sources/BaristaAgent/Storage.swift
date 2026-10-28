@@ -5,17 +5,36 @@ import AppKit
 struct Volume: Identifiable, Equatable {
   let url: URL
   let name: String
+  /// Zero when the volume doesn't say, as network and FUSE mounts often don't.
   let total: Int64
   let available: Int64
   let ejectable: Bool
+  /// False for network and FUSE mounts (sshfs, a remote drive).
+  var isLocal = true
+  var isInternal = true
+  /// A network mount whose server went away still lists but can't be read.
+  var responding = true
 
   var id: URL { url }
   var used: Int64 { max(0, total - available) }
   var fraction: Double { total > 0 ? Double(used) / Double(total) : 0 }
+  var isStartup: Bool { url.path == "/" }
+
+  /// Finder's sidebar symbols for each kind of volume.
+  var symbol: String {
+    if !responding { return "externaldrive.badge.xmark" }
+    if !isLocal { return "network" }
+    if isStartup || isInternal { return "internaldrive" }
+    return "externaldrive"
+  }
+
+  /// Any mounted volume but the startup disk can be let go.
+  var canEject: Bool { !isStartup && (ejectable || !isLocal || !isInternal) }
 
   private static let keys: [URLResourceKey] = [
     .volumeLocalizedNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey,
     .volumeAvailableCapacityKey, .volumeIsEjectableKey, .volumeIsRemovableKey, .volumeIsBrowsableKey,
+    .volumeIsLocalKey, .volumeIsInternalKey,
   ]
 
   /// Blocking, and a network volume that went away can hold it up.
@@ -23,12 +42,22 @@ struct Volume: Identifiable, Equatable {
     let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys,
                                                      options: [.skipHiddenVolumes]) ?? []
     return urls.compactMap { url in
-      guard let values = try? url.resourceValues(forKeys: Set(keys)), values.volumeIsBrowsable != false,
-            let total = values.volumeTotalCapacity, total > 0 else { return nil }
+      guard let values = try? url.resourceValues(forKeys: Set(keys)), values.volumeIsBrowsable != false else { return nil }
+      let isLocal = values.volumeIsLocal != false
+      let total = Int64(values.volumeTotalCapacity ?? 0)
+      // A local volume without a size is a system mount, not a drive.
+      guard total > 0 || !isLocal else { return nil }
       let available = values.volumeAvailableCapacityForImportantUsage ?? values.volumeAvailableCapacity.map(Int64.init) ?? 0
-      return Volume(url: url, name: values.volumeLocalizedName ?? url.lastPathComponent, total: Int64(total),
-                    available: available, ejectable: values.volumeIsEjectable == true || values.volumeIsRemovable == true)
+      return Volume(url: url, name: values.volumeLocalizedName ?? url.lastPathComponent, total: total,
+                    available: available, ejectable: values.volumeIsEjectable == true || values.volumeIsRemovable == true,
+                    isLocal: isLocal, isInternal: values.volumeIsInternal ?? false,
+                    responding: isLocal || (try? FileManager.default.contentsOfDirectory(atPath: url.path)) != nil)
     }
+  }
+
+  /// The mounted volume holding `url`: the deepest whose root contains it.
+  static func holding(_ url: URL, in volumes: [Volume]) -> Volume? {
+    volumes.filter { url.isWithin($0.url) }.max { $0.url.path.count < $1.url.path.count }
   }
 
   /// Free space on the volume holding `url`.
@@ -83,12 +112,30 @@ final class VolumeMonitor: ObservableObject {
     }
   }
 
-  static func eject(_ volume: Volume, failed: @escaping (String) -> Void) {
+  /// Disk Arbitration ejects drives; FUSE and some network mounts only
+  /// unmount, which `diskutil` does for them.
+  static func eject(_ volume: Volume, done: @escaping () -> Void = {}, failed: @escaping (String) -> Void) {
     DispatchQueue.global(qos: .userInitiated).async {
+      var problem: String?
       do {
         try NSWorkspace.shared.unmountAndEjectDevice(at: volume.url)
       } catch {
-        DispatchQueue.main.async { failed("\(volume.name) couldn't be ejected: \(error.localizedDescription)") }
+        problem = error.localizedDescription
+        if !volume.isLocal {
+          let unmount = Process()
+          unmount.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
+          unmount.arguments = ["unmount", volume.url.path]
+          unmount.standardOutput = FileHandle.nullDevice
+          unmount.standardError = FileHandle.nullDevice
+          if (try? unmount.run()) != nil {
+            unmount.waitUntilExit()
+            if unmount.terminationStatus == 0 { problem = nil }
+          }
+        }
+      }
+      DispatchQueue.main.async {
+        if let problem { failed("\(volume.name) couldn't be ejected: \(problem)") } else { done() }
+        VolumeMonitor.shared.refresh(force: true)
       }
     }
   }

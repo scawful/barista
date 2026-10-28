@@ -47,7 +47,9 @@ The agent runs as `dev.barista.agent` and logs to
 | `Markdown.swift` | Markdown to blocks (headings, lists, code, quotes, tables, images); inline syntax is left to `AttributedString`. |
 | `Viewer.swift` | The viewer windows for Markdown and images, and `FileWatcher`, which reloads a file when it is saved. |
 | `FileBrowserModel.swift` | Barista Files' pure model: tab history, in-window tabs, listing, sorting, filtering, and `FileOperations` (Finder's names for new folders, copies, and kept-both clashes; rename; repo root). |
-| `FileBrowser.swift` | The Barista Files window: path bar, tabs, sidebar, table, preview, in-place rename, and `BrowserWindow`, which drives the Quick Look panel. |
+| `FileBrowser.swift` | The Barista Files window: path bar, tabs, sidebar, table, preview, in-place rename, Finder's shortcuts and the Go and View menus, and `BrowserWindow`, which drives the Quick Look panel. |
+| `FileIcons.swift` | `FileIcons`: Finder icons drawn into small bitmaps off the main thread and cached by path; `FileIcon` shows one when it's ready. |
+| `Places.swift` | `FinderFavorites` (Finder's sidebar list, decoded from its shared file list, with template symbols), `PlacesMonitor`, and `DisplayNames`, a cache of Finder's folder names. |
 | `Git.swift` | Barista Files' git: porcelain v2 status and worktree parsing, `Git.inspect` (no optional locks), and `Tool` for running Homebrew and cargo tools from launchd. |
 | `FileViews.swift` | Barista Files' icon and column views. The column view draws the shown folder as its live column, with the folders above it and a selected folder's contents as read-only columns around it. |
 | `Search.swift` | Barista Files' search scopes: `FileSearch` (the fd and rg commands and their output) and `ToolRun`, which streams a tool's lines and stops it at a limit or on cancel. |
@@ -56,7 +58,7 @@ The agent runs as `dev.barista.agent` and logs to
 | `Syntax.swift` | Regex coloring for code previews: 65816/asar, and comment, string, keyword, and number rules for other languages. |
 | `GetInfo.swift` | ⌘I: `FileInfo`, `FolderSize` (cancellable), and the sheet. |
 | `ContextPanel.swift` | `AFSContext` (finding and reading a `.context`'s entry points) and the panel shown when nothing is selected. |
-| `Storage.swift` | `Volume` (capacity and free space as Finder counts it), `VolumeMonitor` (one load at a time, again on mount and unmount), and `SizeRun`, which stops Calculate All Sizes' folder walks. |
+| `Storage.swift` | `Volume` (capacity and free space as Finder counts it; network and FUSE mounts, and whether they respond), `VolumeMonitor` (one load at a time, again on mount and unmount), eject or unmount, and `SizeRun`, which stops Calculate All Sizes' folder walks. |
 | `Workspace.swift` | Workspace folders: `TaskFile` reads and rewrites org and Markdown task lines, `PageSummary` titles notes and ideas, and `Editor` opens a file at a line in Cursor or Emacs. |
 | `WorkspaceBoard.swift` | The board shown in place of the listing in a workspace: task columns by state, notes, ideas, and capture. |
 | `AgentWindows.swift` | Focus for the agent's titled windows, the regular activation policy (⌘Tab) while one is open, and the hidden Edit menu that makes ⌘C work in them. |

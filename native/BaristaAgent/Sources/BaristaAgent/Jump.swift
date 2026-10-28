@@ -180,14 +180,14 @@ struct JumpView: View {
     }
     .frame(width: 560, height: 380)
     .onAppear {
-      index.refresh(places: (BrowserState.standardPlaces + state.places()).map(\.url))
+      index.refresh(places: PlacesMonitor.shared.favorites.map(\.url) + state.places().map(\.url))
       DispatchQueue.main.async { focused = true }
     }
   }
 
   private func row(_ url: URL, selected: Bool) -> some View {
     HStack(spacing: 8) {
-      Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: 18, height: 18)
+      FileIcon(url: url, points: 18)
       Text(url.lastPathComponent).fontWeight(.medium).lineLimit(1)
       Text((url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
         .foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)

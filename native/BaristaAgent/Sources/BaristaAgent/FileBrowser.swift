@@ -17,6 +17,7 @@ final class BrowserController {
   private var windows: [NSWindow] = []
   private var states: [ObjectIdentifier: BrowserState] = [:]
   private var keyMonitor: Any?
+  private var menuActions: [MenuAction] = []
   private var closeObservers: [ObjectIdentifier: NSObjectProtocol] = [:]
 
   /// Opens `url` in a new tab of the front browser, or a new browser when
@@ -96,6 +97,10 @@ final class BrowserController {
       let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
       let typing = window.firstResponder is NSText
       let key = event.charactersIgnoringModifiers ?? ""
+      if let place = BrowserState.goPlaces.first(where: { flags == [.command, $0.modifiers] && key.lowercased() == $0.key }) {
+        self.go(state, to: place.url)
+        return nil
+      }
       switch (flags, event.keyCode, key) {
       // The board has no file selection for these to act on.
       case _ where state.boardShown && !typing
@@ -143,10 +148,106 @@ final class BrowserController {
       case (.command, _, "d") where !typing && !state.selection.isEmpty: state.duplicateSelection()
       case (.command, _, "v") where !typing: state.paste(move: false)
       case ([.command, .option], _, "v") where !typing: state.paste(move: true)
+      case (.command, _, "y") where !typing: state.onQuickLook?()
+      case ([.command, .option], _, "s"): state.showSidebar.toggle()
+      case ([.command, .option], _, "c") where !typing: state.copyPathnames()
+      case ([.command, .control], _, "n") where !typing: state.newFolderWithSelection()
+      case (.command, _, "e") where !typing: state.ejectSelectionOrShown()
+      case ([.command, .shift], 51, _) where !typing: self.emptyTrash(from: window)
+      case ([], _, _) where !typing && !state.boardShown && Self.typesToSelect(key),
+           ([.shift], _, _) where !typing && !state.boardShown && Self.typesToSelect(key):
+        state.typeSelect(key)
       default: return event
       }
       return nil
     }
+    installMenus()
+  }
+
+  /// A printable character, which type-to-select takes; Space stays Quick Look.
+  private static func typesToSelect(_ key: String) -> Bool {
+    guard key.count == 1, key != " ", let scalar = key.unicodeScalars.first else { return false }
+    return !CharacterSet.controlCharacters.contains(scalar) && !(0xF700...0xF8FF).contains(scalar.value)
+  }
+
+  private func go(_ state: BrowserState, to url: URL) {
+    guard FileManager.default.fileExists(atPath: url.path) else { return NSSound.beep() }
+    state.go(to: url)
+  }
+
+  private func emptyTrash(from window: NSWindow) {
+    let alert = NSAlert()
+    alert.messageText = "Empty the Trash?"
+    alert.informativeText = "Items in the Trash are deleted immediately. You can't undo this."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "Empty Trash")
+    alert.addButton(withTitle: "Cancel")
+    alert.beginSheetModal(for: window) { response in
+      guard response == .alertFirstButtonReturn else { return }
+      let finder = Process()
+      finder.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+      finder.arguments = ["-e", "tell application \"Finder\" to empty trash"]
+      try? finder.run()
+    }
+  }
+
+  /// The key window's browser, for menu commands.
+  private var frontState: BrowserState? {
+    NSApp.keyWindow.flatMap { states[ObjectIdentifier($0)] }
+  }
+
+  /// Go and View menus in the menu bar, where a browser's shortcuts can be
+  /// looked up. The key monitor answers them first; these are for the mouse.
+  /// Shortcuts that also edit text (⌘⌫, ⌘E, ⌘I) are left to the monitor,
+  /// which knows when a field has focus.
+  private func installMenus() {
+    guard let main = NSApp.mainMenu, main.item(withTitle: "Go") == nil else { return }
+    func item(_ title: String, _ key: String = "", _ modifiers: NSEvent.ModifierFlags = .command,
+              _ run: @escaping (BrowserState) -> Void) -> NSMenuItem {
+      let action = MenuAction { [weak self] in if let state = self?.frontState { run(state) } }
+      menuActions.append(action)
+      let item = NSMenuItem(title: title, action: #selector(MenuAction.invoke), keyEquivalent: key)
+      item.keyEquivalentModifierMask = modifiers
+      item.target = action
+      return item
+    }
+    let up = String(Character(UnicodeScalar(NSUpArrowFunctionKey)!))
+    let view = NSMenu(title: "View")
+    for (index, layout) in BrowserLayout.allCases.enumerated() {
+      view.addItem(item(layout.title, "\(index + 1)", [.command, .option]) { $0.layout = layout })
+    }
+    view.addItem(.separator())
+    view.addItem(item("Show or Hide Sidebar", "s", [.command, .option]) { $0.showSidebar.toggle() })
+    view.addItem(item("Show or Hide Preview", "p", [.command, .shift]) { $0.showPreview.toggle() })
+    view.addItem(item("Show or Hide Hidden Files", ".", [.command, .shift]) { $0.hidden.toggle(); $0.reload() })
+    view.addItem(item("Calculate All Sizes") { $0.measuringSizes.toggle() })
+    let go = NSMenu(title: "Go")
+    go.addItem(item("Back", "[") { $0.back() })
+    go.addItem(item("Forward", "]") { $0.forward() })
+    go.addItem(item("Enclosing Folder", up) { $0.up() })
+    go.addItem(.separator())
+    for place in BrowserState.goPlaces {
+      go.addItem(item(place.title, place.key, [.command, place.modifiers]) { [weak self] in self?.go($0, to: place.url) })
+    }
+    go.addItem(.separator())
+    go.addItem(item("Go to Folder…", "g", [.command, .shift]) { $0.jumping = true })
+    go.addItem(item("New Tab", "t") { $0.newTab(at: $0.location) })
+    go.addItem(item("New Folder with Selection", "n", [.command, .control]) { $0.newFolderWithSelection() })
+    for menu in [view, go] {
+      let holder = NSMenuItem(title: menu.title, action: nil, keyEquivalent: "")
+      holder.submenu = menu
+      main.addItem(holder)
+    }
+  }
+}
+
+/// A menu item's action, run on the front browser.
+private final class MenuAction: NSObject, NSMenuItemValidation {
+  let run: () -> Void
+  init(_ run: @escaping () -> Void) { self.run = run }
+  @objc func invoke() { run() }
+  func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    NSApp.keyWindow.map { $0.title.hasSuffix(BrowserController.titleSuffix) } ?? false
   }
 }
 
@@ -154,6 +255,8 @@ final class BrowserController {
 final class BrowserState: ObservableObject {
   @Published var tabs: BrowserTabs
   @Published private(set) var entries: [FileEntry]?
+  /// The folder's first listing is taking a while.
+  @Published private(set) var loading = false
   @Published var selection: Set<URL> = []
   @Published var sortKey = FileSortKey.name { didSet { refreshShown() } }
   @Published var ascending = true { didSet { refreshShown() } }
@@ -164,6 +267,7 @@ final class BrowserState: ObservableObject {
   /// Why a deep search's results are partial or missing.
   @Published private(set) var searchNote: String?
   @Published var hidden = false
+  @Published var showSidebar = true
   @Published var showPreview = true
   @Published var layout = BrowserLayout.remembered {
     didSet {
@@ -212,6 +316,9 @@ final class BrowserState: ObservableObject {
   var onCloseWindow: (() -> Void)?
   var onQuickLook: (() -> Void)?
   private var watcher: FileWatcher?
+  /// The folder (and hidden setting) the rows list, which trails `location`
+  /// while a listing loads.
+  private var listedFolder: String?
   private var generation = 0
   private var reloadScheduled = false
   /// Selected by the next listing; nil keeps whatever is still there.
@@ -222,6 +329,9 @@ final class BrowserState: ObservableObject {
   private var searchWork: DispatchWorkItem?
   /// Where a shift-click's range starts in the icon view.
   private var anchor: URL?
+  /// What type-to-select has heard so far, and when it last heard a key.
+  private var typed = ""
+  private var typedAt = Date.distantPast
   /// Folder sizes by path, for the folder they were measured in.
   private var measured: [String: Int64] = [:]
   private var measuredIn: String?
@@ -241,7 +351,7 @@ final class BrowserState: ObservableObject {
     let token = generation
     let folder = location
     let hidden = self.hidden
-    onTitle?(FileManager.default.displayName(atPath: folder.path))
+    onTitle?(DisplayNames.name(of: folder))
     // Until git and the context are read again, the old ones must not show
     // against a folder outside them.
     if let root = git?.root, !folder.isWithin(root) {
@@ -255,22 +365,38 @@ final class BrowserState: ObservableObject {
       measuredIn = folder.path
     }
     VolumeMonitor.shared.refresh()
+    PlacesMonitor.shared.refresh()
     watcher = FileWatcher(url: folder) { [weak self] in self?.scheduleReload() }
     if isDeepSearch { search() }
+    let listed = "\(hidden)|\(folder.path)"
+    if listed != listedFolder {
+      if let cached = ListingCache.shared.entries(for: folder, hidden: hidden) {
+        show(cached, listed: listed, final: false)
+      } else {
+        // A quick listing replaces the last folder's rows at once; a slow
+        // one (a big folder, a network mount) must not leave them up.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+          guard let self, self.generation == token, self.listedFolder != listed else { return }
+          self.loading = true
+          self.show([], listed: nil, final: false)
+        }
+      }
+    }
     DispatchQueue.global(qos: .userInitiated).async {
       let listing = FileListing.load(folder, hidden: hidden)
       let workspace = Workspace.load(folder)
       DispatchQueue.main.async { [weak self] in
         guard let self, self.generation == token else { return }
-        self.entries = listing.map { $0.map(self.withMeasuredSize) }
-        self.refreshShown()
+        if let listing { ListingCache.shared.store(listing, for: folder, hidden: hidden) }
+        self.loading = false
+        self.show(listing, listed: listed, final: true)
         self.show(workspace)
         if self.measuringSizes { self.measureSizes() }
-        // Search results are the rows then; their own run settles the selection.
-        if !self.isDeepSearch { self.settleSelection() }
       }
-      // After the listing is shown: git should never hold it up.
-      let inspected = Git.inspect(folder)
+      // After the listing is shown: git should never hold it up, and on a
+      // network mount it would read the whole tree over the wire.
+      let local = (try? folder.resourceValues(forKeys: [.volumeIsLocalKey]))?.volumeIsLocal != false
+      let inspected = local ? Git.inspect(folder) : nil
       let context = AFSContext.find(from: folder)
       let available = Volume.available(at: folder)
       DispatchQueue.main.async { [weak self] in
@@ -337,14 +463,31 @@ final class BrowserState: ObservableObject {
     DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.2, execute: work)
   }
 
+  /// `listing` as the rows: a remembered one (`final` false) until the
+  /// folder's own arrives.
+  private func show(_ listing: [FileEntry]?, listed: String?, final: Bool) {
+    entries = listing.map { $0.map(withMeasuredSize) }
+    listedFolder = listed
+    refreshShown()
+    // Search results are the rows then; their own run settles the selection.
+    if !isDeepSearch { settleSelection(final: final) }
+  }
+
   /// Once new rows are shown: select what an action asked for (a renamed or
   /// made file, the folder you came up from), else keep what's still there.
-  private func settleSelection() {
+  /// Remembered rows can lack a file just made, so until the real listing
+  /// they only take a request they can meet in full.
+  private func settleSelection(final: Bool = true) {
     if let pending = pendingSelection {
       // By path: the folder you came up from is a tab's standardized
       // location, without the trailing `/` its row's URL has.
       let wanted = Set(pending.map(\.standardizedFileURL.path))
-      selection = Set(shown.map(\.url).filter { wanted.contains($0.standardizedFileURL.path) })
+      let found = shown.map(\.url).filter { wanted.contains($0.standardizedFileURL.path) }
+      guard final || found.count == wanted.count else {
+        selection = selection.intersection(shown.map(\.url))
+        return
+      }
+      selection = Set(found)
       pendingSelection = nil
       scrollTarget = selectedURLs.first
     } else {
@@ -665,9 +808,15 @@ final class BrowserState: ObservableObject {
     if let folder = selectedFolder { go(to: folder) }
   }
 
+  /// By path: a folder's row ends in `/`, and the URL a new folder was made
+  /// at doesn't.
+  func isRenaming(_ url: URL) -> Bool {
+    renaming.map { $0.standardizedFileURL.path == url.standardizedFileURL.path } ?? false
+  }
+
   /// Ends the edit for `url` once: Return and losing focus both commit.
   func commitRename(_ url: URL, to name: String) {
-    guard renaming == url else { return }
+    guard isRenaming(url) else { return }
     renaming = nil
     do {
       pendingSelection = [try FileOperations.rename(url, to: name)]
@@ -707,8 +856,9 @@ final class BrowserState: ObservableObject {
   }
 
   /// Runs `operation` on each URL off the main thread, then selects what it
-  /// made and reports what failed; `then` runs when nothing did.
-  private func perform(_ urls: [URL], operation: @escaping (URL) throws -> URL, then: (() -> Void)? = nil) {
+  /// made (or `selecting`) and reports what failed; `then` runs when nothing did.
+  private func perform(_ urls: [URL], selecting: URL? = nil, operation: @escaping (URL) throws -> URL,
+                       then: (() -> Void)? = nil) {
     guard !urls.isEmpty else { return }
     DispatchQueue.global(qos: .userInitiated).async {
       var made: [URL] = []
@@ -719,7 +869,7 @@ final class BrowserState: ObservableObject {
       DispatchQueue.main.async { [weak self] in
         guard let self else { return }
         if failures.isEmpty { then?() } else { self.problem = failures.joined(separator: "\n") }
-        if !made.isEmpty { self.pendingSelection = Set(made) }
+        if let selecting { self.pendingSelection = [selecting] } else if !made.isEmpty { self.pendingSelection = Set(made) }
         self.reload()
       }
     }
@@ -759,17 +909,68 @@ final class BrowserState: ObservableObject {
     })
   }
 
-  static let standardPlaces: [(name: String, url: URL)] = {
+  /// Ejects `volume`, leaving it first when it's shown, as Finder does.
+  func eject(_ volume: Volume) {
+    VolumeMonitor.eject(volume, done: { [weak self] in
+      guard let self, self.location.isWithin(volume.url) else { return }
+      self.go(to: FileManager.default.homeDirectoryForCurrentUser)
+    }, failed: { [weak self] in self?.problem = $0 })
+  }
+
+  /// ⌘E: the selected volumes, else the one the shown folder is on.
+  func ejectSelectionOrShown() {
+    let volumes = VolumeMonitor.shared.volumes
+    let picked = volumes.filter { volume in selection.contains { $0.standardizedFileURL.path == volume.url.path } }
+    let targets = picked.isEmpty ? Volume.holding(location, in: volumes).map { [$0] } ?? [] : picked
+    targets.filter(\.canEject).forEach(eject)
+  }
+
+  /// Finder's Copy as Pathname (⌥⌘C): the selection, or the shown folder.
+  func copyPathnames() {
+    let urls = selectedURLs.isEmpty ? [location] : selectedURLs
+    copyText(urls.map(\.path).joined(separator: "\n"))
+  }
+
+  /// Finder's New Folder with Selection (⌃⌘N): the selected items go into a
+  /// new folder, which is then named.
+  func newFolderWithSelection() {
+    let urls = selectedURLs
+    guard !urls.isEmpty, !isDeepSearch else { return }
+    do {
+      let folder = try FileOperations.makeFolder(in: location, named: "New Folder With Items")
+      perform(urls, selecting: folder, operation: { try FileOperations.place($0, in: folder, move: true) },
+              then: { [weak self] in self?.renaming = folder })
+    } catch {
+      problem = error.localizedDescription
+    }
+  }
+
+  /// Typing a name selects the first row it starts, as in Finder; a pause
+  /// of a second starts a new name.
+  func typeSelect(_ characters: String) {
+    let now = Date()
+    typed = now.timeIntervalSince(typedAt) > 1 ? characters : typed + characters
+    typedAt = now
+    guard let match = shown.first(where: { $0.name.lowercased().hasPrefix(typed.lowercased()) }) else { return }
+    selection = [match.url]
+    anchor = match.url
+    scrollTarget = match.url
+  }
+
+  /// Finder's Go menu: shortcut, title, and place. ⌘ is implied.
+  static let goPlaces: [(key: String, modifiers: NSEvent.ModifierFlags, title: String, url: URL)] = {
     let home = FileManager.default.homeDirectoryForCurrentUser
-    let candidates: [(String, URL)] = [
-      ("Home", home),
-      ("Desktop", home.appendingPathComponent("Desktop")),
-      ("Documents", home.appendingPathComponent("Documents")),
-      ("Downloads", home.appendingPathComponent("Downloads")),
-      ("src", home.appendingPathComponent("src")),
-      ("Applications", URL(fileURLWithPath: "/Applications")),
+    return [
+      ("c", .shift, "Computer", URL(fileURLWithPath: "/Volumes")),
+      ("h", .shift, "Home", home),
+      ("d", .shift, "Desktop", home.appendingPathComponent("Desktop")),
+      ("o", .shift, "Documents", home.appendingPathComponent("Documents")),
+      ("l", .option, "Downloads", home.appendingPathComponent("Downloads")),
+      ("a", .shift, "Applications", URL(fileURLWithPath: "/Applications")),
+      ("u", .shift, "Utilities", URL(fileURLWithPath: "/Applications/Utilities")),
+      ("l", .shift, "Library", home.appendingPathComponent("Library")),
+      ("i", .shift, "iCloud Drive", home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs")),
     ]
-    return candidates.filter { FileManager.default.fileExists(atPath: $0.1.path) }
   }()
 }
 
@@ -778,6 +979,7 @@ final class BrowserState: ObservableObject {
 struct BrowserView: View {
   @ObservedObject var state: BrowserState
   @ObservedObject private var volumes = VolumeMonitor.shared
+  @ObservedObject private var places = PlacesMonitor.shared
   @FocusState private var searchFocused: Bool
 
   var body: some View {
@@ -787,7 +989,7 @@ struct BrowserView: View {
       if !state.query.isEmpty { scopeBar }
       Divider()
       HSplitView {
-        sidebar.frame(minWidth: 140, idealWidth: 170, maxWidth: 260)
+        if state.showSidebar { sidebar.frame(minWidth: 140, idealWidth: 170, maxWidth: 260) }
         listing.frame(minWidth: 360)
         if state.showPreview {
           // Capped, so a wider window widens the list rather than the preview.
@@ -818,6 +1020,7 @@ struct BrowserView: View {
 
   private var toolbar: some View {
     HStack(spacing: 8) {
+      Button { state.showSidebar.toggle() } label: { Image(systemName: "sidebar.left") }.help("Sidebar (⌥⌘S)")
       Button(action: state.back) { Image(systemName: "chevron.left") }
         .disabled(!state.tabs.selected.canGoBack).help("Back (⌘[)")
       Button(action: state.forward) { Image(systemName: "chevron.right") }
@@ -886,7 +1089,7 @@ struct BrowserView: View {
       ForEach(state.tabs.tabs) { tab in
         let selected = tab.id == state.tabs.selectedID
         HStack(spacing: 4) {
-          Text(FileManager.default.displayName(atPath: tab.location.path)).lineLimit(1)
+          Text(DisplayNames.name(of: tab.location)).lineLimit(1)
           Button { state.closeTab(tab.id) } label: { Image(systemName: "xmark").font(.caption2) }
             .buttonStyle(.borderless).opacity(selected ? 1 : 0.5)
         }
@@ -902,17 +1105,21 @@ struct BrowserView: View {
 
   private var sidebar: some View {
     List {
-      Section("Places") {
-        ForEach(BrowserState.standardPlaces, id: \.url) { place in placeRow(place) }
+      Section("Favorites") {
+        ForEach(places.favorites, id: \.url) { place in placeRow(place) }
       }
-      let dock = state.places()
+      // Finder's favorites already list most of what the dock pins.
+      let favorites = Set(places.favorites.map(\.url.path))
+      let dock = state.places().filter { !favorites.contains($0.url.standardizedFileURL.path) }
       if !dock.isEmpty {
         Section("Dock") {
-          ForEach(dock, id: \.url) { place in placeRow(place) }
+          ForEach(dock, id: \.url) { place in
+            placeRow(Place(name: place.name, url: place.url, symbol: FinderFavorites.place(place.url).symbol))
+          }
         }
       }
       if !volumes.volumes.isEmpty {
-        Section("Storage") {
+        Section("Locations") {
           ForEach(volumes.volumes) { volume in volumeRow(volume) }
         }
       }
@@ -962,45 +1169,60 @@ struct BrowserView: View {
   private func volumeRow(_ volume: Volume) -> some View {
     let home = FileManager.default.homeDirectoryForCurrentUser
     // The startup volume's own folders are mostly the system's; Home is where yours are.
-    let largest = volume.url.path == "/" ? home : volume.url
+    let largest = volume.isStartup ? home : volume.url
+    let detail = !volume.responding ? "Not responding"
+      : volume.total > 0 ? "\(Self.bytes(volume.available)) free" : "Network"
     return VStack(alignment: .leading, spacing: 3) {
-      Label {
-        Text(volume.name)
-      } icon: {
-        Image(nsImage: NSWorkspace.shared.icon(forFile: volume.url.path)).resizable().frame(width: 16, height: 16)
+      HStack(spacing: 4) {
+        Label(volume.name, systemImage: volume.symbol)
+          .fontWeight(state.location.path == volume.url.standardizedFileURL.path ? .semibold : .regular)
+          .lineLimit(1)
+        Spacer(minLength: 2)
+        if volume.canEject {
+          Button { state.eject(volume) } label: { Image(systemName: "eject.fill").font(.caption2) }
+            .buttonStyle(.borderless).foregroundStyle(.secondary).help("Eject \(volume.name) (⌘E)")
+        }
       }
-      .fontWeight(state.location.path == volume.url.standardizedFileURL.path ? .semibold : .regular)
-      ProgressView(value: volume.fraction)
-        .controlSize(.small)
-        .tint(volume.fraction > 0.9 ? .red : volume.fraction > 0.75 ? .orange : .accentColor)
-      Text("\(Self.bytes(volume.available)) free")
-        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+      if volume.total > 0 {
+        ProgressView(value: volume.fraction)
+          .controlSize(.small)
+          .tint(volume.fraction > 0.9 ? .red : volume.fraction > 0.75 ? .orange : .accentColor)
+      }
+      Text(detail).font(.caption).foregroundStyle(volume.responding ? .secondary : Color.orange).lineLimit(1)
     }
-    .help("\(Self.bytes(volume.used)) of \(Self.bytes(volume.total)) used; right-click to find the largest folders")
+    .help(volume.total > 0 ? "\(Self.bytes(volume.used)) of \(Self.bytes(volume.total)) used; right-click to find the largest folders"
+          : (volume.url.path as NSString).abbreviatingWithTildeInPath)
     .contentShape(Rectangle())
     .onTapGesture { state.go(to: volume.url) }
     .contextMenu {
-      Button(volume.url.path == "/" ? "Show Largest Folders in Home" : "Show Largest Folders") {
-        state.showLargest(in: largest)
+      if volume.total > 0 && volume.responding {
+        Button(volume.isStartup ? "Show Largest Folders in Home" : "Show Largest Folders") {
+          state.showLargest(in: largest)
+        }
       }
       Button("Get Info") { state.inspecting = [volume.url] }
-      if volume.ejectable {
-        Button("Eject") { VolumeMonitor.eject(volume) { state.problem = $0 } }
+      Button("Copy Path") { copyText(volume.url.path) }
+      if volume.canEject {
+        Divider()
+        Button(volume.isLocal ? "Eject" : "Disconnect") { state.eject(volume) }
       }
     }
   }
 
   static func bytes(_ count: Int64) -> String { ByteCountFormatter.string(fromByteCount: count, countStyle: .file) }
 
-  private func placeRow(_ place: (name: String, url: URL)) -> some View {
-    Label {
-      Text(place.name)
-    } icon: {
-      Image(nsImage: NSWorkspace.shared.icon(forFile: place.url.path)).resizable().frame(width: 16, height: 16)
-    }
-    .fontWeight(state.location.path == place.url.standardizedFileURL.path ? .semibold : .regular)
-    .contentShape(Rectangle())
-    .onTapGesture { state.go(to: place.url) }
+  private func placeRow(_ place: Place) -> some View {
+    Label(place.name, systemImage: place.symbol)
+      .lineLimit(1)
+      .fontWeight(state.location.path == place.url.path ? .semibold : .regular)
+      .help((place.url.path as NSString).abbreviatingWithTildeInPath)
+      .contentShape(Rectangle())
+      .onTapGesture { state.go(to: place.url) }
+      .contextMenu {
+        Button("Open in New Tab") { state.newTab(at: place.url) }
+        Button("Get Info") { state.inspecting = [place.url] }
+        Button("Copy Path") { copyText(place.url.path) }
+      }
   }
 
   @ViewBuilder
@@ -1027,6 +1249,9 @@ struct BrowserView: View {
       if state.boardShown, let workspace = state.workspace {
         let open = workspace.tasks.filter { $0.state != .done }.count
         Text("\(open) open task\(open == 1 ? "" : "s") · \(workspace.notes.count) notes · \(workspace.ideas.count) ideas")
+      } else if state.loading {
+        ProgressView().controlSize(.mini)
+        Text("Loading…")
       } else {
         let count = state.shown.count
         let noun = state.isDeepSearch ? "result" : "item"
@@ -1069,7 +1294,7 @@ private struct PathBar: View {
     HStack(spacing: 2) {
       ForEach(Array(urls.suffix(4).enumerated()), id: \.offset) { offset, url in
         if offset > 0 { Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary) }
-        Button(FileManager.default.displayName(atPath: url.path)) { go(url) }
+        Button(DisplayNames.name(of: url)) { go(url) }
           .fontWeight(url == location ? .semibold : .regular)
           .lineLimit(1)
       }
@@ -1130,8 +1355,8 @@ private struct FileTable: View {
     Table(of: FileEntry.self, selection: $state.selection, sortOrder: order) {
       TableColumn("Name", value: \.name) { entry in
         HStack(spacing: 6) {
-          Image(nsImage: NSWorkspace.shared.icon(forFile: entry.url.path)).resizable().frame(width: 16, height: 16)
-          if state.renaming == entry.url {
+          FileIcon(url: entry.url, points: 16)
+          if state.isRenaming(entry.url) {
             // The on-disk name: a localized name can hide the extension.
             RenameField(state: state, entry: entry)
           } else {
@@ -1208,6 +1433,7 @@ struct EntryMenu: View {
         state.selection = urls
         state.openSelection()
       }
+      .keyboardShortcut("o")
       if let singleFolder {
         Button("Open in New Tab") { state.newTab(at: singleFolder) }
       } else if let single {
@@ -1223,20 +1449,30 @@ struct EntryMenu: View {
         state.selection = urls
         state.onQuickLook?()
       }
-      Button("Get Info") { state.inspecting = sorted }
+      .keyboardShortcut("y")
+      Button("Get Info") { state.inspecting = sorted }.keyboardShortcut("i")
       Divider()
       if let single {
-        Button("Rename") { state.beginRename(single) }
+        Button("Rename") { state.beginRename(single) }.keyboardShortcut(.return, modifiers: [])
       }
       Button("Duplicate") {
         state.selection = urls
         state.duplicateSelection()
+      }
+      .keyboardShortcut("d")
+      if !state.isDeepSearch {
+        Button("New Folder with Selection") {
+          state.selection = urls
+          state.newFolderWithSelection()
+        }
+        .keyboardShortcut("n", modifiers: [.command, .control])
       }
       Divider()
       ToolButtons(urls: sorted, directory: singleFolder ?? state.location)
       Divider()
       Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(sorted) }
       Button("Copy Path") { copyText(sorted.map(\.path).joined(separator: "\n")) }
+        .keyboardShortcut("c", modifiers: [.command, .option])
       Button("Copy Relative Path") {
         let root = FileOperations.repoRoot(of: state.location) ?? state.location
         copyText(sorted.map { PopoverController.relativePath($0, from: root) }.joined(separator: "\n"))
@@ -1247,13 +1483,14 @@ struct EntryMenu: View {
         state.selection = urls
         state.trashSelection()
       }
+      .keyboardShortcut(.delete)
     }
   }
 
   /// Right-click on the list's empty space: the shown folder itself.
   @ViewBuilder
   private var folderMenu: some View {
-    Button("New Folder") { state.newFolder() }
+    Button("New Folder") { state.newFolder() }.keyboardShortcut("n", modifiers: [.command, .shift])
     Button("Paste") { state.paste(move: false) }.disabled(!state.canPaste)
     Button("Move Items Here") { state.paste(move: true) }.disabled(!state.canPaste)
     Button("Get Info") { state.inspecting = [state.location] }

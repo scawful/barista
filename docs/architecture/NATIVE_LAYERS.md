@@ -262,11 +262,25 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   reload when the file is saved. ⌘E opens the file in its editor, Escape or
   ⌘W closes.
 - Barista Files is a Finder replacement that tiles: one window with its tabs
-  inside it, back/forward history per tab, a path bar, a sidebar of standard
-  places and the dock's folders, a sortable list, a preview pane (⇧⌘P),
-  Quick Look (Space; arrows follow the list), drag in and out, and Finder's
-  shortcuts (⌘T, ⌘W, ⌘N, ⌘[ and ⌘], ⌘↑, ⌘↓, ⇧⌘., ⌘F, ⌃Tab, ⌘1–9, ⌘⌫, ⇧⌘N
-  New Folder, ⌘D Duplicate, ⌘C then ⌘V to copy or ⌥⌘V to move here).
+  inside it, back/forward history per tab, a path bar, a sidebar (⌥⌘S) of
+  Finder's own Favorites in Finder's order (read from Finder's sidebar list,
+  so adding a favorite in Finder adds it here) and the dock's other folders,
+  a sortable list, a preview pane (⇧⌘P), Quick Look (Space or ⌘Y; arrows
+  follow the list), drag in and out, and Finder's shortcuts (⌘T, ⌘W, ⌘N, ⌘[
+  and ⌘], ⌘↑, ⌘↓, ⇧⌘., ⌘F, ⌃Tab, ⌘1–9, ⌘⌫, ⇧⌘⌫ Empty Trash, ⇧⌘N New Folder,
+  ⌃⌘N New Folder with Selection, ⌘D Duplicate, ⌥⌘C Copy as Pathname, ⌘E
+  Eject, ⌘C then ⌘V to copy or ⌥⌘V to move here). Finder's Go menu works
+  too: ⇧⌘H Home, ⇧⌘D Desktop, ⇧⌘O Documents, ⌥⌘L Downloads, ⇧⌘A
+  Applications, ⇧⌘U Utilities, ⇧⌘L Library, ⇧⌘I iCloud Drive, ⇧⌘C
+  Computer (`/Volumes`). Go and View menus in the menu bar list them. Typing
+  a name selects the first row it starts.
+- Loading: listings skip the per-file type description (Kind comes from
+  the extension, once per extension), icons are drawn off the main thread
+  and cached, and the last 48 folders' listings are remembered, so back,
+  up, tabs, and revisits show their rows at once while the folder is read
+  again. A folder that takes over 0.1 s the first time shows Loading…
+  instead of the last folder's rows. git status is skipped on network
+  mounts.
   Return renames in place, as in Finder: the name up to its extension is
   selected, so typing keeps `.asm`; ⌘O, ⌘↓, or a double-click opens. The
   folder shows as a list, icons, or columns (⌥⌘1–3, since ⌘1–9 pick tabs;
@@ -306,10 +320,16 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   that line. Both skip `.git`, and skip what `.gitignore` ignores unless
   hidden files are shown (⇧⌘.); results stop at 1000. Escape clears the
   search; ⌘R (or Show in Enclosing Folder) shows a result in its folder.
-- The sidebar's Storage section lists mounted volumes with a usage bar
-  (orange past 75 % used, red past 90 %) and free space as Finder counts
-  it, purgeable space included; it reloads on mount and unmount and at
-  most every 10 seconds otherwise. Right-click a volume for Show Largest
+- The sidebar's Locations section lists every mounted drive: the startup
+  disk, external drives, and network and FUSE mounts (sshfs and the like,
+  which report no size; one whose server went away says Not responding).
+  Local volumes get a usage bar (orange past 75 % used, red past 90 %) and
+  free space as Finder counts it, purgeable space included; the list
+  reloads on mount and unmount and at most every 10 seconds otherwise.
+  Every drive but the startup disk has an eject button (⌘E ejects the
+  selected drive or the one shown); network mounts unmount through
+  `diskutil` when Disk Arbitration can't eject them, and a window showing
+  the drive goes Home. Right-click a volume for Show Largest
   Folders (in Home, for the startup volume), Get Info, or Eject. Calculate
   Sizes in the status bar (or Calculate All Sizes on the empty-space menu)
   walks each shown folder in the background, one at a time, and keeps

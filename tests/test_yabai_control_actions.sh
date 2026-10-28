@@ -29,6 +29,14 @@ for direction in prev:3 next:2; do
     /bin/bash "$ROOT_DIR/scripts/yabai_control.sh" "window-space-${direction%%:*}-wrap"
   grep -Fxq -- "-m window 42 --space ${direction#*:}" "$TEST_CALLS"
 done
+printf '{"window_levels":{"Preview":{"level":"top"}}}\n' > "$TMP_DIR/state.json"
+BARISTA_CONFIG_DIR="$TMP_DIR" BARISTA_STATE_FILE="$TMP_DIR/state.json" run_control wm-mode optional >/dev/null
+jq -e '.modes.window_manager == "optional" and .window_levels.Preview.level == "top"' "$TMP_DIR/state.json" >/dev/null
+printf '{"window_levels":' > "$TMP_DIR/state.json"
+if BARISTA_CONFIG_DIR="$TMP_DIR" BARISTA_STATE_FILE="$TMP_DIR/state.json" run_control wm-mode required 2>/dev/null; then
+  echo 'FAIL: wm-mode overwrote a corrupt state file' >&2; exit 1
+fi
+[[ "$(cat "$TMP_DIR/state.json")" == '{"window_levels":' ]]
 run_control window-focus-next-wrap
 grep -Fxq -- '-m window --focus next' "$TEST_CALLS"
 grep -Fxq -- '-m window --focus first' "$TEST_CALLS"

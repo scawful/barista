@@ -914,30 +914,7 @@ PY
 }
 
 write_state_wm_mode() {
-  local mode="$1" py
-  py="$(python3_bin)"
-  [[ -n "$py" ]] || { echo "python3 required to update state" >&2; return 1; }
-  mkdir -p "$(dirname "$STATE_FILE")"
-  "$py" - "$STATE_FILE" "$mode" <<'PY'
-import json, os, sys
-path, mode = sys.argv[1:3]
-try:
-    with open(path, 'r', encoding='utf-8') as fh:
-        data = json.load(fh)
-except Exception:
-    data = {}
-if not isinstance(data, dict):
-    data = {}
-modes = data.get('modes')
-if not isinstance(modes, dict):
-    modes = {}
-data['modes'] = modes
-modes['window_manager'] = mode
-tmp = path + '.tmp'
-with open(tmp, 'w', encoding='utf-8') as fh:
-    json.dump(data, fh, ensure_ascii=False)
-os.replace(tmp, path)
-PY
+  state_app_command wm-mode "$1" >/dev/null
 }
 
 reload_barista_after_config_change() {
@@ -962,7 +939,7 @@ wm_mode_command() {
     *) echo "Usage: $0 wm-mode <required|optional|disabled|auto>" >&2; return 1 ;;
   esac
 
-  write_state_wm_mode "$target"
+  write_state_wm_mode "$target" || return 1
   # Do not auto-start yabai/skhd from a popup mode switch. Starting yabai can
   # trigger macOS Developer Tools Access prompts if the scripting addition or
   # service authorization is stale. Keep mode changes cheap/reversible; use

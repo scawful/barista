@@ -251,6 +251,10 @@ def update(path, operation, values):
                 levels[app] = {"level": level, "app_regex": app_regex, "rule_label": label}
             elif operation == "level-unset":
                 levels.pop(values[0], None)
+        elif operation == "wm-mode":
+            if values[0] not in ("auto", "disabled", "optional", "required"):
+                raise ValueError("window manager mode must be auto, disabled, optional, or required")
+            object_field(data, "modes")["window_manager"] = values[0]
         elif operation in ("shortcuts-check", "shortcuts-state"):
             toggles = object_field(data, "toggles")
             if operation == "shortcuts-state":

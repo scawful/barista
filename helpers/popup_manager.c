@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -374,6 +375,75 @@ static void clear_hover_state_files(void) {
   unlink_tmp_entry(tmpdir, "sketchybar_parent_popup_lock");
 }
 
+static const long long DISPLAY_HANDOFF_WINDOW_MS = 1500;
+
+static long long now_ms(void) {
+  struct timespec ts;
+  if (clock_gettime(CLOCK_REALTIME, &ts) != 0) return 0;
+  return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+static int display_handoff_path(char *path, size_t size) {
+  const char *tmpdir = getenv("TMPDIR");
+  if (!tmpdir) tmpdir = "/tmp";
+  int length = snprintf(path, size, "%s/sketchybar_popup_display_handoff", tmpdir);
+  return length > 0 && (size_t)length < size;
+}
+
+static int is_display_index(const char *value) {
+  if (!value || value[0] == '\0') return 0;
+  for (const char *c = value; *c; c++) {
+    if (*c < '0' || *c > '9') return 0;
+  }
+  return 1;
+}
+
+// A popup clicked on another display's bar opens there (the SketchyBar fork
+// holds that display as active) while yabai moves focus in the background.
+// The resulting space/display change events must not dismiss that popup.
+static void focus_clicked_display(void) {
+  const char *bar_display = getenv("BAR_DISPLAY");
+  const char *active_display = getenv("ACTIVE_DISPLAY");
+  if (!is_display_index(bar_display) || !is_display_index(active_display)) return;
+  if (strcmp(bar_display, active_display) == 0) return;
+
+  char path[PATH_MAX];
+  if (display_handoff_path(path, sizeof(path))) {
+    FILE *file = fopen(path, "w");
+    if (file) {
+      fprintf(file, "%lld\n", now_ms());
+      fclose(file);
+    }
+  }
+
+  const char *yabai = getenv("BARISTA_YABAI_BIN");
+  if (!yabai || yabai[0] == '\0') yabai = "yabai";
+  pid_t pid = fork();
+  if (pid == 0) {
+    if (fork() == 0) {
+      execlp(yabai, yabai, "-m", "display", "--focus", bar_display, (char *)NULL);
+    }
+    _exit(0);
+  }
+  if (pid > 0) {
+    int status = 0;
+    waitpid(pid, &status, 0);
+  }
+}
+
+static int display_handoff_pending(void) {
+  char path[PATH_MAX];
+  if (!display_handoff_path(path, sizeof(path))) return 0;
+  FILE *file = fopen(path, "r");
+  if (!file) return 0;
+  long long started = 0;
+  int parsed = fscanf(file, "%lld", &started);
+  fclose(file);
+  if (parsed != 1) return 0;
+  long long age = now_ms() - started;
+  return age >= 0 && age <= DISPLAY_HANDOFF_WINDOW_MS;
+}
+
 static void clear_state_files(void) {
   const char *tmpdir = getenv("TMPDIR");
   if (!tmpdir) tmpdir = "/tmp";
@@ -714,13 +784,17 @@ static int should_dismiss_on_event(const char *sender) {
     return 0;
   }
 
+  if (strcmp(sender, "display_added") == 0 ||
+      strcmp(sender, "display_removed") == 0) {
+    return 1;
+  }
+
   // Dismiss on space changes
   if (strcmp(sender, "space_change") == 0 ||
       strcmp(sender, "space_changed") == 0 ||
-      strcmp(sender, "display_changed") == 0 ||
-      strcmp(sender, "display_added") == 0 ||
-      strcmp(sender, "display_removed") == 0) {
-    return 1;
+      strcmp(sender, "display_change") == 0 ||
+      strcmp(sender, "display_changed") == 0) {
+    return !display_handoff_pending();
   }
 
   // Dismiss on mission control
@@ -776,6 +850,7 @@ int main(int argc, char **argv) {
 
     load_lists(1);
     clear_hover_state_files();
+    if (mutation == MUTATION_SWITCH_ROOT) focus_clicked_display();
     status = run_sketchybar(mutation, argv[2], 1);
     free_list(&popup_items);
     free_list(&submenu_parents);

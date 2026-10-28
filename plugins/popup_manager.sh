@@ -257,7 +257,7 @@ esac
 
 load_event_topology
 case "${SENDER:-}" in
-  "space_change"|"display_changed"|"display_added"|"display_removed"|"system_woke")
+  "space_change"|"display_change"|"display_changed"|"display_added"|"display_removed"|"system_woke")
     dismiss_all || true
     ;;
   "front_app_switched")

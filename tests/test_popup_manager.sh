@@ -231,9 +231,10 @@ assert_tokens duplicate-relation
 cp "${LOG_FILE}" "${SHELL_LOG}"
 cmp "${NATIVE_LOG}" "${SHELL_LOG}"
 
+for event in space_change display_change; do
 : > "${LOG_FILE}"
 TMPDIR="${REGISTRY_DIR}" \
-  SENDER=space_change \
+  SENDER="$event" \
   BARISTA_SKETCHYBAR_BIN="${FAKE_SKETCHYBAR}" \
   BARISTA_TEST_SKETCHYBAR_LOG="${LOG_FILE}" \
   "${NATIVE_MANAGER}"
@@ -243,13 +244,15 @@ cp "${LOG_FILE}" "${NATIVE_LOG}"
 : > "${LOG_FILE}"
 PATH="/usr/bin:/bin" \
   TMPDIR="${REGISTRY_DIR}" \
-  SENDER=space_change \
+  SENDER="$event" \
   BARISTA_SKETCHYBAR_BIN="${FAKE_SKETCHYBAR}" \
   BARISTA_TEST_SKETCHYBAR_LOG="${LOG_FILE}" \
   "${ROOT_DIR}/plugins/popup_manager.sh"
 assert_tokens dismiss
 cp "${LOG_FILE}" "${SHELL_LOG}"
 cmp "${NATIVE_LOG}" "${SHELL_LOG}"
+
+done
 
 printf 'version\t1\n' > "${REGISTRY_DIR}/sketchybar_popup_topology"
 run_manager "${NATIVE_MANAGER}" switch external.popup
@@ -430,5 +433,52 @@ TMPDIR="${REGISTRY_DIR}" \
   BARISTA_TEST_SKETCHYBAR_LOG="${LOG_FILE}" \
   "${NATIVE_MANAGER}"
 test ! -s "${LOG_FILE}"
+
+FAKE_YABAI="${TMP_ROOT}/yabai"
+YABAI_LOG="${TMP_ROOT}/yabai.log"
+HANDOFF_FILE="${REGISTRY_DIR}/sketchybar_popup_display_handoff"
+cat > "${FAKE_YABAI}" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${BARISTA_TEST_YABAI_LOG:?}"
+EOF
+chmod +x "${FAKE_YABAI}"
+write_registry
+
+: > "${YABAI_LOG}"
+BAR_DISPLAY=1 ACTIVE_DISPLAY=1 \
+  BARISTA_YABAI_BIN="${FAKE_YABAI}" BARISTA_TEST_YABAI_LOG="${YABAI_LOG}" \
+  run_manager "${NATIVE_MANAGER}" switch control_center
+test ! -s "${YABAI_LOG}"
+test ! -e "${HANDOFF_FILE}"
+
+BAR_DISPLAY=2 ACTIVE_DISPLAY=1 \
+  BARISTA_YABAI_BIN="${FAKE_YABAI}" BARISTA_TEST_YABAI_LOG="${YABAI_LOG}" \
+  run_manager "${NATIVE_MANAGER}" switch control_center
+assert_tokens root
+for _ in $(seq 1 50); do
+  [ -s "${YABAI_LOG}" ] && break
+  sleep 0.05
+done
+test "$(cat "${YABAI_LOG}")" = "-m display --focus 2"
+test -s "${HANDOFF_FILE}"
+
+for event in space_change display_change; do
+  : > "${LOG_FILE}"
+  TMPDIR="${REGISTRY_DIR}" \
+    SENDER="$event" \
+    BARISTA_SKETCHYBAR_BIN="${FAKE_SKETCHYBAR}" \
+    BARISTA_TEST_SKETCHYBAR_LOG="${LOG_FILE}" \
+    "${NATIVE_MANAGER}"
+  test ! -s "${LOG_FILE}"
+done
+
+printf '1\n' > "${HANDOFF_FILE}"
+: > "${LOG_FILE}"
+TMPDIR="${REGISTRY_DIR}" \
+  SENDER=display_change \
+  BARISTA_SKETCHYBAR_BIN="${FAKE_SKETCHYBAR}" \
+  BARISTA_TEST_SKETCHYBAR_LOG="${LOG_FILE}" \
+  "${NATIVE_MANAGER}"
+assert_tokens dismiss
 
 printf '%s\n' "popup_manager tests passed"

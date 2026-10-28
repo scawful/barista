@@ -7,7 +7,8 @@ cat > "$TMP_DIR/yabai" <<'STUB'
 #!/bin/bash
 printf '%s\n' "$*" >> "$TEST_CALLS"
 case "$*" in
-  '-m query --windows --window 42') printf '{"id":42,"app":"Preview","space":1,"layer":"%s","sub-layer":"normal"}\n' "${TEST_APP_LAYER:-normal}"; exit 0 ;;
+  '-m query --windows --window 42') printf '{"id":42,"app":"Preview","space":1,"display":1,"layer":"%s","sub-layer":"normal"}\n' "${TEST_APP_LAYER:-normal}"; exit 0 ;;
+  '-m query --spaces --display 1') printf '[{"index":1},{"index":2},{"index":3}]\n'; exit 0 ;;
   *'--focus next') exit 1 ;;
   *) exit "${TEST_MUTATION_FAIL:-0}" ;;
 esac
@@ -21,6 +22,12 @@ for action in window-close window-insert-east window-insert-south window-swap-re
 done
 for command in '--close' '--insert east' '--insert south' '--swap recent' '--toggle pip'; do
   grep -Fxq -- "-m window 42 $command" "$TEST_CALLS"
+done
+# The window menu runs this under macOS /bin/bash 3.2.
+for direction in prev:3 next:2; do
+  BARISTA_TARGET_WINDOW_ID=42 BARISTA_TARGET_SPACE_INDEX=1 BARISTA_WINDOW_MOVE_POLICY=preserve \
+    /bin/bash "$ROOT_DIR/scripts/yabai_control.sh" "window-space-${direction%%:*}-wrap"
+  grep -Fxq -- "-m window 42 --space ${direction#*:}" "$TEST_CALLS"
 done
 run_control window-focus-next-wrap
 grep -Fxq -- '-m window --focus next' "$TEST_CALLS"

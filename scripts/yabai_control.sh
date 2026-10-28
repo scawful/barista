@@ -196,8 +196,11 @@ all_spaces_json() {
 }
 
 neighbor_space_index() {
-  local direction="$1"
-  mapfile -t spaces < <(display_space_indices)
+  local direction="$1" space
+  local spaces=()
+  while IFS= read -r space; do
+    [[ -n "$space" ]] && spaces+=("$space")
+  done < <(display_space_indices)
   local count=${#spaces[@]}
   if (( count == 0 )); then
     return 1
@@ -844,10 +847,9 @@ window_preset_focus() {
 
   set_window_fullscreen_for_id "$window_id" false
   target_space="$(window_space_for_id "$window_id")"
-  if [[ -n "$target_space" ]]; then
-    adopt_window_to_space_layout "$window_id" "$target_space"
-  fi
-  "$YABAI_BIN" -m space "$target_space" --balance
+  [[ -n "$target_space" ]] || { echo "Window $window_id has no space" >&2; return 1; }
+  adopt_window_to_space_layout "$window_id" "$target_space"
+  "$YABAI_BIN" -m space "$target_space" --balance || echo "Could not balance space $target_space" >&2
   refresh_space_state
   refresh_front_app_state
 }

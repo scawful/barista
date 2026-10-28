@@ -272,7 +272,7 @@ final class DockController {
   }
 
   private func activate(_ tile: DockTile, anchor: CGPoint) {
-    let opensPopover = tile.item.kind == .group || tile.item.kind == .shelf
+    let opensPopover = [.group, .shelf, .controls].contains(tile.item.kind)
       || (tile.item.kind == .folder && tile.section != .trash)
     guard opensPopover else {
       popover.close()
@@ -295,6 +295,8 @@ final class DockController {
       popover.openGroup(tile.id, store: store, anchor: point, on: screen, onClose: onClose)
     case .shelf:
       popover.openShelf(store: store, anchor: point, on: screen, onClose: onClose)
+    case .controls:
+      popover.openControls(store: store, anchor: point, on: screen, onClose: onClose)
     default:
       guard let url = tile.url else { return }
       popover.openFolder(url, title: tile.name, icon: store.image(for: tile), sort: tile.item.sort ?? .added,

@@ -75,7 +75,7 @@ final class PopoverPointer: ObservableObject {
 }
 
 /// One callout at a time above a dock tile: a folder's contents, the shelf,
-/// or a group's apps.
+/// a group's apps, or the controls.
 final class PopoverController {
   static let shadowRoom: CGFloat = 30
 
@@ -83,6 +83,8 @@ final class PopoverController {
   /// The open folder's browsing options; a new folder starts over.
   private var browsing = FolderBrowsing()
   private var onClose: (() -> Void)?
+  /// The open controls callout's state; it polls until the callout closes.
+  private var controls: ControlsModel?
   /// Bumped by every show and by `close`. Work that finishes later (a folder
   /// listing, a trash reload, a resize) checks it and drops itself when the
   /// callout has moved on.
@@ -108,6 +110,24 @@ final class PopoverController {
     self.onClose = onClose
     placement = (anchor, screen)
     showShelf(store: store, animated: true)
+  }
+
+  func openControls(store: DockStore, anchor: NSPoint, on screen: NSScreen, onClose: @escaping () -> Void) {
+    close()
+    self.onClose = onClose
+    placement = (anchor, screen)
+    generation += 1
+    let model = ControlsModel()
+    controls = model
+    model.start()
+    present(animated: true) { [weak self] arrowX in
+      ControlsPopover(model: model, theme: store.theme, arrowX: arrowX,
+                      focusShortcut: store.settings.focusShortcut,
+                      onPane: { pane in
+                        NSWorkspace.shared.open(pane.url)
+                        self?.close()
+                      })
+    }
   }
 
   func openGroup(_ groupID: String, store: DockStore, anchor: NSPoint, on screen: NSScreen,
@@ -156,6 +176,8 @@ final class PopoverController {
   func close() {
     generation += 1
     placement = nil
+    controls?.stop()
+    controls = nil
     if panel.isVisible { panel.orderOut(nil) }
     let callback = onClose
     onClose = nil
@@ -1140,7 +1162,7 @@ struct GroupPopover: View {
     case .folder, .file:
       Button("Open") { onOpen(member) }
       Button("Show in Finder") { store.reveal(member) }
-    case .action, .url, .group, .shelf:
+    case .action, .url, .group, .shelf, .controls:
       Button(member.item.kind == .action ? "Run" : "Open") { onOpen(member) }
     }
     if let group {

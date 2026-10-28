@@ -2,7 +2,7 @@ import Foundation
 
 struct DockItem: Codable, Equatable {
   enum Kind: String, Codable {
-    case app, folder, file, action, url, group, shelf
+    case app, folder, file, action, url, group, shelf, controls
   }
 
   enum Sort: String, Codable {
@@ -94,6 +94,7 @@ struct DockItem: Codable, Equatable {
     case .url: return "url:\(url ?? "")"
     case .group: return "group:\(title ?? "")"
     case .shelf: return "shelf"
+    case .controls: return "controls"
     }
   }
 
@@ -128,6 +129,9 @@ struct DockSettings: Equatable {
   /// `barista` makes the Finder tile open Barista Files (⌥-click opens
   /// Finder); `finder` keeps Finder.
   var filesBrowser = "barista"
+  /// A Shortcuts shortcut the controls callout's Focus switch runs; macOS
+  /// has no API to switch a Focus. Empty opens Focus settings instead.
+  var focusShortcut = ""
 
   var clamped: DockSettings {
     var settings = self
@@ -154,6 +158,7 @@ extension DockSettings: Codable {
     case expandActiveGroup = "expand_active_group"
     case shelfDays = "shelf_days"
     case filesBrowser = "files_browser"
+    case focusShortcut = "focus_shortcut"
   }
 
   init(from decoder: Decoder) throws {
@@ -172,6 +177,7 @@ extension DockSettings: Codable {
     shelfDays = try container.decodeIfPresent(Double.self, forKey: .shelfDays) ?? defaults.shelfDays
     theme = try container.decodeIfPresent(String.self, forKey: .theme) ?? defaults.theme
     filesBrowser = try container.decodeIfPresent(String.self, forKey: .filesBrowser) ?? defaults.filesBrowser
+    focusShortcut = try container.decodeIfPresent(String.self, forKey: .focusShortcut) ?? defaults.focusShortcut
   }
 }
 

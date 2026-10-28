@@ -188,6 +188,20 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   missing files drop off. State lives in `~/.local/state/barista/shelf.json`
   (override with `BARISTA_SHELF_FILE`), snippets in `shelf/snippets/` next
   to it.
+- The controls tile (`{ "kind": "controls" }`, or Add Controls to Dock on
+  the dock's menu) opens Control Center's everyday switches: Wi-Fi, Dark
+  Mode, Night Shift, Keep Awake (holds the display on until switched off or
+  the agent quits), and Low Power (asks for an administrator password);
+  brightness of the built-in display, output volume with mute, and the
+  output device; then links to twelve System Settings panes. It polls every
+  two seconds while open, so volume keys and switches flipped elsewhere
+  show. Bluetooth switches only with `blueutil` installed (the agent has no
+  Info.plist to ask for Bluetooth access) and otherwise opens its pane.
+  macOS has no API to switch a Focus, so the Focus switch runs the Shortcut
+  named by `focus_shortcut`, or opens Focus settings when that is empty.
+  Dark Mode goes through System Events, which macOS asks to allow once.
+  Brightness and Night Shift use private frameworks and drop out of the
+  callout when those don't answer.
 - Right-click on an app follows the macOS Dock's order: its windows (one
   yabai query per reveal), then Barista's own entries — the tile's `menu`
   actions, Add to Group, Window (Float, Sticky, Zoom to Fill, Center, Utility
@@ -361,7 +375,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
     "expand_active_group": true,
     "shelf_days": 3,
     "theme": "barista",
-    "files_browser": "barista"
+    "files_browser": "barista",
+    "focus_shortcut": ""
   },
   "pinned": [
     { "kind": "app", "path": "/Applications/Ghostty.app", "bundle_id": "com.mitchellh.ghostty" },
@@ -391,7 +406,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   "others": [
     { "kind": "folder", "path": "~/src", "sort": "name" },
     { "kind": "folder", "path": "~/Downloads" },
-    { "kind": "shelf" }
+    { "kind": "shelf" },
+    { "kind": "controls" }
   ]
 }
 ```
@@ -411,10 +427,11 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   `command` with `zsh -lc`; optional `notify`, `terminal`, and `lock`), `url`,
   `group` (a titled list of `items`; titles are unique, groups do not nest;
   optional `spaces`, yabai space indexes or labels as strings,
-  `expand: false`, and `info_command`), and `shelf` (one per dock). Any item
+  `expand: false`, and `info_command`), `shelf`, and `controls` (one of each
+  per dock). Any item
   takes `badge_command`, `menu`, and `menu_command`. `icon` takes `sf:<SF Symbol name>` or a path to an
   image or app; actions default to `sf:terminal`, URLs to `sf:globe`, the
-  shelf to a tray, and groups to a grid of their apps. A folder or file
+  shelf to a tray, the controls to switches, and groups to a grid of their apps. A folder or file
   whose `icon` is an app gets a small folder or document mark so it does not
   pass for the app (packages with no icon of their own, such as
   `.yazeproj`, otherwise show a blank document). In a group's callout,

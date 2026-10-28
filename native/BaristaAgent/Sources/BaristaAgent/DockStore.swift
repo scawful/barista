@@ -23,6 +23,7 @@ struct DockTile: Identifiable, Equatable {
   var name: String {
     if let title = item.title, !title.isEmpty { return title }
     if item.kind == .shelf { return "Shelf" }
+    if item.kind == .controls { return "Controls" }
     if let url, url.isFileURL { return FileManager.default.displayName(atPath: url.path) }
     return item.command ?? item.url ?? ""
   }
@@ -421,8 +422,8 @@ final class DockStore: ObservableObject {
 
   // MARK: Actions
 
-  /// Opens a tile's target. Folder stacks and the shelf are opened by the
-  /// controller instead. A failed action shows its output; the next click runs it.
+  /// Opens a tile's target. Folder stacks, the shelf, and the controls are
+  /// opened by the controller instead. A failed action shows its output; the next click runs it.
   func open(_ tile: DockTile) {
     switch tile.item.kind {
     case .app:
@@ -446,7 +447,7 @@ final class DockStore: ObservableObject {
       if let url = tile.url { NSWorkspace.shared.open(url) }
     case .action:
       start(tile.id, item: tile.item, title: tile.name)
-    case .group, .shelf:
+    case .group, .shelf, .controls:
       break
     }
   }
@@ -496,7 +497,7 @@ final class DockStore: ObservableObject {
       edit { config in apps.forEach { config.add($0, toGroup: tile.id) } }
     case .shelf:
       shelf.add(urls)
-    case .file, .url:
+    case .file, .url, .controls:
       break
     }
   }
@@ -535,6 +536,12 @@ final class DockStore: ObservableObject {
     edit { config in
       if !config.renameGroup(group.id, to: title) { NSSound.beep() }
     }
+  }
+
+  var hasControls: Bool { (pinned + others).contains { $0.item.kind == .controls } }
+
+  func addControls() {
+    edit { $0.insert([DockItem(kind: .controls)], at: nil, in: .others) }
   }
 
   func keepInDock(_ tile: DockTile) {
@@ -765,7 +772,7 @@ final class DockStore: ObservableObject {
   private func resolvedURL(for item: DockItem) -> URL? {
     switch item.kind {
     case .url: return item.url.flatMap(URL.init(string:))
-    case .action, .group, .shelf: return nil
+    case .action, .group, .shelf, .controls: return nil
     case .app, .folder, .file:
       if let cached = resolvedURLs[item.key] { return cached }
       var url = item.expandedPath.map { URL(fileURLWithPath: $0) }
@@ -784,6 +791,7 @@ final class DockStore: ObservableObject {
     case .url: return .symbol("globe")
     case .group: return .symbol("square.grid.2x2")
     case .shelf: return .symbol(shelf.entries.isEmpty ? "tray" : "tray.full")
+    case .controls: return .symbol("switch.2")
     case .app, .folder, .file: return .image(NSWorkspace.shared.icon(forFile: tile.url?.path ?? "/"))
     }
   }

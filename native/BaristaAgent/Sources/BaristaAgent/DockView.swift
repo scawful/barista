@@ -213,6 +213,7 @@ private struct DockMenu: View {
   }
 
   @ViewBuilder private var dockItems: some View {
+    if !store.hasControls { Button("Add Controls to Dock", action: store.addControls) }
     Button("Dock Settings…") { store.editConfig() }
     Button("Use macOS Dock", action: actions.useNativeDock)
   }
@@ -257,6 +258,13 @@ private struct DockMenu: View {
     case (_, .shelf):
       Button("Open Shelf") { actions.activate(tile, anchor) }
       if !store.shelf.entries.isEmpty { Button("Clear Shelf") { store.shelf.clear() } }
+      Divider()
+      Button("Remove from Dock") { store.remove(tile) }
+    case (_, .controls):
+      Button("Open Controls") { actions.activate(tile, anchor) }
+      Button("System Settings…") {
+        if let pane = SettingsPane.named("Settings") { NSWorkspace.shared.open(pane.url) }
+      }
       Divider()
       Button("Remove from Dock") { store.remove(tile) }
     }

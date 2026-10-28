@@ -71,9 +71,20 @@ query_runtime_context() {
   return 0
 }
 
+# Queries run in $(...) subshells, so a stall is remembered in a per-run file:
+# once yabai times out, later fallbacks skip it instead of each waiting 1s.
+YABAI_STALL_MARK="${TMPDIR:-/tmp}/barista-front-app-yabai-stall.$$"
+trap 'rm -f "$YABAI_STALL_MARK"' EXIT
+
 query_json() {
+  local status=0
   [ -n "$YABAI_BIN" ] || return 1
-  run_with_timeout 1 "$YABAI_BIN" -m "$@" 2>/dev/null || true
+  [ ! -e "$YABAI_STALL_MARK" ] || return 0
+  run_with_timeout 1 "$YABAI_BIN" -m "$@" 2>/dev/null || status=$?
+  case "$status" in
+    124|142) : > "$YABAI_STALL_MARK" 2>/dev/null || true ;;
+  esac
+  return 0
 }
 
 query_spaces_json() {

@@ -74,6 +74,10 @@ case "${FRONT_APP_CONTEXT_TEST_MODE:-window_match}:${1:-}:${2:-}:${3:-}:${4:-}" 
   backfill_window:-m:query:--windows:)
     printf '[{"id":22,"app":"Ghostty","space":8,"display":2,"has-focus":true,"is-floating":false,"is-sticky":false,"has-fullscreen-zoom":false,"layer":"normal","is-minimized":false}]\n'
     ;;
+  stalled:*)
+    printf 'call\n' >> "$FRONT_APP_CONTEXT_YABAI_LOG"
+    exec sleep 5
+    ;;
   *)
     exit 1
     ;;
@@ -194,5 +198,21 @@ printf '%s\n' "$BACKFILL_OUTPUT" | grep -Fxq $'space_index\t8' || { echo "FAIL: 
 printf '%s\n' "$BACKFILL_OUTPUT" | grep -Fxq $'display_index\t2' || { echo "FAIL: focused-space mode should backfill raw display index from the selected window when current-space discovery is missing" >&2; exit 1; }
 printf '%s\n' "$BACKFILL_OUTPUT" | grep -Fxq $'space_visible\ttrue' || { echo "FAIL: focused-space mode should mark the selected focused window as visible when backfilling" >&2; exit 1; }
 [ ! -s "$RUNTIME_CONTEXT_LOG" ] || { echo "FAIL: focused-space fast path should not invoke runtime_context.sh when focused window context is already available" >&2; exit 1; }
+
+STALL_LOG="$TMP_DIR/yabai_stall.log"
+stall_start="$(date +%s)"
+PATH="$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
+  INFO="" \
+  FRONT_APP_CONTEXT_TEST_MODE=stalled \
+  FRONT_APP_CONTEXT_YABAI_LOG="$STALL_LOG" \
+  BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+  BARISTA_JQ_BIN="$JQ_BIN" \
+  BARISTA_OSASCRIPT_BIN="$BIN_DIR/osascript" \
+  BARISTA_RUNTIME_CONTEXT_SCRIPT="$TMP_DIR/missing_runtime_context.sh" \
+  "$SCRIPT" --mode focused-space --app Ghostty >/dev/null
+stall_elapsed=$(( $(date +%s) - stall_start ))
+stall_calls="$(wc -l < "$STALL_LOG" | tr -d ' ')"
+[ "$stall_calls" = "1" ] || { echo "FAIL: a stalled yabai should be queried once per run, got $stall_calls" >&2; exit 1; }
+[ "$stall_elapsed" -le 3 ] || { echo "FAIL: a stalled yabai should cost one timeout, took ${stall_elapsed}s" >&2; exit 1; }
 
 printf 'test_front_app_context.sh: ok\n'

@@ -21,8 +21,11 @@ enum AgentWindows {
       $0 !== closing && $0.isVisible && $0.styleMask.contains(.titled)
     }
     guard !others else { return }
+    defer { previousApp = nil }
+    // A close button clicked from another app doesn't activate the agent;
+    // focus is already where the user wants it.
+    guard NSApp.isActive else { return }
     previousApp?.activate()
-    previousApp = nil
   }
 
   /// Accessory apps have no visible menu bar, but key equivalents still go

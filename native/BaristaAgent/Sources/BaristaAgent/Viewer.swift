@@ -37,6 +37,7 @@ final class ViewerController {
   private var windows: [NSWindow] = []
   private var models: [ObjectIdentifier: ViewerModel] = [:]
   private var keyMonitor: Any?
+  private var closeObservers: [ObjectIdentifier: NSObjectProtocol] = [:]
 
   /// Shows `url` if the viewer handles it; returns false when it doesn't.
   @discardableResult
@@ -64,9 +65,11 @@ final class ViewerController {
     place(window)
     windows.append(window)
     models[ObjectIdentifier(window)] = model
-    NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window,
-                                           queue: .main) { [weak self] note in
+    closeObservers[ObjectIdentifier(window)] = NotificationCenter.default.addObserver(
+      forName: NSWindow.willCloseNotification, object: window, queue: .main
+    ) { [weak self] note in
       guard let self, let closing = note.object as? NSWindow else { return }
+      self.closeObservers.removeValue(forKey: ObjectIdentifier(closing)).map(NotificationCenter.default.removeObserver)
       self.windows.removeAll { $0 === closing }
       self.models[ObjectIdentifier(closing)] = nil
       if self.windows.isEmpty, let monitor = self.keyMonitor {
@@ -116,7 +119,7 @@ final class ViewerController {
   }
 
   private static func size(for model: ViewerModel) -> NSSize {
-    let visible = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame.size
+    let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame.size ?? NSSize(width: 1280, height: 800)
     switch model.kind {
     case .markdown:
       return NSSize(width: min(760, visible.width * 0.6), height: min(900, visible.height * 0.8))
@@ -142,7 +145,8 @@ final class ViewerController {
 
 /// The file a viewer window shows, reloaded when it changes on disk.
 final class ViewerModel: ObservableObject {
-  enum Zoom { case fit, actual }
+  /// `custom` is wherever a pinch left the image.
+  enum Zoom { case fit, actual, custom }
 
   @Published private(set) var url: URL
   @Published private(set) var blocks: [MarkdownBlock] = []
@@ -453,6 +457,7 @@ private struct ZoomableImage: NSViewRepresentable {
   func makeNSView(context: Context) -> ImageScrollView {
     let view = ImageScrollView()
     view.onDoubleClick = { zoom = zoom == .fit ? .actual : .fit }
+    view.onPinch = { zoom = .custom }
     return view
   }
 
@@ -463,6 +468,7 @@ private struct ZoomableImage: NSViewRepresentable {
 
 final class ImageScrollView: NSScrollView {
   var onDoubleClick: (() -> Void)?
+  var onPinch: (() -> Void)?
   private let imageView = NSImageView()
   private var zoom = ViewerModel.Zoom.fit
 
@@ -479,6 +485,13 @@ final class ImageScrollView: NSScrollView {
     hasHorizontalScroller = true
     autohidesScrollers = true
     drawsBackground = false
+    NotificationCenter.default.addObserver(self, selector: #selector(pinched),
+                                           name: NSScrollView.didEndLiveMagnifyNotification, object: self)
+  }
+
+  @objc private func pinched() {
+    zoom = .custom
+    onPinch?()
   }
 
   required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -501,7 +514,7 @@ final class ImageScrollView: NSScrollView {
   }
 
   private func applyZoom() {
-    guard let size = imageView.image?.size, size.width > 0, size.height > 0 else { return }
+    guard zoom != .custom, let size = imageView.image?.size, size.width > 0, size.height > 0 else { return }
     let bounds = contentView.bounds.size
     let visible = NSSize(width: bounds.width * magnification, height: bounds.height * magnification)
     magnification = zoom == .actual ? 1 : min(1, visible.width / size.width, visible.height / size.height)

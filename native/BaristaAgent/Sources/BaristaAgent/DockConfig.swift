@@ -44,9 +44,13 @@ struct DockItem: Codable, Equatable {
   /// Run with `zsh -lc` on reveal; prints `{"menu": [...]}`, entries shown
   /// after `menu`'s.
   var menuCommand: String?
+  /// A group member kept out of its group's grid and inline tiles; Show
+  /// Hidden and the group's search still find it.
+  var hidden: Bool?
 
   enum CodingKeys: String, CodingKey {
     case kind, path, title, icon, command, notify, terminal, lock, disabled, url, items, spaces, expand, sort, menu
+    case hidden
     case bundleID = "bundle_id"
     case badgeCommand = "badge_command"
     case infoCommand = "info_command"
@@ -98,8 +102,8 @@ struct DockItem: Codable, Equatable {
     }
   }
 
-  /// This item's key plus those of a group's members.
-  var allKeys: [String] { [key] + (items ?? []).map(\.key) }
+  /// This item's key plus those of a group's members, through subgroups.
+  var allKeys: [String] { [key] + (items ?? []).flatMap(\.allKeys) }
 
   var expandedPath: String? {
     guard let path, !path.isEmpty else { return nil }
@@ -195,7 +199,12 @@ struct DockConfig: Equatable {
     set { if list == .pinned { pinned = newValue } else { others = newValue } }
   }
 
-  var groups: [DockItem] { (pinned + others).filter { $0.kind == .group } }
+  /// Every group, subgroups included; titles are unique across all of them.
+  var groups: [DockItem] { Self.groups(in: pinned + others) }
+
+  private static func groups(in items: [DockItem]) -> [DockItem] {
+    items.flatMap { $0.kind == .group ? [$0] + groups(in: $0.items ?? []) : [] }
+  }
 
   /// Skips items already in the dock, including inside groups.
   mutating func insert(_ items: [DockItem], at index: Int?, in list: List) {
@@ -212,62 +221,56 @@ struct DockConfig: Equatable {
     self[list].insert(item, at: min(max(index, 0), self[list].count))
   }
 
-  /// Removes a top-level item, or a member from whichever group holds it.
+  /// Removes an item wherever it is: at the top level or in any group.
   mutating func remove(key: String) {
-    for list in [List.pinned, .others] {
-      self[list] = self[list].compactMap { item in
+    func strip(_ items: [DockItem]) -> [DockItem] {
+      items.compactMap { item in
         guard item.key != key else { return nil }
         var item = item
-        item.items?.removeAll { $0.key == key }
+        if let members = item.items { item.items = strip(members) }
         return item
       }
     }
+    pinned = strip(pinned)
+    others = strip(others)
   }
 
-  /// Wraps the item at `key` in a new group in its place, or appends a new
-  /// group to the pins when the item is not in the dock yet (a running app).
+  /// Wraps the item at `key` in a new group in its place (a subgroup when
+  /// it is a group's member), or appends a new group to the pins when the
+  /// item is not in the dock yet (a running app).
   mutating func makeGroup(title: String, with item: DockItem) -> Bool {
     let group = DockItem(kind: .group, title: title, items: [item])
     guard !groups.contains(where: { $0.key == group.key }) else { return false }
-    for list in [List.pinned, .others] {
-      if let index = self[list].firstIndex(where: { $0.key == item.key }) {
-        self[list][index] = group
-        return true
-      }
-    }
-    remove(key: item.key)
+    if editList(holding: item.key, { items, index in items[index] = group }) { return true }
     pinned.append(group)
     return true
   }
 
-  /// Moves an item into a group, from the dock or from another group.
+  /// Moves an item into a group, from the dock or from another group. A
+  /// group can move into another group, but not into itself or one of its own.
   mutating func add(_ item: DockItem, toGroup groupKey: String) {
-    guard item.kind != .group, groups.contains(where: { $0.key == groupKey }) else { return }
+    guard groups.contains(where: { $0.key == groupKey }), !item.allKeys.contains(groupKey) else { return }
     remove(key: item.key)
     updateGroup(groupKey) { group in
       group.items = (group.items ?? []) + [item]
     }
   }
 
-  /// Takes a member out of its group and places it right after the group.
+  /// Takes a member out of its group and places it right after the group,
+  /// in the group's own parent for a subgroup.
   mutating func takeOut(_ key: String, fromGroup groupKey: String) {
-    for list in [List.pinned, .others] {
-      guard let index = self[list].firstIndex(where: { $0.key == groupKey }),
-            let member = self[list][index].items?.first(where: { $0.key == key })
-      else { continue }
-      self[list][index].items?.removeAll { $0.key == key }
-      self[list].insert(member, at: index + 1)
-      return
+    editList(holding: groupKey) { items, index in
+      guard let member = items[index].items?.first(where: { $0.key == key }) else { return }
+      items[index].items?.removeAll { $0.key == key }
+      items.insert(member, at: index + 1)
     }
   }
 
   /// Replaces a group with its members.
   mutating func ungroup(_ groupKey: String) {
-    for list in [List.pinned, .others] {
-      guard let index = self[list].firstIndex(where: { $0.key == groupKey }) else { continue }
-      let members = self[list][index].items ?? []
-      self[list].replaceSubrange(index...index, with: members)
-      return
+    editList(holding: groupKey) { items, index in
+      let members = items[index].items ?? []
+      items.replaceSubrange(index...index, with: members)
     }
   }
 
@@ -277,15 +280,18 @@ struct DockConfig: Equatable {
     return true
   }
 
+  /// Keeps a group member out of its group's grid, or shows it again.
+  mutating func setHidden(_ key: String, _ hidden: Bool) {
+    editList(holding: key) { items, index in items[index].hidden = hidden ? true : nil }
+  }
+
   mutating func dedupe() {
     var seen = Set<String>()
     func unique(_ items: [DockItem]) -> [DockItem] {
       items.compactMap { item in
         guard seen.insert(item.key).inserted else { return nil }
         var item = item
-        if let members = item.items {
-          item.items = unique(members.filter { $0.kind != .group })
-        }
+        if let members = item.items { item.items = unique(members) }
         return item
       }
     }
@@ -294,12 +300,30 @@ struct DockConfig: Equatable {
   }
 
   private mutating func updateGroup(_ groupKey: String, _ change: (inout DockItem) -> Void) {
-    for list in [List.pinned, .others] {
-      if let index = self[list].firstIndex(where: { $0.key == groupKey && $0.kind == .group }) {
-        change(&self[list][index])
-        return
-      }
+    editList(holding: groupKey) { items, index in
+      if items[index].kind == .group { change(&items[index]) }
     }
+  }
+
+  /// Runs `change` on the list holding `key`, top level or inside a group,
+  /// with that item's index. False when no list holds it.
+  @discardableResult
+  private mutating func editList(holding key: String, _ change: (inout [DockItem], Int) -> Void) -> Bool {
+    func edit(_ items: inout [DockItem]) -> Bool {
+      if let index = items.firstIndex(where: { $0.key == key }) {
+        change(&items, index)
+        return true
+      }
+      for index in items.indices where items[index].kind == .group {
+        var members = items[index].items ?? []
+        if edit(&members) {
+          items[index].items = members
+          return true
+        }
+      }
+      return false
+    }
+    return edit(&pinned) || edit(&others)
   }
 }
 

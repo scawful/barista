@@ -190,13 +190,13 @@ private struct DockMenu: View {
         }
         Menu("Add to Group") {
           ForEach(store.groups.filter { $0.id != tile.parentGroup }) { group in
-            Button(group.name) { store.addToGroup(tile, group: group) }
+            Button(store.path(of: group)) { store.addToGroup(tile, group: group) }
           }
           if !store.groups.isEmpty { Divider() }
-          Button("New Group…") { store.newGroup(with: tile) }
+          Button(tile.parentGroup == nil ? "New Group…" : "New Subgroup…") { store.newGroup(with: tile) }
         }
       } options: {
-        if let group = store.groups.first(where: { $0.id == tile.parentGroup }) {
+        if let group = tile.parentGroup.flatMap(store.group(id:)) {
           Button("Remove from Group") { store.takeOut(tile, from: group) }
         } else if tile.section == .running {
           Button("Keep in Dock") { store.keepInDock(tile) }

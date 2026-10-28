@@ -137,9 +137,79 @@ final class DockConfigTests: XCTestCase {
     ]}
     """#
     var config = try DockConfigFile.decode(Data(json.utf8))
-    XCTAssertEqual(config.groups.first?.items?.map(\.key), ["b"])
+    XCTAssertEqual(config.groups.first?.items?.map(\.key), ["b", "group:Nested"], "subgroups stay")
     config.remove(key: "b")
-    XCTAssertEqual(config.groups.first?.items, [])
+    XCTAssertEqual(config.groups.first?.items?.map(\.key), ["group:Nested"])
+  }
+
+  func testSubgroupsNestMoveAndHideMembers() throws {
+    let json = #"""
+    {"pinned": [
+      {"kind": "group", "title": "Oracle", "items": [
+        {"kind": "app", "bundle_id": "mesen"},
+        {"kind": "group", "title": "Tools", "items": [
+          {"kind": "action", "title": "z3dk", "command": "z3dk"},
+          {"kind": "group", "title": "Oracle", "items": []}
+        ]}
+      ]},
+      {"kind": "group", "title": "Studio", "items": [{"kind": "app", "bundle_id": "logic"}]},
+      {"kind": "app", "bundle_id": "z3dk-app"}
+    ]}
+    """#
+    var config = try DockConfigFile.decode(Data(json.utf8))
+    XCTAssertEqual(config.groups.map(\.key), ["group:Oracle", "group:Tools", "group:Studio"],
+                   "a subgroup reusing a group's title is dropped")
+    XCTAssertFalse(config.renameGroup("group:Studio", to: "Tools"), "titles are unique across subgroups")
+
+    config.add(DockItem(kind: .app, bundleID: "z3dk-app"), toGroup: "group:Tools")
+    XCTAssertEqual(config.pinned.map(\.key), ["group:Oracle", "group:Studio"])
+    XCTAssertEqual(config.groups[1].items?.map(\.key), ["action:z3dk\tz3dk", "z3dk-app"])
+    config.insert([DockItem(kind: .app, bundleID: "z3dk-app")], at: nil, in: .others)
+    XCTAssertEqual(config.others, [], "subgroup members count as already in the dock")
+
+    let tools = config.groups[1]
+    config.add(tools, toGroup: "group:Tools")
+    XCTAssertEqual(config.groups.map(\.key), ["group:Oracle", "group:Tools", "group:Studio"],
+                   "a group can't move into itself")
+    config.add(config.groups[0], toGroup: "group:Tools")
+    XCTAssertEqual(config.pinned.map(\.key), ["group:Oracle", "group:Studio"], "nor into its own subgroup")
+
+    XCTAssertTrue(config.makeGroup(title: "Emulators", with: DockItem(kind: .app, bundleID: "mesen")))
+    XCTAssertEqual(config.pinned[0].items?.map(\.key), ["group:Emulators", "group:Tools"],
+                   "grouping a member makes a subgroup in its place")
+
+    config.setHidden("z3dk-app", true)
+    XCTAssertEqual(config.groups.first { $0.key == "group:Tools" }?.items?.last?.hidden, true)
+    let again = try DockConfigFile.decode(DockConfigFile.encode(config))
+    XCTAssertEqual(again, config)
+    config.setHidden("z3dk-app", false)
+    XCTAssertNil(config.groups.first { $0.key == "group:Tools" }?.items?.last?.hidden)
+
+    config.takeOut("z3dk-app", fromGroup: "group:Tools")
+    XCTAssertEqual(config.pinned[0].items?.map(\.key), ["group:Emulators", "group:Tools", "z3dk-app"],
+                   "taking out of a subgroup lands in its parent")
+    config.ungroup("group:Emulators")
+    XCTAssertEqual(config.pinned[0].items?.map(\.key), ["mesen", "group:Tools", "z3dk-app"])
+    config.remove(key: "group:Tools")
+    XCTAssertEqual(config.pinned[0].items?.map(\.key), ["mesen", "z3dk-app"])
+  }
+
+  func testGroupTilesReachMembersAtAnyDepth() {
+    func tile(_ item: DockItem, pid: pid_t? = nil, children: [DockTile] = []) -> DockTile {
+      DockTile(id: item.key, item: item, url: nil, section: .pinned, pid: pid, isActive: false, isHidden: false,
+               children: children)
+    }
+    var hidden = DockItem(kind: .app, bundleID: "logic")
+    hidden.hidden = true
+    let tools = tile(DockItem(kind: .group, title: "Tools"), children: [tile(hidden, pid: 42)])
+    let group = tile(DockItem(kind: .group, title: "Studio"),
+                     children: [tile(DockItem(kind: .app, bundleID: "spotify")), tools])
+    XCTAssertEqual(group.descendants.map(\.id), ["spotify", "group:Tools", "logic"])
+    XCTAssertEqual(tools.visibleChildren, [])
+    XCTAssertEqual(group.visibleChildren.map(\.id), ["spotify", "group:Tools"])
+    XCTAssertTrue(group.isRunning, "a running app two levels down counts")
+    XCTAssertTrue(group.contains(app: "logic"))
+    XCTAssertFalse(group.contains(app: "music"))
   }
 
   func testDroppedWebLinksBecomeURLTiles() {

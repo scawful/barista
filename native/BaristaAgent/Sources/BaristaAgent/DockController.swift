@@ -321,10 +321,10 @@ final class DockController {
     let tiles = store.sections.joined()
     var expanded: [String: [String]] = [:]
     for group in tiles where store.expanded.contains(group.id) {
-      expanded[group.id] = group.children.map(\.id)
+      expanded[group.id] = group.visibleChildren.map(\.id)
     }
     let attention = Set(tiles.flatMap { tile -> [DockTile] in
-      expanded[tile.id] != nil ? tile.children : [tile]
+      expanded[tile.id] != nil ? tile.visibleChildren : [tile]
     }.filter { store.hasFinished($0) || store.waiting(on: $0) > 0 }.map(\.id))
     scene.update(DockScene.Input(pinned: store.pinned.map(\.id),
                                  running: store.running.map(\.id),
@@ -358,13 +358,14 @@ final class DockController {
     card.show(session, more: store.waitingSessions.count - 1, store: store, anchor: anchor, on: screen)
   }
 
-  /// The tile showing an app: its own, or its group's while the group is closed.
+  /// The tile showing an app: its own, or the tile of the group or subgroup
+  /// holding it, whichever the dock draws.
   private func cardTile(for app: String) -> String? {
-    for tile in store.sections.joined() {
-      if tile.item.bundleID == app { return tile.id }
-      if let member = tile.children.first(where: { $0.item.bundleID == app }) {
-        return store.expanded.contains(tile.id) ? member.id : tile.id
-      }
+    for tile in store.sections.joined() where tile.contains(app: app) {
+      guard store.expanded.contains(tile.id),
+            let member = tile.visibleChildren.first(where: { $0.contains(app: app) })
+      else { return tile.id }
+      return member.id
     }
     return nil
   }

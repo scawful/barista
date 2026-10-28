@@ -230,6 +230,23 @@ class DockOracleTests(unittest.TestCase):
         self.assertNotIn("Build the patched ROM", titles)
         self.assertNotIn("Registry has many stale active instances.", titles)
 
+    def test_heavy_lock_owner_fits_one_row(self):
+        owners = {
+            "coord_compact pid 41 2026-10-28T12:00:00Z\n": "lock: coord_compact pid 41",
+            json.dumps({"owner": "codex", "purpose": "regression suite", "pid": 7,
+                        "started": "2026-10-28T12:00:00Z"}, indent=2): "lock: codex · regression suite",
+            json.dumps({"pid": 9}, indent=2): "lock: pid 9",
+            "?": "lock: ?",
+        }
+        for owner, detail in owners.items():
+            play = {**PLAY_CLOSED, "heavy_lock": owner}
+            row = next(row for row in self.rows(play=play) if row["title"] == "Play window closed")
+            self.assertEqual(row["detail"], detail)
+        long = "x" * 80
+        detail = next(row for row in self.rows(play={**PLAY_CLOSED, "heavy_lock": long})
+                      if row["title"] == "Play window closed")["detail"]
+        self.assertEqual(len(detail), len("lock: ") + 40)
+
     # Actions.
 
     def test_build_reports_its_result_separately_from_the_mesen_offer(self):

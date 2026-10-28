@@ -18,7 +18,18 @@ struct DockTile: Identifiable, Equatable {
   /// The group holding this tile, for members drawn in an open group.
   var parentGroup: String?
 
-  var isRunning: Bool { pid != nil || children.contains { $0.pid != nil } }
+  var isRunning: Bool { pid != nil || children.contains(where: \.isRunning) }
+
+  /// Members of this group and of its subgroups, depth first.
+  var descendants: [DockTile] { children.flatMap { [$0] + $0.descendants } }
+
+  /// Members drawn in the group's grid and inline; hidden ones wait for Show Hidden or a search.
+  var visibleChildren: [DockTile] { children.filter { $0.item.hidden != true } }
+
+  /// This tile is the app, or a group holding it at any depth.
+  func contains(app bundleID: String) -> Bool {
+    item.bundleID == bundleID || children.contains { $0.contains(app: bundleID) }
+  }
 
   var name: String {
     if let title = item.title, !title.isEmpty { return title }
@@ -142,7 +153,7 @@ final class DockStore: ObservableObject {
     for tile in sections.joined() {
       tiles[tile.id] = tiles[tile.id] ?? tile
       if expanded.contains(tile.id) {
-        for child in tile.children { tiles[child.id] = tiles[child.id] ?? child }
+        for child in tile.visibleChildren { tiles[child.id] = tiles[child.id] ?? child }
       }
     }
     return tiles
@@ -207,7 +218,7 @@ final class DockStore: ObservableObject {
   /// Sessions shown in a group's callout: those of its apps, the ones waiting
   /// on you first (the feed already lists them first).
   func sessions(in group: DockTile) -> [AgentSession] {
-    let apps = Set(group.children.compactMap(\.item.bundleID))
+    let apps = Set(group.descendants.compactMap(\.item.bundleID))
     return agents.sessions.filter { apps.contains($0.app) }
   }
 
@@ -219,7 +230,7 @@ final class DockStore: ObservableObject {
   /// callout can close; runs keep it open to show their progress.
   func activate(_ row: InfoRow, in group: DockTile) -> Bool {
     if let title = row.action, !title.isEmpty {
-      guard let member = group.children.first(where: { $0.name == title }) else {
+      guard let member = group.descendants.first(where: { $0.name == title }) else {
         NSSound.beep()
         return false
       }
@@ -241,7 +252,7 @@ final class DockStore: ObservableObject {
 
   /// The run a row shows: the member it names, or its own command's.
   func runID(for row: InfoRow, in group: DockTile) -> String? {
-    if let title = row.action, let member = group.children.first(where: { $0.name == title }) {
+    if let title = row.action, let member = group.descendants.first(where: { $0.name == title }) {
       return member.id
     }
     return (row.run ?? "").isEmpty ? nil : rowID(row, in: group)
@@ -311,18 +322,15 @@ final class DockStore: ObservableObject {
       return unclaimed.removeValue(forKey: key)
     }
 
-    func tiles(_ items: [DockItem], section: DockTile.Section) -> [DockTile] {
+    func tiles(_ items: [DockItem], section: DockTile.Section, in parent: String? = nil) -> [DockTile] {
       items.map { item in
         var tile = self.tile(for: item, section: section, app: claim(item))
         if item.kind == .group {
-          let children = (item.items ?? []).map { member -> DockTile in
-            var child = self.tile(for: member, section: section, app: claim(member))
-            child.parentGroup = tile.id
-            return child
-          }
+          let children = tiles(item.items ?? [], section: section, in: item.key)
           tile = DockTile(id: tile.id, item: item, url: nil, section: section, pid: nil,
                           isActive: children.contains(where: \.isActive), isHidden: false, children: children)
         }
+        tile.parentGroup = parent
         return tile
       }
     }
@@ -339,7 +347,7 @@ final class DockStore: ObservableObject {
 
     let space = spaces.first(where: \.hasFocus)
     let expanded = Set((pinned + others).filter { group in
-      guard group.item.kind == .group, group.item.expand != false, !group.children.isEmpty else { return false }
+      guard group.item.kind == .group, group.item.expand != false, !group.visibleChildren.isEmpty else { return false }
       if settings.expandActiveGroup, group.isActive { return true }
       return space?.matches(group.item.spaces ?? []) ?? false
     }.map(\.id))
@@ -404,7 +412,7 @@ final class DockStore: ObservableObject {
     } else if let custom = TileImage.custom(tile.item.icon) {
       image = custom
     } else if tile.item.kind == .group {
-      image = .group(tile.children.prefix(4).map(self.image(for:)))
+      image = .group(tile.visibleChildren.prefix(4).map(self.image(for:)))
     } else {
       image = defaultImage(for: tile)
     }
@@ -417,8 +425,18 @@ final class DockStore: ObservableObject {
     return result
   }
 
-  /// Groups in the dock, for "Add to Group" menus.
-  var groups: [DockTile] { (pinned + others).filter { $0.item.kind == .group } }
+  /// Groups in the dock and their subgroups, for "Add to Group" menus.
+  var groups: [DockTile] {
+    (pinned + others).flatMap { [$0] + $0.descendants }.filter { $0.item.kind == .group }
+  }
+
+  func group(id: String) -> DockTile? { groups.first { $0.id == id } }
+
+  /// "Oracle › Tools" for a subgroup; a top-level group's own name.
+  func path(of group: DockTile) -> String {
+    guard let parent = group.parentGroup.flatMap(self.group(id:)) else { return group.name }
+    return path(of: parent) + " › " + group.name
+  }
 
   // MARK: Actions
 
@@ -524,6 +542,10 @@ final class DockStore: ObservableObject {
 
   func takeOut(_ tile: DockTile, from group: DockTile) {
     edit { $0.takeOut(tile.id, fromGroup: group.id) }
+  }
+
+  func setHidden(_ tile: DockTile, _ hidden: Bool) {
+    edit { $0.setHidden(tile.id, hidden) }
   }
 
   func ungroup(_ group: DockTile) {
@@ -716,7 +738,7 @@ final class DockStore: ObservableObject {
     if tile.section == .trash { return "trash|\(trashFull)|\(iconPixels)" }
     if tile.item.kind == .shelf { return "shelf|\(shelf.entries.isEmpty)|\(tile.item.icon ?? "")|\(iconPixels)" }
     if tile.item.kind == .group, (tile.item.icon ?? "").isEmpty {
-      return "group|" + tile.children.prefix(4).map(imageKey(for:)).joined(separator: ",")
+      return "group|" + tile.visibleChildren.prefix(4).map(imageKey(for:)).joined(separator: ",")
     }
     return "\(tile.id)|\(tile.item.icon ?? "")|\(tile.url?.path ?? "")|\(iconPixels)"
   }
@@ -807,11 +829,11 @@ final class DockStore: ObservableObject {
     tile.pid.flatMap(NSRunningApplication.init(processIdentifier:))
   }
 
-  /// Shown tiles' (and their members') commands by tile ID.
+  /// Shown tiles' (and their members', at any depth) commands by tile ID.
   private func commands(_ field: KeyPath<DockItem, String?>) -> [String: String] {
     var commands: [String: String] = [:]
     for tile in sections.joined() {
-      for tile in [tile] + tile.children {
+      for tile in [tile] + tile.descendants {
         if let command = tile.item[keyPath: field], !command.isEmpty { commands[tile.id] = command }
       }
     }

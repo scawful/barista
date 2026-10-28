@@ -33,7 +33,7 @@ The agent runs as `dev.barista.agent` and logs to
 | `DockView.swift` | SwiftUI renderer for the scene's frame, plus gestures, drops, and context menus (`AppMenu` holds the window controls). |
 | `TileViews.swift` | `TileIcon`, `TileBadge`, `ActionStatus`, `GroupGlyph`. |
 | `TileImage.swift` | What a tile draws: custom `icon` specs, the single-bitmap rasterizing behind the icon cache, and the folder or document mark on borrowed app icons. |
-| `Popover.swift` | Folder (browsable), shelf, group, and controls callouts above a tile. |
+| `Popover.swift` | Folder (browsable), shelf, group (subgroups open in place; search and hidden members), and controls callouts above a tile. |
 | `SystemControls.swift` | The controls tile's state and switches: Wi-Fi, Bluetooth via `blueutil`, appearance, Night Shift, keep awake, Low Power, battery, brightness, output volume and device, and System Settings panes. |
 | `ControlsPopover.swift` | The controls callout: switch tiles, level sliders, the output menu, and pane links. |
 | `DockStore.swift` | Tiles from `dock.json` and running apps, open groups, icon cache, and every edit action. |

@@ -69,10 +69,23 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   to copy or move them, the Trash recycles them, action tiles
   receive their paths as arguments, groups take dropped apps, and the shelf
   keeps files and text.
-- Groups show their first four apps in a tinted tile and open a callout grid
+- Groups show their first four members in a tinted tile and open a callout grid
   with each app's running dot; clicking an app opens it, and right-click has
-  the app menu below plus Remove from Group. The group's own menu has
-  Rename…, Ungroup, and Remove from Dock.
+  the app menu below plus Move to Subgroup (an existing subgroup or New
+  Subgroup…), Hide in Group, and Remove from Group (Move to the parent group
+  inside a subgroup). The group's own menu has Rename…, Ungroup, and Remove
+  from Dock.
+- Subgroups: a group inside a group is one cell, marked with a chevron, that
+  opens in place with a back button and the parents as breadcrumbs; it runs,
+  badges, and polls like a top-level group. An open group draws only its own
+  members inline, subgroups as one tile. A member with `"hidden": true` stays
+  out of the grid, the inline tiles, and the group icon until the callout's
+  Hidden toggle shows it (dimmed). A group holding more than 8 members,
+  counting its subgroups' members, gets a search field: typing lists matching
+  members at any depth (with their subgroup path), `menu` and `menu_command`
+  entries, and status rows, over the grid so the callout keeps its size;
+  Return opens or runs the first. The Status and Agents lists fold from their
+  headers, remembered per group.
 - Open groups (contexts): while one of a group's apps is frontmost, the group
   is drawn open, its members inline between dividers, so the rest of that
   context is one click away. A group with `spaces` also opens on those yabai
@@ -399,7 +412,10 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
           { "kind": "action", "title": "Transition Tests", "lock": "oracle-roms", "notify": true,
             "command": "~/.config/sketchybar/scripts/dock_oracle.py test transitions" }
         ] },
-      { "kind": "folder", "title": "Oracle Source", "path": "~/src/hobby/oracle-of-secrets", "sort": "name" }
+      { "kind": "group", "title": "Oracle Folders", "items": [
+        { "kind": "folder", "title": "Oracle Source", "path": "~/src/hobby/oracle-of-secrets", "sort": "name" },
+        { "kind": "folder", "title": "Build Output", "path": "~/src/hobby/oracle-of-secrets/Roms", "hidden": true }
+      ] }
     ] },
     { "kind": "url", "title": "Oracle docs", "url": "https://example.com" }
   ],
@@ -425,11 +441,11 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   plain vibrancy and the system accent color.
 - Item kinds: `app`, `folder` (optional `sort`), `file`, `action` (runs
   `command` with `zsh -lc`; optional `notify`, `terminal`, and `lock`), `url`,
-  `group` (a titled list of `items`; titles are unique, groups do not nest;
-  optional `spaces`, yabai space indexes or labels as strings,
+  `group` (a titled list of `items`, which may hold groups; titles are unique
+  across every group and subgroup; optional `spaces`, yabai space indexes or labels as strings,
   `expand: false`, and `info_command`), `shelf`, and `controls` (one of each
   per dock). Any item
-  takes `badge_command`, `menu`, and `menu_command`. `icon` takes `sf:<SF Symbol name>` or a path to an
+  takes `badge_command`, `menu`, and `menu_command`; a group member takes `hidden`. `icon` takes `sf:<SF Symbol name>` or a path to an
   image or app; actions default to `sf:terminal`, URLs to `sf:globe`, the
   shelf to a tray, the controls to switches, and groups to a grid of their apps. A folder or file
   whose `icon` is an app gets a small folder or document mark so it does not

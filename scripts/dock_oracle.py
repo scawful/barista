@@ -321,6 +321,24 @@ def testing_row(binding: Binding, now: float) -> dict | None:
     return {"title": title, "detail": detail, "tone": tone, "open": report.get("path") or str(report_path)}
 
 
+def lock_holder(owner) -> str:
+    """The heavy lock's owner file in a few words: who holds it and for what.
+    Owners write JSON or a line such as `coord_compact pid 41 2026-10-28T12:00Z`."""
+    text = owner if isinstance(owner, str) else json.dumps(owner)
+    data = owner if isinstance(owner, dict) else None
+    if data is None:
+        with contextlib.suppress(ValueError):
+            data = json.loads(text)
+    if isinstance(data, dict):
+        who = data.get("owner") or data.get("agent") or data.get("holder") or \
+            (f"pid {data['pid']}" if data.get("pid") else "")
+        why = data.get("purpose") or data.get("reason") or data.get("task") or ""
+        text = " · ".join(str(part) for part in (who, why) if part) or "held"
+    line = next((line for line in text.splitlines() if line.strip()), "held")
+    line = " ".join(re.sub(r"\d{4}-\d\d-\d\dT\S+", "", line).split()) or "held"
+    return line if len(line) <= 40 else line[:39] + "…"
+
+
 def mesen_rows(binding: Binding, play: dict) -> list[dict]:
     window = play.get("play_window") or {}
     beta = (play.get("latest") or "").rsplit("-", 1)[-1] or "staged beta"
@@ -338,7 +356,7 @@ def mesen_rows(binding: Binding, play: dict) -> list[dict]:
         rows = [{"title": f"Play window · {window.get('rom') or 'unknown ROM'}", "detail": "offer dev build",
                  "tone": "warn", "run": play_dev}]
     if play.get("heavy_lock"):
-        rows[0]["detail"] = f"lock: {play['heavy_lock']}"
+        rows[0]["detail"] = f"lock: {lock_holder(play['heavy_lock'])}"
 
     sockets = sorted(SOCKET_DIR.glob("mesen2-*.sock"))
     alive = {path.name[len("mesen2-"):-len(".sock")] for path in sockets if socket_alive(path)}

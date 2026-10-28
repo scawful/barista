@@ -19,6 +19,13 @@ struct FolderBrowsing {
   var query = ""
 }
 
+/// How the open group is listed. Moving to a subgroup keeps `showHidden`
+/// and clears the filter.
+struct GroupBrowsing {
+  var showHidden = false
+  var query = ""
+}
+
 enum StackContents {
   /// Cells shown at first, and how many more each Show More adds.
   static let limit = 60
@@ -82,6 +89,8 @@ final class PopoverController {
   private var panel = makeOverlayPanel(levelOffset: 1, typing: true)
   /// The open folder's browsing options; a new folder starts over.
   private var browsing = FolderBrowsing()
+  /// The open group's filter and Show Hidden; a resize keeps them.
+  private var groupBrowsing = GroupBrowsing()
   private var onClose: (() -> Void)?
   /// The open controls callout's state; it polls until the callout closes.
   private var controls: ControlsModel?
@@ -130,25 +139,50 @@ final class PopoverController {
     }
   }
 
+  /// A subgroup drawn in the dock opens with its parents behind the back button.
   func openGroup(_ groupID: String, store: DockStore, anchor: NSPoint, on screen: NSScreen,
                  onClose: @escaping () -> Void) {
     close()
     self.onClose = onClose
     placement = (anchor, screen)
-    showGroup(groupID, store: store, animated: true)
+    var trail = [groupID]
+    while let parent = store.group(id: trail[0])?.parentGroup { trail.insert(parent, at: 0) }
+    groupBrowsing = GroupBrowsing()
+    showGroup(trail, store: store, animated: true)
   }
 
-  private func showGroup(_ groupID: String, store: DockStore, animated: Bool) {
+  /// `trail` runs from the outermost group to the one shown, as a folder's path does.
+  private func showGroup(_ trail: [String], store: DockStore, animated: Bool) {
+    guard let groupID = trail.last else { return }
     generation += 1
     let token = generation
+    let show = { [weak self] (next: [String]) in
+      self?.groupBrowsing = GroupBrowsing(showHidden: self?.groupBrowsing.showHidden ?? false)
+      self?.showGroup(next, store: store, animated: false)
+    }
+    let crumbs = trail.dropLast().enumerated().map { index, id in
+      Crumb(title: store.group(id: id)?.name ?? "Group") { show(Array(trail.prefix(index + 1))) }
+    }
+    let browse = GroupPopover.Browse(
+      options: groupBrowsing,
+      toggleHidden: { [weak self] in
+        self?.groupBrowsing.showHidden.toggle()
+        self?.showGroup(trail, store: store, animated: false)
+      },
+      setQuery: { [weak self] in self?.groupBrowsing.query = $0 })
     present(animated: animated) { [weak self] arrowX in
-      GroupPopover(store: store, groupID: groupID, arrowX: arrowX,
+      GroupPopover(store: store, groupID: groupID, crumbs: crumbs, browse: browse, arrowX: arrowX,
+                   onBack: trail.count > 1 ? { show(Array(trail.dropLast())) } : nil,
                    onOpen: { tile in
+                     if tile.item.kind == .group {
+                       show(trail + [tile.id])
+                       return
+                     }
                      if tile.item.kind == .folder, let url = tile.url {
                        self?.browsing = FolderBrowsing()
                        self?.showFolder([url], rootTitle: tile.name, rootIcon: store.image(for: tile),
                                         sort: tile.item.sort ?? .name, store: store,
-                                        animated: false, up: { self?.showGroup(groupID, store: store, animated: false) })
+                                        animated: false, up: { self?.showGroup(trail, store: store, animated: false) })
                        return
                      }
                      store.open(tile)
@@ -158,14 +192,13 @@ final class PopoverController {
                      store.focus(session)
                      self?.close()
                    },
-                   onInfo: { row in
-                     guard let group = store.groups.first(where: { $0.id == groupID }),
-                           store.activate(row, in: group) else { return }
+                   onInfo: { row, group in
+                     guard store.activate(row, in: group) else { return }
                      self?.close()
                    },
                    onResize: {
                      guard self?.generation == token else { return }
-                     self?.showGroup(groupID, store: store, animated: false)
+                     self?.showGroup(trail, store: store, animated: false)
                    },
                    onDismiss: { self?.close() })
     }
@@ -852,12 +885,13 @@ struct StackPopover: View {
 /// callout while you type, so it could replace newer typing.
 private struct FilterField: NSViewRepresentable {
   let initial: String
+  var placeholder = "Filter"
   let onChange: (String) -> Void
   let onSubmit: () -> Void
 
   func makeNSView(context: Context) -> NSSearchField {
     let field = NSSearchField()
-    field.placeholderString = "Filter"
+    field.placeholderString = placeholder
     field.stringValue = initial
     field.font = .systemFont(ofSize: 12)
     field.controlSize = .small
@@ -928,124 +962,309 @@ private struct FolderCell: View {
 
 // MARK: Group
 
-/// A group's apps with live running state, then its `info_command` rows and
-/// the agent sessions in those apps; members keep their dock right-click menu.
+/// A group's members with live running state, then its `info_command` rows
+/// and the agent sessions in its apps; members keep their dock right-click
+/// menu. Subgroups are cells that open in place, like folders.
 struct GroupPopover: View {
+  /// The filter and Show Hidden, which the controller keeps across resizes.
+  struct Browse {
+    let options: GroupBrowsing
+    let toggleHidden: () -> Void
+    let setQuery: (String) -> Void
+  }
+
+  /// The lists under the grid fold away; each group remembers which.
+  enum Section: String { case status, sessions }
+
+  /// A search hit: a member at any depth, a menu entry, or a status row.
+  private enum Match: Identifiable {
+    case member(DockTile)
+    case entry(DockItem, of: DockTile)
+    case info(InfoRow, in: DockTile)
+
+    var id: String {
+      switch self {
+      case .member(let tile): return "member|" + tile.id
+      case .entry(let entry, let tile): return "entry|" + tile.id + "/" + (entry.title ?? entry.command ?? "")
+      case .info(let row, let group): return "info|" + group.id + "/" + row.id
+      }
+    }
+  }
+
   @ObservedObject var store: DockStore
   let groupID: String
+  var crumbs: [Crumb] = []
+  let browse: Browse
   let arrowX: CGFloat?
+  let onBack: (() -> Void)?
   let onOpen: (DockTile) -> Void
   let onSession: (AgentSession) -> Void
-  let onInfo: (InfoRow) -> Void
+  let onInfo: (InfoRow, DockTile) -> Void
   /// The panel is sized once: a change in its members or in the number of
   /// rows sizes it again.
   let onResize: () -> Void
   let onDismiss: () -> Void
 
+  @State private var query = ""
+  @State private var started = false
+
   private static let maxSessions = 8
+  private static let maxMatches = 40
+  /// Groups holding more than this, their subgroups' members included, get a search field.
+  static let searchAbove = 8
+  private static let collapsedKey = "BaristaGroupCollapsed"
 
   var body: some View {
-    let group = store.groups.first { $0.id == groupID }
-    let members = group?.children ?? []
+    let group = store.group(id: groupID)
+    let all = group?.children ?? []
+    let members = browse.options.showHidden ? all : all.filter { $0.item.hidden != true }
+    let hiddenCount = all.count - (group?.visibleChildren.count ?? 0)
+    let searchable = (group?.descendants.count ?? 0) > Self.searchAbove
     let running = members.filter(\.isRunning).count
     let sessions = group.map(store.sessions(in:)) ?? []
     let info = group.map(store.info(in:)) ?? []
-    let usage = members.compactMap { member in
+    let usage = (group?.descendants ?? []).compactMap { member in
       member.item.bundleID.flatMap { store.agents.usage[$0] }.map { "\(member.name) \($0)" }
     }
     let waiting = sessions.filter { !$0.needs.isEmpty }.count
+    let statusOpen = !isCollapsed(.status)
+    let sessionsOpen = !isCollapsed(.sessions)
     // A session waiting on you takes a taller row.
-    let rows = [members.count, info.count, min(sessions.count, Self.maxSessions + 1), waiting, usage.isEmpty ? 0 : 1]
+    let rows = [members.count, statusOpen ? info.count : -1,
+                sessionsOpen ? min(sessions.count, Self.maxSessions + 1) : -1, sessionsOpen ? waiting : 0,
+                usage.isEmpty ? 0 : 1]
     let noun = members.allSatisfy { $0.item.kind == .app } ? "app" : "item"
     Callout(theme: store.theme, arrowX: arrowX) {
-      CalloutTitle(title: group?.name ?? "Group",
-                   subtitle: "\(members.count) \(noun)\(members.count == 1 ? "" : "s")"
-                     + (running > 0 ? " · \(running) running" : "")
-                     + (sessions.isEmpty ? "" : " · \(sessions.count) agent \(sessions.count == 1 ? "session" : "sessions")")
-                     + (waiting > 0 ? " · \(waiting) \(waiting == 1 ? "needs" : "need") you" : "")) {
-        if let group { GroupGlyph(images: groupImages(group), theme: store.theme) }
+      HStack(alignment: .center, spacing: 12) {
+        if let onBack { BackButton(theme: store.theme, action: onBack) }
+        CalloutTitle(title: group?.name ?? "Group",
+                     subtitle: "\(members.count) \(noun)\(members.count == 1 ? "" : "s")"
+                       + (hiddenCount > 0 && !browse.options.showHidden ? " · \(hiddenCount) hidden" : "")
+                       + (running > 0 ? " · \(running) running" : "")
+                       + (sessions.isEmpty ? "" : " · \(sessions.count) agent \(sessions.count == 1 ? "session" : "sessions")")
+                       + (waiting > 0 ? " · \(waiting) \(waiting == 1 ? "needs" : "need") you" : ""),
+                     crumbs: crumbs) {
+          if let group { GroupGlyph(images: groupImages(group), theme: store.theme) }
+        }
+        Spacer(minLength: 0)
       }
       .contentShape(Rectangle())
       .contextMenu { if let group { groupMenu(group) } }
     } content: {
-      if members.isEmpty {
-        Text("Drop apps on this group, or use Add to Group on any app.")
-          .font(.system(size: 12)).opacity(0.7)
-          .frame(width: 240, alignment: .leading)
-          .fixedSize(horizontal: false, vertical: true)
-      } else {
+      if let group, !all.isEmpty {
         let plain = Set(members.filter(store.isPlainFolder).map(\.id))
         let places = members.filter { plain.contains($0.id) }
         let cells = members.filter { !plain.contains($0.id) }
         let width = max(CellGrid<EmptyView>.width(count: cells.count, maxColumns: 4), 300)
+        let matches = query.isEmpty ? [] : self.matches(query, in: group)
         VStack(alignment: .leading, spacing: 10) {
-          if !cells.isEmpty {
-            CellGrid(count: cells.count, maxColumns: 4, maxRows: 3) {
-              ForEach(Array(cells.enumerated()), id: \.element.id) { index, member in
-                PopoverCell(index: index, name: member.name, theme: store.theme,
-                            running: member.isRunning, active: member.isActive) {
-                  TileIcon(image: store.image(for: member), theme: store.theme)
-                    .overlay {
-                      if let state = store.actionState(for: member) {
-                        ActionStatus(state: state, theme: store.theme, side: 54)
-                      }
-                    }
-                    .overlay(alignment: .topTrailing) {
-                      if let text = store.badgeText(for: member) {
-                        TileBadge(text: text, color: store.badgeColor(for: member), height: 18)
-                          .offset(x: 5, y: -5)
-                      }
-                    }
-                }
-                .onTapGesture { onOpen(member) }
-                .contextMenu { memberMenu(member, group: group) }
+          if searchable || hiddenCount > 0 {
+            HStack(spacing: 8) {
+              if searchable {
+                FilterField(initial: browse.options.query, placeholder: "Search \(group.name)",
+                            onChange: { query = $0 },
+                            onSubmit: { if let first = matches.first { choose(first) } })
+              } else {
+                Spacer(minLength: 0)
+              }
+              if hiddenCount > 0 {
+                Toggle("Hidden (\(hiddenCount))",
+                       isOn: Binding(get: { browse.options.showHidden }, set: { _ in browse.toggleHidden() }))
+                  .toggleStyle(.checkbox)
+                  .font(.system(size: 11))
               }
             }
+            .frame(width: width)
           }
-          if !places.isEmpty {
-            if !cells.isEmpty { CalloutRule(theme: store.theme) }
-            ForEach(places) { place in
-              PlaceRow(name: place.name, path: place.url.map { ($0.path as NSString).abbreviatingWithTildeInPath },
-                       image: store.image(for: place), theme: store.theme, width: width) { onOpen(place) }
-                .contextMenu { memberMenu(place, group: group) }
+          // Results cover the group instead of replacing it, so typing never resizes the callout.
+          contents(group, cells: cells, places: places, info: info, sessions: sessions, usage: usage,
+                   statusOpen: statusOpen, sessionsOpen: sessionsOpen, width: width)
+            .opacity(query.isEmpty ? 1 : 0)
+            .allowsHitTesting(query.isEmpty)
+            .overlay(alignment: .top) {
+              if !query.isEmpty { results(matches, width: width) }
             }
-          }
-          if !info.isEmpty {
-            CalloutRule(theme: store.theme)
-            ForEach(info) { row in
-              InfoRowView(row: row, state: group.flatMap { store.actionState(for: row, in: $0) },
-                          theme: store.theme, width: width) { onInfo(row) }
-                .contextMenu { if let group { infoMenu(row, group: group) } }
-            }
-          }
-          if !sessions.isEmpty || !usage.isEmpty {
-            CalloutRule(theme: store.theme)
-            ForEach(Array(sessions.prefix(Self.maxSessions))) { session in
-              SessionRow(session: session, finished: store.attention.finished[session.id] != nil,
-                         theme: store.theme, width: width) { onSession(session) }
-                .contextMenu { sessionMenu(session, members: members) }
-            }
-            if sessions.count > Self.maxSessions {
-              Text("\(sessions.count - Self.maxSessions) more in the bar's agents menu")
-                .font(.system(size: 11)).opacity(0.55)
-                .padding(.horizontal, 8)
-            }
-            if !usage.isEmpty {
-              Label("Usage · " + usage.joined(separator: " · "), systemImage: "gauge.with.dots.needle.33percent")
-                .font(.system(size: 11)).opacity(0.6)
-                .padding(.horizontal, 8)
-                .frame(width: width, alignment: .leading)
-            }
-          }
         }
+        .onAppear {
+          guard !started else { return }
+          started = true
+          query = browse.options.query
+        }
+        .onChange(of: query) { _, text in browse.setQuery(text) }
+      } else {
+        Text("Drop apps on this group, or use Add to Group on any app.")
+          .font(.system(size: 12)).opacity(0.7)
+          .frame(width: 240, alignment: .leading)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
     .onChange(of: rows) { DispatchQueue.main.async(execute: onResize) }
   }
 
   @ViewBuilder
+  private func contents(_ group: DockTile, cells: [DockTile], places: [DockTile], info: [InfoRow],
+                        sessions: [AgentSession], usage: [String], statusOpen: Bool, sessionsOpen: Bool,
+                        width: CGFloat) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      if !cells.isEmpty {
+        CellGrid(count: cells.count, maxColumns: 4, maxRows: 3) {
+          ForEach(Array(cells.enumerated()), id: \.element.id) { index, member in
+            memberCell(member, index: index, group: group)
+          }
+        }
+      }
+      if !places.isEmpty {
+        if !cells.isEmpty { CalloutRule(theme: store.theme) }
+        ForEach(places) { place in
+          PlaceRow(name: place.name, path: place.url.map { ($0.path as NSString).abbreviatingWithTildeInPath },
+                   image: store.image(for: place), theme: store.theme, width: width) { onOpen(place) }
+            .opacity(place.item.hidden == true ? 0.45 : 1)
+            .contextMenu { memberMenu(place, group: group) }
+        }
+      }
+      if !info.isEmpty {
+        CalloutRule(theme: store.theme)
+        SectionHeader(title: "Status", count: info.count, open: statusOpen, theme: store.theme, width: width) {
+          toggle(.status)
+        }
+        if statusOpen {
+          ForEach(info) { row in
+            InfoRowView(row: row, state: store.actionState(for: row, in: group),
+                        theme: store.theme, width: width) { onInfo(row, group) }
+              .contextMenu { infoMenu(row, group: group) }
+          }
+        }
+      }
+      if !sessions.isEmpty || !usage.isEmpty {
+        CalloutRule(theme: store.theme)
+        SectionHeader(title: "Agents", count: sessions.count, open: sessionsOpen, theme: store.theme,
+                      width: width) { toggle(.sessions) }
+        if sessionsOpen {
+          ForEach(Array(sessions.prefix(Self.maxSessions))) { session in
+            SessionRow(session: session, finished: store.attention.finished[session.id] != nil,
+                       theme: store.theme, width: width) { onSession(session) }
+              .contextMenu { sessionMenu(session, members: group.descendants) }
+          }
+          if sessions.count > Self.maxSessions {
+            Text("\(sessions.count - Self.maxSessions) more in the bar's agents menu")
+              .font(.system(size: 11)).opacity(0.55)
+              .padding(.horizontal, 8)
+          }
+          if !usage.isEmpty {
+            Label("Usage · " + usage.joined(separator: " · "), systemImage: "gauge.with.dots.needle.33percent")
+              .font(.system(size: 11)).opacity(0.6)
+              .padding(.horizontal, 8)
+              .frame(width: width, alignment: .leading)
+          }
+        }
+      }
+    }
+  }
+
+  private func memberCell(_ member: DockTile, index: Int, group: DockTile) -> some View {
+    PopoverCell(index: index, name: member.name, theme: store.theme,
+                running: member.isRunning, active: member.isActive) {
+      TileIcon(image: store.image(for: member), theme: store.theme)
+        .overlay {
+          if let state = store.actionState(for: member) {
+            ActionStatus(state: state, theme: store.theme, side: 54)
+          }
+        }
+        .overlay(alignment: .topTrailing) {
+          if let text = store.badgeText(for: member) {
+            TileBadge(text: text, color: store.badgeColor(for: member), height: 18)
+              .offset(x: 5, y: -5)
+          }
+        }
+        .overlay(alignment: .bottomTrailing) {
+          if member.item.kind == .group {
+            Image(systemName: "chevron.right.circle.fill")
+              .font(.system(size: 14))
+              .foregroundStyle(.white, store.theme.accent)
+              .offset(x: 4, y: 2)
+          }
+        }
+    }
+    .opacity(member.item.hidden == true ? 0.45 : 1)
+    .onTapGesture { onOpen(member) }
+    .contextMenu { memberMenu(member, group: group) }
+  }
+
+  /// Members by name, then menu entries by title, then status rows by text,
+  /// from this group and every subgroup, hidden members included.
+  private func matches(_ text: String, in group: DockTile) -> [Match] {
+    func hit(_ value: String?) -> Bool { value?.localizedCaseInsensitiveContains(text) ?? false }
+    let tiles = group.descendants
+    let members = tiles.filter { hit($0.name) }.map(Match.member)
+    let entries = ([group] + tiles).flatMap { tile in
+      DockStore.menuActions(store.menuEntries(for: tile))
+        .filter { hit($0.title) && !($0.command ?? "").isEmpty && ($0.disabled ?? "").isEmpty }
+        .map { Match.entry($0, of: tile) }
+    }
+    let rows = ([group] + tiles.filter { $0.item.kind == .group }).flatMap { owner in
+      store.info(in: owner).filter { hit($0.title) || hit($0.detail) }.map { Match.info($0, in: owner) }
+    }
+    return Array((members + entries + rows).prefix(Self.maxMatches))
+  }
+
+  private func results(_ matches: [Match], width: CGFloat) -> some View {
+    ScrollView(.vertical) {
+      VStack(alignment: .leading, spacing: 2) {
+        ForEach(matches) { match in
+          switch match {
+          case .member(let tile):
+            SearchRow(image: store.image(for: tile), title: tile.name,
+                      detail: (tile.parentGroup.flatMap(store.group(id:)).map(store.path(of:)) ?? "")
+                        + (tile.item.hidden == true ? " · hidden" : ""),
+                      state: store.actionState(for: tile), theme: store.theme, width: width) { choose(match) }
+              .contextMenu {
+                if let parent = tile.parentGroup.flatMap(store.group(id:)) { memberMenu(tile, group: parent) }
+              }
+          case .entry(let entry, let tile):
+            SearchRow(image: store.image(for: tile), title: entry.title ?? entry.command ?? "",
+                      detail: tile.name + " menu", state: store.actions.states[store.menuID(entry, of: tile)],
+                      theme: store.theme, width: width) { choose(match) }
+          case .info(let row, let owner):
+            InfoRowView(row: row, state: store.actionState(for: row, in: owner),
+                        theme: store.theme, width: width) { choose(match) }
+              .contextMenu { infoMenu(row, group: owner) }
+          }
+        }
+        if matches.isEmpty {
+          Text("No matches").font(.system(size: 12)).opacity(0.7)
+            .frame(width: width, alignment: .center)
+            .padding(.top, 12)
+        }
+      }
+    }
+    .frame(width: width)
+  }
+
+  /// Members open as from the grid; menu entries and status rows run in
+  /// place and show their progress.
+  private func choose(_ match: Match) {
+    switch match {
+    case .member(let tile): onOpen(tile)
+    case .entry(let entry, let tile): store.runMenuEntry(entry, of: tile)
+    case .info(let row, let owner): if row.isClickable { onInfo(row, owner) }
+    }
+  }
+
+  private func isCollapsed(_ section: Section) -> Bool {
+    (UserDefaults.standard.stringArray(forKey: Self.collapsedKey) ?? []).contains(groupID + "|" + section.rawValue)
+  }
+
+  private func toggle(_ section: Section) {
+    let key = groupID + "|" + section.rawValue
+    var keys = UserDefaults.standard.stringArray(forKey: Self.collapsedKey) ?? []
+    if let index = keys.firstIndex(of: key) { keys.remove(at: index) } else { keys.append(key) }
+    UserDefaults.standard.set(keys, forKey: Self.collapsedKey)
+    onResize()
+  }
+
+  @ViewBuilder
   private func groupMenu(_ group: DockTile) -> some View {
-    let apps = group.children.filter { $0.item.kind == .app }
+    let apps = group.descendants.filter { $0.item.kind == .app && $0.item.hidden != true }
     if !apps.isEmpty {
       Button("Open All Apps") {
         apps.forEach(store.open)
@@ -1075,7 +1294,7 @@ struct GroupPopover: View {
       Button("Stop") { store.actions.stop(runID) }
         .disabled(store.actions.states[runID] == .stopping)
     } else if row.isClickable {
-      Button(verb(for: row, in: group)) { onInfo(row) }
+      Button(verb(for: row, in: group)) { onInfo(row, group) }
     }
     if let runID, store.actions.hasOutput(runID) {
       Button("Show Last Output") { store.actions.showOutput(runID) }
@@ -1097,7 +1316,7 @@ struct GroupPopover: View {
 
   private func verb(for row: InfoRow, in group: DockTile) -> String {
     if let title = row.action, !title.isEmpty {
-      let member = group.children.first { $0.name == title }
+      let member = group.descendants.first { $0.name == title }
       return (member?.item.kind == .action ? "Run " : "Open ") + title
     }
     return (row.run ?? "").isEmpty ? "Open" : "Run"
@@ -1137,12 +1356,7 @@ struct GroupPopover: View {
           Divider()
         }
       } options: {
-        if let group {
-          Button("Remove from Group") {
-            store.takeOut(member, from: group)
-            onDismiss()
-          }
-        }
+        if let group { placement(member, in: group) }
         Button("Show in Finder") { store.reveal(member) }
       }
     } else {
@@ -1162,16 +1376,124 @@ struct GroupPopover: View {
     case .folder, .file:
       Button("Open") { onOpen(member) }
       Button("Show in Finder") { store.reveal(member) }
-    case .action, .url, .group, .shelf, .controls:
+    case .group:
+      Button("Open") { onOpen(member) }
+      Button("Rename…") { store.rename(member) }
+      Button("Ungroup") { store.ungroup(member) }
+    case .action, .url, .shelf, .controls:
       Button(member.item.kind == .action ? "Run" : "Open") { onOpen(member) }
     }
     if let group {
       Divider()
+      placement(member, in: group)
+    }
+  }
+
+  /// Where a member sits: a subgroup of this group, hidden from the grid, or
+  /// out in the group (or dock) around this one.
+  @ViewBuilder
+  private func placement(_ member: DockTile, in group: DockTile) -> some View {
+    let subgroups = group.children.filter { $0.item.kind == .group && $0.id != member.id }
+    Menu("Move to Subgroup") {
+      ForEach(subgroups) { subgroup in
+        Button(subgroup.name) { store.addToGroup(member, group: subgroup) }
+      }
+      if !subgroups.isEmpty { Divider() }
+      Button("New Subgroup…") { store.newGroup(with: member) }
+    }
+    Button(member.item.hidden == true ? "Show in Group" : "Hide in Group") {
+      store.setHidden(member, member.item.hidden != true)
+    }
+    if let parent = group.parentGroup.flatMap(store.group(id:)) {
+      Button("Move to \(parent.name)") { store.takeOut(member, from: group) }
+    } else {
       Button("Remove from Group") {
         store.takeOut(member, from: group)
         onDismiss()
       }
     }
+  }
+}
+
+/// A folding list's title above the group's status rows or agent sessions;
+/// folded, it keeps the count.
+private struct SectionHeader: View {
+  let title: String
+  let count: Int
+  let open: Bool
+  let theme: DockTheme
+  let width: CGFloat
+  let toggle: () -> Void
+
+  var body: some View {
+    PointerHover { hovered in
+      HStack(spacing: 6) {
+        Image(systemName: "chevron.right")
+          .font(.system(size: 9, weight: .bold))
+          .rotationEffect(.degrees(open ? 90 : 0))
+        Text(title.uppercased())
+          .font(.system(size: 10, weight: .semibold))
+          .kerning(0.4)
+        if !open, count > 0 {
+          Text("\(count)").font(.system(size: 10, weight: .medium)).opacity(0.8)
+        }
+        Spacer(minLength: 0)
+      }
+      .opacity(hovered ? 0.85 : 0.5)
+      .padding(.horizontal, 8)
+      .frame(width: width, height: 18)
+      .animation(.easeOut(duration: 0.12), value: hovered)
+    }
+    .frame(width: width, height: 18)
+    .contentShape(Rectangle())
+    .onTapGesture(perform: toggle)
+  }
+}
+
+/// A search hit in a group: its icon, its name, where it lives, and the
+/// progress of what it runs.
+private struct SearchRow: View {
+  let image: TileImage
+  let title: String
+  let detail: String
+  let state: ActionRunner.State?
+  let theme: DockTheme
+  let width: CGFloat
+  let action: () -> Void
+
+  var body: some View {
+    PointerHover { hovered in
+      HStack(spacing: 8) {
+        TileIcon(image: image, theme: theme).frame(width: 20, height: 20)
+        Text(title)
+          .font(.system(size: 12, weight: .medium))
+          .lineLimit(1)
+        Text(detail)
+          .font(.system(size: 11)).opacity(0.5)
+          .lineLimit(1)
+          .truncationMode(.middle)
+          .layoutPriority(-1)
+        Spacer(minLength: 8)
+        switch state {
+        case .running?, .stopping?:
+          ProgressView().controlSize(.mini)
+        case .failed?:
+          Image(systemName: "xmark.circle.fill").foregroundColor(theme.failure)
+        case .succeeded?:
+          Image(systemName: "checkmark.circle.fill").foregroundColor(theme.success)
+        case nil:
+          EmptyView()
+        }
+      }
+      .padding(.horizontal, 8)
+      .frame(width: width, height: 28)
+      .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+        .fill(hovered ? theme.hover : Color.clear))
+      .animation(.easeOut(duration: 0.12), value: hovered)
+    }
+    .frame(width: width, height: 28)
+    .contentShape(Rectangle())
+    .onTapGesture(perform: action)
   }
 }
 

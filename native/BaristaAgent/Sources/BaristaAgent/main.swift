@@ -57,7 +57,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     }
     BrowserController.shared.dockPlaces = { [weak self] in
       guard let self else { return [] }
-      return (self.store.pinned + self.store.others).flatMap { [$0] + $0.children }
+      return (self.store.pinned + self.store.others).flatMap { [$0] + $0.descendants }
         .filter { $0.item.kind == .folder }
         .compactMap { tile in tile.url.map { (tile.name, $0) } }
     }

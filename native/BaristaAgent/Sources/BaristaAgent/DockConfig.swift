@@ -125,6 +125,9 @@ struct DockSettings: Equatable {
   var shelfDays: Double = 3
   /// `barista` follows the bar's colors; `system` uses plain vibrancy.
   var theme = "barista"
+  /// `barista` makes the Finder tile open Barista Files (⌥-click opens
+  /// Finder); `finder` keeps Finder.
+  var filesBrowser = "barista"
 
   var clamped: DockSettings {
     var settings = self
@@ -150,6 +153,7 @@ extension DockSettings: Codable {
     case showTrash = "show_trash"
     case expandActiveGroup = "expand_active_group"
     case shelfDays = "shelf_days"
+    case filesBrowser = "files_browser"
   }
 
   init(from decoder: Decoder) throws {
@@ -167,6 +171,7 @@ extension DockSettings: Codable {
       ?? defaults.expandActiveGroup
     shelfDays = try container.decodeIfPresent(Double.self, forKey: .shelfDays) ?? defaults.shelfDays
     theme = try container.decodeIfPresent(String.self, forKey: .theme) ?? defaults.theme
+    filesBrowser = try container.decodeIfPresent(String.self, forKey: .filesBrowser) ?? defaults.filesBrowser
   }
 }
 

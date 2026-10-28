@@ -1,4 +1,6 @@
 import AppKit
+import Combine
+import QuickLookUI
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -32,9 +34,11 @@ final class BrowserController {
     }
     let state = BrowserState(location: folder, selecting: select)
     state.places = { [weak self] in self?.dockPlaces() ?? [] }
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 600),
-                          styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
-                          backing: .buffered, defer: false)
+    let window = BrowserWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 600),
+                               styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
+                               backing: .buffered, defer: false)
+    window.watch(state)
+    state.onQuickLook = { [weak window] in window?.toggleQuickLook() }
     window.isReleasedWhenClosed = false
     window.tabbingMode = .disallowed
     window.titlebarAppearsTransparent = true
@@ -60,6 +64,16 @@ final class BrowserController {
       }
       AgentWindows.closed(closing)
     }
+    present(window)
+  }
+
+  /// The front browser as it was left, or a new one at Home.
+  func show() {
+    guard let window = windows.last(where: { $0.isVisible }) ?? windows.last else {
+      open(FileManager.default.homeDirectoryForCurrentUser)
+      return
+    }
+    if window.isMiniaturized { window.deminiaturize(nil) }
     present(window)
   }
 
@@ -95,9 +109,14 @@ final class BrowserController {
       case (.command, 126, _): state.up()
       case (.command, 125, _): state.openSelection()
       case ([], 36, _) where !typing, ([], 76, _) where !typing: state.openSelection()
-      case ([], 49, _) where !typing: state.showPreview.toggle()
+      case ([], 49, _) where !typing: state.onQuickLook?()
+      case ([.command, .shift], _, "p"), ([.command, .shift], _, "P"): state.showPreview.toggle()
+      case ([.command, .shift], _, "n"), ([.command, .shift], _, "N"): state.newFolder()
       case (.command, 51, _) where !typing: state.trashSelection()
       case (.command, _, "c") where !typing && !state.selection.isEmpty: state.copySelection()
+      case (.command, _, "d") where !typing && !state.selection.isEmpty: state.duplicateSelection()
+      case (.command, _, "v") where !typing: state.paste(move: false)
+      case ([.command, .option], _, "v") where !typing: state.paste(move: true)
       default: return event
       }
       return nil
@@ -118,16 +137,22 @@ final class BrowserState: ObservableObject {
   @Published private(set) var shown: [FileEntry] = []
   /// Bumped to move focus to the search field.
   @Published var focusSearch = 0
+  /// The entry whose name is being edited in place.
+  @Published var renaming: URL?
+  /// A failed file operation, shown as an alert.
+  @Published var problem: String?
   var places: () -> [(name: String, url: URL)] = { [] }
   var onTitle: ((String) -> Void)?
   var onCloseWindow: (() -> Void)?
+  var onQuickLook: (() -> Void)?
   private var watcher: FileWatcher?
   private var generation = 0
-  private var pendingSelection: URL?
+  /// Selected by the next listing; nil keeps whatever is still there.
+  private var pendingSelection: Set<URL>?
 
   init(location: URL, selecting: URL? = nil) {
     tabs = BrowserTabs(location)
-    pendingSelection = selecting
+    pendingSelection = selecting.map { [$0] }
   }
 
   var location: URL { tabs.selected.location }
@@ -147,7 +172,7 @@ final class BrowserState: ObservableObject {
         self.refreshShown()
         let present = Set(self.shown.map(\.url))
         if let pending = self.pendingSelection {
-          self.selection = present.contains(pending) ? [pending] : []
+          self.selection = pending.intersection(present)
           self.pendingSelection = nil
         } else {
           self.selection = self.selection.intersection(present)
@@ -171,7 +196,7 @@ final class BrowserState: ObservableObject {
   func back() {
     let from = location
     tabs.back()
-    pendingSelection = from
+    pendingSelection = [from]
     query = ""
     reload()
   }
@@ -187,12 +212,12 @@ final class BrowserState: ObservableObject {
     guard let parent = tabs.selected.parent else { return }
     let from = location
     go(to: parent)
-    pendingSelection = from
+    pendingSelection = [from]
   }
 
   func newTab(at url: URL, selecting: URL? = nil) {
     tabs.open(url)
-    pendingSelection = selecting
+    pendingSelection = selecting.map { [$0] }
     query = ""
     reload()
   }
@@ -252,6 +277,82 @@ final class BrowserState: ObservableObject {
     NSPasteboard.general.writeObjects(Array(selection) as [NSURL])
   }
 
+  /// The selection in list order.
+  var selectedURLs: [URL] { shown.map(\.url).filter { selection.contains($0) } }
+
+  /// Makes an untitled folder and starts naming it.
+  func newFolder() {
+    do {
+      let folder = try FileOperations.makeFolder(in: location)
+      query = ""
+      pendingSelection = [folder]
+      renaming = folder
+      reload()
+    } catch {
+      problem = error.localizedDescription
+    }
+  }
+
+  func beginRename(_ url: URL) {
+    selection = [url]
+    renaming = url
+  }
+
+  /// Ends the edit for `url` once: Return and losing focus both commit.
+  func commitRename(_ url: URL, to name: String) {
+    guard renaming == url else { return }
+    renaming = nil
+    do {
+      pendingSelection = [try FileOperations.rename(url, to: name)]
+      reload()
+    } catch {
+      problem = error.localizedDescription
+    }
+  }
+
+  func duplicateSelection() {
+    perform(selectedURLs) { try FileOperations.duplicate($0) }
+  }
+
+  static let fileURLsOnly: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+
+  var canPaste: Bool {
+    NSPasteboard.general.canReadObject(forClasses: [NSURL.self], options: Self.fileURLsOnly)
+  }
+
+  /// Files on the clipboard (copied here or in Finder) copy into this
+  /// folder, or move with `move` (⌥⌘V). Copying this folder's own files
+  /// duplicates them.
+  func paste(move: Bool) {
+    let urls = NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: Self.fileURLsOnly) as? [URL] ?? []
+    let target = location
+    perform(urls) { url in
+      if url.deletingLastPathComponent().standardizedFileURL == target.standardizedFileURL {
+        return move ? url : try FileOperations.duplicate(url)
+      }
+      return try FileOperations.place(url, in: target, move: move)
+    }
+  }
+
+  /// Runs `operation` on each URL off the main thread, then selects what it
+  /// made and reports what failed.
+  private func perform(_ urls: [URL], _ operation: @escaping (URL) throws -> URL) {
+    guard !urls.isEmpty else { return }
+    DispatchQueue.global(qos: .userInitiated).async {
+      var made: [URL] = []
+      var failures: [String] = []
+      for url in urls {
+        do { made.append(try operation(url)) } catch { failures.append(error.localizedDescription) }
+      }
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
+        if !failures.isEmpty { self.problem = failures.joined(separator: "\n") }
+        if !made.isEmpty { self.pendingSelection = Set(made) }
+        self.reload()
+      }
+    }
+  }
+
   /// Dropped files move within a volume and copy across volumes, as in Finder.
   func receive(_ urls: [URL]) {
     let target = location
@@ -304,6 +405,12 @@ struct BrowserView: View {
     }
     .ignoresSafeArea(edges: .top)
     .onChange(of: state.focusSearch) { searchFocused = true }
+    .alert("Barista Files", isPresented: Binding(get: { state.problem != nil },
+                                                 set: { if !$0 { state.problem = nil } })) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text(state.problem ?? "")
+    }
   }
 
   private var selectedEntry: FileEntry? {
@@ -325,8 +432,9 @@ struct BrowserView: View {
       Button { state.hidden.toggle(); state.reload() } label: {
         Image(systemName: state.hidden ? "eye" : "eye.slash")
       }.help("Show Hidden Files (⇧⌘.)")
+      Button(action: state.newFolder) { Image(systemName: "folder.badge.plus") }.help("New Folder (⇧⌘N)")
       Button { state.showPreview.toggle() } label: { Image(systemName: "sidebar.right") }
-        .help("Preview (Space)")
+        .help("Preview Pane (⇧⌘P); Space opens Quick Look")
       Button { state.newTab(at: state.location) } label: { Image(systemName: "plus") }.help("New Tab (⌘T)")
     }
     .buttonStyle(.borderless)
@@ -437,7 +545,14 @@ private struct FileTable: View {
       TableColumn("Name", value: \.name) { entry in
         HStack(spacing: 6) {
           Image(nsImage: NSWorkspace.shared.icon(forFile: entry.url.path)).resizable().frame(width: 16, height: 16)
-          Text(entry.name).lineLimit(1)
+          if state.renaming == entry.url {
+            // The on-disk name: a localized name can hide the extension.
+            RenameField(text: entry.url.lastPathComponent,
+                        commit: { state.commitRename(entry.url, to: $0) },
+                        cancel: { state.renaming = nil })
+          } else {
+            Text(entry.name).lineLimit(1)
+          }
         }
       }
       TableColumn("Date Modified", value: \.modified) { entry in
@@ -491,29 +606,186 @@ private struct FileTable: View {
 
   @ViewBuilder
   private func menu(for urls: Set<URL>) -> some View {
-    if !urls.isEmpty {
+    if urls.isEmpty {
+      folderMenu
+    } else {
+      let sorted = urls.sorted { $0.path < $1.path }
+      let single = urls.count == 1 ? urls.first : nil
+      let singleFolder = single.flatMap { url in
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true ? url : nil
+      }
       Button("Open") {
         state.selection = urls
         state.openSelection()
       }
-      if urls.count == 1, let url = urls.first {
-        if ViewerKind.of(url) != nil {
-          Button("Open with Default App") { NSWorkspace.shared.open(url) }
-        }
-        if (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
-          Button("Open in New Tab") { state.newTab(at: url) }
-        }
+      if let singleFolder {
+        Button("Open in New Tab") { state.newTab(at: singleFolder) }
+      } else if let single {
+        OpenWithMenu(url: single)
       }
-      Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(Array(urls)) }
+      Button("Quick Look") {
+        state.selection = urls
+        state.onQuickLook?()
+      }
       Divider()
-      Button("Copy Path") { copyText(urls.map(\.path).sorted().joined(separator: "\n")) }
-      Button("Add to Shelf") { NotificationCenter.default.post(name: .browserAddToShelf, object: Array(urls)) }
+      if let single {
+        Button("Rename") { state.beginRename(single) }
+      }
+      Button("Duplicate") {
+        state.selection = urls
+        state.duplicateSelection()
+      }
+      Divider()
+      ToolButtons(urls: sorted, directory: singleFolder ?? state.location)
+      Divider()
+      Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(sorted) }
+      Button("Copy Path") { copyText(sorted.map(\.path).joined(separator: "\n")) }
+      Button("Copy Relative Path") {
+        let root = FileOperations.repoRoot(of: state.location) ?? state.location
+        copyText(sorted.map { PopoverController.relativePath($0, from: root) }.joined(separator: "\n"))
+      }
+      Button("Add to Shelf") { NotificationCenter.default.post(name: .browserAddToShelf, object: sorted) }
       Divider()
       Button("Move to Trash") {
         state.selection = urls
         state.trashSelection()
       }
     }
+  }
+
+  /// Right-click on the list's empty space: the shown folder itself.
+  @ViewBuilder
+  private var folderMenu: some View {
+    Button("New Folder") { state.newFolder() }
+    Button("Paste") { state.paste(move: false) }.disabled(!state.canPaste)
+    Button("Move Items Here") { state.paste(move: true) }.disabled(!state.canPaste)
+    Divider()
+    ToolButtons(urls: [state.location], directory: state.location)
+    Divider()
+    Button("Copy Path") { copyText(state.location.path) }
+  }
+}
+
+/// Open in each installed editor, and a terminal in `directory`.
+private struct ToolButtons: View {
+  let urls: [URL]
+  let directory: URL
+
+  var body: some View {
+    ForEach(PopoverController.editors, id: \.app) { editor in
+      Button("Open in \(editor.name)") {
+        NSWorkspace.shared.open(urls, withApplicationAt: editor.app, configuration: NSWorkspace.OpenConfiguration())
+      }
+    }
+    Button("Terminal Here") {
+      ActionRunner.openTerminal("cd " + ActionRunner.shellQuote(directory.path), arguments: [])
+    }
+  }
+}
+
+/// The apps that open `url`, its default first, as in Finder's Open With.
+private struct OpenWithMenu: View {
+  let url: URL
+
+  var body: some View {
+    let preferred = NSWorkspace.shared.urlForApplication(toOpen: url)
+    let others = NSWorkspace.shared.urlsForApplications(toOpen: url).filter { $0 != preferred }.prefix(20)
+    Menu("Open With") {
+      if let preferred {
+        Button("\(Self.name(preferred)) (default)") { open(with: preferred) }
+        if !others.isEmpty { Divider() }
+      }
+      ForEach(Array(others), id: \.self) { app in
+        Button(Self.name(app)) { open(with: app) }
+      }
+    }
+  }
+
+  private func open(with app: URL) {
+    NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+  }
+
+  private static func name(_ app: URL) -> String {
+    FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
+  }
+}
+
+/// The name being edited in place: Return renames, Escape keeps the old
+/// name, and clicking away renames, as in Finder.
+private struct RenameField: View {
+  @State var text: String
+  let commit: (String) -> Void
+  let cancel: () -> Void
+  @FocusState private var focused: Bool
+
+  var body: some View {
+    TextField("Name", text: $text)
+      .textFieldStyle(.plain)
+      .focused($focused)
+      .onSubmit { commit(text) }
+      .onExitCommand(perform: cancel)
+      .onChange(of: focused) { if !focused { commit(text) } }
+      // The table is still settling the row when the field appears.
+      .onAppear { DispatchQueue.main.async { focused = true } }
+  }
+}
+
+/// A browser window is the Quick Look panel's controller while it shows the
+/// window's selection, and keeps the panel on the selection as it changes.
+final class BrowserWindow: NSWindow, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+  private weak var state: BrowserState?
+  private var selectionWatch: AnyCancellable?
+
+  private var previewed: [URL] { state?.selectedURLs ?? [] }
+
+  func watch(_ state: BrowserState) {
+    self.state = state
+    // $selection fires before the value changes; read it on the next turn.
+    selectionWatch = state.$selection.receive(on: DispatchQueue.main).sink { [weak self] _ in
+      guard let self, QLPreviewPanel.sharedPreviewPanelExists(),
+            let panel = QLPreviewPanel.shared(), panel.isVisible, panel.dataSource === self else { return }
+      panel.reloadData()
+    }
+  }
+
+  func toggleQuickLook() {
+    guard let panel = QLPreviewPanel.shared() else { return }
+    if panel.isVisible {
+      panel.orderOut(nil)
+    } else if !previewed.isEmpty {
+      panel.makeKeyAndOrderFront(nil)
+    }
+  }
+
+  override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+
+  override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    panel.dataSource = self
+    panel.delegate = self
+  }
+
+  override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    panel.dataSource = nil
+    panel.delegate = nil
+  }
+
+  func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { previewed.count }
+
+  func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+    let urls = previewed
+    return urls.indices.contains(index) ? urls[index] as NSURL : nil
+  }
+
+  /// Space closes the panel and arrows move the list's selection, as in Finder.
+  func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool {
+    guard event.type == .keyDown else { return false }
+    if event.keyCode == 49 {
+      panel.orderOut(nil)
+      return true
+    }
+    guard (123...126).contains(event.keyCode), let responder = firstResponder, responder !== self else { return false }
+    responder.keyDown(with: event)
+    return true
   }
 }
 

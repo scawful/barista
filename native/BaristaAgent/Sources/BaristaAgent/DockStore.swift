@@ -425,6 +425,11 @@ final class DockStore: ObservableObject {
     switch tile.item.kind {
     case .app:
       guard let url = tile.url else { return }
+      if tile.item.bundleID == "com.apple.finder", settings.filesBrowser == "barista",
+         !NSEvent.modifierFlags.contains(.option) {
+        BrowserController.shared.show()
+        return
+      }
       if let id = tile.item.bundleID { attention.clear(app: id) }
       let configuration = NSWorkspace.OpenConfiguration()
       configuration.activates = true
@@ -834,31 +839,13 @@ final class DockStore: ObservableObject {
   }
 
   static func transfer(_ urls: [URL], into folder: URL, move: Bool) {
-    let manager = FileManager.default
     for url in urls where url.deletingLastPathComponent().standardizedFileURL != folder.standardizedFileURL {
-      let destination = uniqueDestination(for: url.lastPathComponent, in: folder)
       do {
-        if move {
-          try manager.moveItem(at: url, to: destination)
-        } else {
-          try manager.copyItem(at: url, to: destination)
-        }
+        _ = try FileOperations.place(url, in: folder, move: move)
       } catch {
         log("could not \(move ? "move" : "copy") \(url.path) into \(folder.path): \(error)")
       }
     }
-  }
-
-  private static func uniqueDestination(for name: String, in folder: URL) -> URL {
-    let stem = (name as NSString).deletingPathExtension
-    let ext = (name as NSString).pathExtension
-    var candidate = folder.appendingPathComponent(name)
-    var copy = 2
-    while FileManager.default.fileExists(atPath: candidate.path) {
-      candidate = folder.appendingPathComponent(ext.isEmpty ? "\(stem) \(copy)" : "\(stem) \(copy).\(ext)")
-      copy += 1
-    }
-    return candidate
   }
 
   static func log(_ message: String) {

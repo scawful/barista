@@ -44,8 +44,8 @@ The agent runs as `dev.barista.agent` and logs to
 | `Yabai.swift` | Window and space queries, `yabai_control.sh` actions bound to a window, and the rule that floats viewer windows. |
 | `Markdown.swift` | Markdown to blocks (headings, lists, code, quotes, tables, images); inline syntax is left to `AttributedString`. |
 | `Viewer.swift` | The viewer windows for Markdown and images, and `FileWatcher`, which reloads a file when it is saved. |
-| `FileBrowserModel.swift` | Barista Files' pure model: tab history, in-window tabs, listing, sorting, filtering. |
-| `FileBrowser.swift` | The Barista Files window: path bar, tabs, sidebar, table, preview. |
+| `FileBrowserModel.swift` | Barista Files' pure model: tab history, in-window tabs, listing, sorting, filtering, and `FileOperations` (Finder's names for new folders, copies, and kept-both clashes; rename; repo root). |
+| `FileBrowser.swift` | The Barista Files window: path bar, tabs, sidebar, table, preview, in-place rename, and `BrowserWindow`, which drives the Quick Look panel. |
 | `AgentWindows.swift` | Focus for the agent's titled windows, and the hidden Edit menu that makes ⌘C work in them. |
 
 ## Viewer and Barista Files

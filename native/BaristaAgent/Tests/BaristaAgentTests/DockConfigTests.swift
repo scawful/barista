@@ -49,8 +49,11 @@ final class DockConfigTests: XCTestCase {
     XCTAssertEqual(config.settings.iconSize, 96)
     XCTAssertEqual(config.settings.magnification, 1)
     XCTAssertEqual(config.settings.hideDelay, DockSettings().hideDelay)
+    XCTAssertEqual(config.settings.filesBrowser, "barista", "the Finder tile opens Barista Files by default")
     XCTAssertEqual(config.pinned.first?.command, "echo hi")
     XCTAssertEqual(config.others, [])
+    let finder = try DockConfigFile.decode(Data(#"{"settings": {"files_browser": "finder"}}"#.utf8))
+    XCTAssertEqual(finder.settings.filesBrowser, "finder")
   }
 
   func testRoundTripKeepsSnakeCaseKeys() throws {

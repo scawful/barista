@@ -224,12 +224,19 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   images with ←/→ (0 fits, 1 is actual size, double-click toggles). Both
   reload when the file is saved. ⌘E opens the file in its editor, Escape or
   ⌘W closes.
-- Barista Files is the start of a Finder replacement that tiles: one window
-  with its tabs inside it, back/forward history per tab, a path bar, a
-  sidebar of standard places and the dock's folders, a sortable list, a
-  preview pane (Space), drag in and out, and Finder's shortcuts (⌘T, ⌘W,
-  ⌘N, ⌘[ and ⌘], ⌘↑, ⌘↓, ⇧⌘., ⌘F, ⌃Tab, ⌘1–9, ⌘⌫). Open it with Browse in
-  Barista Files on any folder callout or file.
+- Barista Files is a Finder replacement that tiles: one window with its tabs
+  inside it, back/forward history per tab, a path bar, a sidebar of standard
+  places and the dock's folders, a sortable list, a preview pane (⇧⌘P),
+  Quick Look (Space; arrows follow the list), drag in and out, and Finder's
+  shortcuts (⌘T, ⌘W, ⌘N, ⌘[ and ⌘], ⌘↑, ⌘↓, ⇧⌘., ⌘F, ⌃Tab, ⌘1–9, ⌘⌫, ⇧⌘N
+  New Folder, ⌘D Duplicate, ⌘C then ⌘V to copy or ⌥⌘V to move here).
+  Return opens the selection; Rename (in place) is on the right-click menu,
+  with Open With, Open in Cursor or Emacs, Terminal Here, and Copy Relative
+  Path (relative to the enclosing git repo or worktree). Right-click on empty
+  space for the folder's own menu. Name clashes keep both (`name 2`), copies
+  are `name copy`, and a failed operation shows an alert. The Finder tile
+  opens it (⌥-click opens Finder; `files_browser: "finder"` turns this off),
+  as does Browse in Barista Files on any folder callout or file.
 - yabai: viewer windows float on the raised layer through the rule
   `barista-agent-viewer` (title `… - Barista Viewer`), which the agent adds
   when it opens one. Browser windows match no rule and tile. macOS window
@@ -251,7 +258,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
     "show_trash": true,
     "expand_active_group": true,
     "shelf_days": 3,
-    "theme": "barista"
+    "theme": "barista",
+    "files_browser": "barista"
   },
   "pinned": [
     { "kind": "app", "path": "/Applications/Ghostty.app", "bundle_id": "com.mitchellh.ghostty" },
@@ -318,9 +326,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
 
 ## Next slices
 
-- Barista Files: rename in place, new folder, Get Info, column and icon
-  views, and a regular activation policy while a browser is open so it
-  appears in ⌘Tab.
+- Barista Files: Get Info, column and icon views, and a regular activation
+  policy while a browser is open so it appears in ⌘Tab.
 - EventKit reminders and calendar into the agent cache, surfaced by the
   existing calendar/task popups.
 - halext-org API client in the agent (admin status, reminders sync).

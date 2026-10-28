@@ -111,4 +111,71 @@ final class FileBrowserModelTests: XCTestCase {
     let folders = Set(entries.filter(\.isFolder).map(\.name))
     XCTAssertEqual(folders, ["real", "linked"])
   }
+
+  func testNamesCountUpAsFinderDoes() {
+    let taken: Set = ["a copy.txt", "a copy 2.txt", "untitled folder"]
+    XCTAssertEqual(FileOperations.available("a copy", ext: "txt", exists: taken.contains), "a copy 3.txt")
+    XCTAssertEqual(FileOperations.available("b copy", ext: "txt", exists: taken.contains), "b copy.txt")
+    XCTAssertEqual(FileOperations.available("untitled folder", ext: "", exists: taken.contains), "untitled folder 2")
+  }
+
+  func testFileOperationsKeepBothAndRefuseClashes() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("barista-ops-\(UUID().uuidString)")
+    let inner = folder.appendingPathComponent("lib.d/inner")
+    try FileManager.default.createDirectory(at: inner, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let note = folder.appendingPathComponent("note.txt")
+    try Data("x".utf8).write(to: note)
+
+    XCTAssertEqual(try FileOperations.duplicate(note).lastPathComponent, "note copy.txt")
+    XCTAssertEqual(try FileOperations.duplicate(note).lastPathComponent, "note copy 2.txt")
+    XCTAssertEqual(try FileOperations.duplicate(folder.appendingPathComponent("lib.d")).lastPathComponent,
+                   "lib.d copy", "a folder's dot is part of its name")
+    XCTAssertEqual(try FileOperations.makeFolder(in: folder).lastPathComponent, "untitled folder")
+    XCTAssertEqual(try FileOperations.makeFolder(in: folder).lastPathComponent, "untitled folder 2")
+
+    XCTAssertThrowsError(try FileOperations.rename(note, to: "note copy.txt")) {
+      XCTAssertEqual($0 as? FileOperationError, .nameTaken("note copy.txt"))
+    }
+    XCTAssertThrowsError(try FileOperations.rename(note, to: "a/b")) {
+      XCTAssertEqual($0 as? FileOperationError, .invalidName("a/b"))
+    }
+    let shouted = try FileOperations.rename(note, to: "NOTE.txt")
+    XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: folder.path).contains("NOTE.txt"),
+                  "a case-only rename changes the name on disk")
+    XCTAssertEqual(try FileOperations.rename(shouted, to: " plan.md ").lastPathComponent, "plan.md")
+
+    XCTAssertThrowsError(try FileOperations.place(folder.appendingPathComponent("lib.d"), in: inner, move: false)) {
+      XCTAssertEqual($0 as? FileOperationError, .intoItself("lib.d"))
+    }
+    let placed = try FileOperations.place(folder.appendingPathComponent("plan.md"),
+                                          in: folder.appendingPathComponent("lib.d"), move: true)
+    XCTAssertEqual(placed.lastPathComponent, "plan.md")
+    XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("plan.md").path))
+
+    XCTAssertNil(FileOperations.repoRoot(of: inner))
+    try Data("gitdir: elsewhere".utf8).write(to: folder.appendingPathComponent(".git"))
+    XCTAssertEqual(FileOperations.repoRoot(of: inner)?.path, folder.standardizedFileURL.path,
+                   "a worktree's .git file marks the root too")
+  }
+
+  func testNewFolderStartsNamingAndARenameCommitsOnce() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("barista-rename-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let state = BrowserState(location: folder)
+    state.newFolder()
+    let made = try XCTUnwrap(state.renaming)
+    XCTAssertEqual(made.lastPathComponent, "untitled folder")
+
+    state.commitRename(made, to: "Assets")
+    state.commitRename(made, to: "Twice")
+    XCTAssertNil(state.renaming)
+    XCTAssertNil(state.problem)
+    XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), ["Assets"])
+
+    state.beginRename(folder.appendingPathComponent("Assets"))
+    state.commitRename(folder.appendingPathComponent("Assets"), to: "")
+    XCTAssertNotNil(state.problem, "an empty name is refused, not applied")
+  }
 }

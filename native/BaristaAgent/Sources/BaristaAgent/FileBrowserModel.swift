@@ -157,3 +157,107 @@ enum FileListing {
     return entries.filter { $0.name.localizedCaseInsensitiveContains(query) }
   }
 }
+
+enum FileOperationError: LocalizedError, Equatable {
+  case invalidName(String)
+  case nameTaken(String)
+  case intoItself(String)
+
+  var errorDescription: String? {
+    switch self {
+    case .invalidName(let name): return "“\(name)” can't be used as a name."
+    case .nameTaken(let name): return "The name “\(name)” is already taken."
+    case .intoItself(let name): return "“\(name)” can't be put inside itself."
+    }
+  }
+}
+
+/// Finder's file operations, with Finder's names for what they make.
+enum FileOperations {
+  /// `stem` (plus `ext`) when free, else `stem 2`, `stem 3`, … as Finder
+  /// names a second copy.
+  static func available(_ stem: String, ext: String, exists: (String) -> Bool) -> String {
+    func name(_ base: String) -> String { ext.isEmpty ? base : "\(base).\(ext)" }
+    guard exists(name(stem)) else { return name(stem) }
+    var number = 2
+    while exists(name("\(stem) \(number)")) { number += 1 }
+    return name("\(stem) \(number)")
+  }
+
+  /// A folder's name has no extension to keep apart; a package's does.
+  private static func split(_ url: URL) -> (stem: String, ext: String) {
+    let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+    let name = url.lastPathComponent
+    if values?.isDirectory == true && values?.isPackage != true { return (name, "") }
+    return ((name as NSString).deletingPathExtension, (name as NSString).pathExtension)
+  }
+
+  private static func free(in folder: URL) -> (String) -> Bool {
+    { FileManager.default.fileExists(atPath: folder.appendingPathComponent($0).path) }
+  }
+
+  static func makeFolder(in folder: URL) throws -> URL {
+    let url = folder.appendingPathComponent(available("untitled folder", ext: "", exists: free(in: folder)))
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+    return url
+  }
+
+  /// `name copy.ext` next to the original, then `name copy 2.ext`.
+  static func duplicate(_ url: URL) throws -> URL {
+    let folder = url.deletingLastPathComponent()
+    let (stem, ext) = split(url)
+    let copy = folder.appendingPathComponent(available("\(stem) copy", ext: ext, exists: free(in: folder)))
+    try FileManager.default.copyItem(at: url, to: copy)
+    return copy
+  }
+
+  /// Copies or moves `url` into `folder`, keeping both when the name is taken.
+  static func place(_ url: URL, in folder: URL, move: Bool) throws -> URL {
+    let source = url.standardizedFileURL.path
+    let target = folder.standardizedFileURL.path
+    if target == source || target.hasPrefix(source + "/") {
+      throw FileOperationError.intoItself(url.lastPathComponent)
+    }
+    let (stem, ext) = split(url)
+    let destination = folder.appendingPathComponent(available(stem, ext: ext, exists: free(in: folder)))
+    if move {
+      try FileManager.default.moveItem(at: url, to: destination)
+    } else {
+      try FileManager.default.copyItem(at: url, to: destination)
+    }
+    return destination
+  }
+
+  static func rename(_ url: URL, to newName: String) throws -> URL {
+    let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !name.isEmpty, !name.contains("/"), !name.contains(":"), name != ".", name != ".." else {
+      throw FileOperationError.invalidName(newName)
+    }
+    guard name != url.lastPathComponent else { return url }
+    let destination = url.deletingLastPathComponent().appendingPathComponent(name)
+    if FileManager.default.fileExists(atPath: destination.path) {
+      // On a case-insensitive volume a case-only rename finds the file itself.
+      let key: Set<URLResourceKey> = [.fileResourceIdentifierKey]
+      let mine = try? url.resourceValues(forKeys: key).fileResourceIdentifier
+      let theirs = try? destination.resourceValues(forKeys: key).fileResourceIdentifier
+      guard let mine, let theirs, mine.isEqual(theirs) else { throw FileOperationError.nameTaken(name) }
+      guard Darwin.rename(url.path, destination.path) == 0 else {
+        throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+      }
+      return destination
+    }
+    try FileManager.default.moveItem(at: url, to: destination)
+    return destination
+  }
+
+  /// The nearest enclosing folder with a `.git` (a folder, or a file in a
+  /// worktree), for repo-relative paths.
+  static func repoRoot(of url: URL) -> URL? {
+    var folder = url.standardizedFileURL
+    while folder.path != "/" {
+      if FileManager.default.fileExists(atPath: folder.appendingPathComponent(".git").path) { return folder }
+      folder.deleteLastPathComponent()
+    }
+    return nil
+  }
+}

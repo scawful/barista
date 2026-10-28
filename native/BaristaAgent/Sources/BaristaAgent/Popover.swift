@@ -247,7 +247,7 @@ final class PopoverController {
 
   /// Installed editors for Open in…, looked up once: menus are built on
   /// every render of every cell.
-  private static let editors: [(name: String, app: URL)] =
+  static let editors: [(name: String, app: URL)] =
     [("Cursor", "com.todesktop.230313mzl4w4u92"), ("Emacs", "org.gnu.Emacs")].compactMap { name, bundleID in
       NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID).map { (name, $0) }
     }

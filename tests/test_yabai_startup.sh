@@ -26,7 +26,7 @@ exit "${TEST_BAR_RUNNING:-1}"
 STUB
 chmod +x "$TMP_DIR/bin/yabai" "$TMP_DIR/bin/sudo" "$TMP_DIR/bin/python3" "$TMP_DIR/bin/pgrep"
 printf '# fixture\n' > "$TMP_DIR/home/.config/sketchybar/scripts/yabai_restore.py"
-printf '# comment\nYaze\nCustom (Beta)' > "$TMP_DIR/home/.config/sketchybar/unmanaged_apps.conf"
+printf '# comment\nYaze\nCustom (Beta)\nFoo Bar\nFoo-Bar' > "$TMP_DIR/home/.config/sketchybar/unmanaged_apps.conf"
 run_startup() {
   : > "$TMP_DIR/calls"
   HOME="$TMP_DIR/home" BARISTA_CONFIG_DIR="$TMP_DIR/home/.config/sketchybar" \
@@ -36,7 +36,9 @@ run_startup() {
 run_startup
 grep -Fxq 'yabai -m rule --add label=claude-window-layer app=^Claude$ role=^AXWindow$ subrole=^AXStandardWindow$ sub-layer=below sticky=off' "$TMP_DIR/calls"
 grep -Fq 'event=dock_did_restart action=sudo -n /opt/homebrew/bin/yabai --load-sa' "$TMP_DIR/calls"
-grep -Fq 'label=unmanaged-Custom__Beta_ app=^Custom \(Beta\)$ manage=off' "$TMP_DIR/calls"
+grep -Eq 'label=unmanaged-Custom__Beta_(-[0-9]+)? app=\^Custom \\\(Beta\\\)\$ manage=off' "$TMP_DIR/calls"
+foo_labels="$(sed -n 's/.*label=\(unmanaged-Foo_Bar[^ ]*\) app=.*/\1/p' "$TMP_DIR/calls" | sort -u | wc -l | tr -d ' ')"
+[ "$foo_labels" = 2 ] || { echo 'FAIL: apps whose names flatten alike must keep separate unmanaged rules' >&2; exit 1; }
 grep -Fq 'app=^Yaze$ manage=off sub-layer=below' "$TMP_DIR/calls"
 grep -Fq 'app=^(Mesen|Mesen2.*)$ manage=off sub-layer=below' "$TMP_DIR/calls"
 if grep -Fq 'yabai -m space ' "$TMP_DIR/calls"; then echo 'FAIL: startup must not reset hardcoded space indices' >&2; exit 1; fi
@@ -66,4 +68,23 @@ if TEST_BAR_RUNNING=0 TEST_RESTORE_FAIL=1 run_startup; then echo 'FAIL: restore 
 grep -Fxq replay "$TMP_DIR/calls" || { echo 'FAIL: a failed restore must still give the running bar its signals back' >&2; exit 1; }
 TEST_BAR_RUNNING=1 run_startup
 if grep -Fxq replay "$TMP_DIR/calls"; then echo 'FAIL: a bar that is not running registers its own signals' >&2; exit 1; fi
+
+# The unmanaged helper's rules land before the restore; a hung helper is cut off.
+mkdir -p "$TMP_DIR/home/.config/scripts"
+HELPER="$TMP_DIR/home/.config/scripts/update_unmanaged_apps.sh"
+printf '#!/bin/sh\nprintf "helper %%s\\n" "$*" >> "$TEST_CALLS"\n' > "$HELPER"
+chmod +x "$HELPER"
+run_startup
+first_restore="$(grep -n '^restore ' "$TMP_DIR/calls" | head -n 1 | cut -d: -f1)"
+helper_line="$(grep -n '^helper --from-yabairc$' "$TMP_DIR/calls" | cut -d: -f1 || true)"
+[ -n "$helper_line" ] && [ "$helper_line" -lt "$first_restore" ] || {
+  echo 'FAIL: the unmanaged helper must finish before saved defaults are restored' >&2; exit 1
+}
+printf '#!/bin/sh\nexec sleep 30\n' > "$HELPER"
+started=$(date +%s)
+BARISTA_UNMANAGED_HELPER_DEADLINE=3 run_startup
+[ $(( $(date +%s) - started )) -lt 10 ] || { echo 'FAIL: a hung unmanaged helper must not stall startup' >&2; exit 1; }
+grep -Fq 'unmanaged app helper timed out' "$TMP_DIR/err" || { echo 'FAIL: a timed-out helper should be reported' >&2; exit 1; }
+grep -q '^restore .*--startup$' "$TMP_DIR/calls" || { echo 'FAIL: startup must continue after cutting off the helper' >&2; exit 1; }
+rm -f "$HELPER"
 printf 'test_yabai_startup.sh: ok\n'

@@ -98,9 +98,29 @@ yabai -m rule --add app="^Chrome$" title="^(Settings|Preferences)$" manage=off
 UNMANAGED_APPS_CONF="$HOME/.config/sketchybar/unmanaged_apps.conf"
 UNMANAGED_APPS_SCRIPT="$HOME/.config/scripts/update_unmanaged_apps.sh"
 
+# The helper's rules must land before saved app defaults are restored, so it
+# runs in the foreground, but a hung helper must not stall yabai's startup.
+# Deadline in tenths of a second.
+run_unmanaged_helper() {
+  "$UNMANAGED_APPS_SCRIPT" --from-yabairc &
+  helper_pid=$!
+  helper_waited=0
+  while kill -0 "$helper_pid" 2>/dev/null; do
+    if [ "$helper_waited" -ge "${BARISTA_UNMANAGED_HELPER_DEADLINE:-50}" ]; then
+      kill "$helper_pid" 2>/dev/null
+      wait "$helper_pid" 2>/dev/null
+      echo "yabai: unmanaged app helper timed out; continuing without it" >&2
+      return 1
+    fi
+    sleep 0.1
+    helper_waited=$((helper_waited + 1))
+  done
+  wait "$helper_pid" || echo "yabai: unmanaged app helper failed" >&2
+}
+
 # Apply additional unmanaged app rules from the config app if provided
 if [ -x "$UNMANAGED_APPS_SCRIPT" ]; then
-  "$UNMANAGED_APPS_SCRIPT" --from-yabairc || echo "yabai: unmanaged app helper failed" >&2
+  run_unmanaged_helper || true
 elif [ -r "$UNMANAGED_APPS_CONF" ]; then
   while IFS= read -r unmanaged_app || [ -n "$unmanaged_app" ]; do
     unmanaged_app="${unmanaged_app#"${unmanaged_app%%[![:space:]]*}"}"
@@ -109,6 +129,8 @@ elif [ -r "$UNMANAGED_APPS_CONF" ]; then
     case "$unmanaged_app" in \#*) continue ;; esac
     label="$(printf '%s' "$unmanaged_app" | tr -c '[:alnum:]' '_')"
     [ -n "$label" ] || label="app"
+    # "Foo Bar" and "Foo-Bar" flatten alike; the checksum keeps their rules apart.
+    label="${label}-$(printf '%s' "$unmanaged_app" | cksum | cut -d' ' -f1)"
     escaped="$(printf '%s' "$unmanaged_app" | sed 's/[][\\.^$*+?(){}|]/\\&/g')"
     # Leave layering to existing app rules, including Yaze and Mesen below.
     yabai -m rule --add label="unmanaged-${label}" app="^${escaped}$" manage=off

@@ -132,4 +132,27 @@ if grep -Fq -- "--remove /space\\..*/" "$LOG_FILE"; then
   exit 1
 fi
 
+# A full rebuild can hold the bar for several seconds, longer than the
+# snapshot retries last. Rebuilding again then would keep the bar busy, so the
+# run must fail without applying anything and leave a retry queued.
+: > "$LOG_FILE"
+rm -f "$CONFIG_DIR/.spaces_retry"
+if BARISTA_TEST_BUSY_UNTIL="$(python3 -c 'import time; print(time.time() + 30)')" \
+  BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
+  BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+  BARISTA_SPACE_METRICS_FILE="$METRICS_FILE" \
+  CONFIG_DIR="$CONFIG_DIR" "$SCRIPT"; then
+  echo "FAIL: a bar that never answers the snapshot must fail the run" >&2
+  exit 1
+fi
+if [ -s "$LOG_FILE" ]; then
+  echo "FAIL: a bar that never answers the snapshot must not be sent space updates" >&2
+  cat "$LOG_FILE" >&2
+  exit 1
+fi
+if [ ! -f "$CONFIG_DIR/.spaces_retry" ]; then
+  echo "FAIL: a bar that never answers the snapshot must queue a retry" >&2
+  exit 1
+fi
+
 printf 'test_simple_spaces_diff.sh: ok\n'

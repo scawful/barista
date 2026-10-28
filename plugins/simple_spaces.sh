@@ -688,6 +688,13 @@ fi
 CREATOR_MODE="$(normalize_creator_mode "${STATE_CREATOR_MODE:-per_display}")"
 initialize_creator_hover_script
 ensure_bar_snapshot_loaded
+# Every retry came back empty, so the bar is still busy (a full rebuild can
+# hold it for seconds). Rebuilding now would keep it busy past the next run's
+# retries too; fail so refresh_spaces.sh keeps its cache, and try again later.
+if [ "$BAR_SNAPSHOT_LOADED" -eq 0 ] && [ -n "$SKETCHYBAR_BIN" ] && [ -n "$JQ_BIN" ]; then
+  schedule_spaces_retry
+  exit 1
+fi
 SPACE_ITEM_HEIGHT="$(resolve_space_item_height)"
 SIMPLE_SPACES_START_MS="$(now_ms)"
 initialize_action_prefixes

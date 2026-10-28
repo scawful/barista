@@ -27,6 +27,10 @@ JSON
 
 cat > "$BIN_DIR/sketchybar" <<EOF
 #!/bin/bash
+if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "bar" ]; then
+  printf '{"height":28,"items":[]}\n'
+  exit 0
+fi
 printf '%s\n' "\$*" >> "$LOG_FILE"
 exit 0
 EOF

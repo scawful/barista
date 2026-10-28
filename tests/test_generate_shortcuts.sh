@@ -198,4 +198,41 @@ if grep -Eq '/Users/[^/]+' "$ROOT_DIR/data/workflow_shortcuts.json"; then
   exit 1
 fi
 
+# Re-running unchanged output must not reload skhd by replacing its watched file.
+BEFORE_IDENTITY="$(python3 - "$SKHD_OUTPUT" "$WORKFLOW_OUTPUT" <<'PY_ID'
+import os, sys
+for path in sys.argv[1:]:
+    st = os.stat(path)
+    print(st.st_ino, st.st_mtime_ns)
+PY_ID
+)"
+BARISTA_CONFIG_DIR="$ROOT_DIR" lua "$ROOT_DIR/helpers/generate_shortcuts.lua" \
+  "$SKHD_OUTPUT" "$WORKFLOW_OUTPUT" >/dev/null
+AFTER_IDENTITY="$(python3 - "$SKHD_OUTPUT" "$WORKFLOW_OUTPUT" <<'PY_ID'
+import os, sys
+for path in sys.argv[1:]:
+    st = os.stat(path)
+    print(st.st_ino, st.st_mtime_ns)
+PY_ID
+)"
+[ "$BEFORE_IDENTITY" = "$AFTER_IDENTITY" ] || {
+  echo "FAIL: identical generation replaced watched output" >&2
+  exit 1
+}
+
+# Invalid supplementary data must fail before either output changes.
+INVALID_EXTRAS="$TMP_DIR/invalid-extras.json"
+for invalid in '{not json' '{"keymap":"wrong shape"}'; do
+  printf '%s\n' "$invalid" > "$INVALID_EXTRAS"
+  printf 'active shortcut sentinel\n' > "$SKHD_OUTPUT"
+  printf 'workflow sentinel\n' > "$WORKFLOW_OUTPUT"
+  if BARISTA_CONFIG_DIR="$ROOT_DIR" BARISTA_WORKFLOW_EXTRAS="$INVALID_EXTRAS" \
+    lua "$ROOT_DIR/helpers/generate_shortcuts.lua" "$SKHD_OUTPUT" "$WORKFLOW_OUTPUT" >/dev/null 2>&1; then
+    echo "FAIL: invalid workflow supplement succeeded" >&2
+    exit 1
+  fi
+  [ "$(cat "$SKHD_OUTPUT")" = 'active shortcut sentinel' ]
+  [ "$(cat "$WORKFLOW_OUTPUT")" = 'workflow sentinel' ]
+done
+
 printf 'test_generate_shortcuts.sh: ok\n'

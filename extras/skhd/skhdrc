@@ -8,10 +8,9 @@
 #   Ctrl + Alt + Shift + Arrow = Move window to display
 #   Alt + HJKL          = Focus window (vim-style)
 #   Alt + Shift + HJKL  = Swap window (vim-style)
-#   Ctrl + Alt + B/F/S  = Set layout (bsp/float/stack)
+#   Ctrl + Alt + B/F/S  = Set layout (Tile/Manual/Stack)
 #   Ctrl + Alt + T      = Toggle always-on-top
 #   Cmd + `             = New iTerm window
-#   Alt + Space         = Enter leader mode
 # =============================================================================
 
 # --- Quick Terminal (Cmd + `) ---

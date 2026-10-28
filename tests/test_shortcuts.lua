@@ -331,3 +331,45 @@ run_test("shortcuts.get_command: agentic launcher commands resolve properly", fu
   assert_equal(shortcuts.get_command("stop_all_agents"), "", "stop action should not be globally exposed")
 end)
 
+
+run_test("shortcuts.write_skhd_config: failed publication preserves the active file", function()
+  local path = os.tmpname()
+  local original = "# active shortcuts remain readable\n"
+  local existing = assert(io.open(path, "w"))
+  existing:write(original)
+  existing:close()
+  local rename = os.rename
+  local pending
+  os.rename = function(source, destination)
+    pending = source
+    assert_equal(destination, path, "publish target")
+    local live = assert(io.open(path, "r"))
+    assert_equal(live:read("*a"), original, "active config is unchanged before rename")
+    live:close()
+    local staged = assert(io.open(source, "r"))
+    assert_true(staged:read("*a"):find("# SketchyBar Shortcuts", 1, true) == 1, "staged config is complete")
+    staged:close()
+    return nil, "simulated publication failure"
+  end
+  local ok_call, success, err = pcall(shortcuts.write_skhd_config, path)
+  os.rename = rename
+  assert_true(ok_call, "writer returns a recoverable error")
+  assert_equal(success, false, "failed rename cannot report success")
+  assert_true(err:find("simulated publication failure", 1, true) ~= nil, "publish failure is preserved")
+  local live = assert(io.open(path, "r"))
+  assert_equal(live:read("*a"), original, "failed publication preserves active bytes")
+  live:close()
+  assert_nil(io.open(pending, "r"), "failed staging file is removed")
+  os.remove(path)
+end)
+
+run_test("shortcuts.write_skhd_config: identical output does not replace watched file", function()
+  local path = os.tmpname()
+  assert_true(shortcuts.write_skhd_config(path), "first publication succeeds")
+  local rename = os.rename
+  os.rename = function() error("unchanged output must not be republished") end
+  local ok_call, success = pcall(shortcuts.write_skhd_config, path)
+  os.rename = rename
+  os.remove(path)
+  assert_true(ok_call and success, "identical content succeeds without rename")
+end)

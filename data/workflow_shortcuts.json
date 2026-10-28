@@ -115,13 +115,13 @@
         },
         {
           "keys": "⌃⇧F",
-          "description": "Set Float Layout",
+          "description": "Set Manual Layout",
           "action": "set_layout_float",
           "requires": "window_manager"
         },
         {
           "keys": "⌃⇧B",
-          "description": "Set BSP Layout",
+          "description": "Set Tile Layout",
           "action": "set_layout_bsp",
           "requires": "window_manager"
         },

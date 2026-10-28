@@ -691,7 +691,7 @@ shortcuts.global = {
     mods = {"ctrl", "shift"},
     key = "f",
     action = "set_layout_float",
-    desc = "Set Float Layout",
+    desc = "Set Manual Layout",
     symbol = "⌃⇧F",
     requires = "window_manager"
   },
@@ -699,7 +699,7 @@ shortcuts.global = {
     mods = {"ctrl", "shift"},
     key = "b",
     action = "set_layout_bsp",
-    desc = "Set BSP Layout",
+    desc = "Set Tile Layout",
     symbol = "⌃⇧B",
     requires = "window_manager"
   },
@@ -779,7 +779,6 @@ shortcuts.actions = setmetatable({
   focus_window_south = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-focus-south"),
   focus_window_north = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-focus-north"),
   focus_window_east = script_action(SCRIPTS_DIR .. "/yabai_control.sh", "window-focus-east"),
-
   -- Space Focus
 }, {
   __index = function(t, key)
@@ -970,20 +969,41 @@ function shortcuts.generate_skhd_config()
   return table.concat(lines, "\n")
 end
 
--- Write skhd configuration to file
+-- Publish a complete configuration: skhd watches this file and may reload it
+-- immediately. Identical output keeps the inode and avoids needless reloads.
 function shortcuts.write_skhd_config(filepath)
   filepath = filepath or os.getenv("HOME") .. "/.config/skhd/barista_shortcuts.conf"
-
   local config = shortcuts.generate_skhd_config()
-  local file = io.open(filepath, "w")
-
-  if not file then
-    return false, "Could not open file for writing: " .. filepath
+  local existing = io.open(filepath, "r")
+  if existing then
+    local contents = existing:read("*a")
+    existing:close()
+    if contents == config then
+      return true, filepath
+    end
   end
 
-  file:write(config)
-  file:close()
-
+  local ok_seed, seed = pcall(os.tmpname)
+  if not ok_seed or type(seed) ~= "string" then
+    return false, "Could not allocate a temporary shortcut file"
+  end
+  os.remove(seed)
+  local temporary = filepath .. ".tmp." .. (seed:match("[^/]+$") or seed)
+  local file, err = io.open(temporary, "w")
+  if not file then
+    return false, "Could not open shortcut file for writing: " .. tostring(err)
+  end
+  local wrote, write_err = file:write(config)
+  local closed, close_err = file:close()
+  if not wrote or not closed then
+    os.remove(temporary)
+    return false, "Could not write shortcut file: " .. tostring(write_err or close_err)
+  end
+  local replaced, rename_err = os.rename(temporary, filepath)
+  if not replaced then
+    os.remove(temporary)
+    return false, "Could not replace shortcut file: " .. tostring(rename_err)
+  end
   return true, filepath
 end
 

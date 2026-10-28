@@ -162,35 +162,56 @@ local function build_workflow_data(extras, has_supplement)
 end
 
 local function write_atomic(path, content)
-  local temp_path = string.format("%s.tmp.%d", path, os.time())
-  local file = io.open(temp_path, "w")
-  if not file then
-    return false, "Could not open file for writing: " .. temp_path
+  content = content .. "\n"
+  local existing = io.open(path, "r")
+  if existing then
+    local previous = existing:read("*a")
+    existing:close()
+    if previous == content then return true, path end
   end
-  file:write(content)
-  file:write("\n")
-  file:close()
-  local ok, err = os.rename(temp_path, path)
+  local ok_seed, seed = pcall(os.tmpname)
+  if not ok_seed or type(seed) ~= "string" then
+    return false, "Could not allocate a temporary workflow file"
+  end
+  os.remove(seed)
+  local temp_path = path .. ".tmp." .. (seed:match("[^/]+$") or seed)
+  local file, err = io.open(temp_path, "w")
+  if not file then
+    return false, "Could not open workflow file for writing: " .. tostring(err)
+  end
+  local wrote, write_err = file:write(content)
+  local closed, close_err = file:close()
+  if not wrote or not closed then
+    os.remove(temp_path)
+    return false, "Could not write workflow file: " .. tostring(write_err or close_err)
+  end
+  local ok, rename_err = os.rename(temp_path, path)
   if not ok then
     os.remove(temp_path)
-    return false, "Could not replace workflow data: " .. tostring(err)
+    return false, "Could not replace workflow data: " .. tostring(rename_err)
   end
   return true, path
 end
 
-local function write_workflow_data()
+-- Validate and render supplementary data before publishing either output.
+-- A malformed supplement must never change skhd's active configuration.
+local function prepare_workflow_data()
   local extras = {}
   if workflow_extras then
     local read_error
     extras, read_error = read_json(workflow_extras)
-    if not extras then
-      return false, read_error
+    if not extras then return nil, read_error end
+  end
+  for _, key in ipairs({ "keymap", "actions", "docs" }) do
+    if extras[key] ~= nil and not is_array(extras[key]) then
+      return nil, "Invalid workflow supplement: " .. key .. " must be an array"
     end
   end
-  return write_atomic(
-    workflow_output,
-    pretty_json(build_workflow_data(extras, workflow_extras ~= nil))
-  )
+  local ok, contents = pcall(function()
+    return pretty_json(build_workflow_data(extras, workflow_extras ~= nil))
+  end)
+  if not ok then return nil, "Invalid workflow supplement: " .. tostring(contents) end
+  return contents
 end
 
 print("Generating SketchyBar shortcuts configuration...")
@@ -208,9 +229,18 @@ if #conflicts > 0 then
   print("")
 end
 
--- Generate and write configuration
+local workflow_data, workflow_error = prepare_workflow_data()
+if not workflow_data then
+  print("❌ Error: " .. tostring(workflow_error))
+  os.exit(1)
+end
+
+-- Generate and publish only after all source data has been validated.
 local success, result = shortcuts.write_skhd_config(output_file)
-local workflow_success, workflow_result = write_workflow_data()
+local workflow_success, workflow_result = false, nil
+if success then
+  workflow_success, workflow_result = write_atomic(workflow_output, workflow_data)
+end
 
 if success and workflow_success then
   print("✅ Successfully generated shortcuts configuration")
@@ -219,9 +249,8 @@ if success and workflow_success then
   print("\nTo use these shortcuts:")
   print("1. Include in your ~/.config/skhd/skhdrc:")
   print("   .load \"" .. result .. "\"")
-  print("\n2. Restart skhd:")
-  print("   brew services restart skhd")
-  print("\n3. Or reload configuration:")
+  print("\n2. skhd reloads watched configuration changes automatically.")
+  print("   If automatic loading is disabled, reload configuration:")
   print("   skhd --reload")
   print("\n📋 Available shortcuts:")
 

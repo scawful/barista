@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+unset BARISTA_CONFIG_DIR BARISTA_STATE_FILE BARISTA_SCRIPTS_DIR
+
 python_bin="${BARISTA_PYTHON:-$(command -v python3)}"
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
 
@@ -85,7 +87,7 @@ lint_candidates=(
   scripts/task_focus.sh
   plugins/calendar.sh
   plugins/battery.sh
-  plugins/task_pulse.sh
+  plugins/agents.sh
   bin/open_control_panel.sh
   bin/barista-debug
 )
@@ -152,7 +154,9 @@ printf '{}' > "$tmp_state"
 "$python_bin" tests/test_tui_widgets.py >/dev/null
 bash tests/test_task_actions.sh >/dev/null
 bash tests/test_task_focus.sh >/dev/null
-bash tests/test_task_pulse.sh >/dev/null
+"$python_bin" tests/test_agent_sessions.py >/dev/null
+"$python_bin" tests/test_dock_oracle.py >/dev/null
+"$python_bin" tests/test_dock_studio.py >/dev/null
 bash tests/test_afs_approvals.sh >/dev/null
 "$python_bin" tests/test_afs_approvals_review.py >/dev/null
 bash tests/test_calendar_tasks.sh >/dev/null
@@ -161,8 +165,26 @@ bash tests/test_install_skhd.sh >/dev/null
 bash tests/test_open_local_workflow.sh >/dev/null
 bash tests/test_onboard_portable.sh >/dev/null
 bash tests/test_yabai_control_shortcuts.sh >/dev/null
+bash tests/test_set_space_mode.sh >/dev/null
+bash tests/test_yabai_control_app_defaults.sh >/dev/null
+bash tests/test_yabai_control_app_levels.sh >/dev/null
+bash tests/test_yabai_control_window_rules.sh >/dev/null
+bash tests/test_yabai_control_rules_audit.sh >/dev/null
+bash tests/test_control_center_plugin.sh >/dev/null
+bash tests/test_space_menu_action.sh >/dev/null
+bash tests/test_front_app_plugin.sh >/dev/null
+bash tests/test_window_menu_action.sh >/dev/null
 bash tests/test_common_state_parsing.sh >/dev/null
 bash tests/test_launch_agent_manager.sh >/dev/null
+bash tests/test_barista_agent_dock.sh >/dev/null
+bash tests/test_barista_launch.sh >/dev/null
+bash tests/test_display_density.sh >/dev/null
+bash tests/test_toggle_shortcuts.sh >/dev/null
+bash tests/test_shortcut_menu_action.sh >/dev/null
+"$python_bin" tests/test_yabai_restore.py >/dev/null
+bash tests/test_yabai_control_doctor.sh >/dev/null
+bash tests/test_yabai_control_actions.sh >/dev/null
+bash tests/test_yabai_startup.sh >/dev/null
 bash tests/test_menu_action.sh >/dev/null
 bash tests/test_popup_anchor.sh >/dev/null
 bash tests/test_popup_hover.sh >/dev/null
@@ -178,8 +200,12 @@ bash tests/test_simple_spaces_multidisplay_creator.sh >/dev/null
 bash tests/test_space_creator_hover.sh >/dev/null
 bash tests/test_space_hover_timeout.sh >/dev/null
 bash tests/test_space_action_click.sh >/dev/null
+bash tests/test_barista_stats.sh >/dev/null
+bash tests/test_barista_workflow.sh >/dev/null
 bash tests/test_refresh_spaces.sh >/dev/null
 bash tests/test_refresh_spaces_coalescing.sh >/dev/null
+bash tests/test_mission_control_guard.sh >/dev/null
+bash tests/test_sketchybar_wrapper.sh >/dev/null
 bash tests/test_space_visuals.sh >/dev/null
 bash tests/test_space_visual_helper.sh >/dev/null
 bash tests/test_reload_sketchybar.sh >/dev/null
@@ -196,6 +222,10 @@ if [ "$(uname -s)" = "Darwin" ] \
   && [ -f helpers/system_info_widget.c ] \
   && command -v clang >/dev/null 2>&1; then
   bash tests/test_system_info_widget.sh >/dev/null
+fi
+if [ "$(uname -s)" = "Darwin" ] && command -v swift >/dev/null 2>&1; then
+  swift test --package-path native/BaristaAgent \
+    --scratch-path "${XDG_CACHE_HOME:-$HOME/.cache}/barista-agent-tests" >/dev/null
 fi
 bash tests/test_restricted_config.sh >/dev/null
 bash tests/test_setup_machine_work_apps.sh >/dev/null

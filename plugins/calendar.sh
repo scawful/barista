@@ -102,8 +102,7 @@ def moon_phase(date):
 lines = []
 
 # Header with month and year
-month_name = today.strftime("%B %Y")
-lines.append(month_name.center(24).rstrip())
+lines.append(today.strftime("%B %Y"))
 
 # Weekday headers
 lines.append(" Su  Mo  Tu  We  Th  Fr  Sa ")
@@ -113,7 +112,7 @@ for week in weeks:
     cells = []
     for day in week:
         if day == 0:
-            cells.append("   ")  # 3 spaces for empty cells
+            cells.append("    ")
         elif day == today.day:
             # Highlight today with brackets
             cells.append(f"[{day:2d}]" if day < 10 else f"[{day}]")

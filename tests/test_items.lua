@@ -81,7 +81,7 @@ local function test_items_left_layout()
   assert(#layout > 0, "layout should not be empty")
   assert_type(metadata, "table", "left layout should return runtime metadata")
   assert_equal(#metadata.popup_parents, 0, "disabled optional integrations should not enter the popup registry")
-  assert_equal(table.concat(metadata.submenu_parents, "|"), "front_app.more",
+  assert_equal(table.concat(metadata.submenu_parents, "|"), "front_app.move|front_app.defaults|front_app.more",
     "front-app progressive disclosure should register its nested popup")
 
   -- Check for front_app
@@ -127,7 +127,7 @@ local function test_items_left_layout()
       assert_equal(entry.props.background.drawing, true, "front_app should render as a visible chip")
       assert_equal(entry.props.background.color, "0x18313a46", "front_app should use the shared idle chip background")
       assert_true(entry.props.click_script:find(
-        "/custom/sketchybar -m --set front_app.more popup.drawing=off --set front_app popup.drawing=toggle",
+        "/custom/sketchybar -m --set front_app.more popup.drawing=off --set front_app.move popup.drawing=off --set front_app.defaults popup.drawing=off --set front_app popup.drawing=toggle",
         1,
         true
       ) ~= nil, "front_app should reset its child and toggle immediately")
@@ -176,16 +176,16 @@ local function test_items_left_layout()
       found_send_float_space = true
     elseif entry.type == "item" and entry.name == "front_app.preset.utility" then
       found_utility_preset = true
-      assert_true(entry.props.click_script:find("yabai_control%.sh window%-preset%-utility") ~= nil, "utility preset should route through yabai_control.sh")
+      assert_equal(entry.props.click_script, "", "window action must wait for a pinned runtime target")
     elseif entry.type == "item" and entry.name == "front_app.preset.focus" then
       found_focus_preset = true
-      assert_true(entry.props.click_script:find("yabai_control%.sh window%-preset%-focus") ~= nil, "focus preset should route through yabai_control.sh")
+      assert_equal(entry.props.click_script, "", "window action must wait for a pinned runtime target")
     elseif entry.type == "item" and entry.name == "front_app.preset.presentation" then
       found_presentation_preset = true
-      assert_true(entry.props.click_script:find("yabai_control%.sh window%-preset%-presentation") ~= nil, "presentation preset should route through yabai_control.sh")
+      assert_equal(entry.props.click_script, "", "window action must wait for a pinned runtime target")
     elseif entry.type == "item" and entry.name == "front_app.preset.tile_here" then
       found_tile_here_preset = true
-      assert_true(entry.props.click_script:find("yabai_control%.sh window%-preset%-tile%-here") ~= nil, "tile-here preset should route through yabai_control.sh")
+      assert_equal(entry.props.click_script, "", "window action must wait for a pinned runtime target")
     elseif entry.type == "item" and type(entry.name) == "string" and entry.name:match("^front_app%.default%.") then
       found_front_app_default_row = true
     elseif entry.type == "item" and entry.name == "front_app.move.display_prev" then
@@ -208,49 +208,49 @@ local function test_items_left_layout()
   assert(found_focus_preset, "front_app focus preset not found in popup layout")
   assert(found_presentation_preset, "front_app presentation preset not found in popup layout")
   assert(found_tile_here_preset, "front_app tile-here preset not found in popup layout")
-  assert_true(not found_front_app_default_row, "front_app should leave persistent app defaults to Control Center")
+  assert_true(found_front_app_default_row, "saved app defaults belong under the displayed app")
   assert(front_app_move_prev ~= nil, "front_app move-to-prev-display action not found in popup layout")
   assert(front_app_move_next ~= nil, "front_app move-to-next-display action not found in popup layout")
-  assert_equal(front_app_root_rows, 10, "front_app should render only its context and frequent actions initially")
-  assert_equal(front_app_more_rows, 17, "front_app nested popup should retain every secondary action")
+  assert_equal(front_app_root_rows, 11, "front_app should render only its context and frequent actions initially")
+  assert_equal(front_app_more_rows, 11, "front_app nested popup should retain every secondary action")
   assert_equal(table.concat(front_app_root_names, "|"), table.concat({
-    "front_app.header", "front_app.state", "front_app.location", "front_app.quit",
-    "front_app.sep1", "front_app.window_header",
-    "front_app.window.float", "front_app.window.adopt_space_mode", "front_app.window.fullscreen",
-    "front_app.more",
-  }, "|"), "front_app root ordering should keep frequent actions direct")
+    "front_app.header", "front_app.state", "front_app.location", "front_app.feedback",
+    "front_app.window.float",
+    "front_app.window.fullscreen", "front_app.window.sticky", "front_app.window.topmost",
+    "front_app.move", "front_app.defaults", "front_app.more",
+  }, "|"), "window actions and named scope menus should be direct")
   assert_equal(table.concat(front_app_more_names, "|"), table.concat({
-    "front_app.more_header", "front_app.hide", "front_app.force_quit", "front_app.window.sticky",
-    "front_app.window.topmost", "front_app.window.center", "front_app.preset.utility",
-    "front_app.preset.focus", "front_app.preset.presentation", "front_app.preset.tile_here",
-    "front_app.sep2", "front_app.move_header", "front_app.move.float_space",
-    "front_app.move.display_prev", "front_app.move.display_next", "front_app.move.space_prev",
-    "front_app.move.space_next",
-  }, "|"), "front_app child ordering should preserve every secondary action")
-  assert_true(front_app_more ~= nil, "front_app should expose a click-open More Actions row")
-  assert_equal(front_app_more.props.position, "popup.front_app", "front_app submenu anchor should stay on the root popup")
-  assert_equal(front_app_more.props.popup.align, "right", "front_app submenu should open to the right")
+    "front_app.more_header", "front_app.window.adopt_space_mode",
+    "front_app.window.center", "front_app.preset.utility", "front_app.preset.focus",
+    "front_app.preset.presentation", "front_app.preset.tile_here", "front_app.app_header",
+    "front_app.hide", "front_app.quit", "front_app.force_quit",
+  }, "|"), "advanced window actions and app lifecycle should be grouped by scope")
+  assert_equal(front_app_more.props.position, "popup.front_app", "advanced menu stays on root")
+  assert_equal(front_app_more.props.popup.align, "right", "submenu opens to the right")
   assert_true(front_app_more.props.label:find("More Actions", 1, true) ~= nil,
-    "front_app submenu should use the compact More Actions label")
-  assert_true(front_app_more.props.click_script:find("front_app.more popup.drawing=toggle", 1, true) ~= nil,
-    "front_app submenu should use a direct popup toggle")
-  for _, root_action in ipairs({ front_app_quit, front_app_float, front_app_adopt_space_mode, front_app_fullscreen }) do
-    assert_true(root_action ~= nil, "front_app frequent action should exist")
-    assert_equal(root_action.props.position, "popup.front_app", "front_app frequent actions should stay on the root")
+    "advanced menu should name its contents")
+  for _, action in ipairs({ front_app_float, front_app_fullscreen, front_app_sticky, front_app_topmost }) do
+    assert_equal(action.props.position, "popup.front_app", "frequent window actions remain direct")
+    assert_equal(action.props.click_script, "", "window actions wait for runtime identity")
   end
-  for _, secondary_action in ipairs({ front_app_hide, front_app_force_quit, front_app_sticky, front_app_topmost, front_app_center }) do
-    assert_true(secondary_action ~= nil, "front_app secondary action should exist")
-    assert_equal(secondary_action.props.position, "popup.front_app.more", "front_app secondary actions should move into More Actions")
-    assert_true(secondary_action.props.click_script:find(
-      "--set front_app.more popup.drawing=off --set front_app popup.drawing=off",
-      1,
-      true
-    ) ~= nil, "front_app secondary actions should close both popup levels")
+  for _, action in ipairs({ front_app_quit, front_app_hide, front_app_force_quit,
+      front_app_adopt_space_mode, front_app_center }) do
+    assert_equal(action.props.position, "popup.front_app.more", "secondary action scope")
+    assert_equal(action.props.click_script, "", "secondary actions wait for runtime identity")
   end
-  assert(front_app_move_prev.props.click_script:find("yabai_control%.sh window%-display%-prev") ~= nil, "front_app prev-display action should route through yabai_control.sh")
-  assert(front_app_move_next.props.click_script:find("yabai_control%.sh window%-display%-next") ~= nil, "front_app next-display action should route through yabai_control.sh")
-  assert_true(front_app_move_prev.props.click_script:find("--set front_app.more popup.drawing=off --set front_app popup.drawing=off", 1, true) ~= nil,
-    "front_app nested actions should close both popup levels")
+  assert_equal(front_app_move_prev.props.position, "popup.front_app.move", "moves have a dedicated menu")
+  assert_equal(front_app_move_next.props.click_script, "", "moves wait for pinned window identity")
+  local defaults_count = 0
+  for _, entry in ipairs(layout) do
+    if entry.type == "item" and entry.name:match("^front_app%.default%.") then
+      defaults_count = defaults_count + 1
+      assert_equal(entry.props.position, "popup.front_app.defaults", "defaults share one app-scoped menu")
+      assert_equal(entry.props.click_script, "", "defaults wait for displayed app identity")
+    elseif entry.type == "item" and entry.name == "front_app.feedback" then
+      assert_equal(entry.props.drawing, false, "feedback appears only after an action needs attention")
+    end
+  end
+  assert_equal(defaults_count, 3, "float, tile, and remove remain available")
 
   -- Check for effects
   local found_refresh_spaces = false
@@ -527,7 +527,7 @@ local function test_items_left_control_center_custom_name()
     true
   ) ~= nil, "custom control_center root should reset its child before toggling")
   assert_equal(metadata.popup_parents[1], "status_hub", "popup registry should use the created custom control_center name")
-  assert_equal(table.concat(metadata.submenu_parents, "|"), "front_app.more|cc.more",
+  assert_equal(table.concat(metadata.submenu_parents, "|"), "front_app.move|front_app.defaults|front_app.more|cc.more",
     "left popup registry should include the control_center child")
   assert_type(received_popup_opts, "table", "popup items should receive opts")
   assert_equal(received_popup_opts.item_name, "status_hub", "popup items should inherit the resolved item name")
@@ -715,7 +715,7 @@ local function test_items_left_integration_models_and_anchor_order()
   assert_equal(received_control_center_popup_flags.mode, "required", "control_center popup should reuse window manager flags")
   assert_equal(table.concat(metadata.popup_parents, "|"), "triforce|music_studio|control_center",
     "popup registry should include created optional parents")
-  assert_equal(table.concat(metadata.submenu_parents, "|"), "music.studio.more_apps|front_app.more|cc.more",
+  assert_equal(table.concat(metadata.submenu_parents, "|"), "music.studio.more_apps|front_app.move|front_app.defaults|front_app.more|cc.more",
     "left layout metadata should expose Music, Front App, and Control Center nested popups")
   local found_triforce_subscription = false
   local found_control_center_subscription = false
@@ -876,7 +876,8 @@ local function test_items_right_layout()
   -- Check for clock
   assert(added_items.clock ~= nil, "clock item not registered via widget factory")
   assert(added_items.clock.props.position == "right", "clock should be on the right")
-  assert_equal(added_items.clock.props.script, "/compiled/clock_widget", "clock should prefer compiled helper")
+  assert_true(added_items.clock.props.script:find("/compiled/clock_widget", 1, true) ~= nil,
+    "clock should prefer compiled helper")
   assert_true(added_items.clock.props.update_freq == nil, "clock timer should be disabled when daemon-managed")
   assert_true(added_items.system_info.props.script:find("/tmp/plugins/system_info%.sh") ~= nil, "system_info should keep the shell event wrapper")
   assert_true(added_items.system_info.props.script:find("SYSTEM_INFO_BIN='/compiled/system_info_widget'", 1, true) ~= nil,
@@ -1145,8 +1146,8 @@ local function test_items_right_layout()
   print("  items_right layout test passed!")
 end
 
-local function test_items_right_lmstudio_extension_rows()
-  print("Testing items_right LM Studio extension rows...")
+local function test_items_right_agents_widget()
+  print("Testing items_right agents widget...")
 
   local checked_hover_scripts = {}
   local function check_hover_settings(name, script)
@@ -1171,7 +1172,7 @@ local function test_items_right_lmstudio_extension_rows()
     theme = { WHITE = "0xffffffff", GREEN = "0xffa6e3a1", YELLOW = "0xfff9e2af", RED = "0xfff38ba8", BLUE = "0xff89b4fa", LAVENDER = "0xffb4befe", TEAL = "0xff94e2d5", bar = { bg = "0xff1e1e2e" } },
     state = {
       appearance = { widget_scale = 1.0, bar_height = 28, corner_radius = 6 },
-      widgets = { lmstudio = true, afs_approvals = true },
+      widgets = { agents = true, afs_approvals = true },
       machine = { menu_packs = { "personal" } },
       menus = {
         extensions = {
@@ -1227,32 +1228,49 @@ local function test_items_right_lmstudio_extension_rows()
     { widget_height = mock_ctx.widget_height }
   )
 
-  local layout = items_right.get_layout(mock_ctx)
-  local found_lmstudio = false
-  local found_extension = false
+  local layout, _, metadata = items_right.get_layout(mock_ctx)
+  local entries = {}
   local found_scawfulbot_default = false
   for _, entry in ipairs(layout) do
-    if entry.type == "item" and (entry.name == "lmstudio" or entry.name == "afs_approvals") then
-      check_hover_settings(entry.name, entry.props.script)
-    end
-    if entry.type == "item" and entry.name == "lmstudio" then
-      found_lmstudio = true
-    elseif entry.type == "item" and entry.name == "lmstudio.extension.local_model" then
-      found_extension = true
-    elseif entry.type == "item" and entry.props and entry.props.label == "scawfulbot MLX" then
-      found_scawfulbot_default = true
+    if entry.type == "item" then
+      entries[entry.name] = entry
+      if entry.name == "agents" or entry.name == "afs_approvals" then
+        check_hover_settings(entry.name, entry.props.script)
+      end
+      if entry.props and entry.props.label == "scawfulbot MLX" then
+        found_scawfulbot_default = true
+      end
     end
   end
-  assert_true(found_lmstudio, "lmstudio should render when explicitly enabled")
+  local agents = entries.agents
+  assert_true(agents ~= nil, "agents should render when explicitly enabled")
+  assert_true(agents.props.script:find("/tmp/plugins/agents.sh", 1, true) ~= nil, "agents should run its plugin")
+  assert_true(agents.props.click_script:find("agents.sh' popup", 1, true) ~= nil,
+    "agents click should refresh sessions and local models")
+  for _, tool in ipairs({ "codex", "claude", "cursor", "gemini" }) do
+    assert_true(entries["agents.tool." .. tool] ~= nil, tool .. " row should render")
+  end
+  assert_true(entries["agents.session.8"] ~= nil and entries["agents.session.8"].props.drawing == false,
+    "session slots should start hidden")
+  local local_models = entries.lmstudio
+  assert_true(local_models ~= nil and local_models.props.position == "popup.agents",
+    "local models should be a row inside the agents popup")
+  assert_equal(local_models.props.label, "Local  󰅂", "local models row should stay short")
+  assert_true(local_models.props.click_script:find("--set lmstudio popup.drawing=toggle", 1, true) ~= nil,
+    "local models should toggle its own submenu")
+  assert_equal(table.concat(metadata.submenu_parents, ","), "lmstudio", "local models submenu should be registered")
+  assert_equal(entries["lmstudio.extension.local_model"].props.position, "popup.lmstudio",
+    "local model presets should live in the submenu")
+  assert_true(entries["lmstudio.extension.local_model"].props.click_script:find("--set agents popup.drawing=off", 1, true) ~= nil,
+    "preset rows should close the whole agents popup")
   assert_true(checked_hover_scripts.clock and checked_hover_scripts.afs_approvals,
     "clock fallback and enabled AFS approvals should receive hover settings")
-  assert_true(found_extension, "lmstudio extension row should render")
   assert_true(not found_scawfulbot_default, "personal model rows should not be hardcoded by default")
-  print("  items_right LM Studio extension test passed!")
+  print("  items_right agents widget test passed!")
 end
 
-local function test_items_right_task_focus_surface()
-  print("Testing items_right Task Pulse surface...")
+local function test_items_right_calendar_surface()
+  print("Testing items_right calendar surface...")
 
   local function build_layout(widgets, task_sources, task_provider, meeting_cache_file, capture_section, capture_state, meeting_cache_max_age_seconds)
     local state = {
@@ -1341,118 +1359,16 @@ local function test_items_right_task_focus_surface()
     return nil
   end
 
-  local default_layout = build_layout({}, { "/tmp/tasks.md" }, "files")
-  assert_true(find_entry(default_layout, "task_focus") == nil, "Task Pulse should remain absent by default")
-
-  local empty_layout = build_layout({ task_focus = true }, { "", "   " }, "files")
-  assert_true(find_entry(empty_layout, "task_focus") == nil, "Task Pulse should stay absent without a non-empty source")
-
-  local sources = {
-    "/tmp/tasks board.md",
-    "/tmp/tasks;touch should-not-run.org",
-  }
-  local provider = "files;touch should-not-run"
   local layout = build_layout(
     { task_focus = true },
-    sources,
-    provider,
+    { "/tmp/tasks board.md" },
+    "files",
     "/tmp/events cache.tsv",
-    "Inbox $(touch should-not-run)",
-    "NEXT`touch should-not-run`",
+    nil,
+    nil,
     7200
   )
-  local task_focus = find_entry(layout, "task_focus")
-  assert_true(task_focus ~= nil, "Task Pulse should render when explicitly enabled with task sources")
-  assert_equal(task_focus.props.label.string, "Tasks", "Task Pulse should start with a compact Tasks label")
-  assert_equal(task_focus.props.drawing, true, "Task Pulse should draw when enabled")
-
-  local expected_env = shell_utils.env_prefix({
-    BARISTA_CALENDAR_TASK_SOURCES = table.concat(sources, ":"),
-    BARISTA_CAPTURE_SECTION = "Inbox $(touch should-not-run)",
-    BARISTA_CAPTURE_STATE = "NEXT`touch should-not-run`",
-    BARISTA_TASK_PROVIDER = provider,
-  })
-  assert_equal(task_focus.props.script:sub(1, #expected_env), expected_env, "Task Pulse should safely prefix provider and source environment")
-  assert_true(task_focus.props.script:find("/tmp/plugins/task_pulse%.sh") ~= nil, "Task Pulse events should run the pulse plugin")
-  assert_true(task_focus.props.click_script:find("popup%.drawing=toggle") ~= nil, "Task Pulse click should open its own popup immediately")
-  assert_true(task_focus.props.click_script:find("task_pulse%.sh") ~= nil, "Task Pulse click should refresh popup data")
-  assert_true(task_focus.props.click_script:match("&%s*$") ~= nil, "Task Pulse click refresh should be asynchronous")
-
-  local expected_rows = {
-    "task_focus.summary",
-    "task_focus.focus",
-    "task_focus.next",
-    "task_focus.waiting",
-    "task_focus.blocked",
-    "task_focus.capture",
-    "task_focus.open",
-    "task_focus.timer",
-  }
-  local row_count = 0
-  for _, name in ipairs(expected_rows) do
-    local row = find_entry(layout, name)
-    assert_true(row ~= nil, name .. " should be present in the capped Task Pulse popup")
-    row_count = row_count + 1
-  end
-  local actual_row_count = 0
-  for _, entry in ipairs(layout) do
-    if entry.type == "item" and type(entry.name) == "string" and entry.name:match("^task_focus%.") then
-      actual_row_count = actual_row_count + 1
-    end
-  end
-  assert_equal(actual_row_count, row_count, "Task Pulse popup should contain only its eight static rows")
-  assert_true(find_entry(layout, "task_focus.complete") == nil,
-    "non-syshelp providers should not expose Complete Focus")
-
-  local capture = find_entry(layout, "task_focus.capture")
-  local open_board = find_entry(layout, "task_focus.open")
-  local timer = find_entry(layout, "task_focus.timer")
-  assert_true(capture.props.click_script:find("/tmp/config/scripts/task_capture%.sh") ~= nil, "Capture Task should use Barista's task_capture.sh")
-  assert_true(capture.props.click_script:find("BARISTA_CAPTURE_SECTION='Inbox $(touch should-not-run)'", 1, true) ~= nil,
-    "Capture Task should pass the configured capture section literally")
-  assert_true(capture.props.click_script:find("BARISTA_CAPTURE_STATE='NEXT`touch should-not-run`'", 1, true) ~= nil,
-    "Capture Task should pass the configured capture state literally")
-  assert_true(open_board.props.click_script:find("/tmp/config/scripts/task_action%.sh") ~= nil, "Open Board should use Barista's task_action.sh")
-  assert_true(open_board.props.click_script:find("open", 1, true) ~= nil, "Open Board should request the open action")
-  assert_true(timer.props.click_script:find("/tmp/config/scripts/focus_session%.py") ~= nil, "Focus timer should use the local session engine")
-  assert_true(timer.props.click_script:find("bash '/tmp/config/scripts/focus_session.py'", 1, true) == nil,
-    "Focus timer should execute its Python shebang instead of passing it to Bash")
-  assert_true(timer.props.click_script:find("toggle", 1, true) ~= nil, "Focus timer should toggle one menu-only session")
-  assert_true(timer.props.click_script:find("task_state_changed", 1, true) ~= nil, "Focus timer should refresh Task Pulse after changes")
-
-  local syshelp_layout = build_layout({ task_focus = true }, { "/tmp/tasks.md" }, "syshelp")
-  local complete_focus = find_entry(syshelp_layout, "task_focus.complete")
-  assert_true(complete_focus ~= nil, "syshelp Task Pulse should expose Complete Focus")
-  assert_equal(complete_focus.props.label, "Complete Focus…", "Complete Focus should signal confirmation")
-  assert_true(complete_focus.props.click_script:find("/tmp/config/scripts/task_action%.sh") ~= nil,
-    "Complete Focus should use Barista's task_action.sh")
-  assert_true(complete_focus.props.click_script:find("complete%-focus") ~= nil,
-    "Complete Focus should request the provider-gated action")
-
-  local subscribed = false
-  local popup_autoclose = false
-  local hover_attached = false
-  local grouped = false
-  for _, entry in ipairs(layout) do
-    if entry.action == "exec" and type(entry.cmd) == "string"
-      and entry.cmd:find("--subscribe task_focus task_state_changed system_woke", 1, true) ~= nil then
-      subscribed = true
-    elseif entry.action == "subscribe_popup_autoclose" and entry.name == "task_focus" then
-      popup_autoclose = true
-    elseif entry.action == "attach_hover" and entry.name == "task_focus" then
-      hover_attached = true
-    elseif entry.type == "bracket" and entry.name == "right_group_1" then
-      for _, child in ipairs(entry.children or {}) do
-        if child == "task_focus" then
-          grouped = true
-        end
-      end
-    end
-  end
-  assert_true(subscribed, "Task Pulse should subscribe to task changes and wake events")
-  assert_true(popup_autoclose, "Task Pulse should register popup autoclose")
-  assert_true(hover_attached, "Task Pulse should register hover feedback")
-  assert_true(grouped, "Task Pulse should join the right-side clock group")
+  assert_true(find_entry(layout, "task_focus") == nil, "the retired Task Pulse anchor should not render")
 
   local calendar_header = find_entry(layout, "clock.calendar.header")
   assert_true(calendar_header ~= nil, "calendar header should remain present")
@@ -1500,7 +1416,7 @@ local function test_items_right_task_focus_surface()
     assert_true(find_entry(layout, removed_name) == nil, removed_name .. " should not be materialized")
   end
 
-  print("  items_right Task Pulse surface test passed!")
+  print("  items_right calendar surface test passed!")
 end
 
 local function test_items_right_afs_approvals_widget()
@@ -1612,8 +1528,8 @@ test_items_left_without_yabai()
 test_items_left_control_center_custom_name()
 test_items_left_integration_models_and_anchor_order()
 test_items_right_layout()
-test_items_right_lmstudio_extension_rows()
+test_items_right_agents_widget()
 test_items_right_afs_approvals_widget()
-test_items_right_task_focus_surface()
+test_items_right_calendar_surface()
 
 print("\nAll item layout tests passed!")

@@ -9,27 +9,27 @@
 
 #define BUFFER_SIZE 128
 
-// Format: "Day MM/DD HH:MM AM/PM"
+static const char *clock_format(void) {
+    const char *style = getenv("BARISTA_CLOCK_STYLE");
+    if (style && strcmp(style, "time") == 0) {
+        return "%I:%M %p";
+    }
+    if (style && strcmp(style, "compact") == 0) {
+        return "%a %I:%M %p";
+    }
+    return "%a %m/%d %I:%M %p";
+}
+
 void get_formatted_time(char *buffer, size_t size) {
     time_t now = time(NULL);
     struct tm *tm_info = localtime(&now);
-
-    // Day names
-    const char *days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-
-    // Get 12-hour format
-    int hour = tm_info->tm_hour;
-    const char *am_pm = hour >= 12 ? "PM" : "AM";
-    if (hour > 12) hour -= 12;
-    if (hour == 0) hour = 12;
-
-    snprintf(buffer, size, "%s %02d/%02d %02d:%02d %s",
-             days[tm_info->tm_wday],
-             tm_info->tm_mon + 1,
-             tm_info->tm_mday,
-             hour,
-             tm_info->tm_min,
-             am_pm);
+    if (!tm_info) {
+        snprintf(buffer, size, "--:--");
+        return;
+    }
+    if (strftime(buffer, size, clock_format(), tm_info) == 0) {
+        snprintf(buffer, size, "--:--");
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -37,6 +37,9 @@ int main(int argc, char *argv[]) {
     char command[BUFFER_SIZE * 2];
     const char *sender = getenv("SENDER");
     const char *name = getenv("NAME");
+
+    (void)argc;
+    (void)argv;
 
     if (!name) {
         name = "clock";

@@ -147,6 +147,7 @@ if [ -n "$ICON_OVERRIDE" ]; then
 fi
 
 LABEL="${VOLUME}%"
+LABEL_DRAWING="on"
 COLOR="$OK_COLOR"
 if [ "$MUTED" = "true" ] || [ "$VOLUME" -eq 0 ]; then
   LABEL="Muted"
@@ -158,6 +159,13 @@ elif [ "$VOLUME" -gt 30 ]; then
 else
   COLOR="$LOW_COLOR"
 fi
+
+case "${BARISTA_VOLUME_LABEL_MODE:-text}" in
+  icon|off|none)
+    LABEL=""
+    LABEL_DRAWING="off"
+    ;;
+esac
 
 STATE_LABEL="Volume: $LABEL"
 if [ "$MUTED" != "true" ]; then
@@ -226,4 +234,4 @@ else
 fi
 
 # Update widget
-sketchybar --set "$NAME" icon="$ICON" label="$LABEL" icon.color="$COLOR" label.color="$COLOR"
+sketchybar --set "$NAME" icon="$ICON" label="$LABEL" label.drawing="$LABEL_DRAWING" icon.color="$COLOR" label.color="$COLOR"

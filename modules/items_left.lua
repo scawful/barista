@@ -2,6 +2,7 @@
 
 local interface_extensions = require("interface_extensions")
 local ui = require("ui_builder")
+local shell_quote = require("shell_utils").shell_quote
 
 local function get_layout(ctx)
   local current_time_ms = ctx.current_time_ms or function()
@@ -21,7 +22,33 @@ local function get_layout(ctx)
   local SPACE_POST_CONFIG_DELAY = ctx.SPACE_POST_CONFIG_DELAY or POST_CONFIG_DELAY
   local SKETCHYBAR_BIN = ctx.SKETCHYBAR_BIN
   local associated_displays = ctx.associated_displays
+  local associated_spaces = type(ctx.associated_spaces) == "string" and ctx.associated_spaces:match("%S")
+    and ctx.associated_spaces
+    or "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16"
+  local optional_wide_only = ctx.optional_wide_only == true
+  local wide_displays = type(ctx.wide_displays) == "string" and ctx.wide_displays or ""
+  local hide_anchor_labels = ctx.hide_anchor_labels == true
   local FRONT_APP_ACTION_SCRIPT = ctx.FRONT_APP_ACTION_SCRIPT
+
+  local function optional_display_target()
+    if optional_wide_only and wide_displays:match("%S") then
+      return wide_displays, false, associated_spaces
+    end
+    return associated_displays, nil, "all"
+  end
+
+  local function suppress_label(props)
+    if type(props) ~= "table" then
+      return props
+    end
+    if type(props.label) == "table" then
+      props.label.drawing = false
+      props.label.string = ""
+    else
+      props["label.drawing"] = false
+    end
+    return props
+  end
   local YABAI_CONTROL_SCRIPT = ctx.YABAI_CONTROL_SCRIPT
   local call_script = ctx.call_script
   local CONFIG_DIR = ctx.CONFIG_DIR
@@ -151,6 +178,7 @@ local function get_layout(ctx)
   )
   local front_app_refresh_prefix = ctx.lua_only and "/usr/bin/env BARISTA_LUA_ONLY=1 " or ""
   local front_app_more_name = "front_app.more"
+  local front_app_children = { front_app_more_name, "front_app.move", "front_app.defaults" }
   local front_app_popup_refresh = string.format(
     "%sSENDER=popup_refresh NAME=front_app CONFIG_DIR=%q %s",
     front_app_refresh_prefix,
@@ -169,7 +197,7 @@ local function get_layout(ctx)
       sketchybar_bin = SKETCHYBAR_BIN,
       popup_manager_script = ctx.popup_manager_script,
       popup_topology_token = ctx.popup_topology_token,
-      close_popups = yabai_controls_enabled and { front_app_more_name } or nil,
+      close_popups = yabai_controls_enabled and front_app_children or nil,
     }),
     background = anchor_chip(),
     popup = {
@@ -230,6 +258,9 @@ local function get_layout(ctx)
       triforce_name = triforce_widget.name or "triforce"
       triforce_widget.name = nil
       triforce_widget.script = anchor_script(triforce_widget.script)
+      if hide_anchor_labels then
+        suppress_label(triforce_widget)
+      end
       ui.anchor(layout, {
         ctx = ctx,
         name = triforce_name,
@@ -326,13 +357,20 @@ local function get_layout(ctx)
       music_name = music_widget.name or music_name
       music_widget.name = nil
       music_widget.script = anchor_script(music_widget.script)
+      local music_display, music_ignore, music_spaces = optional_display_target()
+      if music_ignore == false then
+        music_widget.ignore_association = false
+        music_widget.associated_display = music_display
+        music_widget.associated_space = music_spaces
+      end
       ui.anchor(layout, {
         ctx = ctx,
         name = music_name,
         props = music_widget,
         events = {},
-        associated_display = associated_displays,
-        associated_space = "all",
+        associated_display = music_display,
+        associated_space = music_spaces or "all",
+        ignore_association = music_ignore,
       })
       if #music_popup_items > 0 then
         table.insert(layout, {
@@ -423,6 +461,12 @@ local function get_layout(ctx)
     parent = parent or "front_app"
     local action = entry.action
     local click_script = entry.click_script
+    -- Window and app actions become actionable only when the renderer binds a
+    -- fresh app/window snapshot. Never ship a focus-relative first-paint action.
+    if yabai_controls_enabled and action and action ~= "" then
+      click_script = ""
+      action = nil
+    end
     if parent ~= "front_app" and not click_script and action and action ~= "" then
       click_script = close_front_app_after(action, parent)
       action = nil
@@ -482,7 +526,7 @@ local function get_layout(ctx)
   add_front_row("front_app.state", {
     icon = "󰆾",
     icon_color = tc("TEAL"),
-    label = "Tiled · Normal",
+    label = "Reading window state…",
     label_color = tc("SUBTEXT1", "WHITE"),
     hover = false,
   })
@@ -493,10 +537,16 @@ local function get_layout(ctx)
     label_color = tc("SUBTEXT1", "WHITE"),
     hover = false,
   })
+  if yabai_controls_enabled then
+    add_front_row("front_app.feedback", {
+      label = "", hover = false, label_color = tc("RED"),
+      props = { drawing = false },
+    })
+  end
   local front_app_more_actions = {}
   local app_actions = {
     { name = "front_app.hide", icon = "󰘔", icon_color = tc("PEACH"), label = "Hide App", action = call_script(FRONT_APP_ACTION_SCRIPT, "hide"), shortcut = "⌘H", more = true },
-    { name = "front_app.quit", icon = "󰅘", icon_color = tc("RED"), label = "Quit App", action = call_script(FRONT_APP_ACTION_SCRIPT, "quit"), shortcut = "⌘Q" },
+    { name = "front_app.quit", icon = "󰅘", icon_color = tc("RED"), label = "Quit App", action = call_script(FRONT_APP_ACTION_SCRIPT, "quit"), shortcut = "⌘Q", more = true },
     { name = "front_app.force_quit", icon = "󰜏", icon_color = tc("MAROON", "RED"), label = "Force Quit", action = call_script(FRONT_APP_ACTION_SCRIPT, "force-quit"), more = true },
   }
   for _, entry in ipairs(app_actions) do
@@ -507,16 +557,13 @@ local function get_layout(ctx)
     end
   end
 
-  add_front_separator("front_app.sep1")
-  add_front_header("front_app.window_header", "Window", tc("TEAL"))
-
   if yabai_controls_enabled then
     local window_actions = {
       { name = "front_app.window.float", icon = "󰒄", icon_color = tc("SAPPHIRE"), label = "Float Window", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-float") },
-      { name = "front_app.window.adopt_space_mode", icon = "󰆾", icon_color = tc("TEAL"), label = "Adopt Current Space Mode", action = call_script(YABAI_CONTROL_SCRIPT, "window-adopt-space-mode") },
+      { name = "front_app.window.adopt_space_mode", icon = "󰆾", icon_color = tc("TEAL"), label = "Match This Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-adopt-space-mode"), more = true },
       { name = "front_app.window.fullscreen", icon = "󰊓", icon_color = tc("GREEN"), label = "Enter Fullscreen", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-fullscreen") },
-      { name = "front_app.window.sticky", icon = "󰐊", icon_color = tc("YELLOW"), label = "Toggle Sticky", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-sticky"), more = true },
-      { name = "front_app.window.topmost", icon = "󰁜", icon_color = tc("MAUVE", "LAVENDER"), label = "Make Topmost", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-topmost"), more = true },
+      { name = "front_app.window.sticky", icon = "󰐊", icon_color = tc("YELLOW"), label = "All spaces: Off", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-sticky") },
+      { name = "front_app.window.topmost", icon = "󰁜", icon_color = tc("MAUVE", "LAVENDER"), label = "Always on top: Off", action = call_script(YABAI_CONTROL_SCRIPT, "window-toggle-topmost") },
       { name = "front_app.window.center", icon = "󰘞", icon_color = tc("BLUE"), label = "Center Window", action = call_script(YABAI_CONTROL_SCRIPT, "window-center"), more = true },
     }
     for _, entry in ipairs(window_actions) do
@@ -527,25 +574,66 @@ local function get_layout(ctx)
       end
     end
 
+    add_front_submenu("front_app.move", "Move This Window", "󰍹", tc("SKY"))
+    add_front_submenu("front_app.defaults", "App Defaults", "󰒓", tc("PEACH"))
+    add_front_header("front_app.defaults.header", "App Defaults", tc("PEACH"), "front_app.defaults")
+    add_front_row("front_app.defaults.scope", {
+      label = "New windows · This window stays as it is", hover = false,
+      label_color = tc("SUBTEXT1", "WHITE"),
+    }, "front_app.defaults")
+    add_front_row("front_app.defaults.status", {
+      label = "Reading saved default…", hover = false,
+      label_color = tc("SUBTEXT1", "WHITE"),
+    }, "front_app.defaults")
+    for _, row in ipairs({
+      { id = "float", label = "Float New Windows" },
+      { id = "tile", label = "Tile in Managed Spaces" },
+      { id = "unset", label = "Remove Barista Default" },
+    }) do
+      add_front_row("front_app.default." .. row.id, {
+        label = row.label, icon = "○", icon_color = tc("PEACH"), click_script = "",
+      }, "front_app.defaults")
+    end
+    -- Where every window of the app stacks; front_app.sh marks the saved level.
+    add_front_header("front_app.levels.header", "Window Level", tc("MAUVE", "LAVENDER"), "front_app.defaults")
+    for _, row in ipairs({
+      { id = "normal", label = "Normal · Focus Decides" },
+      { id = "raised", label = "Raised · Above Normal Windows" },
+      { id = "top", label = "Always on Top" },
+      { id = "unset", label = "Use Yabai Rules" },
+    }) do
+      add_front_row("front_app.level." .. row.id, {
+        label = row.label, icon = "○", icon_color = tc("MAUVE", "LAVENDER"), click_script = "",
+      }, "front_app.defaults")
+    end
+
     add_front_submenu(front_app_more_name, "More Actions", "󰘞", tc("YELLOW"))
-    add_front_header("front_app.more_header", "App + Window", tc("YELLOW"), front_app_more_name)
+    add_front_header("front_app.more_header", "This Window", tc("YELLOW"), front_app_more_name)
 
     for _, entry in ipairs(front_app_more_actions) do
-      add_front_row(entry.name, entry, front_app_more_name)
+      if entry.name:match("^front_app%.window%.") then
+        add_front_row(entry.name, entry, front_app_more_name)
+      end
     end
 
     local preset_actions = {
-      { name = "front_app.preset.utility", icon = "󰉼", icon_color = tc("SAPPHIRE"), label = "Utility", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-utility") },
-      { name = "front_app.preset.focus", icon = "󰓅", icon_color = tc("GREEN"), label = "Focus", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-focus") },
-      { name = "front_app.preset.presentation", icon = "󰊓", icon_color = tc("PEACH"), label = "Presentation", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-presentation") },
-      { name = "front_app.preset.tile_here", icon = "󰆾", icon_color = tc("TEAL"), label = "Tile Here", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-tile-here") },
+      { name = "front_app.preset.utility", icon = "󰉼", icon_color = tc("SAPPHIRE"), label = "Float + Center", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-utility") },
+      { name = "front_app.preset.focus", icon = "󰓅", icon_color = tc("GREEN"), label = "Match Space + Balance", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-focus") },
+      { name = "front_app.preset.presentation", icon = "󰊓", icon_color = tc("PEACH"), label = "Fill Screen", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-presentation") },
+      { name = "front_app.preset.tile_here", icon = "󰆾", icon_color = tc("TEAL"), label = "Exit Fullscreen + Match Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-preset-tile-here") },
     }
     for _, entry in ipairs(preset_actions) do
       add_front_row(entry.name, entry, front_app_more_name)
     end
 
-    add_front_separator("front_app.sep2", front_app_more_name)
-    add_front_header("front_app.move_header", "Move", tc("MAUVE", "LAVENDER"), front_app_more_name)
+    add_front_header("front_app.app_header", "This App", tc("PEACH"), front_app_more_name)
+    for _, entry in ipairs(front_app_more_actions) do
+      if not entry.name:match("^front_app%.window%.") then
+        add_front_row(entry.name, entry, front_app_more_name)
+      end
+    end
+
+    add_front_header("front_app.move_header", "Move This Window", tc("MAUVE", "LAVENDER"), "front_app.move")
 
     local move_actions = {
       { name = "front_app.move.float_space", icon = "󰒄", icon_color = tc("TEAL"), label = "Send to Float Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-float") },
@@ -555,7 +643,7 @@ local function get_layout(ctx)
       { name = "front_app.move.space_next", icon = "󱂬", icon_color = tc("PEACH"), label = "Move to Next Space", action = call_script(YABAI_CONTROL_SCRIPT, "window-space-next-wrap") },
     }
     for _, entry in ipairs(move_actions) do
-      add_front_row(entry.name, entry, front_app_more_name)
+      add_front_row(entry.name, entry, "front_app.move")
     end
   else
     local unavailable_label = WINDOW_MANAGER_MODE == "disabled"
@@ -600,7 +688,7 @@ local function get_layout(ctx)
       icon_font = { family = settings.font.icon, size = settings.font.sizes.icon },
       label_font = font_string(settings.font.text, settings.font.style_map["Bold"], 11),
       label_color = "0xffcdd6f4",
-      show_label = true,
+      show_label = not hide_anchor_labels,
       update_freq = 30,
       config_dir = CONFIG_DIR,
       scripts_dir = ctx.SCRIPTS_DIR,
@@ -638,17 +726,21 @@ local function get_layout(ctx)
     for _, submenu_name in ipairs(cc_submenu_parents) do
       table.insert(submenu_parents, submenu_name)
     end
-    if #cc_submenu_parents > 0 then
-      cc_widget.click_script = ui.toggle_after_closing(control_center_item_name, cc_submenu_parents, {
+    cc_widget.click_script = ui.toggle_then_refresh_async(control_center_item_name,
+      string.format("SENDER=popup_refresh BARISTA_CONTROL_CENTER_LAYOUT_ROWS=%s NAME=%s BARISTA_CONFIG_DIR=%s %s",
+        control_center_status and control_center_status.window_manager.enabled and "1" or "0",
+        shell_quote(control_center_item_name), shell_quote(CONFIG_DIR),
+        anchor_script(PLUGIN_DIR .. "/control_center.sh")), {
         sketchybar_bin = SKETCHYBAR_BIN,
         popup_manager_script = ctx.popup_manager_script,
         popup_topology_token = ctx.popup_topology_token,
+        close_popups = cc_submenu_parents,
       })
-    end
 
     cc_widget.name = nil
     cc_widget.background = anchor_chip()
-    cc_widget.script = anchor_script(cc_widget.script)
+    local cc_layout_rows = control_center_status and control_center_status.window_manager.enabled and "1" or "0"
+    cc_widget.script = "BARISTA_CONTROL_CENTER_LAYOUT_ROWS=" .. cc_layout_rows .. " " .. anchor_script(cc_widget.script or (PLUGIN_DIR .. "/control_center.sh"))
     ui.anchor(layout, {
       ctx = ctx,
       name = control_center_item_name,

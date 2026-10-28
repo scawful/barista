@@ -204,7 +204,16 @@ static void format_clock_label(char *buffer, size_t size) {
         snprintf(buffer, size, "--:--");
         return;
     }
-    strftime(buffer, size, "%a %m/%d %I:%M %p", tm);
+    const char *style = getenv("BARISTA_CLOCK_STYLE");
+    const char *format = "%a %m/%d %I:%M %p";
+    if (style && strcmp(style, "time") == 0) {
+        format = "%I:%M %p";
+    } else if (style && strcmp(style, "compact") == 0) {
+        format = "%a %I:%M %p";
+    }
+    if (strftime(buffer, size, format, tm) == 0) {
+        snprintf(buffer, size, "--:--");
+    }
 }
 
 // Update clock widget
@@ -250,9 +259,18 @@ void update_battery(const char* widget_name) {
     }
 
     char cmd[256];
-    snprintf(cmd, sizeof(cmd),
-             "sketchybar --set %s icon='%s' label='%d%%' icon.color='%s' label.color='%s'",
-             widget_name, icon, percentage, color, color);
+    const char *label_mode = getenv("BARISTA_BATTERY_LABEL_MODE");
+    if (label_mode && (strcmp(label_mode, "icon") == 0
+                       || strcmp(label_mode, "off") == 0
+                       || strcmp(label_mode, "none") == 0)) {
+        snprintf(cmd, sizeof(cmd),
+                 "sketchybar --set %s icon='%s' label='' label.drawing=off icon.color='%s' label.color='%s'",
+                 widget_name, icon, color, color);
+    } else {
+        snprintf(cmd, sizeof(cmd),
+                 "sketchybar --set %s icon='%s' label='%d%%' label.drawing=on icon.color='%s' label.color='%s'",
+                 widget_name, icon, percentage, color, color);
+    }
     system(cmd);
 }
 
@@ -296,6 +314,16 @@ void update_memory(const char* widget_name) {
 }
 
 // Update system info widget (combined)
+// Fixed character count: in the monospace bar font a width change makes every
+// neighbouring item re-layout on every display.
+static void format_system_info_label(char* label, size_t size, int cpu,
+                                     unsigned long long used_gb,
+                                     unsigned long long total_gb) {
+    int mem_digits = snprintf(NULL, 0, "%llu", total_gb);
+    snprintf(label, size, "%2d%% %*llu/%lluG",
+             cpu > 99 ? 99 : cpu, mem_digits, used_gb, total_gb);
+}
+
 void update_system_info(const char* widget_name) {
     pthread_mutex_lock(&cache_lock);
 
@@ -314,10 +342,21 @@ void update_system_info(const char* widget_name) {
         cache.last_disk_update = now;
     }
 
+    // Each label change repaints the item on every display, so CPU jitter
+    // under 5 points is not worth sending.
+    static int shown_cpu = -100;
+    static unsigned long long shown_mem_gb = ~0ULL;
+    int cpu = (int)(cache.cpu_usage + 0.5);
+    if (abs(cpu - shown_cpu) < 5 && cache.memory_used_gb == shown_mem_gb) {
+        pthread_mutex_unlock(&cache_lock);
+        return;
+    }
+    shown_cpu = cpu;
+    shown_mem_gb = cache.memory_used_gb;
+
     char label[128];
-    snprintf(label, sizeof(label),
-             "%.0f%% %llu/%lluG",
-             cache.cpu_usage, cache.memory_used_gb, cache.memory_total_gb);
+    format_system_info_label(label, sizeof(label), cpu,
+                             cache.memory_used_gb, cache.memory_total_gb);
 
     char cmd[512];
     snprintf(cmd, sizeof(cmd),
@@ -377,10 +416,12 @@ void batch_update(const char* widgets[], int count) {
             cache.cpu_usage = get_cpu_usage();
             cache.memory_usage = get_memory_usage();
             get_memory_gb(&cache.memory_used_gb, &cache.memory_total_gb);
+            char label[128];
+            format_system_info_label(label, sizeof(label),
+                                     (int)(cache.cpu_usage + 0.5),
+                                     cache.memory_used_gb, cache.memory_total_gb);
             char buf[512];
-            snprintf(buf, sizeof(buf),
-                    " --set system_info label='%.0f%% %llu/%lluG'",
-                    cache.cpu_usage, cache.memory_used_gb, cache.memory_total_gb);
+            snprintf(buf, sizeof(buf), " --set system_info label='%s'", label);
             strcat(cmd, buf);
             pthread_mutex_unlock(&cache_lock);
         }

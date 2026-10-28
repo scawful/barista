@@ -33,7 +33,6 @@ local default_state = {
     volume = true,
     battery = true,
     task_focus = false,
-    afs_approvals = false,
   },
   appearance = {
     theme = "default",
@@ -50,24 +49,27 @@ local default_state = {
     clock_font_style = "Semibold",
     widget_scale = 1.0,
     auto_more_space_scaling = true,
+    auto_display_density = true,
     more_space_widget_scale_boost = 0.08,
     widget_corner_radius = 6,
     popup_padding = 6,
-    popup_corner_radius = 8,
-    popup_border_width = 2,
-    popup_border_color = "0x60cdd6f4",
-    popup_bg_color = "0xF021162F",
+    popup_corner_radius = 10,
+    popup_border_width = 1,
+    popup_border_color = "0x30cdd6f4",
+    popup_bg_color = "0xE021162F",
+    popup_blur_radius = 20,
+    popup_shadow = true,
     popup_item_height = 0,
     popup_item_corner_radius = 4,
     menu_padding = 6,
-    menu_font_style = "Bold",
-    menu_header_font_style = "Bold",
+    menu_font_style = "Regular",
+    menu_header_font_style = "Semibold",
     menu_font_size_offset = 0,
     menu_item_height = 23,
     menu_header_height = 25,
     menu_item_corner_radius = 6,
     menu_label_color = "0xffe8edf7",
-    menu_popup_bg_color = "0xF221162F",
+    menu_popup_bg_color = "0xE021162F",
     hover_color = "0x40f5c2e7",
     hover_border_color = "0x60cdd6f4",
     hover_border_width = 1,
@@ -86,6 +88,7 @@ local default_state = {
     font_icon = "Hack Nerd Font",
     font_text = "Source Code Pro",
     font_numbers = "SF Mono",
+    font_popup = "SF Pro",
   },
   icons = {
     apple = "",       -- System menu icon (customizable)
@@ -106,6 +109,8 @@ local default_state = {
   widget_colors = {},
   space_icons = {},
   space_modes = {},
+  space_modes_by_uuid = {},
+  space_mode_uuids = {},
   window_defaults = {
     apps = {},
   },
@@ -117,6 +122,12 @@ local default_state = {
     context_menu_on_right_click = true,
     swap_indicator = true,
     experimental_diff_updates = true,
+    max_spaces_per_display = 8,
+    min_spaces_per_display = 1,
+    destroy_non_empty_policy = "allow",
+    new_space_layout = "default",
+    window_move_policy = "preserve",
+    locked_spaces = {},
   },
   system_info_items = {
     cpu = false,
@@ -136,6 +147,24 @@ local default_state = {
   },
   toggles = {
     yabai_shortcuts = true,
+    stack_indicator = true,
+  },
+  workflow = {
+    scratchpad = {
+      width_pct = 75,
+      height_pct = 75,
+      terminal_cmd = "",
+      files_cmd = "yazi",
+    },
+    emacs = {
+      client_bin = "emacsclient",
+      app_name = "Emacs",
+      capture_key = "",
+    },
+    files = {
+      picker = "auto",
+      default_root = "~/src",
+    },
   },
   paths = {
     scripts_dir = "",
@@ -229,6 +258,10 @@ local function sanitize_state(data)
   if type(data.widget_colors) ~= "table" then data.widget_colors = {} end
   if type(data.appearance) ~= "table" then data.appearance = {} end
   if type(data.toggles) ~= "table" then data.toggles = {} end
+  if type(data.workflow) ~= "table" then data.workflow = {} end
+  if type(data.workflow.scratchpad) ~= "table" then data.workflow.scratchpad = {} end
+  if type(data.workflow.emacs) ~= "table" then data.workflow.emacs = {} end
+  if type(data.workflow.files) ~= "table" then data.workflow.files = {} end
   if type(data.icons) ~= "table" then data.icons = {} end
   if type(data.modes) ~= "table" then data.modes = {} end
   if type(data.paths) ~= "table" then data.paths = {} end
@@ -238,6 +271,8 @@ local function sanitize_state(data)
   if type(data.integrations) ~= "table" then data.integrations = {} end
   if type(data.debug) ~= "table" then data.debug = {} end
   if type(data.space_modes) ~= "table" then data.space_modes = {} end
+  if type(data.space_modes_by_uuid) ~= "table" then data.space_modes_by_uuid = {} end
+  if type(data.space_mode_uuids) ~= "table" then data.space_mode_uuids = {} end
   if type(data.window_defaults) ~= "table" then data.window_defaults = {} end
   if type(data.window_defaults.apps) ~= "table" then data.window_defaults.apps = {} end
   if type(data.spaces) ~= "table" then data.spaces = {} end
@@ -563,10 +598,23 @@ function state.set_space_mode(data, space_num, mode)
     data.space_modes = {}
   end
   local key = tostring(space_num)
-  local new_value = (mode == nil or mode == "") and nil or mode
+  local new_value = mode
+  if mode == "" then
+    new_value = nil
+  end
+  local bindings = data.space_mode_uuids
+  local bound_uuid = type(bindings) == "table" and bindings[key] or nil
   -- Only save if value actually changed
-  if data.space_modes[key] ~= new_value then
+  if data.space_modes[key] ~= new_value or (new_value == nil and bound_uuid) then
     data.space_modes[key] = new_value
+    -- An explicit legacy edit replaces this index's former UUID preference.
+    -- Unchanged values keep their UUID so opening older editors is harmless.
+    if bound_uuid then
+      bindings[key] = nil
+      if type(data.space_modes_by_uuid) == "table" then
+        data.space_modes_by_uuid[bound_uuid] = nil
+      end
+    end
     return state.save(data, false)
   end
   return true

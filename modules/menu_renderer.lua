@@ -6,7 +6,7 @@ local unpack = table.unpack or _G.unpack
 
 local function menu_label(label, shortcut)
   if shortcut and shortcut ~= "" then
-    return string.format("%-16s %s", label, shortcut)
+    return string.format("%s   %s", label, shortcut)
   end
   return label
 end
@@ -35,6 +35,7 @@ function menu_renderer.create(ctx)
   local menu_label_color = style.label_color
   local menu_font_small = style.font_small
   local menu_font_header = style.font_header
+  local style_row = ctx.style_popup_row or function(props) return props end
   local submenu_hover_script = ctx.SUBMENU_HOVER_SCRIPT or ""
   if submenu_hover_script ~= "" and ctx.env_prefix and style.submenu_hover_env then
     submenu_hover_script = ctx.env_prefix(style.submenu_hover_env) .. submenu_hover_script
@@ -260,7 +261,7 @@ function menu_renderer.create(ctx)
       item_config["icon.color"] = entry.icon_color
     end
 
-    sbar.add("item", entry.name, item_config)
+    sbar.add("item", entry.name, style_row(item_config))
     if hover_enabled then
       attach_hover(entry.name)
     end
@@ -316,7 +317,7 @@ function menu_renderer.create(ctx)
     if hover_enabled and ctx.HOVER_SCRIPT and ctx.HOVER_SCRIPT ~= "" then
       item_config.script = ctx.HOVER_SCRIPT
     end
-    sbar.add("item", entry.name, item_config)
+    sbar.add("item", entry.name, style_row(item_config))
     if hover_enabled and ctx.HOVER_SCRIPT and ctx.HOVER_SCRIPT ~= "" then
       attach_hover(entry.name)
     end
@@ -353,6 +354,8 @@ function menu_renderer.create(ctx)
       icon = entry.icon or "",
       label = string.format("%s  %s", entry.label, arrow),
       click_script = popup_toggle(parent, { direct = true, origin = "submenu" }),
+      ["label.font"] = menu_font_small,
+      ["label.color"] = menu_label_color,
       ["icon.padding_left"] = padding.icon_left,
       ["icon.padding_right"] = padding.icon_right,
       ["label.padding_left"] = padding.label_left,
@@ -370,7 +373,7 @@ function menu_renderer.create(ctx)
     if hover_enabled and submenu_hover_script ~= "" then
       item_config.script = submenu_hover_script
     end
-    sbar.add("item", parent, item_config)
+    sbar.add("item", parent, style_row(item_config))
     remember_submenu(parent, popup)
     if hover_enabled then
       post_config_exec(string.format("sleep %.1f; %s --subscribe %s mouse.entered mouse.exited", post_config_delay, sketchybar_bin, parent))

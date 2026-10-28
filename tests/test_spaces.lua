@@ -1,5 +1,10 @@
 local spaces = require("spaces")
 
+-- Never let a test write the real replay file under $HOME.
+local function scratch_replay_path()
+  return os.tmpname() .. ".yabai_signals.sh"
+end
+
 run_test("spaces: display JSON IDs are numeric, sorted, and deduplicated", function()
   local json = [[
     [
@@ -35,7 +40,9 @@ run_test("spaces: watch_spaces uses resolved yabai binary for signals", function
     "/opt/homebrew/bin/sketchybar",
     "/custom/bin/yabai",
     function(cmd) executed = cmd end,
-    function() return false end
+    function() return false end,
+    false,
+    scratch_replay_path()
   )
 
   manager.watch_spaces()
@@ -47,6 +54,27 @@ run_test("spaces: watch_spaces uses resolved yabai binary for signals", function
   assert_true(executed:find("refresh_spaces.sh", 1, true) ~= nil, "signals should call refresh_spaces.sh")
 end)
 
+run_test("spaces: watch_spaces saves its signals for yabai to replay after a restart", function()
+  local dir = os.tmpname()
+  os.remove(dir)
+  local executed = nil
+  local manager = spaces.create("/tmp/config", "/tmp/plugins", "/opt/homebrew/bin/sketchybar", "/custom/bin/yabai",
+    function(cmd) executed = cmd end, function() return false end, false, dir .. "/state/yabai_signals.sh")
+
+  manager.watch_spaces()
+
+  local file = io.open(dir .. "/state/yabai_signals.sh")
+  assert_true(file ~= nil, "watch_spaces should write the replay script")
+  local replay = file:read("*a")
+  file:close()
+  os.execute(string.format("rm -rf %q", dir))
+  assert_true(replay:find("event=mission_control_exit", 1, true) ~= nil, "replay should include the Mission Control guard")
+  for command in executed:gmatch("[^;]+;?") do
+    local line = command:gsub("^%s+", ""):gsub(";$", "")
+    assert_true(replay:find(line, 1, true) ~= nil, "replay should match what was registered: " .. line)
+  end
+end)
+
 run_test("spaces: Lua-only refresh paths disable compiled helpers", function()
   local executed = {}
   local manager = spaces.create(
@@ -56,7 +84,8 @@ run_test("spaces: Lua-only refresh paths disable compiled helpers", function()
     "/custom/bin/yabai",
     function(cmd) table.insert(executed, cmd) end,
     function() return false end,
-    true
+    true,
+    scratch_replay_path()
   )
 
   manager.refresh_spaces()

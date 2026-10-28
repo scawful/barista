@@ -943,6 +943,13 @@ static NSArray<NSString *> *build_tokens(void) {
     : (muted || volume == 0
        ? @"Muted"
        : [NSString stringWithFormat:@"%ld%%", (long)volume]);
+  NSString *labelMode = environment_value(@"BARISTA_VOLUME_LABEL_MODE") ?: @"text";
+  BOOL hideAnchorLabel = [labelMode isEqualToString:@"icon"]
+    || [labelMode isEqualToString:@"off"]
+    || [labelMode isEqualToString:@"none"];
+  if (hideAnchorLabel) {
+    mainLabel = @"";
+  }
   NSString *stateLabel = hardwareControlled
     ? @"Volume: Hardware controlled"
     : (muted
@@ -961,6 +968,7 @@ static NSArray<NSString *> *build_tokens(void) {
   append_set(tokens, @"volume", @[
     property(@"icon", icon, 32, 128),
     property(@"label", mainLabel, 32, 96),
+    property(@"label.drawing", hideAnchorLabel ? @"off" : @"on", 8, 16),
     property(@"icon.color", color, 32, 64),
     property(@"label.color", color, 32, 64),
   ]);

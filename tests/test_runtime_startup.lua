@@ -61,12 +61,12 @@ run_test("main startup wiring: completes synchronous startup before async queue 
     "the external-bar update should enter the post-config queue")
   assert_true(source:find("os.execute", flush_pos, true) == nil,
     "startup must not restore SIGCHLD defaults after async clients are dispatched")
-  assert_true(source:find("left_layout_metadata.submenu_parents", 1, true) ~= nil,
-    "main should merge left-side nested popups into the submenu registry")
+  assert_true(source:find("{ left_layout_metadata, right_layout_metadata }", 1, true) ~= nil,
+    "main should merge left- and right-side nested popups into the submenu registry")
   assert_true(source:find("submenu_manager_items", 1, true) ~= nil,
     "main should register the merged submenu list")
-  assert_true(source:find('state.widgets.lmstudio == true', 1, true) ~= nil,
-    "main should register LM Studio only when its popup is enabled")
+  assert_true(source:find('state.widgets.agents == true', 1, true) ~= nil,
+    "main should register the agents popup only when it is enabled")
   assert_true(source:find('opts.origin == "submenu"', 1, true) ~= nil,
     "main should preserve root versus child popup switch scope")
   assert_true(source:find("binary_resolver.resolve_popup_switch", 1, true) ~= nil,
@@ -93,6 +93,22 @@ run_test("main startup wiring: completes synchronous startup before async queue 
     "resolved Lua should publish before fallible config construction")
   assert_true(compiled_marker_pos > end_config_pos,
     "resolved compiled should publish only after a successful config commit")
+end)
+
+run_test("main startup wiring: hidden coordinators receive events without polling", function()
+  local file = assert(io.open("main.lua", "r"))
+  local source = file:read("*a")
+  file:close()
+  for _, name in ipairs({ "space_runtime", "display_density" }) do
+    local definition = assert(source:match('sbar%.add%("item", "' .. name .. '", (%b{})%s*%)'))
+    assert_true(definition:find("drawing = false", 1, true) ~= nil, name .. " should remain hidden")
+    assert_true(definition:find("updates = true", 1, true) ~= nil, name .. " must receive subscribed events")
+    assert_true(definition:find("update_freq = 0", 1, true) ~= nil, name .. " must not poll")
+  end
+  assert_true(source:find("--subscribe display_density display_change ", 1, true) ~= nil,
+    "density watcher should receive native display change events")
+  assert_true(source:find("--subscribe popup_manager space_change display_change ", 1, true) ~= nil,
+    "popup dismissal should receive native display change events")
 end)
 
 run_test("runtime_startup post-config queue: defers and flushes actions in order", function()

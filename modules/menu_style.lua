@@ -31,18 +31,19 @@ function menu_style.compute(ctx)
   local appearance = ctx.appearance or {}
 
   local popup_padding = tonumber(appearance.menu_padding) or tonumber(appearance.popup_padding) or 8
-  local popup_border_width = tonumber(appearance.popup_border_width) or 2
-  local popup_corner_radius = tonumber(appearance.popup_corner_radius) or 6
+  local popup_border_width = tonumber(appearance.popup_border_width) or 1
+  local popup_corner_radius = tonumber(appearance.popup_corner_radius) or 10
   local popup_border_color = appearance.popup_border_color or theme.WHITE
   local popup_bg_color = appearance.menu_popup_bg_color or appearance.popup_bg_color or theme.bar.bg
   local menu_label_color = appearance.menu_label_color or theme.WHITE
 
   local menu_font_size_offset = tonumber(appearance.menu_font_size_offset) or 1
   local menu_font_size = math.max((settings.font.sizes.small or 12) + menu_font_size_offset, 10)
-  local menu_font_style = resolved_style(settings, appearance.menu_font_style or "Bold", "Semibold")
-  local menu_header_style = resolved_style(settings, appearance.menu_header_font_style or "Bold", "Bold")
-  local menu_font_small = font_string(ctx, settings.font.text, menu_font_style, menu_font_size)
-  local menu_font_header = font_string(ctx, settings.font.text, menu_header_style, menu_font_size)
+  local menu_font_style = resolved_style(settings, appearance.menu_font_style or "Regular", "Regular")
+  local menu_header_style = resolved_style(settings, appearance.menu_header_font_style or "Semibold", "Semibold")
+  local menu_font_family = settings.font.popup or settings.font.text
+  local menu_font_small = font_string(ctx, menu_font_family, menu_font_style, menu_font_size)
+  local menu_font_header = font_string(ctx, menu_font_family, menu_header_style, menu_font_size)
 
   local menu_item_height = tonumber(appearance.menu_item_height or appearance.popup_item_height or 0) or 0
   if menu_item_height <= 0 then

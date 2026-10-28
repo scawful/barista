@@ -357,9 +357,32 @@ local space_fns = spaces_module.create(
 )
 local associated_displays = space_fns.get_associated_displays()
 print("Associated displays target: " .. associated_displays)
+local associated_spaces = space_fns.get_associated_spaces()
+print("Associated spaces target: " .. associated_spaces)
 
 -- Bar appearance from bar_config module
 local bc = bar_config.compute(state, theme, state_module, associated_displays)
+if bc.display_density and bc.display_density ~= "" then
+  print(string.format(
+    "Display density: %s (min_width=%s wide=%s fingerprint=%s)",
+    tostring(bc.display_density),
+    tostring(bc.display_profile and bc.display_profile.min_width or ""),
+    tostring(bc.wide_displays or ""),
+    tostring(bc.density_fingerprint or "")
+  ))
+end
+do
+  local fingerprint = bc.density_fingerprint
+  if type(fingerprint) == "string" and fingerprint ~= "" then
+    local path = CONFIG_DIR .. "/cache/display_density_fingerprint"
+    os.execute(string.format("mkdir -p %q", CONFIG_DIR .. "/cache"))
+    local handle = io.open(path, "w")
+    if handle then
+      handle:write(fingerprint)
+      handle:close()
+    end
+  end
+end
 
 -- Build hover environment strings
 local hover_script_cmd = shell_utils.env_prefix({
@@ -422,6 +445,7 @@ local barista_context = {
   widget_height        = bc.widget_height,
   widget_corner_radius = bc.widget_corner_radius,
   popup_background     = bc.popup_background,
+  style_popup_row      = bc.style_popup_row,
   font_string          = bc.font_string,
   group_bg_color       = bc.group_bg_color,
   group_border_color   = bc.group_border_color,
@@ -470,6 +494,16 @@ local barista_context = {
   POST_CONFIG_DELAY = POST_CONFIG_DELAY,
   SPACE_POST_CONFIG_DELAY = SPACE_POST_CONFIG_DELAY,
   associated_displays = associated_displays,
+  associated_spaces = associated_spaces,
+  display_density = bc.display_density,
+  density_fingerprint = bc.density_fingerprint,
+  hide_anchor_labels = bc.hide_anchor_labels,
+  optional_wide_only = bc.optional_wide_only,
+  narrow_status_strip = bc.narrow_status_strip,
+  split_layout = bc.split_layout,
+  clock_style = bc.clock_style,
+  wide_displays = bc.wide_displays,
+  narrow_displays = bc.narrow_displays,
   compiled_script = compiled_script,
   current_time_ms = runtime_startup.current_time_ms,
   widget_daemon_enabled = widget_daemon_enabled,
@@ -517,8 +551,8 @@ barista_context.prepared_menus = menu_module.prepare(barista_context)
 -----------------------------------------------------------------------
 local reload_prep_end_wall_ms = runtime_startup.wall_time_ms()
 local daemon_stop_start_wall_ms = reload_prep_end_wall_ms
-runtime_daemon.stop_widget_daemon({ trace = trace_startup })
-runtime_daemon.stop_runtime_context_daemon({ trace = trace_startup })
+runtime_daemon.stop_widget_daemon({ trace = trace_startup, config_dir = CONFIG_DIR, binary_path = WIDGET_MANAGER_BIN })
+runtime_daemon.stop_runtime_context_daemon({ trace = trace_startup, config_dir = CONFIG_DIR, script_path = RUNTIME_CONTEXT_SCRIPT })
 local daemon_stop_duration_ms = runtime_startup.wall_time_ms() - daemon_stop_start_wall_ms
 
 local config_build_start_ms = runtime_startup.current_time_ms()
@@ -561,9 +595,28 @@ local space_visuals_script_cmd = shell_utils.env_prefix({
 sbar.add("item", "space_runtime", {
   position = "left",
   drawing = false,
-  updates = false,
+  -- Hidden coordinators still need event delivery; zero frequency prevents polling.
+  updates = true,
+  update_freq = 0,
   script = space_visuals_script_cmd,
 })
+
+-- Display density watcher: reload when rotation/resolution changes density mode.
+-- Without auto density there is no fingerprint to compare, so no watcher.
+local density_watch = type(bc.density_fingerprint) == "string" and bc.density_fingerprint ~= ""
+if density_watch then
+  local display_density_script = shell_utils.env_prefix({
+    BARISTA_CONFIG_DIR = CONFIG_DIR,
+    BARISTA_SKETCHYBAR_BIN = SKETCHYBAR_BIN,
+  }) .. PLUGIN_DIR .. "/display_density.sh"
+  sbar.add("item", "display_density", {
+    position = "left",
+    drawing = false,
+    updates = true,
+    update_freq = 0,
+    script = display_density_script,
+  })
+end
 
 -- Bar configuration
 sbar.bar(bc.bar)
@@ -590,7 +643,7 @@ local function process_layout(layout, ctx)
   local sbar = ctx.sbar
   for _, entry in ipairs(layout) do
     if entry.type == "item" then
-      sbar.add("item", entry.name, entry.props)
+      sbar.add("item", entry.name, bc.style_popup_row(entry.props))
       if entry.attach_hover then
         ctx.attach_hover(entry.name)
       end
@@ -637,7 +690,7 @@ left_layout_apply_duration_ms = runtime_startup.current_time_ms() - left_layout_
 left_layout_duration_ms = left_layout_build_duration_ms + left_layout_apply_duration_ms
 trace_startup("main:left_layout_processed")
 local right_layout_build_start_ms = runtime_startup.current_time_ms()
-local right_layout = items_right.get_layout(barista_context)
+local right_layout, _, right_layout_metadata = items_right.get_layout(barista_context)
 right_layout_build_duration_ms = runtime_startup.current_time_ms() - right_layout_build_start_ms
 local right_layout_apply_start_ms = runtime_startup.current_time_ms()
 process_layout(right_layout, barista_context)
@@ -654,31 +707,17 @@ local popup_manager_items = {
   "battery",
   unpack(menu_metadata.popup_parents or {}),
 }
-local task_focus_sources = type(state.menus) == "table"
-  and type(state.menus.calendar) == "table"
-  and state.menus.calendar.task_sources
-  or nil
-local task_focus_has_source = type(task_focus_sources) == "string" and task_focus_sources:match("%S") ~= nil
-if type(task_focus_sources) == "table" then
-  for _, source in ipairs(task_focus_sources) do
-    if type(source) == "string" and source:match("%S") then
-      task_focus_has_source = true
-      break
-    end
-  end
-end
-if type(state.widgets) == "table" and state.widgets.task_focus == true and task_focus_has_source then
-  table.insert(popup_manager_items, "task_focus")
-end
-if type(state.widgets) == "table" and state.widgets.lmstudio == true then
-  table.insert(popup_manager_items, "lmstudio")
+if type(state.widgets) == "table" and state.widgets.agents == true then
+  table.insert(popup_manager_items, "agents")
 end
 for _, item_name in ipairs((left_layout_metadata and left_layout_metadata.popup_parents) or {}) do
   table.insert(popup_manager_items, item_name)
 end
 local submenu_manager_items = { unpack(menu_metadata.submenu_parents or {}) }
-for _, item_name in ipairs((left_layout_metadata and left_layout_metadata.submenu_parents) or {}) do
-  table.insert(submenu_manager_items, item_name)
+for _, metadata in ipairs({ left_layout_metadata, right_layout_metadata }) do
+  for _, item_name in ipairs((metadata and metadata.submenu_parents) or {}) do
+    table.insert(submenu_manager_items, item_name)
+  end
 end
 local registry_start_ms = runtime_startup.current_time_ms()
 local popup_registry_ok = submenu_registry.register(
@@ -696,10 +735,20 @@ end
 registry_duration_ms = runtime_startup.current_time_ms() - registry_start_ms
 
 post_config_queue:enqueue_command(string.format(
-  "sleep %.1f; %s --subscribe popup_manager space_change display_changed display_added display_removed system_woke",
+  "sleep %.1f; %s --subscribe popup_manager space_change display_change display_changed display_added display_removed system_woke",
   POST_CONFIG_DELAY,
   SKETCHYBAR_BIN
 ))
+if density_watch then
+  post_config_queue:enqueue_command(string.format(
+    "sleep %.1f; %s --subscribe display_density display_change display_changed display_added display_removed system_woke; CONFIG_DIR=%q BARISTA_SKETCHYBAR_BIN=%q %q",
+    POST_CONFIG_DELAY,
+    SKETCHYBAR_BIN,
+    CONFIG_DIR,
+    SKETCHYBAR_BIN,
+    PLUGIN_DIR .. "/display_density.sh"
+  ))
+end
 
 -- End configuration
 sbar.end_config()
@@ -739,22 +788,28 @@ runtime_startup.record_duration_event(STATS_BIN, "reload_stats_flush_time", stat
 runtime_startup.record_reload_metrics(STATS_BIN, RELOAD_START_MS, { trace = trace_startup })
 
 if widget_daemon_enabled then
+  local widget_daemon_env = shell_utils.env_prefix({
+    BARISTA_CLOCK_STYLE = bc.clock_style or "full",
+    BARISTA_BATTERY_LABEL_MODE = bc.hide_anchor_labels and "icon" or "percent",
+  })
   runtime_daemon.ensure_widget_daemon(WIDGET_MANAGER_BIN, {
     trace = trace_startup,
     force_restart = true,
+    env_prefix = widget_daemon_env,
   })
 else
-  runtime_daemon.stop_widget_daemon({ trace = trace_startup })
+  runtime_daemon.stop_widget_daemon({ trace = trace_startup, config_dir = CONFIG_DIR, binary_path = WIDGET_MANAGER_BIN })
 end
 
 if shell_utils.file_exists(RUNTIME_CONTEXT_SCRIPT) then
   runtime_daemon.ensure_runtime_context_daemon(RUNTIME_CONTEXT_SCRIPT, {
     trace = trace_startup,
+    config_dir = CONFIG_DIR,
     force_restart = true,
     lua_only = LUA_ONLY,
   })
 else
-  runtime_daemon.stop_runtime_context_daemon({ trace = trace_startup })
+  runtime_daemon.stop_runtime_context_daemon({ trace = trace_startup, config_dir = CONFIG_DIR, script_path = RUNTIME_CONTEXT_SCRIPT })
 end
 
 -- SbarLua temporarily restores SIGCHLD's default disposition while

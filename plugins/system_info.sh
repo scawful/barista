@@ -413,9 +413,13 @@ fi
 # Main Widget Update
 if [ "$UPDATE_MAIN" -eq 1 ]; then
   cpu_icon="${ICON_CPU_OVERRIDE:-󰻠}"
+  # Same fixed character count as widget_manager so the chip never resizes.
+  cpu_shown=$(( cpu_usage > 99 ? 99 : cpu_usage ))
+  main_mem_label="$mem_label"
+  [ -z "${mem_total_gb:-}" ] || printf -v main_mem_label '%*s/%sG' "${#mem_total_gb}" "$mem_used_gb" "$mem_total_gb"
   sketchybar --set system_info \
     icon="$cpu_icon" \
-    label="${cpu_usage}% ${mem_label}" \
+    label="$(printf '%2d%% %s' "$cpu_shown" "$main_mem_label")" \
     icon.color="$cpu_status_color" \
     label.color="$cpu_status_color"
   exit 0

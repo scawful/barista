@@ -22,6 +22,67 @@ end
 local ok, state_module = pcall(require, "state")
 
 if ok and state_module then
+  run_test("state.set_space_mode: preserves an explicit float choice", function()
+    local data = make_state()
+    local original_save = state_module.save
+    local saved_mode
+    state_module.save = function(updated)
+      saved_mode = updated.space_modes["1"]
+      return true
+    end
+    local success, result = pcall(state_module.set_space_mode, data, 1, "float")
+    state_module.save = original_save
+    assert_true(success, "space setter should succeed")
+    assert_true(result, "space setter should save")
+    assert_equal(saved_mode, "float", "float must not fall back to startup BSP")
+    assert_equal(data.space_modes["2"], "float", "other choices remain unchanged")
+  end)
+
+  run_test("state.normalize: preserves UUID layout preferences", function()
+    local normalized = state_module.normalize({
+      space_modes = { ["1"] = "float" },
+      space_mode_uuids = { ["1"] = "space-uuid" },
+      space_modes_by_uuid = { ["space-uuid"] = "float" },
+    })
+    assert_equal(normalized.space_modes_by_uuid["space-uuid"], "float", "canonical choice should survive normalization")
+    assert_equal(normalized.space_mode_uuids["1"], "space-uuid", "legacy mirror binding should survive normalization")
+  end)
+
+  run_test("state.set_space_mode: legacy edits release only their UUID preference", function()
+    for _, mode in ipairs({ "stack", "" }) do
+      local data = make_state()
+      data.space_mode_uuids = { ["1"] = "uuid-one", ["2"] = "uuid-two" }
+      data.space_modes_by_uuid = { ["uuid-one"] = "bsp", ["uuid-two"] = "float" }
+      local original_save = state_module.save
+      state_module.save = function() return true end
+      local success, result = pcall(state_module.set_space_mode, data, 1, mode)
+      state_module.save = original_save
+      assert_true(success and result, "legacy change should save")
+      assert_true(data.space_mode_uuids["1"] == nil, "changed index binding should be released")
+      assert_true(data.space_modes_by_uuid["uuid-one"] == nil, "old UUID should not override the edit")
+      assert_equal(data.space_modes_by_uuid["uuid-two"], "float", "unrelated UUID should survive")
+      if mode == "" then
+        assert_true(data.space_modes["1"] == nil, "empty mode should remove the preference")
+      else
+        assert_equal(data.space_modes["1"], "stack", "explicit legacy choice should survive")
+      end
+    end
+  end)
+
+  run_test("state.set_space_mode: unchanged values retain UUID preferences", function()
+    local data = make_state()
+    data.space_mode_uuids = { ["1"] = "uuid-one" }
+    data.space_modes_by_uuid = { ["uuid-one"] = "bsp" }
+    local original_save = state_module.save
+    local save_called = false
+    state_module.save = function() save_called = true; return true end
+    local success, result = pcall(state_module.set_space_mode, data, 1, "bsp")
+    state_module.save = original_save
+    assert_true(success and result and not save_called, "unchanged layout should not write")
+    assert_equal(data.space_mode_uuids["1"], "uuid-one", "unchanged binding should survive")
+    assert_equal(data.space_modes_by_uuid["uuid-one"], "bsp", "unchanged UUID preference should survive")
+  end)
+
   run_test("state.get: top-level key", function()
     local state = make_state()
     if state_module.get then

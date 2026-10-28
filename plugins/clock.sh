@@ -26,8 +26,18 @@ case "${SENDER:-}" in
     ;;
 esac
 
-# Format: "Tue 11/18 02:14 PM"
-# Icon: "󰥔" (Clock icon)
-TIME_LABEL=$(date '+%a %m/%d %I:%M %p')
+# Styles: full (default), compact, time — driven by display density.
+CLOCK_STYLE="${BARISTA_CLOCK_STYLE:-full}"
+case "$CLOCK_STYLE" in
+  time)
+    TIME_LABEL=$(date '+%I:%M %p')
+    ;;
+  compact)
+    TIME_LABEL=$(date '+%a %I:%M %p')
+    ;;
+  *)
+    TIME_LABEL=$(date '+%a %m/%d %I:%M %p')
+    ;;
+esac
 
 sketchybar --set "$NAME" label="$TIME_LABEL"

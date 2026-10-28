@@ -283,16 +283,25 @@ function ui.anchor(layout, spec)
 
   local associated_display = spec.associated_display or spec.associated_displays
   local associated_space = spec.associated_space
-  if associated_display or associated_space then
+  local ignore_association = spec.ignore_association
+  if ignore_association == nil and type(props) == "table" then
+    ignore_association = props.ignore_association
+  end
+  if associated_display or associated_space or ignore_association ~= nil then
+    local ignore_flag = ""
+    if ignore_association ~= nil then
+      ignore_flag = " ignore_association=" .. (ignore_association and "on" or "off")
+    end
     append(layout, {
       action = "exec",
       cmd = string.format(
-        "sleep %.1f; %s --set %s%s%s",
+        "sleep %.1f; %s --set %s%s%s%s",
         delay,
         bin,
         shell_quote(name),
         associated_display and (" associated_display=" .. shell_quote(associated_display)) or "",
-        associated_space and (" associated_space=" .. shell_quote(associated_space)) or ""
+        associated_space and (" associated_space=" .. shell_quote(associated_space)) or "",
+        ignore_flag
       ),
     })
   end

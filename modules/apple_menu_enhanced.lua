@@ -62,7 +62,7 @@ end
 
 local function menu_label(label, shortcut)
   if shortcut and shortcut ~= "" then
-    return string.format("%-16s %s", label, shortcut)
+    return string.format("%s   %s", label, shortcut)
   end
   return label
 end
@@ -1025,6 +1025,9 @@ function apple_menu.setup(ctx)
     end
     if popup_config then
       item_config.popup = popup_config
+    end
+    if ctx.style_popup_row then
+      item_config = ctx.style_popup_row(item_config)
     end
     sbar.add("item", entry.name, item_config)
     if hover_enabled and ctx.attach_hover then

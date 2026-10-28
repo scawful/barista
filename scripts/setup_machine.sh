@@ -559,23 +559,11 @@ fi
 apply_menu_readability_defaults() {
   jq_edit_state '
     .appearance = (.appearance // {}) |
-    .appearance.popup_bg_color = "0xEE21162F" |
-    .appearance.menu_popup_bg_color = "0xF021162F" |
-    .appearance.popup_border_color = (.appearance.popup_border_color // "0xB0cdd6f4") |
-    .appearance.menu_font_style = (
-      if ((.appearance.menu_font_style // "Bold") | ascii_downcase | test("regular|light|thin")) then
-        "Semibold"
-      else
-        (.appearance.menu_font_style // "Bold")
-      end
-    ) |
-    .appearance.menu_header_font_style = (
-      if ((.appearance.menu_header_font_style // "Bold") | ascii_downcase | test("regular|light|thin")) then
-        "Bold"
-      else
-        (.appearance.menu_header_font_style // "Bold")
-      end
-    ) |
+    .appearance.popup_bg_color = "0xE021162F" |
+    .appearance.menu_popup_bg_color = "0xE021162F" |
+    .appearance.popup_border_color = (.appearance.popup_border_color // "0x30cdd6f4") |
+    .appearance.menu_font_style = (.appearance.menu_font_style // "Regular") |
+    .appearance.menu_header_font_style = (.appearance.menu_header_font_style // "Semibold") |
     .appearance.menu_font_size_offset = (
       if (.appearance.menu_font_size_offset // 0) < 2 then 2 else .appearance.menu_font_size_offset end
     ) |

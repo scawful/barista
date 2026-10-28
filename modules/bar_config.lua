@@ -39,6 +39,20 @@ local function font_string(family, style, size)
   return string.format("%s:%s:%0.1f", family, style, size)
 end
 
+-- macOS ships SF as hidden system families; the public names only resolve
+-- when the Apple font packages are installed, otherwise CoreText falls back
+-- to Helvetica.
+local FONT_FAMILY_ALIASES = {
+  ["SF Pro"] = "System Font",
+  ["SF Pro Text"] = "System Font",
+  ["SF Pro Display"] = "System Font",
+  ["SF Mono"] = ".SF NS Mono",
+}
+
+local function resolve_font_family(family)
+  return FONT_FAMILY_ALIASES[family] or family
+end
+
 -- Compute bar dimensions, appearance, defaults, and helpers.
 -- state_module: module with get_appearance(state, key, default)
 function compute(state, theme, state_module, associated_displays, detected_display_profile)
@@ -56,11 +70,12 @@ function compute(state, theme, state_module, associated_displays, detected_displ
   local clock_font_style = state_module.get_appearance(state, "clock_font_style", "Semibold")
   local widget_scale_base = tonumber(state_module.get_appearance(state, "widget_scale", 1.0)) or 1.0
   local auto_more_space_scaling = truthy(state_module.get_appearance(state, "auto_more_space_scaling", true), true)
+  local auto_display_density = truthy(state_module.get_appearance(state, "auto_display_density", true), true)
   local more_space_widget_scale_boost = tonumber(state_module.get_appearance(state, "more_space_widget_scale_boost", 0.08)) or 0.08
   more_space_widget_scale_boost = clamp(more_space_widget_scale_boost, 0, 0.20)
 
   local display_scaling = detected_display_profile
-  if display_scaling == nil and auto_more_space_scaling then
+  if display_scaling == nil and (auto_more_space_scaling or auto_display_density) then
     display_scaling = display_profile.detect()
   end
 
@@ -73,13 +88,50 @@ function compute(state, theme, state_module, associated_displays, detected_displ
     end
   end
 
-  local widget_scale = clamp(widget_scale_base + effective_more_space_boost, 0.85, 1.25)
+  local density = "comfortable"
+  local density_scale_adjust = 0
+  local hide_anchor_labels = false
+  local optional_wide_only = false
+  local narrow_status_strip = false
+  local split_layout = false
+  local clock_style = "full"
+  local wide_displays = ""
+  local narrow_displays = ""
+  local density_fingerprint = ""
+  if auto_display_density and display_scaling then
+    density = display_scaling.density or "comfortable"
+    hide_anchor_labels = display_scaling.hide_anchor_labels == true
+    optional_wide_only = display_scaling.optional_wide_only == true
+    narrow_status_strip = display_scaling.narrow_status_strip == true
+    split_layout = display_scaling.split_layout == true
+    clock_style = display_scaling.clock_style or "full"
+    wide_displays = display_scaling.wide_displays or ""
+    narrow_displays = display_scaling.narrow_displays or ""
+    density_fingerprint = display_scaling.fingerprint or ""
+    -- Only shrink the shared bar chrome when every display is narrow.
+    -- Mixed wide+narrow setups keep the wide desktop at full scale.
+    if not split_layout then
+      if density == "dense" then
+        density_scale_adjust = -0.12
+        bar_padding_left = math.min(bar_padding_left, 6)
+        bar_padding_right = math.min(bar_padding_right, 6)
+      elseif density == "compact" then
+        density_scale_adjust = -0.06
+        bar_padding_left = math.min(bar_padding_left, 10)
+        bar_padding_right = math.min(bar_padding_right, 10)
+      end
+    end
+  end
+
+  local widget_scale = clamp(widget_scale_base + effective_more_space_boost + density_scale_adjust, 0.75, 1.25)
 
   local popup_padding = tonumber(state_module.get_appearance(state, "popup_padding", 8)) or 8
-  local popup_corner_radius = tonumber(state_module.get_appearance(state, "popup_corner_radius", 6)) or 6
-  local popup_border_width = tonumber(state_module.get_appearance(state, "popup_border_width", 2)) or 2
+  local popup_corner_radius = tonumber(state_module.get_appearance(state, "popup_corner_radius", 10)) or 10
+  local popup_border_width = tonumber(state_module.get_appearance(state, "popup_border_width", 1)) or 1
   local popup_border_color = parse_color(state_module.get_appearance(state, "popup_border_color", theme.WHITE))
-  -- Popup bg defaults to bar color with boosted alpha (0xF0) for readability
+  local popup_blur_radius = tonumber(state_module.get_appearance(state, "popup_blur_radius", 20)) or 20
+  local popup_shadow = truthy(state_module.get_appearance(state, "popup_shadow", true), true)
+  -- Popup bg defaults to bar color at 0xE0 alpha so the popup blur shows through
   local raw_popup_bg = state_module.get_appearance(state, "popup_bg_color", nil)
   local popup_bg_color
   if raw_popup_bg then
@@ -87,9 +139,8 @@ function compute(state, theme, state_module, associated_displays, detected_displ
   else
     local base = parse_color(theme.bar.bg) or 0xC021162F
     if type(base) == "number" then
-      -- Replace alpha channel with 0xF0 (~94% opaque)
-      popup_bg_color = bit32 and bit32.bor(bit32.band(base, 0x00FFFFFF), 0xF0000000)
-        or (base % 0x1000000) + 0xF0000000
+      popup_bg_color = bit32 and bit32.bor(bit32.band(base, 0x00FFFFFF), 0xE0000000)
+        or (base % 0x1000000) + 0xE0000000
     else
       popup_bg_color = base
     end
@@ -142,15 +193,17 @@ function compute(state, theme, state_module, associated_displays, detected_displ
     math.max(bar_height - 2, base_widget_height + 4)
   )
 
-  local font_icon_family = state_module.get_appearance(state, "font_icon", "Hack Nerd Font")
-  local font_text_family = state_module.get_appearance(state, "font_text", "Source Code Pro")
-  local font_numbers_family = state_module.get_appearance(state, "font_numbers", "SF Mono")
+  local font_icon_family = resolve_font_family(state_module.get_appearance(state, "font_icon", "Hack Nerd Font"))
+  local font_text_family = resolve_font_family(state_module.get_appearance(state, "font_text", "Source Code Pro"))
+  local font_numbers_family = resolve_font_family(state_module.get_appearance(state, "font_numbers", "SF Mono"))
+  local font_popup_family = resolve_font_family(state_module.get_appearance(state, "font_popup", "SF Pro"))
 
   local settings = {
     font = {
       icon = font_icon_family,
       text = font_text_family,
       numbers = font_numbers_family,
+      popup = font_popup_family,
       style_map = {
         Regular = "Regular",
         Medium = "Medium",
@@ -177,6 +230,58 @@ function compute(state, theme, state_module, associated_displays, detected_displ
       padding_left = popup_padding,
       padding_right = popup_padding
     }
+  end
+
+  local popup_icon_width = tonumber(state_module.get_appearance(state, "popup_icon_width", 26)) or 26
+
+  local function swap_font_family(font, from_family, to_family)
+    if type(font) == "string" then
+      local family, rest = font:match("^(.-)(:.*)$")
+      if family == from_family then return to_family .. rest end
+    elseif type(font) == "table" and font.family == from_family then
+      local copy = {}
+      for key, value in pairs(font) do copy[key] = value end
+      copy.family = to_family
+      return copy
+    end
+    return font
+  end
+
+  local function single_glyph_icon(props)
+    if props["icon.drawing"] == false then return false end
+    local icon = props["icon.string"] or props.icon
+    if type(icon) == "table" then
+      if icon.drawing == false or icon.width ~= nil then return false end
+      icon = icon.string
+    end
+    if type(icon) ~= "string" or icon == "" then return false end
+    local _, glyphs = icon:gsub("[^\128-\191]", "")
+    return glyphs == 1
+  end
+
+  -- Popup rows use the proportional popup font for text labels (numeric rows
+  -- keep the numbers font) and a fixed, centered icon column so labels align.
+  local function style_popup_row(props)
+    if type(props) ~= "table" or type(props.position) ~= "string"
+      or not props.position:match("^popup%.") then
+      return props
+    end
+    local from_family, to_family = settings.font.text, settings.font.popup
+    local label_table = type(props.label) == "table" and props.label or nil
+    if props["label.font"] == nil and not (label_table and label_table.font) then
+      props["label.font"] = font_string(to_family, settings.font.style_map["Regular"], settings.font.sizes.small)
+    end
+    if props["label.font"] then
+      props["label.font"] = swap_font_family(props["label.font"], from_family, to_family)
+    end
+    if label_table and label_table.font then
+      label_table.font = swap_font_family(label_table.font, from_family, to_family)
+    end
+    if props["icon.width"] == nil and single_glyph_icon(props) then
+      props["icon.width"] = popup_icon_width
+      props["icon.align"] = "center"
+    end
+    return props
   end
 
   return {
@@ -212,6 +317,8 @@ function compute(state, theme, state_module, associated_displays, detected_displ
       ["label.color"] = theme.WHITE,
       ["label.padding_left"] = label_padding,
       ["label.padding_right"] = label_padding,
+      ["popup.blur_radius"] = popup_blur_radius,
+      ["popup.background.shadow.drawing"] = popup_shadow,
       background = {
         color = bar_color,
         corner_radius = widget_corner_radius,
@@ -228,11 +335,21 @@ function compute(state, theme, state_module, associated_displays, detected_displ
     widget_scale_base = widget_scale_base,
     more_space_widget_scale_boost = effective_more_space_boost,
     display_profile = display_scaling,
+    display_density = density,
+    density_fingerprint = density_fingerprint,
+    hide_anchor_labels = hide_anchor_labels,
+    optional_wide_only = optional_wide_only,
+    narrow_status_strip = narrow_status_strip,
+    split_layout = split_layout,
+    clock_style = clock_style,
+    wide_displays = wide_displays,
+    narrow_displays = narrow_displays,
     widget_corner_radius = widget_corner_radius,
     item_padding = item_padding,
     icon_padding = icon_padding,
     label_padding = label_padding,
     popup_background = popup_background,
+    style_popup_row = style_popup_row,
     group_bg_color = group_bg_color,
     group_border_color = group_border_color,
     group_border_width = group_border_width,

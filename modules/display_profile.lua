@@ -1,9 +1,15 @@
--- Detect built-in display scaling so appearance can respond to macOS "More Space".
+-- Detect built-in display scaling and multi-display bar density.
+-- Density follows the narrowest logical display width so a portrait/rotated
+-- external monitor does not let left and right items intersect.
 
 local json = require("json")
 
 local display_profile = {}
 local CACHE_TTL_SECONDS = tonumber(os.getenv("BARISTA_DISPLAY_PROFILE_CACHE_TTL") or "10") or 10
+
+-- Logical point widths: portrait externals often land near 800–1080.
+local DENSE_MAX_WIDTH = tonumber(os.getenv("BARISTA_DENSE_MAX_WIDTH") or "1000") or 1000
+local COMPACT_MAX_WIDTH = tonumber(os.getenv("BARISTA_COMPACT_MAX_WIDTH") or "1400") or 1400
 
 local function cache_path()
   local home = os.getenv("HOME")
@@ -11,7 +17,20 @@ local function cache_path()
   return config_dir .. "/cache/display_profile.json"
 end
 
-local function load_cached_result()
+-- system_profiler and the JXA inset probe cost hundreds of milliseconds, so a
+-- cache whose display signature still matches stays valid past the TTL.
+local function frames_signature(frames)
+  local parts = {}
+  for _, frame in ipairs(frames or {}) do
+    if frame.width and frame.height then
+      table.insert(parts, string.format("%s:%dx%d", tostring(frame.id), math.floor(frame.width), math.floor(frame.height)))
+    end
+  end
+  table.sort(parts)
+  return table.concat(parts, ",")
+end
+
+local function load_cached_result(signature)
   if CACHE_TTL_SECONDS <= 0 then
     return nil
   end
@@ -38,6 +57,10 @@ local function load_cached_result()
     return nil
   end
 
+  if signature and signature ~= "" and decoded.signature == signature then
+    return result
+  end
+
   if (os.time() - timestamp) > CACHE_TTL_SECONDS then
     return nil
   end
@@ -45,7 +68,7 @@ local function load_cached_result()
   return result
 end
 
-local function write_cached_result(result)
+local function write_cached_result(result, signature)
   if CACHE_TTL_SECONDS <= 0 or type(result) ~= "table" then
     return
   end
@@ -58,6 +81,7 @@ local function write_cached_result(result)
 
   local ok, encoded = pcall(json.encode, {
     timestamp = os.time(),
+    signature = signature,
     result = result,
   })
   if not ok or type(encoded) ~= "string" then
@@ -129,8 +153,129 @@ local function is_built_in_display(display)
   return display_type:find("built%-in", 1, false) ~= nil
 end
 
+local function join_ids(ids)
+  if type(ids) ~= "table" or #ids == 0 then
+    return ""
+  end
+  local parts = {}
+  for _, id in ipairs(ids) do
+    table.insert(parts, tostring(id))
+  end
+  return table.concat(parts, ",")
+end
+
 function display_profile.parse_resolution(value)
   return parse_resolution(value)
+end
+
+function display_profile.density_for_width(width, opts)
+  opts = opts or {}
+  local dense_max = tonumber(opts.dense_max_width) or DENSE_MAX_WIDTH
+  local compact_max = tonumber(opts.compact_max_width) or COMPACT_MAX_WIDTH
+  local w = tonumber(width)
+  if not w or w <= 0 then
+    return "comfortable"
+  end
+  if w < dense_max then
+    return "dense"
+  end
+  if w < compact_max then
+    return "compact"
+  end
+  return "comfortable"
+end
+
+function display_profile.classify_displays(frames, opts)
+  opts = opts or {}
+  local dense_max = tonumber(opts.dense_max_width) or DENSE_MAX_WIDTH
+  local screens = {}
+  local wide_ids = {}
+  local narrow_ids = {}
+  local min_width = nil
+  local max_width = nil
+  local has_portrait = false
+
+  for _, frame in ipairs(frames or {}) do
+    if type(frame) == "table" then
+      local width = tonumber(frame.width or frame.frameWidth or frame.visibleWidth)
+      local height = tonumber(frame.height or frame.frameHeight or frame.visibleHeight)
+      local id = tonumber(frame.id or frame["arrangement-id"] or frame.arrangement_id or frame.screen)
+      if width and width > 0 then
+        local portrait = false
+        if height and height > 0 then
+          portrait = height > width
+        end
+        if portrait then
+          has_portrait = true
+        end
+        local entry = {
+          id = id,
+          width = width,
+          height = height,
+          portrait = portrait,
+        }
+        table.insert(screens, entry)
+        if id then
+          if width < dense_max or portrait then
+            table.insert(narrow_ids, id)
+          else
+            table.insert(wide_ids, id)
+          end
+        end
+        if min_width == nil or width < min_width then
+          min_width = width
+        end
+        if max_width == nil or width > max_width then
+          max_width = width
+        end
+      end
+    end
+  end
+
+  -- split_layout: at least one wide and one narrow display.
+  -- Wide desktops keep the full widget set; narrow/portrait ones get a compact strip.
+  local split_layout = #wide_ids > 0 and #narrow_ids > 0
+  local all_narrow = #wide_ids == 0 and #narrow_ids > 0
+
+  local density = display_profile.density_for_width(min_width, opts)
+  -- Homogeneous narrow setups still densify globally. Mixed setups never
+  -- strip the wide desktop — only the narrow monitors adapt.
+  local hide_anchor_labels = all_narrow and (density == "dense" or density == "compact")
+  local clock_style = "full"
+  if all_narrow and density == "dense" then
+    clock_style = "time"
+  elseif all_narrow and density == "compact" then
+    clock_style = "compact"
+  end
+
+  local min_width_key = min_width and tostring(math.floor(min_width + 0.5)) or ""
+  local fingerprint = string.format(
+    "%s|min=%s|wide=%s|narrow=%s|split=%s",
+    density,
+    min_width_key,
+    join_ids(wide_ids),
+    join_ids(narrow_ids),
+    split_layout and "1" or "0"
+  )
+
+  return {
+    screens = screens,
+    min_width = min_width,
+    max_width = max_width,
+    has_portrait = has_portrait,
+    density = density,
+    wide_displays = join_ids(wide_ids),
+    narrow_displays = join_ids(narrow_ids),
+    fingerprint = fingerprint,
+    split_layout = split_layout,
+    all_narrow = all_narrow,
+    -- When split, heavy/optional widgets stay on wide desktops only.
+    optional_wide_only = split_layout,
+    -- Narrow monitors get compact clock/volume/battery clones.
+    narrow_status_strip = split_layout,
+    hide_anchor_labels = hide_anchor_labels,
+    clock_style = clock_style,
+  }
 end
 
 function display_profile.load_snapshot(reader)
@@ -148,6 +293,33 @@ function display_profile.load_snapshot(reader)
   return nil
 end
 
+function display_profile.load_display_frames(reader)
+  local read_output = reader or read_command_output
+  local sketchybar_bin = os.getenv("BARISTA_SKETCHYBAR_BIN") or "sketchybar"
+  local raw = read_output(string.format("%q --query displays 2>/dev/null", sketchybar_bin))
+  if type(raw) ~= "string" or raw == "" then
+    return {}
+  end
+
+  local ok, decoded = pcall(json.decode, raw)
+  if not ok or type(decoded) ~= "table" then
+    return {}
+  end
+
+  local frames = {}
+  for _, entry in ipairs(decoded) do
+    if type(entry) == "table" then
+      local frame = entry.frame or {}
+      table.insert(frames, {
+        id = tonumber(entry["arrangement-id"] or entry.arrangement_id),
+        width = tonumber(frame.w or frame.width),
+        height = tonumber(frame.h or frame.height),
+      })
+    end
+  end
+  return frames
+end
+
 function display_profile.load_screen_insets(reader)
   local read_output = reader or read_command_output
   local raw = read_output([[osascript -l JavaScript <<'JXA'
@@ -161,7 +333,7 @@ for (var i = 0; i < screens.count; i++) {
   var v = s.visibleFrame
   var top = (f.origin.y + f.size.height) - (v.origin.y + v.size.height)
   var bottom = v.origin.y - f.origin.y
-  var line = JSON.stringify({screen:i, topInset:top, bottomInset:bottom, frameWidth:f.size.width, visibleWidth:v.size.width}) + "\n"
+  var line = JSON.stringify({screen:i, topInset:top, bottomInset:bottom, frameWidth:f.size.width, frameHeight:f.size.height, visibleWidth:v.size.width, visibleHeight:v.size.height}) + "\n"
   out.writeData($(line).dataUsingEncoding($.NSUTF8StringEncoding))
 }
 JXA
@@ -191,6 +363,20 @@ function display_profile.analyze(snapshot)
     render_scale = 1.0,
     top_inset = nil,
     bottom_inset = nil,
+    density = "comfortable",
+    min_width = nil,
+    max_width = nil,
+    has_portrait = false,
+    wide_displays = "",
+    narrow_displays = "",
+    fingerprint = "comfortable|min=|wide=|narrow=|split=0",
+    split_layout = false,
+    all_narrow = false,
+    optional_wide_only = false,
+    narrow_status_strip = false,
+    hide_anchor_labels = false,
+    clock_style = "full",
+    screens = {},
   }
 
   local gpus = type(snapshot) == "table" and snapshot.SPDisplaysDataType or nil
@@ -227,9 +413,32 @@ function display_profile.analyze(snapshot)
   return result
 end
 
+local function merge_layout(result, layout)
+  if type(layout) ~= "table" then
+    return result
+  end
+  result.screens = layout.screens or {}
+  result.min_width = layout.min_width
+  result.max_width = layout.max_width
+  result.has_portrait = layout.has_portrait == true
+  result.density = layout.density or "comfortable"
+  result.wide_displays = layout.wide_displays or ""
+  result.narrow_displays = layout.narrow_displays or ""
+  result.fingerprint = layout.fingerprint or result.fingerprint
+  result.split_layout = layout.split_layout == true
+  result.all_narrow = layout.all_narrow == true
+  result.optional_wide_only = layout.optional_wide_only == true
+  result.narrow_status_strip = layout.narrow_status_strip == true
+  result.hide_anchor_labels = layout.hide_anchor_labels == true
+  result.clock_style = layout.clock_style or "full"
+  return result
+end
+
 function display_profile.detect(reader)
+  local frames = display_profile.load_display_frames(reader)
+  local signature = frames_signature(frames)
   if reader == nil then
-    local cached = load_cached_result()
+    local cached = load_cached_result(signature)
     if cached then
       return cached
     end
@@ -259,11 +468,29 @@ function display_profile.detect(reader)
     result.bottom_inset = max_bottom_inset
   end
 
+  if #frames == 0 then
+    frames = {}
+    -- row.screen is the 0-based NSScreen index, not SketchyBar's display
+    -- number, so these frames drive density only and never a split layout.
+    for _, row in ipairs(inset_rows) do
+      table.insert(frames, {
+        width = tonumber(row.frameWidth or row.visibleWidth),
+        height = tonumber(row.frameHeight or row.visibleHeight),
+      })
+    end
+  end
+
+  merge_layout(result, display_profile.classify_displays(frames))
+
   if reader == nil then
-    write_cached_result(result)
+    write_cached_result(result, signature)
   end
 
   return result
+end
+
+function display_profile.invalidate_cache()
+  os.remove(cache_path())
 end
 
 return display_profile

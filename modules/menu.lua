@@ -299,6 +299,7 @@ function menu.render_all_menus(ctx)
       appearance = ctx.appearance,
       widget_height = ctx.widget_height,
       font_string = ctx.font_string,
+      style_popup_row = ctx.style_popup_row,
       attach_hover = ctx.attach_hover,
       subscribe_mouse_exit = ctx.subscribe_popup_autoclose,
       icon_for = ctx.icon_for,

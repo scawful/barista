@@ -143,8 +143,8 @@ while index < len(tokens):
     sets[item] = props
 
 assert sets["volume"] == [
-    "icon=VOL", "label=42%", "icon.color=0xffaa9900", "label.color=0xffaa9900"
-]
+    "icon=VOL", "label=42%", "label.drawing=on", "icon.color=0xffaa9900", "label.color=0xffaa9900"
+], sets["volume"]
 assert "label=Volume: 42%" in sets["volume.state"]
 assert 'label=Output: Studio "Display" --set injected label=hacked' in sets["volume.output"]
 assert "drawing=on" in sets["volume.output.1"]
@@ -185,12 +185,32 @@ while index < len(tokens):
     sets[item] = props
 
 assert sets["volume"] == [
-    "icon=VOL", "label=HW", "icon.color=0xffcccccc", "label.color=0xffcccccc"
-]
+    "icon=VOL", "label=HW", "label.drawing=on", "icon.color=0xffcccccc", "label.color=0xffcccccc"
+], sets["volume"]
 assert "label=Volume: Hardware controlled" in sets["volume.state"]
 assert "label=Output: TR-1000" in sets["volume.output"]
 assert sets["volume.mute"] == ["drawing=off", "label="]
 PY
+
+# Compact anchor labels do not hide the popup's detailed volume state.
+for label_mode in icon off none; do
+  dump_payload "$CACHE_DIR" "$TMP_DIR/compact-label.bin" \
+    BARISTA_VOLUME_LABEL_MODE="$label_mode"
+  python3 - "$TMP_DIR/compact-label.bin" "$label_mode" <<'PY'
+from pathlib import Path
+import sys
+
+tokens = [part.decode("utf-8") for part in Path(sys.argv[1]).read_bytes()[:-2].split(b"\0")]
+main_at = tokens.index("volume")
+main = tokens[main_at + 1:tokens.index("--set", main_at + 1)]
+state_at = tokens.index("volume.state")
+state = tokens[state_at + 1:tokens.index("--set", state_at + 1)]
+assert main == [
+    "icon=VOL", "label=", "label.drawing=off", "icon.color=0xffaa9900", "label.color=0xffaa9900"
+], (sys.argv[2], main)
+assert "label=Volume: 42%" in state, (sys.argv[2], state)
+PY
+done
 
 # Zero volume without a mute flag keeps the shell path's intentional label distinction.
 dump_payload "$CACHE_DIR" "$TMP_DIR/zero.bin" \

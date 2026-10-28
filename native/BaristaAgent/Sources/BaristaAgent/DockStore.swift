@@ -438,6 +438,10 @@ final class DockStore: ObservableObject {
       NSWorkspace.shared.openApplication(at: url, configuration: configuration)
     case .file:
       if let url = tile.url { PopoverController.open(url) }
+    // The Trash stays Finder's: reading it takes Full Disk Access.
+    case .folder where tile.section != .trash && settings.filesBrowser == "barista"
+      && !NSEvent.modifierFlags.contains(.option):
+      if let url = tile.url { BrowserController.shared.open(url) }
     case .folder, .url:
       if let url = tile.url { NSWorkspace.shared.open(url) }
     case .action:
@@ -841,13 +845,17 @@ final class DockStore: ObservableObject {
   }
 
   static func transfer(_ urls: [URL], into folder: URL, move: Bool) {
+    var failed = false
     for url in urls where url.deletingLastPathComponent().standardizedFileURL != folder.standardizedFileURL {
       do {
         _ = try FileOperations.place(url, in: folder, move: move)
       } catch {
+        failed = true
         log("could not \(move ? "move" : "copy") \(url.path) into \(folder.path): \(error)")
       }
     }
+    // The menu that asked is gone; without a sound the drop just did nothing.
+    if failed { DispatchQueue.main.async { NSSound.beep() } }
   }
 
   static func log(_ message: String) {

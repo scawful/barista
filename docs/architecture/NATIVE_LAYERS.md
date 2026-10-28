@@ -107,7 +107,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
 - Action tiles show a spinning ring while their command runs, then a check
   for two minutes or a cross until you look. Clicking a failed action opens
   its output; the next click runs it again. Each run's output goes to
-  `~/Library/Logs/sketchybar-barista/dock-actions/<title>.log`, and the menu
+  `~/Library/Logs/sketchybar-barista/dock-actions/<title>-<hash>.log` (the
+  hash keeps same-titled actions in different groups apart), and the menu
   has Stop and Show Last Output. Each run is its own process group: Stop
   sends SIGTERM to the group, the ring turns amber while anything in it is
   still exiting, and after 5 s the rest gets SIGKILL; apps the command
@@ -245,7 +246,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   space for the folder's own menu. Name clashes keep both (`name 2`), copies
   are `name copy`, and a failed operation shows an alert. The Finder tile
   opens it (⌥-click opens Finder; `files_browser: "finder"` turns this off),
-  as does Browse in Barista Files on any folder callout or file. While a
+  as do Browse in Barista Files on any folder callout or file, a folder
+  tile's Open, and a folder parked on the shelf. While a
   Files or viewer window is open the agent is a regular app, so ⌘Tab
   reaches it; it goes back to an accessory when the last one closes.
 - Inside a git repo, each changed file in the list carries a letter (M, A,

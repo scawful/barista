@@ -189,11 +189,23 @@ final class ActionRunner: ObservableObject {
   }
 
   /// `action:Build ROM` becomes `Build-ROM`; long IDs are cut to 80 characters.
+  /// An ID that carries its command after a tab keeps only the title, plus
+  /// a hash of the whole ID: two groups' `Build` actions, or a menu entry
+  /// on one, must not write to the same log.
   static func slug(_ id: String) -> String {
     var name = id.hasPrefix("action:") ? String(id.dropFirst(7)) : id
-    if let tab = name.firstIndex(of: "\t") { name = String(name[..<tab]) }
+    var suffix = ""
+    if let tab = name.firstIndex(of: "\t") {
+      name = String(name[..<tab])
+      suffix = "-" + String(format: "%08x", stableHash(id))
+    }
     let parts = name.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
-    return parts.isEmpty ? "action" : String(parts.joined(separator: "-").prefix(80))
+    return (parts.isEmpty ? "action" : String(parts.joined(separator: "-").prefix(80))) + suffix
+  }
+
+  /// FNV-1a: the same for an ID in every run, unlike `hashValue`.
+  private static func stableHash(_ text: String) -> UInt32 {
+    text.utf8.reduce(2_166_136_261 as UInt32) { ($0 ^ UInt32($1)) &* 16_777_619 }
   }
 
   /// The next refresh reruns every info and menu command, such as after an

@@ -93,7 +93,10 @@ final class DockConfigTests: XCTestCase {
     config.dedupe()
     XCTAssertEqual(config.pinned[0].items, [oracle])
     XCTAssertEqual(config.pinned[1].items, [yaze])
-    XCTAssertEqual(ActionRunner.slug(yaze.key), "Build")
+    let logs = [oracle.key, yaze.key, yaze.key + "/Clean"].map(ActionRunner.slug)
+    XCTAssertTrue(logs.allSatisfy { $0.hasPrefix("Build-") && $0.count == 14 }, "\(logs)")
+    XCTAssertEqual(Set(logs).count, 3, "each action, and each menu entry on one, has its own log")
+    XCTAssertEqual(ActionRunner.slug(yaze.key), logs[1], "the same in every run")
   }
 
   func testGroupsWrapMoveAndUnwrapMembers() {

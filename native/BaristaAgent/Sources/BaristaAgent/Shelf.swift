@@ -49,6 +49,8 @@ final class Shelf: ObservableObject {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return }
     let formatter = DateFormatter()
+    // Fixed: a 12-hour or non-Gregorian setting would otherwise rewrite the pattern.
+    formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
     let stamp = "Snippet \(formatter.string(from: now))"
     var file = Self.snippetDirectory.appendingPathComponent("\(stamp).txt")

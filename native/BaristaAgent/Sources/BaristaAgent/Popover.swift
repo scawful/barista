@@ -346,9 +346,19 @@ final class PopoverController {
   private func showShelf(store: DockStore, animated: Bool) {
     generation += 1
     let shelf = store.shelf
-    let entries = shelf.urls.map {
-      StackEntry(url: $0, name: FileManager.default.displayName(atPath: $0.path),
-                 icon: NSWorkspace.shared.icon(forFile: $0.path), isFolder: false)
+    let entries = shelf.urls.map { url in
+      let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+      return StackEntry(url: url, name: FileManager.default.displayName(atPath: url.path),
+                        icon: NSWorkspace.shared.icon(forFile: url.path),
+                        isFolder: values?.isDirectory == true && values?.isPackage != true)
+    }
+    // A parked folder opens where the dock's folders do.
+    let open = { (entry: StackEntry) in
+      if entry.isFolder && store.settings.filesBrowser == "barista" {
+        BrowserController.shared.open(entry.url)
+      } else {
+        Self.open(entry.url)
+      }
     }
     let days = store.settings.shelfDays
     let keep = days >= 1 ? "\(Int(days)) day\(Int(days) == 1 ? "" : "s")" : "\(Int(days * 24)) hours"
@@ -377,12 +387,12 @@ final class PopoverController {
           },
         ],
         onOpen: { entry in
-          Self.open(entry.url)
+          open(entry)
           self?.close()
         },
         actions: { entry in
           [CellAction(title: "Open") {
-             Self.open(entry.url)
+             open(entry)
              self?.close()
            },
            CellAction(title: "Show in Finder") {

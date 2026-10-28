@@ -9,7 +9,9 @@ enum PreviewContent: Equatable {
   /// changed or cut; `spans` color code the preview knows.
   case text(String, note: String?, spans: [SyntaxSpan] = [])
   case rom(SNESHeader)
-  case image
+  /// Read here, off the main thread; drawing it in the view would read the
+  /// file again on every update.
+  case image(NSImage)
   case details
 }
 
@@ -24,7 +26,7 @@ enum Preview {
     let ext = url.pathExtension.lowercased()
     switch ViewerKind.of(url) {
     case .markdown?: return .document(Markdown.parse(read(url, limit: documentLimit)))
-    case .image?: return .image
+    case .image?: return NSImage(contentsOf: url).map { .image($0) } ?? .details
     case nil: break
     }
     if ext == "org" { return .document(Markdown.parse(Org.markdown(read(url, limit: documentLimit)))) }
@@ -34,7 +36,7 @@ enum Preview {
       return .rom(header)
     }
     guard let head = head(url, limit: textLimit), let text = decodeText(head), !text.isEmpty else { return .details }
-    let syntax = Syntax.of(extension: ext)
+    let syntax = Syntax.of(url)
     func code(_ text: String, note: String?) -> PreviewContent {
       .text(text, note: note, spans: syntax?.spans(text) ?? [])
     }
@@ -81,6 +83,23 @@ enum Preview {
 
   static func byteCount(_ count: Int) -> String {
     ByteCountFormatter.string(fromByteCount: Int64(count), countStyle: .file)
+  }
+
+  /// Line `line` (1-based, as rg counts) of `text`, without its line break;
+  /// nil past the end, which a cut preview can be.
+  static func range(ofLine line: Int, in text: String) -> NSRange? {
+    let text = text as NSString
+    var current = 1
+    var found: NSRange?
+    text.enumerateSubstrings(in: NSRange(location: 0, length: text.length),
+                             options: [.byLines, .substringNotRequired]) { _, range, _, stop in
+      if current == line {
+        found = range
+        stop.pointee = true
+      }
+      current += 1
+    }
+    return found
   }
 }
 
@@ -298,17 +317,13 @@ struct BrowserPreview: View {
             .padding(.horizontal, 10).padding(.vertical, 4)
           Divider()
         }
-        PlainTextView(text: text, spans: spans)
+        PlainTextView(text: text, spans: spans, line: entry.line)
       }
     case .rom(let header):
-      ROMDetails(header: header)
-    case .image:
-      if let image = NSImage(contentsOf: entry.url) {
-        Image(nsImage: image).resizable().scaledToFit().padding(12)
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else {
-        details(entry)
-      }
+      ROMDetails(header: header, url: entry.url)
+    case .image(let image):
+      Image(nsImage: image).resizable().scaledToFit().padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     case .details:
       details(entry)
     }
@@ -332,12 +347,19 @@ struct BrowserPreview: View {
 
 private struct ROMDetails: View {
   let header: SNESHeader
+  let url: URL
 
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 12) {
         Label(header.title.isEmpty ? "Untitled ROM" : header.title, systemImage: "gamecontroller")
           .font(.title3.weight(.semibold))
+        HStack {
+          ForEach(ROMApp.installed, id: \.title) { app in
+            Button(app.title) { app.open(url) }
+          }
+        }
+        .controlSize(.small)
         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
           row("Mapping", header.mapping + (header.fastROM ? ", FastROM" : ", SlowROM"))
           row("ROM size", (header.romKB.map { "\($0) KB in header, " } ?? "") + Preview.byteCount(header.fileSize) + " file")
@@ -391,6 +413,18 @@ private struct PaneWidth: Layout {
 private struct PlainTextView: NSViewRepresentable {
   let text: String
   let spans: [SyntaxSpan]
+  /// A contents search's match, 1-based: scrolled to and selected.
+  var line: Int?
+
+  /// What the view shows, so an update redraws only when it changes; a
+  /// rename can change the coloring and leave the text alone.
+  final class Shown {
+    var text = ""
+    var spans: [SyntaxSpan] = []
+    var line: Int?
+  }
+
+  func makeCoordinator() -> Shown { Shown() }
 
   func makeNSView(context: Context) -> NSScrollView {
     let scroll = NSTextView.scrollableTextView()
@@ -407,25 +441,38 @@ private struct PlainTextView: NSViewRepresentable {
       view.textContainer?.widthTracksTextView = false
       view.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
                                                  height: .greatestFiniteMagnitude)
-      show(in: view)
+      show(in: view, context.coordinator)
     }
     return scroll
   }
 
   func updateNSView(_ scroll: NSScrollView, context: Context) {
-    guard let view = scroll.documentView as? NSTextView, view.string != text else { return }
-    show(in: view)
-    view.scrollToBeginningOfDocument(nil)
+    let shown = context.coordinator
+    guard let view = scroll.documentView as? NSTextView,
+          shown.text != text || shown.spans != spans || shown.line != line else { return }
+    show(in: view, shown)
   }
 
-  private func show(in view: NSTextView) {
+  private func show(in view: NSTextView, _ shown: Shown) {
+    (shown.text, shown.spans, shown.line) = (text, spans, line)
     view.string = text
-    guard let storage = view.textStorage, !spans.isEmpty else { return }
-    storage.beginEditing()
-    for span in spans where NSMaxRange(span.range) <= storage.length {
-      storage.addAttribute(.foregroundColor, value: Self.color(span.token), range: span.range)
+    if let storage = view.textStorage, !spans.isEmpty {
+      storage.beginEditing()
+      for span in spans where NSMaxRange(span.range) <= storage.length {
+        storage.addAttribute(.foregroundColor, value: Self.color(span.token), range: span.range)
+      }
+      storage.endEditing()
     }
-    storage.endEditing()
+    guard let line, let range = Preview.range(ofLine: line, in: text) else {
+      view.scrollToBeginningOfDocument(nil)
+      return
+    }
+    view.setSelectedRange(range)
+    // The view has no window or layout yet when it was just made.
+    DispatchQueue.main.async {
+      view.scrollRangeToVisible(range)
+      view.showFindIndicator(for: range)
+    }
   }
 
   private static func color(_ token: SyntaxToken) -> NSColor {

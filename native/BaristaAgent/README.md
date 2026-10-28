@@ -46,7 +46,8 @@ The agent runs as `dev.barista.agent` and logs to
 | `Viewer.swift` | The viewer windows for Markdown and images, and `FileWatcher`, which reloads a file when it is saved. |
 | `FileBrowserModel.swift` | Barista Files' pure model: tab history, in-window tabs, listing, sorting, filtering, and `FileOperations` (Finder's names for new folders, copies, and kept-both clashes; rename; repo root). |
 | `FileBrowser.swift` | The Barista Files window: path bar, tabs, sidebar, table, preview, in-place rename, and `BrowserWindow`, which drives the Quick Look panel. |
-| `Git.swift` | Barista Files' git: porcelain v2 status and worktree parsing, `Git.inspect` (no optional locks), and `Tool` for running Homebrew tools from launchd. |
+| `Git.swift` | Barista Files' git: porcelain v2 status and worktree parsing, `Git.inspect` (no optional locks), and `Tool` for running Homebrew and cargo tools from launchd. |
+| `Search.swift` | Barista Files' search scopes: `FileSearch` (the fd and rg commands and their output) and `ToolRun`, which streams a tool's lines and stops it at a limit or on cancel. |
 | `Jump.swift` | ⌘K: candidate ranking, `JumpIndex` (places, zoxide, repos under `~/src`), and the sheet. |
 | `Preview.swift` | Barista Files' preview pane: `Preview.load` (Markdown, org, text, JSON, ROM, image), `Org` to Markdown, and `SNESHeader`. |
 | `Syntax.swift` | Regex coloring for code previews: 65816/asar, and comment, string, keyword, and number rules for other languages. |

@@ -244,8 +244,20 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   sidebar's Repository section shows the branch, change count, and
   ahead/behind, and lists the repo's worktrees by branch; clicking one goes
   to the same folder in that worktree, or its top when the folder isn't
-  there. git runs after the listing is shown and without optional locks, so
-  browsing never takes `index.lock` from an agent committing in the repo.
+  there. Right-click the repo or a worktree to open it in Cursor or Emacs,
+  a terminal or lazygit at its top, or copy its branch or path. git runs
+  after the listing is shown and without optional locks, so browsing never
+  takes `index.lock` from an agent committing in the repo. A burst of
+  writes in the shown folder (a build, an agent) reloads it at most five
+  times a second.
+- Search (⌘F) filters the shown folder as you type. With a query, a scope
+  bar offers This Folder, Subfolders (names holding every word, via `fd`),
+  and Contents (the query as one phrase, via `rg`; ⇧⌘F starts here).
+  Subfolder and content results show their path under the folder, contents
+  show the first matching line, and the preview pane opens a text result at
+  that line. Both skip `.git`, and skip what `.gitignore` ignores unless
+  hidden files are shown (⇧⌘.); results stop at 1000. Escape clears the
+  search; ⌘R (or Show in Enclosing Folder) shows a result in its folder.
 - ⌘I (or Get Info on either right-click menu) shows kind, size (a folder's
   is measured in the background and stops when the sheet closes), where,
   created and modified dates, permissions, a symlink's target, and the last
@@ -259,12 +271,16 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
 - The preview pane renders Markdown and org (headings, lists, src blocks,
   tables, links), shows code and other text unwrapped in a monospaced view
   (first 256 KB) with light coloring (65816/asar: labels, mnemonics,
-  directives, `!defines`, `%macros`, numbers; C-family, `#`-comment, and Lua
-  files: comments, strings, keywords, numbers), indents minified JSON, and
-  reads a SNES ROM's internal
+  directives, `!defines`, `%macros`, numbers; C-family, `#`-comment, Lua,
+  and Lisp files: comments, strings, keywords, numbers; by name, shell
+  startup files, `yabairc`, `skhdrc`, and build files), indents minified
+  JSON, and reads a SNES ROM's internal
   header: title, LoROM/HiROM/ExHiROM, ROM and SRAM size, region, version,
   and the stored checksum against the computed one (skipped when the size
   has no standard mirroring). Images and anything else fall back to details.
+- yaze and Mesen2 OOS declare no document types, so Open With never lists
+  them: a ROM's right-click menu and its preview have Open in yaze
+  (`--rom_file`) and Play in Mesen2 OOS, each in a new instance.
 - With nothing selected inside a folder that has an AFS `.context` (the
   nearest one above it with entries, Home's excepted), the preview pane
   shows that context: the scratchpad's `state.md`, unfinished items by
@@ -276,6 +292,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   when it opens one. Browser windows match no rule and tile. macOS window
   tabbing is off in the agent, so neither ever becomes several windows.
 - From a shell or skhd: `scripts/barista_agent.sh view|browse|open PATH`.
+  `browse` on a file (or an app) shows it selected in its folder, like
+  `open -R`.
 
 ### `dock.json`
 

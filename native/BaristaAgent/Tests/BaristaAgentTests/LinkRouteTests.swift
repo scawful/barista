@@ -65,7 +65,10 @@ final class LinkRouteTests: XCTestCase {
     XCTAssertEqual(OpenRequest.view.route(file("report.pdf").path), .reveal(file("report.pdf")))
     XCTAssertEqual(OpenRequest.view.route(file("notes.md").path), .view(file("notes.md")))
     XCTAssertEqual(OpenRequest.browse.route(file("docs").path), .browse(file("docs")))
-    XCTAssertEqual(OpenRequest.browse.route(file("notes.md").path), .ignore)
+    XCTAssertEqual(OpenRequest.browse.route(file("notes.md").path), .browse(file("notes.md")),
+                   "browsing a file shows it in its folder")
+    XCTAssertEqual(OpenRequest.browse.route(file("Tool.app").path), .browse(file("Tool.app")))
+    XCTAssertEqual(OpenRequest.browse.route(file("missing.md").path), .ignore)
     XCTAssertEqual(OpenRequest.open.route("relative/notes.md"), .ignore)
   }
 }

@@ -26,6 +26,19 @@ struct Syntax {
   private let lexical: NSRegularExpression
   private let rules: [Rule]
 
+  /// By name first: shell startup files, window manager configs, and build
+  /// files have no extension to go by.
+  static func of(_ url: URL) -> Syntax? {
+    switch url.lastPathComponent.lowercased() {
+    case ".zshrc", ".zshenv", ".zprofile", ".bashrc", ".bash_profile", ".profile", "yabairc", ".yabairc",
+         "skhdrc", ".skhdrc", "makefile", "gnumakefile", "dockerfile", "brewfile", "justfile", "cmakelists.txt",
+         ".gitignore", ".gitattributes", ".env", ".envrc":
+      return hashes
+    default:
+      return of(extension: url.pathExtension)
+    }
+  }
+
   /// Nil for extensions without rules; their text shows uncolored.
   static func of(extension ext: String) -> Syntax? {
     switch ext.lowercased() {
@@ -36,6 +49,7 @@ struct Syntax {
     case "py", "sh", "bash", "zsh", "fish", "rb", "toml", "yaml", "yml", "conf", "cmake", "pl", "r":
       return hashes
     case "lua": return dashes
+    case "el", "lisp", "scm", "clj": return lisp
     default: return nil
     }
   }
@@ -113,4 +127,10 @@ struct Syntax {
   private static let slashes = Syntax(comment: #"//.*|/\*[\s\S]*?\*/"#, strings: quoted, rules: common)
   private static let hashes = Syntax(comment: "#.*", strings: quoted, rules: common)
   private static let dashes = Syntax(comment: "--.*", strings: quoted, rules: common)
+  /// `'` quotes a symbol in Lisp rather than opening a string.
+  private static let lisp = Syntax(comment: ";.*", rules: [
+    Rule(regex: regex(#"(?<=\()(?:defun|defmacro|defvar|defcustom|defconst|setq|setq-local|let\*?|lambda|if|when|unless|cond|progn|require|provide|use-package|define-key|add-hook|with-eval-after-load)(?=[\s)])"#),
+         token: .keyword),
+    Rule(regex: regex(#"(?<![\w-])-?\d+(?:\.\d+)?(?![\w-])"#), token: .number),
+  ])
 }

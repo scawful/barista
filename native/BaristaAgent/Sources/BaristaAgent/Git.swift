@@ -145,10 +145,15 @@ enum Git {
 }
 
 enum Tool {
-  /// A Homebrew tool's path; the agent runs from launchd without the shell's PATH.
+  /// Where Homebrew, cargo, and pipx-style installs put tools; the agent runs
+  /// from launchd without the shell's PATH.
+  private static let folders: [String] = {
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    return ["/opt/homebrew/bin", "/usr/local/bin", home + "/.local/bin", home + "/.cargo/bin"]
+  }()
+
   static func find(_ name: String) -> String? {
-    ["/opt/homebrew/bin", "/usr/local/bin"].map { "\($0)/\(name)" }
-      .first { FileManager.default.isExecutableFile(atPath: $0) }
+    folders.map { "\($0)/\(name)" }.first { FileManager.default.isExecutableFile(atPath: $0) }
   }
 
   /// Standard output of a successful run, nil otherwise. Blocking.

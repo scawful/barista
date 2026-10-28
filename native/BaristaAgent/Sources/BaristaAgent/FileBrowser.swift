@@ -20,12 +20,14 @@ final class BrowserController {
   private var closeObservers: [ObjectIdentifier: NSObjectProtocol] = [:]
 
   /// Opens `url` in a new tab of the front browser, or a new browser when
-  /// there is none or `newWindow`. A file opens its folder with it selected.
+  /// there is none or `newWindow`. A file or package (an app) opens its folder
+  /// with it selected.
   func open(_ url: URL, newWindow: Bool = false) {
     var isFolder: ObjCBool = false
     let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder)
-    let folder = exists && isFolder.boolValue ? url : url.deletingLastPathComponent()
-    let select = exists && !isFolder.boolValue ? url : nil
+    let browses = exists && isFolder.boolValue && !NSWorkspace.shared.isFilePackage(atPath: url.path)
+    let folder = browses ? url : url.deletingLastPathComponent()
+    let select = exists && !browses ? url : nil
     if !newWindow, let window = windows.last(where: { $0.isVisible }) ?? windows.last,
        let state = states[ObjectIdentifier(window)] {
       state.newTab(at: folder, selecting: select)
@@ -101,6 +103,10 @@ final class BrowserController {
       case (.command, _, "["): state.back()
       case (.command, _, "]"): state.forward()
       case (.command, _, "f"): state.focusSearch += 1
+      case ([.command, .shift], _, "f"), ([.command, .shift], _, "F"):
+        state.scope = .contents
+        state.focusSearch += 1
+      case (.command, _, "r") where !typing: state.revealSelection()
       case ([.command, .shift], _, "."), ([.command, .shift], _, ">"): state.hidden.toggle(); state.reload()
       case (.control, 48, _): state.selectNeighborTab(1)
       case ([.control, .shift], 48, _): state.selectNeighborTab(-1)
@@ -133,7 +139,12 @@ final class BrowserState: ObservableObject {
   @Published var selection: Set<URL> = []
   @Published var sortKey = FileSortKey.name { didSet { refreshShown() } }
   @Published var ascending = true { didSet { refreshShown() } }
-  @Published var query = "" { didSet { refreshShown() } }
+  @Published var query = "" { didSet { search() } }
+  @Published var scope = SearchScope.folder { didSet { if scope != oldValue { search() } } }
+  /// fd or rg is running for the query.
+  @Published private(set) var searching = false
+  /// Why a deep search's results are partial or missing.
+  @Published private(set) var searchNote: String?
   @Published var hidden = false
   @Published var showPreview = true
   @Published private(set) var shown: [FileEntry] = []
@@ -149,6 +160,8 @@ final class BrowserState: ObservableObject {
   /// The nearest AFS `.context` folder, shown when nothing is selected.
   @Published private(set) var contextRoot: URL?
   @Published var jumping = false
+  /// A row selected for you (going up, back, or revealing), scrolled into view.
+  @Published private(set) var scrollTarget: URL?
   /// What Get Info is showing; empty when it's closed.
   @Published var inspecting: [URL] = []
   var places: () -> [(name: String, url: URL)] = { [] }
@@ -157,8 +170,13 @@ final class BrowserState: ObservableObject {
   var onQuickLook: (() -> Void)?
   private var watcher: FileWatcher?
   private var generation = 0
+  private var reloadScheduled = false
   /// Selected by the next listing; nil keeps whatever is still there.
   private var pendingSelection: Set<URL>?
+  /// A deep search's rows; nil while the folder filter applies.
+  private var results: [FileEntry]?
+  private var searchRun: ToolRun?
+  private var searchWork: DispatchWorkItem?
 
   init(location: URL, selecting: URL? = nil) {
     tabs = BrowserTabs(location)
@@ -168,6 +186,7 @@ final class BrowserState: ObservableObject {
   var location: URL { tabs.selected.location }
 
   func reload() {
+    reloadScheduled = false
     generation += 1
     let token = generation
     let folder = location
@@ -180,7 +199,8 @@ final class BrowserState: ObservableObject {
       worktrees = []
     }
     if let context = contextRoot, !folder.isWithin(context.deletingLastPathComponent()) { contextRoot = nil }
-    watcher = FileWatcher(url: folder) { [weak self] in self?.reload() }
+    watcher = FileWatcher(url: folder) { [weak self] in self?.scheduleReload() }
+    if isDeepSearch { search() }
     DispatchQueue.global(qos: .userInitiated).async {
       let listing = FileListing.load(folder, hidden: hidden)
       DispatchQueue.main.async { [weak self] in
@@ -191,6 +211,7 @@ final class BrowserState: ObservableObject {
         if let pending = self.pendingSelection {
           self.selection = pending.intersection(present)
           self.pendingSelection = nil
+          self.scrollTarget = self.selectedURLs.first
         } else {
           self.selection = self.selection.intersection(present)
         }
@@ -207,6 +228,60 @@ final class BrowserState: ObservableObject {
     }
   }
 
+  /// A build or an agent can write hundreds of files in a burst; each would
+  /// start a listing and a git status. At most one reload per 0.2 s follows,
+  /// and a steady stream of writes can't hold it off.
+  private func scheduleReload() {
+    guard !reloadScheduled else { return }
+    reloadScheduled = true
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+      guard let self, self.reloadScheduled else { return }
+      self.reload()
+    }
+  }
+
+  var isDeepSearch: Bool { scope != .folder && !query.trimmingCharacters(in: .whitespaces).isEmpty }
+
+  /// The folder filter applies at once; fd and rg start after a pause in
+  /// typing, and each keystroke stops the run before it.
+  private func search() {
+    searchRun?.cancel()
+    searchRun = nil
+    searchWork?.cancel()
+    guard isDeepSearch else {
+      results = nil
+      searching = false
+      searchNote = nil
+      refreshShown()
+      return
+    }
+    guard let command = FileSearch.command(scope, query: query, in: location, everything: hidden) else {
+      results = []
+      searching = false
+      searchNote = "\(scope.tool ?? "") isn't installed"
+      refreshShown()
+      return
+    }
+    let run = ToolRun()
+    let root = location
+    searchRun = run
+    searching = true
+    let work = DispatchWorkItem {
+      guard let output = run.lines(command.tool, command.arguments, limit: FileSearch.limit) else { return }
+      let found = FileSearch.entries(output.lines, root: root)
+      DispatchQueue.main.async { [weak self] in
+        guard let self, self.searchRun === run else { return }
+        self.results = found
+        self.searching = false
+        self.searchNote = output.complete ? nil : "Showing the first \(FileSearch.limit)"
+        self.refreshShown()
+        self.selection = self.selection.intersection(self.shown.map(\.url))
+      }
+    }
+    searchWork = work
+    DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.2, execute: work)
+  }
+
   /// Goes to the same place in another worktree, or its top when that
   /// folder isn't there.
   func switchTo(_ worktree: GitWorktree) {
@@ -219,16 +294,23 @@ final class BrowserState: ObservableObject {
   }
 
   private func refreshShown() {
-    shown = FileListing.filtered(FileListing.sorted(entries ?? [], by: sortKey, ascending: ascending),
-                                 query: query)
+    shown = FileListing.sorted(results ?? FileListing.filtered(entries ?? [], query: query),
+                               by: sortKey, ascending: ascending)
   }
 
-  func go(to url: URL) {
+  func go(to url: URL, selecting: URL? = nil) {
     tabs.go(to: url)
     query = ""
     selection = []
+    pendingSelection = selecting.map { [$0] }
     reload()
     JumpIndex.remember(url)
+  }
+
+  /// A search result shown in its own folder, as Finder's ⌘R does.
+  func revealSelection() {
+    guard let url = selectedURLs.first, selection.count == 1 else { return }
+    go(to: url.deletingLastPathComponent(), selecting: url)
   }
 
   func back() {
@@ -248,9 +330,7 @@ final class BrowserState: ObservableObject {
   /// Up selects the folder you came from, as Finder does.
   func up() {
     guard let parent = tabs.selected.parent else { return }
-    let from = location
-    go(to: parent)
-    pendingSelection = [from]
+    go(to: parent, selecting: location)
   }
 
   func newTab(at url: URL, selecting: URL? = nil) {
@@ -296,9 +376,11 @@ final class BrowserState: ObservableObject {
     let chosen = shown.filter { selection.contains($0.url) }
     if chosen.count == 1, let entry = chosen.first {
       open(entry)
-    } else {
-      chosen.filter { !$0.isFolder }.forEach(open)
+      return
     }
+    // Each opens after the selected tab, so the last goes in first.
+    for folder in chosen.filter(\.isFolder).reversed() { tabs.open(folder.url, select: false) }
+    chosen.filter { !$0.isFolder }.forEach(open)
   }
 
   func trashSelection() {
@@ -306,6 +388,8 @@ final class BrowserState: ObservableObject {
     guard !urls.isEmpty else { return }
     NSWorkspace.shared.recycle(urls) { _, error in
       if let error { DockStore.log("could not move files to the Trash: \(error)") }
+      // The watcher sees the shown folder only; search results can be deeper.
+      DispatchQueue.main.async { [weak self] in self?.scheduleReload() }
     }
   }
 
@@ -436,6 +520,7 @@ struct BrowserView: View {
     VStack(spacing: 0) {
       toolbar
       if state.tabs.tabs.count > 1 { tabStrip }
+      if !state.query.isEmpty { scopeBar }
       Divider()
       HSplitView {
         sidebar.frame(minWidth: 140, idealWidth: 170, maxWidth: 260)
@@ -474,12 +559,14 @@ struct BrowserView: View {
         .disabled(!state.tabs.selected.canGoForward).help("Forward (⌘])")
       Button(action: state.up) { Image(systemName: "arrow.up") }
         .disabled(state.tabs.selected.parent == nil).help("Enclosing Folder (⌘↑)")
-      PathBar(location: state.location, go: state.go(to:))
+      PathBar(location: state.location) { state.go(to: $0) }
       Spacer(minLength: 8)
       Button { state.jumping = true } label: { Image(systemName: "arrow.up.forward.square") }
         .help("Jump to a Folder (⌘K)")
       TextField("Search", text: $state.query)
         .textFieldStyle(.roundedBorder).frame(width: 180).focused($searchFocused)
+        .onExitCommand { state.query = "" }
+        .help("Search (⌘F); ⇧⌘F searches file contents; Escape clears")
       Button { state.hidden.toggle(); state.reload() } label: {
         Image(systemName: state.hidden ? "eye" : "eye.slash")
       }.help("Show Hidden Files (⇧⌘.)")
@@ -492,6 +579,24 @@ struct BrowserView: View {
     .padding(.leading, 78)
     .padding(.trailing, 12)
     .frame(height: 38)
+  }
+
+  private var scopeBar: some View {
+    HStack(spacing: 8) {
+      Text("Search").foregroundStyle(.secondary)
+      Picker("Search", selection: $state.scope) {
+        ForEach(SearchScope.allCases) { Text($0.title).tag($0) }
+      }
+      .pickerStyle(.segmented).labelsHidden().fixedSize()
+      .help("Subfolders matches names with fd; Contents matches text with rg. Both skip what .gitignore "
+            + "ignores unless hidden files are shown.")
+      if state.searching { ProgressView().controlSize(.small) }
+      Spacer()
+      if let note = state.searchNote { Text(note).foregroundStyle(.secondary) }
+    }
+    .font(.callout)
+    .padding(.horizontal, 12)
+    .frame(height: 28)
   }
 
   private var tabStrip: some View {
@@ -535,12 +640,13 @@ struct BrowserView: View {
               let name = worktree.branch.map { ($0 as NSString).lastPathComponent } ?? worktree.path.lastPathComponent
               Label(name, systemImage: "arrow.triangle.branch")
                 .lineLimit(1)
-                .fontWeight(worktree.path == git.root ? .semibold : .regular)
+                .fontWeight(worktree.path.path == git.root.path ? .semibold : .regular)
                 .help("\(worktree.branch ?? "Detached HEAD") at "
                       + "\((worktree.path.path as NSString).abbreviatingWithTildeInPath); "
                       + "opens the same folder there")
                 .contentShape(Rectangle())
                 .onTapGesture { state.switchTo(worktree) }
+                .contextMenu { RepoMenu(root: worktree.path, branch: worktree.branch) }
             }
           }
         }
@@ -557,12 +663,13 @@ struct BrowserView: View {
                  git.behind > 0 ? "↓\(git.behind)" : nil].compactMap { $0 }
     return VStack(alignment: .leading, spacing: 1) {
       Label(git.root.lastPathComponent, systemImage: "shippingbox")
-        .fontWeight(state.location == git.root ? .semibold : .regular)
+        .fontWeight(state.location.path == git.root.path ? .semibold : .regular)
       Text(parts.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
     }
     .help((git.root.path as NSString).abbreviatingWithTildeInPath)
     .contentShape(Rectangle())
     .onTapGesture { state.go(to: git.root) }
+    .contextMenu { RepoMenu(root: git.root, branch: git.branch) }
   }
 
   private func placeRow(_ place: (name: String, url: URL)) -> some View {
@@ -571,7 +678,7 @@ struct BrowserView: View {
     } icon: {
       Image(nsImage: NSWorkspace.shared.icon(forFile: place.url.path)).resizable().frame(width: 16, height: 16)
     }
-    .fontWeight(state.location == place.url.standardizedFileURL ? .semibold : .regular)
+    .fontWeight(state.location.path == place.url.standardizedFileURL.path ? .semibold : .regular)
     .contentShape(Rectangle())
     .onTapGesture { state.go(to: place.url) }
   }
@@ -579,7 +686,9 @@ struct BrowserView: View {
   @ViewBuilder
   private var listing: some View {
     if state.entries == nil {
-      Text("Barista can't read this folder. Allow it in System Settings → Privacy & Security → Files and Folders.")
+      Text(FileManager.default.fileExists(atPath: state.location.path)
+           ? "Barista can't read this folder. Allow it in System Settings → Privacy & Security → Files and Folders."
+           : "This folder was moved or deleted.")
         .foregroundStyle(.secondary).multilineTextAlignment(.center).padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     } else {
@@ -590,7 +699,8 @@ struct BrowserView: View {
   private var statusBar: some View {
     HStack {
       let count = state.shown.count
-      Text("\(count) item\(count == 1 ? "" : "s")"
+      let noun = state.isDeepSearch ? "result" : "item"
+      Text("\(count) \(noun)\(count == 1 ? "" : "s")"
            + (state.selection.isEmpty ? "" : ", \(state.selection.count) selected"))
       if state.hidden { Text("· hidden files shown") }
       Spacer()
@@ -629,6 +739,21 @@ private struct FileTable: View {
   @State private var order = [KeyPathComparator(\FileEntry.name)]
 
   var body: some View {
+    ScrollViewReader { proxy in
+      table
+        .onChange(of: state.scrollTarget) { scroll(proxy) }
+        // A new window's listing can land before the table is shown.
+        .onAppear { scroll(proxy) }
+    }
+  }
+
+  private func scroll(_ proxy: ScrollViewProxy) {
+    guard let target = state.scrollTarget else { return }
+    // The target arrives with the listing; its row isn't laid out yet.
+    DispatchQueue.main.async { proxy.scrollTo(target, anchor: .center) }
+  }
+
+  private var table: some View {
     Table(of: FileEntry.self, selection: $state.selection, sortOrder: $order) {
       TableColumn("Name", value: \.name) { entry in
         HStack(spacing: 6) {
@@ -639,7 +764,11 @@ private struct FileTable: View {
                         commit: { state.commitRename(entry.url, to: $0) },
                         cancel: { state.renaming = nil })
           } else {
-            Text(entry.name).lineLimit(1)
+            Text(entry.name).lineLimit(1).truncationMode(.middle).layoutPriority(1)
+            if let match = entry.match {
+              Text(match).foregroundStyle(.secondary).lineLimit(1)
+                .help(entry.line.map { "Line \($0): \(match)" } ?? match)
+            }
           }
           if let mark = state.git?.mark(for: entry.url, isFolder: entry.isFolder) {
             Spacer(minLength: 4)
@@ -721,6 +850,12 @@ private struct FileTable: View {
       } else if let single {
         OpenWithMenu(url: single)
       }
+      if let single, single.deletingLastPathComponent().standardizedFileURL.path != state.location.path {
+        Button("Show in Enclosing Folder") {
+          state.selection = [single]
+          state.revealSelection()
+        }
+      }
       Button("Quick Look") {
         state.selection = urls
         state.onQuickLook?()
@@ -779,6 +914,61 @@ private struct ToolButtons: View {
     }
     Button("Terminal Here") {
       ActionRunner.openTerminal("cd " + ActionRunner.shellQuote(directory.path), arguments: [])
+    }
+    if urls.count == 1, let rom = urls.first, ROMApp.isROM(rom) {
+      ForEach(ROMApp.installed, id: \.title) { app in
+        Button(app.title) { app.open(rom) }
+      }
+    }
+  }
+}
+
+/// A repository or worktree in the sidebar: its editors, a terminal, and
+/// lazygit at its top, and its branch to paste into a prompt.
+private struct RepoMenu: View {
+  let root: URL
+  let branch: String?
+
+  var body: some View {
+    ToolButtons(urls: [root], directory: root)
+    if let lazygit = Tool.find("lazygit") {
+      Button("lazygit") {
+        ActionRunner.openTerminal("cd " + ActionRunner.shellQuote(root.path) + " && "
+                                  + ActionRunner.shellQuote(lazygit), arguments: [])
+      }
+    }
+    Divider()
+    if let branch { Button("Copy Branch Name") { copyText(branch) } }
+    Button("Copy Path") { copyText(root.path) }
+  }
+}
+
+/// SNES tools that declare no document types, so Open With never lists them.
+struct ROMApp {
+  let title: String
+  let bundleID: String
+  let arguments: (URL) -> [String]
+
+  static let all = [
+    ROMApp(title: "Open in yaze", bundleID: "com.scawful.yaze") { ["--rom_file", $0.path] },
+    ROMApp(title: "Play in Mesen2 OOS", bundleID: "ca.mesen.oos") { [$0.path] },
+  ]
+
+  static var installed: [ROMApp] { all.filter { $0.app != nil } }
+
+  static func isROM(_ url: URL) -> Bool { ["sfc", "smc"].contains(url.pathExtension.lowercased()) }
+
+  var app: URL? { NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) }
+
+  /// A new instance with the ROM as its argument: a running one would ignore
+  /// launch arguments.
+  func open(_ rom: URL) {
+    guard let app else { return }
+    let configuration = NSWorkspace.OpenConfiguration()
+    configuration.arguments = arguments(rom)
+    configuration.createsNewApplicationInstance = true
+    NSWorkspace.shared.openApplication(at: app, configuration: configuration) { _, error in
+      if let error { DockStore.log("could not open \(rom.path) with \(app.path): \(error)") }
     }
   }
 }

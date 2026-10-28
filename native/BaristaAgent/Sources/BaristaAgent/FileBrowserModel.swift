@@ -22,7 +22,8 @@ struct BrowserTab: Identifiable, Equatable {
   /// Going somewhere new drops the forward history, as in a browser.
   mutating func go(to url: URL) {
     let url = url.standardizedFileURL
-    guard url != location else { return }
+    // Paths, not URLs: one built from a folder's path ends in `/`.
+    guard url.path != location.path else { return }
     history = Array(history.prefix(position + 1)) + [url]
     if history.count > Self.historyLimit { history.removeFirst(history.count - Self.historyLimit) }
     position = history.count - 1
@@ -101,6 +102,9 @@ struct FileEntry: Identifiable, Equatable {
   /// Nil for folders, whose size would mean walking them.
   let size: Int64?
   let kind: String
+  /// A contents search's first match in the file: its line number and text.
+  var line: Int?
+  var match: String?
   var id: URL { url }
 }
 
@@ -110,24 +114,28 @@ enum FileSortKey: String, CaseIterable {
 
 enum FileListing {
   /// Nil when the folder cannot be read (missing, or privacy access denied).
+  private static let keys: [URLResourceKey] = [.localizedNameKey, .isDirectoryKey, .isPackageKey, .isSymbolicLinkKey,
+                                               .contentModificationDateKey, .fileSizeKey, .localizedTypeDescriptionKey]
+
   static func load(_ folder: URL, hidden: Bool = false) -> [FileEntry]? {
-    let keys: [URLResourceKey] = [.localizedNameKey, .isDirectoryKey, .isPackageKey, .isSymbolicLinkKey,
-                                  .contentModificationDateKey, .fileSizeKey, .localizedTypeDescriptionKey]
     guard let urls = try? FileManager.default.contentsOfDirectory(
       at: folder, includingPropertiesForKeys: keys, options: hidden ? [] : [.skipsHiddenFiles])
     else { return nil }
-    return urls.map { url in
-      let values = try? url.resourceValues(forKeys: Set(keys))
-      // Resource values describe a symlink itself; its target decides whether it browses.
-      let target = values?.isSymbolicLink == true
-        ? try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
-        : values
-      let isFolder = target?.isDirectory == true && target?.isPackage != true
-      return FileEntry(url: url, name: values?.localizedName ?? url.lastPathComponent, isFolder: isFolder,
-                       modified: values?.contentModificationDate ?? .distantPast,
-                       size: isFolder ? nil : values?.fileSize.map(Int64.init),
-                       kind: values?.localizedTypeDescription ?? "")
-    }
+    return urls.map { entry($0) }
+  }
+
+  /// `url` as a row, under its localized name unless `name` is given.
+  static func entry(_ url: URL, name: String? = nil) -> FileEntry {
+    let values = try? url.resourceValues(forKeys: Set(keys))
+    // Resource values describe a symlink itself; its target decides whether it browses.
+    let target = values?.isSymbolicLink == true
+      ? try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+      : values
+    let isFolder = target?.isDirectory == true && target?.isPackage != true
+    return FileEntry(url: url, name: name ?? values?.localizedName ?? url.lastPathComponent, isFolder: isFolder,
+                     modified: values?.contentModificationDate ?? .distantPast,
+                     size: isFolder ? nil : values?.fileSize.map(Int64.init),
+                     kind: values?.localizedTypeDescription ?? "")
   }
 
   /// Folders come first for a name sort, as in Finder; ties fall back to name.

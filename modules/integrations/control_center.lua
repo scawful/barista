@@ -16,7 +16,6 @@ local HOME = os.getenv("HOME")
 local CONFIG_DIR = os.getenv("BARISTA_CONFIG_DIR") or (HOME .. "/.config/sketchybar")
 
 -- Delegate to shared modules
-local path_exists = shell_utils.file_exists
 local shell_quote = shell_utils.shell_quote
 local expand_path = paths_module.expand_path
 local command_available = shell_utils.command_available
@@ -26,10 +25,6 @@ local DEFAULT_ITEM_NAME = "control_center"
 
 local function normalize_mode(mode)
   return binary_resolver.normalize_window_manager_mode(mode)
-end
-
-local function sketchybar_cmd(args)
-  return string.format("%s %s", shell_quote(SKETCHYBAR_BIN), args)
 end
 
 local function resolve_config_dir(opts)
@@ -241,11 +236,11 @@ function control_center.create_widget(opts)
   -- Label shows layout mode prominently
   local label_parts = {}
   if status.layout == "bsp" then
-    table.insert(label_parts, "BSP")
+    table.insert(label_parts, "Tile")
   elseif status.layout == "stack" then
     table.insert(label_parts, "Stack")
   elseif status.layout == "float" then
-    table.insert(label_parts, "Float")
+    table.insert(label_parts, "Manual")
   elseif status.layout == "disabled" then
     table.insert(label_parts, opts.disabled_label or "Bar")
   else
@@ -310,6 +305,7 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
   local scripts_dir = resolve_scripts_dir(opts)
   local item_name = resolve_item_name(opts)
   local more_name = "cc.more"
+  local settings_name = "cc.settings"
   local YABAI_CONTROL = scripts_dir .. "/yabai_control.sh"
   local wm = resolve_window_manager_flags(opts)
   local style = {
@@ -330,22 +326,9 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     end
     return shell_quote(path)
   end
-  local trigger_space_mode_refresh = sketchybar_cmd("--trigger space_mode_refresh")
-  local function close_after(command, parent)
-    if parent and parent ~= item_name then
-      return ui.close_after_all({ parent, item_name }, command, {
-        sketchybar_bin = SKETCHYBAR_BIN,
-      })
-    end
-    return ui.close_after(item_name, command, { sketchybar_bin = SKETCHYBAR_BIN })
-  end
-  local function close_root_after(command)
-    if wm.enabled then
-      return ui.close_after_all({ more_name, item_name }, command, {
-        sketchybar_bin = SKETCHYBAR_BIN,
-      })
-    end
-    return close_after(command)
+  local function close_after(command)
+    local parents = wm.enabled and { more_name, settings_name, item_name } or { settings_name, item_name }
+    return ui.close_after_all(parents, command, { sketchybar_bin = SKETCHYBAR_BIN })
   end
 
   local function normalize_label(item, label, font, color)
@@ -465,31 +448,23 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     end
   end
 
-  add_header("cc.header", "Control Center", theme.WHITE, "󰕮", tc("LAVENDER"))
-  add_header("cc.mode_header", "Mode", tc("MAUVE", "LAVENDER"))
+  add_header("cc.header", wm.enabled and "Space unavailable" or "Window Controls", theme.WHITE, "󰕮", tc("LAVENDER"))
 
-  local function mode_label(id, label)
-    if wm.mode == id then return "● " .. label end
-    return "○ " .. label
-  end
-  local mode_rows = {
-    { id = "required", label = "Yabai On", icon = "󰆾", color = tc("GREEN"), cmd = shell_command(YABAI_CONTROL, "wm-mode required") },
-    { id = "optional", label = "Auto If Running", icon = "󰐊", color = tc("SAPPHIRE"), cmd = shell_command(YABAI_CONTROL, "wm-mode optional") },
-    { id = "disabled", label = "Manual Bar", icon = "󰒄", color = tc("YELLOW"), cmd = shell_command(YABAI_CONTROL, "wm-mode disabled") },
-  }
-  for _, row in ipairs(mode_rows) do
-    add_row("cc.mode." .. row.id, {
-      icon = row.icon,
-      color = row.color,
-      label = mode_label(row.id, row.label),
-      click_script = close_root_after(row.cmd),
+  if wm.enabled then
+    add_row("cc.feedback", {
+      icon = "󰔟",
+      color = tc("RED"),
+      label = "",
+      label_color = tc("RED"),
+      hover = false,
     })
+    items[#items].drawing = false
   end
 
   if not wm.enabled then
     local notice_label = nil
     if wm.mode == "disabled" then
-      notice_label = "Window manager disabled"
+      notice_label = "Window controls hidden in Barista"
     elseif wm.mode == "required" and not wm.has_yabai then
       notice_label = "Yabai not installed"
     elseif wm.mode == "optional" and wm.has_yabai and not wm.yabai_running then
@@ -508,86 +483,91 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
   end
 
   if wm.enabled then
-    add_header("cc.layout_header", "Space Layout", tc("BLUE"))
+    add_header("cc.layout_header", "Layout · saved for this space", tc("BLUE"))
 
+    -- Runtime refresh supplies a validated numeric target. A stale or failed
+    -- query must never leave an action aimed at whichever space is current.
     local layouts = {
-      { id = "float", name = "Float / Manual", icon = "󰒄", cmd = shell_command(config_dir .. "/plugins/set_space_mode.sh", "current float") },
-      { id = "bsp", name = "BSP Tiling", icon = "󰆾", cmd = shell_command(config_dir .. "/plugins/set_space_mode.sh", "current bsp") },
-      { id = "stack", name = "Stack Tiling", icon = "󰓩", cmd = shell_command(config_dir .. "/plugins/set_space_mode.sh", "current stack") },
+      { id = "float", name = "Manual", icon = "󰒄" },
+      { id = "bsp", name = "Tile", icon = "󰆾" },
+      { id = "stack", name = "Stack", icon = "󰓩" },
     }
     for _, layout in ipairs(layouts) do
       add_row("cc.layout." .. layout.id, {
         icon = layout.icon,
         color = tc("SAPPHIRE"),
-        label = layout.name,
-        click_script = close_root_after(string.format("%s; %s", layout.cmd, trigger_space_mode_refresh)),
+        label = "○ " .. layout.name,
+        click_script = "",
       })
     end
 
-    add_separator("cc.sep1")
-    add_submenu(more_name, "More Layout Controls", "󰒓", tc("YELLOW"))
-    add_header("cc.layout_ops_header", "Layout Ops", tc("GREEN"), nil, nil, more_name)
+    add_submenu(more_name, "Arrange Windows", "󰒓", tc("YELLOW"))
+    add_header("cc.layout_ops_header", "This Space", tc("GREEN"), nil, nil, more_name)
 
     local layout_ops = {
-      { id = "balance", name = "Balance Windows", icon = "󰓅", cmd = shell_command(YABAI_CONTROL, "balance") },
-      { id = "rotate", name = "Rotate Layout", icon = "󰑞", cmd = shell_command(YABAI_CONTROL, "space-rotate") },
-      { id = "toggle", name = "Toggle BSP/Stack", icon = "󱂬", cmd = shell_command(YABAI_CONTROL, "toggle-layout") },
-      { id = "flipx", name = "Flip Horizontal", icon = "󰯌", cmd = shell_command(YABAI_CONTROL, "space-mirror-x") },
-      { id = "flipy", name = "Flip Vertical", icon = "󰯎", cmd = shell_command(YABAI_CONTROL, "space-mirror-y") },
+      { id = "balance", name = "Balance Windows", icon = "󰓅" },
+      { id = "rotate", name = "Rotate Layout", icon = "󰑞" },
+      { id = "toggle", name = "Switch Tile / Stack", icon = "󱂬" },
+      { id = "flipx", name = "Flip Horizontal", icon = "󰯌" },
+      { id = "flipy", name = "Flip Vertical", icon = "󰯎" },
     }
     for _, op in ipairs(layout_ops) do
       add_row("cc.layout_ops." .. op.id, {
         icon = op.icon,
         color = theme.TEAL,
         label = op.name,
-        click_script = close_after(op.cmd, more_name),
+        click_script = "",
       }, more_name)
     end
 
-    add_separator("cc.sep2", more_name)
-    add_header("cc.defaults_header", "Current App Defaults", tc("PEACH"), nil, nil, more_name)
+  end
 
-    local default_ops = {
-      { id = "float", name = "Default App: Float", icon = "󰒄", cmd = shell_command(YABAI_CONTROL, "app-default-current float") },
-      { id = "tile", name = "Default App: Tile", icon = "󰆾", cmd = shell_command(YABAI_CONTROL, "app-default-current tile") },
-      { id = "unset", name = "Unset App Default", icon = "󰅖", cmd = shell_command(YABAI_CONTROL, "app-default-current unset") },
-    }
-    for _, op in ipairs(default_ops) do
-      add_row("cc.defaults." .. op.id, {
-        icon = op.icon,
-        color = op.id == "unset" and tc("RED") or tc("PEACH"),
-        label = op.name,
-        click_script = close_after(op.cmd, more_name),
-      }, more_name)
-    end
+  -- Barista control visibility is separate from Yabai's service and layouts.
+  add_submenu(settings_name, "Bar Settings", "󰒓", tc("MAUVE", "LAVENDER"))
+  add_header("cc.mode_header", "Bar Controls", tc("MAUVE", "LAVENDER"), nil, nil, settings_name)
+  add_row("cc.mode_scope", {
+    label = "Does not start or stop Yabai",
+    label_color = tc("SUBTEXT1", "WHITE"),
+    hover = false,
+  }, settings_name)
+  local mode_rows = {
+    { id = "auto", label = "Auto Detect", icon = "󰐊", color = tc("SAPPHIRE") },
+    { id = "required", label = "Always", icon = "󰆾", color = tc("GREEN") },
+    { id = "optional", label = "When Yabai Runs", icon = "󰐊", color = tc("SAPPHIRE") },
+    { id = "disabled", label = "Hidden", icon = "󰒄", color = tc("YELLOW") },
+  }
+  for _, row in ipairs(mode_rows) do
+    add_row("cc.mode." .. row.id, {
+      icon = row.icon,
+      color = row.color,
+      label = (wm.mode == row.id and "● " or "○ ") .. row.label,
+      click_script = close_after(shell_command(YABAI_CONTROL, "wm-mode " .. row.id)),
+    }, settings_name)
+  end
 
+  if wm.enabled then
     local shortcuts_running = wm.skhd_running
     local shortcuts_on_label = "Shortcuts: On"
     local shortcuts_off_label = "Shortcuts: Off"
     local shortcuts_label = shortcuts_running and shortcuts_on_label or shortcuts_off_label
     local shortcuts_color = shortcuts_running and tc("GREEN") or tc("RED")
-    local toggle_script = scripts_dir .. "/toggle_yabai_shortcuts.sh"
-    if not path_exists(toggle_script) then
-      toggle_script = scripts_dir .. "/toggle_shortcuts.sh"
-    end
-    local toggle_action = path_exists(toggle_script) and shell_command(toggle_script, "toggle")
-      or ("bash " .. shell_quote(config_dir .. "/bin/open_control_panel.sh"))
-    local update_action = string.format(
-      "if pgrep -x skhd >/dev/null 2>&1; then %s --set $NAME label='%s' icon.color=%s; else %s --set $NAME label='%s' icon.color=%s; fi",
-      shell_quote(SKETCHYBAR_BIN),
-      shortcuts_on_label,
-      tc("GREEN"),
-      shell_quote(SKETCHYBAR_BIN),
-      shortcuts_off_label,
-      tc("RED")
-    )
+    local toggle_action = shell_command(config_dir .. "/scripts/shortcut_menu_action.sh", shell_quote(item_name))
     add_row("cc.yabai.shortcuts", {
       icon = "󰌌",
       color = shortcuts_color,
       label = shortcuts_label,
-      click_script = close_root_after(string.format("%s; %s", toggle_action, update_action)),
-    })
+      click_script = toggle_action,
+    }, settings_name)
   end
+
+  local dock_plist = io.open((os.getenv("HOME") or "") .. "/Library/LaunchAgents/dev.barista.agent.plist", "r")
+  if dock_plist then dock_plist:close() end
+  add_row("cc.dock", {
+    icon = "󱂩",
+    color = tc("SAPPHIRE"),
+    label = dock_plist and "Dock: Barista" or "Dock: macOS",
+    click_script = close_after(shell_command(config_dir .. "/scripts/barista_agent.sh", "dock toggle")),
+  }, settings_name)
 
   return items, { submenu_parents = submenu_parents }
 end

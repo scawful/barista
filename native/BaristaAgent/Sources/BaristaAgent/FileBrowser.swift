@@ -521,9 +521,7 @@ private struct BrowserPreview: View {
           let text = (try? String(contentsOf: entry.url, encoding: .utf8)) ?? ""
           MarkdownDocumentView(blocks: Markdown.parse(String(text.prefix(200_000))),
                                base: entry.url.deletingLastPathComponent(),
-                               open: { url in
-                                 if !ViewerController.shared.open(url) { NSWorkspace.shared.open(url) }
-                               })
+                               open: { $0.perform() })
         case .image:
           if let image = NSImage(contentsOf: entry.url) {
             Image(nsImage: image).resizable().scaledToFit().padding(12)

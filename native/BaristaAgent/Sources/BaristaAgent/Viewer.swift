@@ -41,7 +41,9 @@ final class ViewerController {
   /// Shows `url` if the viewer handles it; returns false when it doesn't.
   @discardableResult
   func open(_ url: URL) -> Bool {
-    guard ViewerKind.of(url) != nil, FileManager.default.isReadableFile(atPath: url.path) else { return false }
+    guard url.isFileURL, ViewerKind.of(url) != nil, FileManager.default.isReadableFile(atPath: url.path) else {
+      return false
+    }
     if let window = windows.first(where: { models[ObjectIdentifier($0)]?.url == url }) {
       present(window)
       return true
@@ -246,11 +248,11 @@ struct ViewerView: View {
         Text(error).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
       } else if model.kind == .markdown {
         MarkdownDocumentView(blocks: model.blocks, base: model.url.deletingLastPathComponent(),
-                             open: { url in
-                               if url.isFileURL, ViewerKind.of(url) == .markdown {
+                             open: { route in
+                               if case .view(let url) = route, ViewerKind.of(url) == .markdown {
                                  model.show(url)
-                               } else if !(url.isFileURL && ViewerController.shared.open(url)) {
-                                 NSWorkspace.shared.open(url)
+                               } else {
+                                 route.perform()
                                }
                              })
       } else if let image = model.image {
@@ -288,7 +290,7 @@ struct ViewerView: View {
 struct MarkdownDocumentView: View {
   let blocks: [MarkdownBlock]
   let base: URL
-  let open: (URL) -> Void
+  let open: (LinkRoute) -> Void
 
   var body: some View {
     ScrollView {
@@ -304,8 +306,7 @@ struct MarkdownDocumentView: View {
       .frame(maxWidth: .infinity)
     }
     .environment(\.openURL, OpenURLAction { url in
-      if url.scheme == nil, url.absoluteString.hasPrefix("#") { return .handled }
-      open(url)
+      open(LinkRoute.of(url, base: base))
       return .handled
     })
   }
@@ -422,7 +423,7 @@ private struct MarkdownImage: View {
   let base: URL
 
   var body: some View {
-    if let remote = URL(string: source), let scheme = remote.scheme, scheme.hasPrefix("http") {
+    if let remote = URL(string: source), ["http", "https"].contains(remote.scheme?.lowercased() ?? "") {
       AsyncImage(url: remote) { image in
         image.resizable().scaledToFit()
       } placeholder: {

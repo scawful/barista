@@ -18,19 +18,17 @@ enum OpenRequest: String, CaseIterable {
 
   var notification: Notification.Name { Notification.Name("dev.barista.agent.\(rawValue)") }
 
-  /// Folders browse; Markdown and images view; anything else opens normally.
-  func perform(_ url: URL) {
-    var isFolder: ObjCBool = false
-    let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder)
-    switch self {
-    case .browse:
-      BrowserController.shared.open(url)
-    case .view, .open:
-      if exists && isFolder.boolValue {
-        BrowserController.shared.open(url)
-      } else if !ViewerController.shared.open(url), self == .open || exists {
-        NSWorkspace.shared.open(url)
-      }
+  /// Any process in the session can post these, so a request never runs code:
+  /// folders browse, Markdown and images view, `open` hands other documents to
+  /// their default app, and anything else is revealed in Finder.
+  func route(_ path: String) -> LinkRoute {
+    guard path.hasPrefix("/") else { return .ignore }
+    let route = LinkRoute.local(URL(fileURLWithPath: path).standardizedFileURL)
+    switch (self, route) {
+    case (.browse, .browse), (.view, _): return route
+    case (.browse, _): return .ignore
+    case (.open, .reveal(let file)): return LinkRoute.runsCode(file) ? route : .external(file)
+    case (.open, _): return route
     }
   }
 }
@@ -52,7 +50,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
       DistributedNotificationCenter.default().addObserver(forName: request.notification, object: nil,
                                                           queue: .main) { note in
         guard let path = note.object as? String else { return }
-        request.perform(URL(fileURLWithPath: path))
+        request.route(path).perform()
       }
     }
     BrowserController.shared.dockPlaces = { [weak self] in

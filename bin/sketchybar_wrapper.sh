@@ -3,6 +3,10 @@ set -euo pipefail
 
 CONFIG_DIR="${BARISTA_CONFIG_DIR:-$HOME/.config/sketchybar}"
 CONFIG_FILE="${SKETCHYBAR_CONFIG:-$CONFIG_DIR/sketchybarrc}"
+FORK_BIN="${BARISTA_SKETCHYBAR_FORK_BIN:-$HOME/.local/libexec/sketchybar-barista/sketchybar}"
+if [[ -z "${SKETCHYBAR_BIN:-}" && -x "$FORK_BIN" ]]; then
+  SKETCHYBAR_BIN="$FORK_BIN"
+fi
 SKETCHYBAR_BIN="${SKETCHYBAR_BIN:-/opt/homebrew/opt/sketchybar/bin/sketchybar}"
 LOG_FILE="${SKETCHYBAR_ERR_LOG:-/opt/homebrew/var/log/sketchybar/sketchybar.err.log}"
 

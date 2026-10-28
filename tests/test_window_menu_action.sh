@@ -115,4 +115,24 @@ assert_line "$BARISTA_TEST_ACTION_LOG" "arg=$app_name"
 if grep -Fq -- "$app_name" "${BARISTA_TEST_ACTION_LOG}.source"; then
   echo 'FAIL: app name was interpolated into AppleScript' >&2; exit 1
 fi
+
+# Force quit targets the app's pid, not a process whose name happens to match.
+python3 -c 'import pathlib, signal, sys, time
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+pathlib.Path(sys.argv[1]).touch()
+time.sleep(30)' "$TMP_DIR/victim.ready" &
+victim=$!
+disown "$victim"
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -e "$TMP_DIR/victim.ready" ] && break; sleep 0.1; done
+cat > "$TMP_DIR/yabai" <<STUB
+#!/bin/bash
+printf '[{"app":"Visual Studio Code","pid":$victim}]\n'
+STUB
+chmod +x "$TMP_DIR/yabai"
+BARISTA_YABAI_BIN="$TMP_DIR/yabai" BARISTA_JQ_BIN="$(command -v jq)" \
+  "$ROOT_DIR/scripts/front_app_action.sh" force-quit "Visual Studio Code"
+for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$victim" 2>/dev/null || break; sleep 0.1; done
+if kill -0 "$victim" 2>/dev/null; then
+  kill -9 "$victim"; echo 'FAIL: force quit left a SIGTERM-ignoring app running' >&2; exit 1
+fi
 printf 'test_window_menu_action.sh: ok\n'

@@ -25,9 +25,29 @@ fi
 
 case "$ACTION" in
   force-quit|force_quit)
-    # pkill uses a regular expression even with -x; escape the exact app name.
-    process_pattern="$(printf '%s' "$APP_NAME" | sed 's/[][\\.^$*+?(){}|]/\\&/g')"
-    pkill -x -- "$process_pattern"
+    # App names often differ from process names (and comm is capped at 16
+    # characters), so resolve the pid from the app name first.
+    pid=""
+    if [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ]; then
+      pid="$("$YABAI_BIN" -m query --windows 2>/dev/null \
+        | "$JQ_BIN" -r --arg app "$APP_NAME" 'first(.[] | select(.app == $app) | .pid) // empty' 2>/dev/null)"
+    fi
+    if [ -z "$pid" ] && [ -n "$OSASCRIPT_BIN" ]; then
+      pid="$("$OSASCRIPT_BIN" - "$APP_NAME" 2>/dev/null <<'APPLESCRIPT'
+on run argv
+  tell application "System Events" to return unix id of application process (item 1 of argv)
+end run
+APPLESCRIPT
+)"
+    fi
+    case "$pid" in
+      ''|*[!0-9]*)
+        # pkill uses a regular expression even with -x; escape the exact app name.
+        process_pattern="$(printf '%s' "$APP_NAME" | sed 's/[][\\.^$*+?(){}|]/\\&/g')"
+        pkill -9 -x -- "$process_pattern"
+        ;;
+      *) kill -9 "$pid" ;;
+    esac
     ;;
   *)
     [ -n "$OSASCRIPT_BIN" ] || { echo 'osascript is unavailable.' >&2; exit 1; }

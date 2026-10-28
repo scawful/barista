@@ -93,6 +93,21 @@ final class MarkdownTests: XCTestCase {
     ])
   }
 
+  func testDelimiterRowMustMatchTheHeader() {
+    XCTAssertEqual(Markdown.parse("a | b\n---"), [.paragraph("a | b"), .rule])
+    XCTAssertEqual(Markdown.parse("| a |\n|---|"), [.table(header: ["a"], alignments: [.leading], rows: [])])
+  }
+
+  func testDeepQuotesStopNestingInsteadOfOverflowing() {
+    var block = Markdown.parse(String(repeating: ">", count: 50_000) + " deep")
+    for _ in 0..<Markdown.maxQuoteDepth {
+      guard case .quote(let inner) = block.first, inner.count == 1 else { return XCTFail("expected a quote, got \(block)") }
+      block = inner
+    }
+    guard case .paragraph(let text) = block.first else { return XCTFail("expected text, got \(block)") }
+    XCTAssertTrue(text.hasSuffix("> deep"))
+  }
+
   func testParagraphInlineImageIsNotABlockImage() {
     XCTAssertEqual(Markdown.parse("See ![x](a.png) here"), [.paragraph("See ![x](a.png) here")])
   }

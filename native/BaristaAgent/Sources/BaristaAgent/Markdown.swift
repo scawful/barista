@@ -39,7 +39,10 @@ enum Markdown {
     return blocks + parseBlocks(lines)
   }
 
-  private static func parseBlocks(_ lines: [String]) -> [MarkdownBlock] {
+  /// Deeper `>` markers stay text, so a line of them can't exhaust the stack.
+  static let maxQuoteDepth = 8
+
+  private static func parseBlocks(_ lines: [String], quoteDepth: Int = 0) -> [MarkdownBlock] {
     var blocks: [MarkdownBlock] = []
     var index = 0
     while index < lines.count {
@@ -67,7 +70,7 @@ enum Markdown {
         blocks.append(.rule)
         index += 1
       } else if index + 1 < lines.count, trimmed.contains("|"),
-                let alignments = delimiterRow(lines[index + 1]) {
+                let alignments = delimiterRow(lines[index + 1]), alignments.count == cells(trimmed).count {
         let header = cells(trimmed)
         var rows: [[String]] = []
         index += 2
@@ -77,9 +80,8 @@ enum Markdown {
           rows.append((0..<header.count).map { $0 < row.count ? row[$0] : "" })
           index += 1
         }
-        blocks.append(.table(header: header, alignments: alignments + Array(
-          repeating: .leading, count: max(0, header.count - alignments.count)), rows: rows))
-      } else if trimmed.hasPrefix(">") {
+        blocks.append(.table(header: header, alignments: alignments, rows: rows))
+      } else if trimmed.hasPrefix(">"), quoteDepth < maxQuoteDepth {
         var inner: [String] = []
         while index < lines.count {
           let quoted = lines[index].trimmingCharacters(in: .whitespaces)
@@ -89,7 +91,7 @@ enum Markdown {
           inner.append(String(text))
           index += 1
         }
-        blocks.append(.quote(parseBlocks(inner)))
+        blocks.append(.quote(parseBlocks(inner, quoteDepth: quoteDepth + 1)))
       } else if listItem(line) != nil {
         var items: [MarkdownListItem] = []
         while index < lines.count {

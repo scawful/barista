@@ -213,9 +213,7 @@ enum FileOperations {
 
   /// Copies or moves `url` into `folder`, keeping both when the name is taken.
   static func place(_ url: URL, in folder: URL, move: Bool) throws -> URL {
-    let source = url.standardizedFileURL.path
-    let target = folder.standardizedFileURL.path
-    if target == source || target.hasPrefix(source + "/") {
+    if folder.isWithin(url) {
       throw FileOperationError.intoItself(url.lastPathComponent)
     }
     let (stem, ext) = split(url)
@@ -259,5 +257,13 @@ enum FileOperations {
       folder.deleteLastPathComponent()
     }
     return nil
+  }
+}
+
+extension URL {
+  /// True for `folder` itself and anything under it.
+  func isWithin(_ folder: URL) -> Bool {
+    let path = standardizedFileURL.path, base = folder.standardizedFileURL.path
+    return path == base || path.hasPrefix(base + "/")
   }
 }

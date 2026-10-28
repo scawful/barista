@@ -5,8 +5,9 @@ import SwiftUI
 enum PreviewContent: Equatable {
   /// Markdown, and org translated to Markdown.
   case document([MarkdownBlock])
-  /// Code and other text; minified JSON is indented. `note` says what was changed or cut.
-  case text(String, note: String?)
+  /// Code and other text; minified JSON is indented. `note` says what was
+  /// changed or cut; `spans` color code the preview knows.
+  case text(String, note: String?, spans: [SyntaxSpan] = [])
   case rom(SNESHeader)
   case image
   case details
@@ -33,6 +34,10 @@ enum Preview {
       return .rom(header)
     }
     guard let head = head(url, limit: textLimit), let text = decodeText(head), !text.isEmpty else { return .details }
+    let syntax = Syntax.of(extension: ext)
+    func code(_ text: String, note: String?) -> PreviewContent {
+      .text(text, note: note, spans: syntax?.spans(text) ?? [])
+    }
     if ext == "json", size <= jsonLimit, let whole = try? Data(contentsOf: url) {
       do {
         let object = try JSONSerialization.jsonObject(with: whole, options: .fragmentsAllowed)
@@ -42,16 +47,16 @@ enum Preview {
                                                     options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes,
                                                               .fragmentsAllowed]),
            let indented = String(data: pretty, encoding: .utf8) {
-          return .text(String(indented.prefix(textLimit)), note: "Minified JSON, shown indented with keys sorted")
+          return code(String(indented.prefix(textLimit)), note: "Minified JSON, shown indented with keys sorted")
         }
       } catch {
         let reason = (error as NSError).userInfo[NSDebugDescriptionErrorKey] as? String ?? error.localizedDescription
-        return .text(text, note: "Not valid JSON: \(reason)")
+        return code(text, note: "Not valid JSON: \(reason)")
       }
     }
     let cut = size > head.count
       ? "Showing the first \(byteCount(head.count)) of \(byteCount(size))" : nil
-    return .text(text, note: cut)
+    return code(text, note: cut)
   }
 
   /// Text, or nil for binary: a NUL early on, or bytes that aren't UTF-8.
@@ -286,14 +291,14 @@ struct BrowserPreview: View {
     switch content {
     case .document(let blocks):
       MarkdownDocumentView(blocks: blocks, base: entry.url.deletingLastPathComponent(), open: { $0.perform() })
-    case .text(let text, let note):
+    case .text(let text, let note, let spans):
       VStack(spacing: 0) {
         if let note {
           Text(note).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10).padding(.vertical, 4)
           Divider()
         }
-        PlainTextView(text: text)
+        PlainTextView(text: text, spans: spans)
       }
     case .rom(let header):
       ROMDetails(header: header)
@@ -385,6 +390,7 @@ private struct PaneWidth: Layout {
 /// code keeps its columns and scrolls sideways.
 private struct PlainTextView: NSViewRepresentable {
   let text: String
+  let spans: [SyntaxSpan]
 
   func makeNSView(context: Context) -> NSScrollView {
     let scroll = NSTextView.scrollableTextView()
@@ -401,14 +407,34 @@ private struct PlainTextView: NSViewRepresentable {
       view.textContainer?.widthTracksTextView = false
       view.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude,
                                                  height: .greatestFiniteMagnitude)
-      view.string = text
+      show(in: view)
     }
     return scroll
   }
 
   func updateNSView(_ scroll: NSScrollView, context: Context) {
     guard let view = scroll.documentView as? NSTextView, view.string != text else { return }
-    view.string = text
+    show(in: view)
     view.scrollToBeginningOfDocument(nil)
+  }
+
+  private func show(in view: NSTextView) {
+    view.string = text
+    guard let storage = view.textStorage, !spans.isEmpty else { return }
+    storage.beginEditing()
+    for span in spans where NSMaxRange(span.range) <= storage.length {
+      storage.addAttribute(.foregroundColor, value: Self.color(span.token), range: span.range)
+    }
+    storage.endEditing()
+  }
+
+  private static func color(_ token: SyntaxToken) -> NSColor {
+    switch token {
+    case .comment: return .secondaryLabelColor
+    case .string: return .systemGreen
+    case .number: return .systemOrange
+    case .keyword: return .systemPink
+    case .label: return .systemTeal
+    }
   }
 }

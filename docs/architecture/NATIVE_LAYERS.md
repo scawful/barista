@@ -246,6 +246,11 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   to the same folder in that worktree, or its top when the folder isn't
   there. git runs after the listing is shown and without optional locks, so
   browsing never takes `index.lock` from an agent committing in the repo.
+- ⌘I (or Get Info on either right-click menu) shows kind, size (a folder's
+  is measured in the background and stops when the sheet closes), where,
+  created and modified dates, permissions, a symlink's target, and the last
+  commit that touched the item. Several selected items show their count and
+  total size; nothing selected shows the folder itself.
 - ⌘K (or ⇧⌘G) jumps to a folder: type parts of its name or path (`oos
   core`); Return goes, ⌘Return opens a tab, a path starting with `/` or `~`
   goes straight there. Candidates are the places, zoxide's folders by
@@ -253,7 +258,10 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   five minutes. Folders you browse are added to zoxide, as `cd` does.
 - The preview pane renders Markdown and org (headings, lists, src blocks,
   tables, links), shows code and other text unwrapped in a monospaced view
-  (first 256 KB), indents minified JSON, and reads a SNES ROM's internal
+  (first 256 KB) with light coloring (65816/asar: labels, mnemonics,
+  directives, `!defines`, `%macros`, numbers; C-family, `#`-comment, and Lua
+  files: comments, strings, keywords, numbers), indents minified JSON, and
+  reads a SNES ROM's internal
   header: title, LoROM/HiROM/ExHiROM, ROM and SRAM size, region, version,
   and the stored checksum against the computed one (skipped when the size
   has no standard mirroring). Images and anything else fall back to details.
@@ -352,8 +360,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
 
 ## Next slices
 
-- Barista Files: Get Info, column and icon views, syntax colors for code
-  previews, and acting on AFS items (status, ack) from the context panel.
+- Barista Files: column and icon views, Return to rename (Finder's key; it
+  opens today), and acting on AFS items (status, ack) from the context panel.
 - EventKit reminders and calendar into the agent cache, surfaced by the
   existing calendar/task popups.
 - halext-org API client in the agent (admin status, reminders sync).

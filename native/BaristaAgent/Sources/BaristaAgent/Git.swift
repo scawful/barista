@@ -126,6 +126,17 @@ enum Git {
             worktrees.filter { FileManager.default.fileExists(atPath: $0.path.path) })
   }
 
+  /// The newest commit touching `url`, as "hash · subject · author, age";
+  /// nil when it was never committed. Blocking.
+  static func lastCommit(of url: URL, in root: URL) -> String? {
+    let relative = url.standardizedFileURL.path == root.standardizedFileURL.path
+      ? "." : PopoverController.relativePath(url, from: root)
+    guard let output = run(root, ["log", "-1", "--format=%h%x1f%s%x1f%an%x1f%ar", "--", relative]) else { return nil }
+    let fields = output.trimmingCharacters(in: .newlines).components(separatedBy: "\u{1f}")
+    guard fields.count == 4 else { return nil }
+    return "\(fields[0]) · \(fields[1]) · \(fields[2]), \(fields[3])"
+  }
+
   /// Without optional locks, so browsing never holds `index.lock` while an
   /// agent commits in the same repo.
   private static func run(_ root: URL, _ arguments: [String]) -> String? {

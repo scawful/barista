@@ -116,25 +116,62 @@ final class PreviewTests: XCTestCase {
     XCTAssertNil(SNESHeader.parse(Data(count: 100)))
   }
 
+  private func uncolored(_ content: PreviewContent) -> PreviewContent {
+    guard case .text(let text, let note, _) = content else { return content }
+    return .text(text, note: note)
+  }
+
+  /// Each colored run's text and token, in order.
+  private func colored(_ source: String, _ ext: String) -> [(String, SyntaxToken)] {
+    (Syntax.of(extension: ext)?.spans(source) ?? []).map { ((source as NSString).substring(with: $0.range), $0.token) }
+  }
+
+  func testAsarSyntax() {
+    let source = """
+    Main:
+      LDA.w #$0010 ; load "x"
+    .loop
+      JSL !Routine
+      %SetFlag(1)
+      db "a;b", %0101
+      org $008000
+      LDA table,x
+    """
+    let runs = colored(source, "asm")
+    XCTAssertEqual(runs.map(\.0), ["Main:", "LDA.w", "#$0010", "; load \"x\"", ".loop", "JSL", "!Routine",
+                                   "%SetFlag", "1", "db", "\"a;b\"", "%0101", "org", "$008000", "LDA"])
+    XCTAssertEqual(runs.map(\.1), [.label, .keyword, .number, .comment, .label, .keyword, .label,
+                                   .label, .number, .keyword, .string, .number, .keyword, .number, .keyword])
+  }
+
+  func testCommentsAndStringsDoNotStartInsideEachOther() {
+    let runs = colored("let s = \"// not\" // real\nif x == 0x1F { return }", "swift")
+    XCTAssertEqual(runs.map(\.0), ["let", "\"// not\"", "// real", "if", "0x1F", "return"])
+    XCTAssertEqual(runs.map(\.1), [.keyword, .string, .comment, .keyword, .number, .keyword])
+    XCTAssertNil(Syntax.of(extension: "txt"))
+  }
+
   func testTextJSONAndBinaryPreviews() throws {
     let code = try write("a.asm", Data("LDA #$01\n".utf8))
-    XCTAssertEqual(Preview.load(code), .text("LDA #$01\n", note: nil))
+    guard case .text("LDA #$01\n", nil, let spans) = Preview.load(code) else { return XCTFail("code shows as text") }
+    XCTAssertEqual(spans.map(\.token), [.keyword, .number], "and is colored")
+    XCTAssertEqual(Preview.load(try write("plain.txt", Data("hi\n".utf8))), .text("hi\n", note: nil))
     XCTAssertEqual(Preview.load(try write("blob.bin", Data([0x4C, 0x00, 0x01]))), .details)
     XCTAssertEqual(Preview.load(try write("empty.txt", Data())), .details)
 
     let minified = try write("m.json", Data(#"{"b":1,"a":"x/y"}"#.utf8))
-    XCTAssertEqual(Preview.load(minified),
+    XCTAssertEqual(uncolored(Preview.load(minified)),
                    .text("{\n  \"a\" : \"x/y\",\n  \"b\" : 1\n}", note: "Minified JSON, shown indented with keys sorted"))
     let indented = "{\n  \"z\": 1\n}\n"
-    XCTAssertEqual(Preview.load(try write("i.json", Data(indented.utf8))), .text(indented, note: nil),
+    XCTAssertEqual(uncolored(Preview.load(try write("i.json", Data(indented.utf8)))), .text(indented, note: nil),
                    "indented JSON keeps its own key order")
-    guard case .text(_, let note?) = Preview.load(try write("bad.json", Data("{\"a\":".utf8))) else {
+    guard case .text(_, let note?, _) = Preview.load(try write("bad.json", Data("{\"a\":".utf8))) else {
       return XCTFail("invalid JSON still shows, with a note")
     }
     XCTAssertTrue(note.hasPrefix("Not valid JSON"))
 
     let big = try write("big.log", Data(repeating: UInt8(ascii: "x"), count: Preview.textLimit + 10))
-    guard case .text(let text, let cut?) = Preview.load(big) else { return XCTFail("a long log is cut") }
+    guard case .text(let text, let cut?, _) = Preview.load(big) else { return XCTFail("a long log is cut") }
     XCTAssertEqual(text.utf8.count, Preview.textLimit)
     XCTAssertTrue(cut.hasPrefix("Showing the first"))
 

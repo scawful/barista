@@ -113,6 +113,7 @@ final class BrowserController {
       case ([.command, .shift], _, "p"), ([.command, .shift], _, "P"): state.showPreview.toggle()
       case ([.command, .shift], _, "n"), ([.command, .shift], _, "N"): state.newFolder()
       case (.command, _, "k"), ([.command, .shift], _, "g"), ([.command, .shift], _, "G"): state.jumping = true
+      case (.command, _, "i") where !typing: state.getInfo()
       case (.command, 51, _) where !typing: state.trashSelection()
       case (.command, _, "c") where !typing && !state.selection.isEmpty: state.copySelection()
       case (.command, _, "d") where !typing && !state.selection.isEmpty: state.duplicateSelection()
@@ -148,6 +149,8 @@ final class BrowserState: ObservableObject {
   /// The nearest AFS `.context` folder, shown when nothing is selected.
   @Published private(set) var contextRoot: URL?
   @Published var jumping = false
+  /// What Get Info is showing; empty when it's closed.
+  @Published var inspecting: [URL] = []
   var places: () -> [(name: String, url: URL)] = { [] }
   var onTitle: ((String) -> Void)?
   var onCloseWindow: (() -> Void)?
@@ -170,6 +173,13 @@ final class BrowserState: ObservableObject {
     let folder = location
     let hidden = self.hidden
     onTitle?(FileManager.default.displayName(atPath: folder.path))
+    // Until git and the context are read again, the old ones must not show
+    // against a folder outside them.
+    if let root = git?.root, !folder.isWithin(root) {
+      git = nil
+      worktrees = []
+    }
+    if let context = contextRoot, !folder.isWithin(context.deletingLastPathComponent()) { contextRoot = nil }
     watcher = FileWatcher(url: folder) { [weak self] in self?.reload() }
     DispatchQueue.global(qos: .userInitiated).async {
       let listing = FileListing.load(folder, hidden: hidden)
@@ -308,6 +318,12 @@ final class BrowserState: ObservableObject {
   /// The selection in list order.
   var selectedURLs: [URL] { shown.map(\.url).filter { selection.contains($0) } }
 
+  /// The selection's info, or the shown folder's when nothing is selected.
+  func getInfo() {
+    let urls = selectedURLs
+    inspecting = urls.isEmpty ? [location] : urls
+  }
+
   /// Makes an untitled folder and starts naming it.
   func newFolder() {
     do {
@@ -423,7 +439,7 @@ struct BrowserView: View {
       Divider()
       HSplitView {
         sidebar.frame(minWidth: 140, idealWidth: 170, maxWidth: 260)
-        listing.frame(minWidth: 320)
+        listing.frame(minWidth: 360)
         if state.showPreview {
           // Capped, so a wider window widens the list rather than the preview.
           BrowserPreview(entry: selectedEntry, state: state).frame(minWidth: 220, idealWidth: 320, maxWidth: 560)
@@ -435,6 +451,9 @@ struct BrowserView: View {
     .ignoresSafeArea(edges: .top)
     .onChange(of: state.focusSearch) { searchFocused = true }
     .sheet(isPresented: $state.jumping) { JumpView(state: state) }
+    .sheet(isPresented: Binding(get: { !state.inspecting.isEmpty }, set: { if !$0 { state.inspecting = [] } })) {
+      GetInfoView(urls: state.inspecting, repo: state.git?.root) { state.inspecting = [] }
+    }
     .alert("Barista Files", isPresented: Binding(get: { state.problem != nil },
                                                  set: { if !$0 { state.problem = nil } })) {
       Button("OK", role: .cancel) {}
@@ -631,19 +650,22 @@ private struct FileTable: View {
           }
         }
       }
+      // Without its own minimum, Name is the column that gives way in a
+      // narrow window; these minimums add up to about the list's.
+      .width(min: 150, ideal: 280)
       TableColumn("Date Modified", value: \.modified) { entry in
         Text(entry.modified, format: .dateTime.year().month().day().hour().minute()).foregroundStyle(.secondary)
       }
-      .width(min: 110, ideal: 150)
+      .width(min: 90, ideal: 150)
       TableColumn("Size", value: \.sortableSize) { entry in
         Text(entry.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "--")
           .foregroundStyle(.secondary)
       }
-      .width(min: 60, ideal: 80)
+      .width(min: 50, ideal: 70)
       TableColumn("Kind", value: \.kind) { entry in
         Text(entry.kind).foregroundStyle(.secondary).lineLimit(1)
       }
-      .width(min: 80, ideal: 120)
+      .width(min: 60, ideal: 120)
     } rows: {
       ForEach(state.shown) { entry in
         TableRow(entry).itemProvider { NSItemProvider(object: entry.url as NSURL) }
@@ -703,6 +725,7 @@ private struct FileTable: View {
         state.selection = urls
         state.onQuickLook?()
       }
+      Button("Get Info") { state.inspecting = sorted }
       Divider()
       if let single {
         Button("Rename") { state.beginRename(single) }
@@ -735,6 +758,7 @@ private struct FileTable: View {
     Button("New Folder") { state.newFolder() }
     Button("Paste") { state.paste(move: false) }.disabled(!state.canPaste)
     Button("Move Items Here") { state.paste(move: true) }.disabled(!state.canPaste)
+    Button("Get Info") { state.inspecting = [state.location] }
     Divider()
     ToolButtons(urls: [state.location], directory: state.location)
     Divider()

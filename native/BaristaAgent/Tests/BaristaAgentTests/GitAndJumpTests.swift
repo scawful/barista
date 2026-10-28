@@ -86,6 +86,17 @@ final class GitAndJumpTests: XCTestCase {
     XCTAssertEqual(status.mark(for: repo.appendingPathComponent("Core"), isFolder: true), .inside)
     XCTAssertEqual(worktrees.count, 1)
     XCTAssertFalse(FileManager.default.fileExists(atPath: repo.appendingPathComponent(".git/index.lock").path))
+
+    let commit = try XCTUnwrap(Git.lastCommit(of: repo.appendingPathComponent("Core/a b.asm"), in: repo))
+    XCTAssertTrue(commit.contains(" · init · t, "), commit)
+    XCTAssertNotNil(Git.lastCommit(of: repo, in: repo), "the repo's own folder has history")
+    XCTAssertNil(Git.lastCommit(of: repo.appendingPathComponent("new.txt"), in: repo), "never committed")
+    let info = FileInfo.load(repo.appendingPathComponent("Core/a b.asm"), repo: repo)
+    XCTAssertEqual(info.size, 7)
+    XCTAssertFalse(info.isFolder)
+    XCTAssertTrue(info.permissions.hasPrefix("-rw"), info.permissions)
+    // The age at the end can tick over between the two calls.
+    XCTAssertEqual(info.lastCommit?.components(separatedBy: ", ").first, commit.components(separatedBy: ", ").first)
   }
 
   func testJumpPrefersNameMatchesThenFrecency() {

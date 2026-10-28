@@ -112,6 +112,30 @@ final class FileBrowserModelTests: XCTestCase {
     XCTAssertEqual(folders, ["real", "linked"])
   }
 
+  func testFolderSizeCountsEverythingAndStopsWhenCancelled() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("barista-size-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: folder.appendingPathComponent("sub"), withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    try Data(count: 100).write(to: folder.appendingPathComponent("a.bin"))
+    try Data(count: 20).write(to: folder.appendingPathComponent("sub/.hidden"))
+    let loose = folder.appendingPathComponent("sub/b.txt")
+    try Data(count: 3).write(to: loose)
+
+    let measured = try XCTUnwrap(FolderSize.measure([folder]) { false })
+    XCTAssertEqual(measured.bytes, 123)
+    XCTAssertEqual(measured.items, 4, "a.bin, sub, and both files in it")
+    let selection = try XCTUnwrap(FolderSize.measure([loose, folder.appendingPathComponent("a.bin")]) { false })
+    XCTAssertEqual(selection.bytes, 103)
+    XCTAssertEqual(selection.items, 2)
+    XCTAssertNil(FolderSize.measure([folder]) { true })
+
+    XCTAssertEqual(FileInfo.permissions(0o755, isFolder: true), "drwxr-xr-x")
+    XCTAssertEqual(FileInfo.permissions(0o640, isFolder: false), "-rw-r-----")
+    XCTAssertTrue(loose.isWithin(folder))
+    XCTAssertTrue(folder.isWithin(folder))
+    XCTAssertFalse(folder.appendingPathComponent("../barista-size-other").isWithin(folder))
+  }
+
   func testNamesCountUpAsFinderDoes() {
     let taken: Set = ["a copy.txt", "a copy 2.txt", "untitled folder"]
     XCTAssertEqual(FileOperations.available("a copy", ext: "txt", exists: taken.contains), "a copy 3.txt")

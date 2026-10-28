@@ -52,6 +52,10 @@ cat > "$BIN_DIR/sketchybar" <<EOF
 set -euo pipefail
 LOG_FILE="$LOG_FILE"
 if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "bar" ]; then
+  if [ "\${BARISTA_TEST_STALE_CREATOR:-0}" = "1" ]; then
+    printf '{"height":28,"items":["front_app","front_app_divider","space.1","space.2","space.3","space_creator.1","space_creator.2","space_creator.3"]}\n'
+    exit 0
+  fi
   if [ "\${BARISTA_TEST_PRESENT_BAR:-0}" = "1" ]; then
     printf '{"height":28,"items":["front_app","front_app_divider","space.1","space.2","space.3","space_creator.1","space_creator.2"]}\n'
     exit 0
@@ -156,5 +160,29 @@ fi
 grep -Fxq 'strategy=creator_only' "$METRICS_FILE" || {
   echo 'FAIL: creator hover settings must use the property-update path' >&2; exit 1;
 }
+
+# A third display went away: only its creator goes. Removing a surviving
+# creator fails the batch and forces a full rebuild of every space window.
+cat > "$CONFIG_DIR/.spaces_signatures" <<'SIG'
+topology=1 1,1 2,2 3
+creator_topology=creator_mode=per_display|creator_targets=1,2,3
+SIG
+: > "$LOG_FILE"
+BARISTA_TEST_PRESENT_BAR=1 BARISTA_TEST_STALE_CREATOR=1 \
+  BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
+  BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+  BARISTA_SPACE_METRICS_FILE="$METRICS_FILE" \
+  CONFIG_DIR="$CONFIG_DIR" "$SCRIPT"
+grep -Fq -- '--remove space_creator.3' "$LOG_FILE" || {
+  echo 'FAIL: the creator of a removed display must be removed' >&2; exit 1;
+}
+if grep -Eq -- '--remove space_creator\.[12]( |$)' "$LOG_FILE"; then
+  echo 'FAIL: creators of remaining displays must be kept, not removed' >&2
+  exit 1
+fi
+if grep -Fq -- '--remove /space' "$LOG_FILE"; then
+  echo 'FAIL: a creator change must not rebuild the space items' >&2
+  exit 1
+fi
 
 printf 'test_simple_spaces_multidisplay_creator.sh: ok\n'

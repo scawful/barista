@@ -114,6 +114,7 @@ class SystemInfoItemsConfig(PreservingModel):
 class TogglesConfig(PreservingModel):
     """Feature toggles."""
     yabai_shortcuts: bool = True
+    stack_indicator: bool = True
 
 
 class IntegrationConfig(PreservingModel):
@@ -415,6 +416,29 @@ def _deep_merge(base: dict[str, Any], patch: Mapping[str, Any]) -> dict[str, Any
     return result
 
 
+def _merge_config_patch(base: dict[str, Any], patch: Mapping[str, Any]) -> dict[str, Any]:
+    """Release UUID preferences only for explicitly changed legacy layouts."""
+    result = _deep_merge(base, patch)
+    modes_patch = patch.get("space_modes")
+    if not isinstance(modes_patch, Mapping):
+        return result
+    old_modes = base.get("space_modes")
+    old_modes = old_modes if isinstance(old_modes, dict) else {}
+    for index, mode in modes_patch.items():
+        removing = mode is None or mode == ""
+        if not removing and old_modes.get(index) == mode:
+            continue
+        if removing:
+            result["space_modes"].pop(index, None)
+        bindings = result.get("space_mode_uuids")
+        if isinstance(bindings, dict):
+            old_uuid = bindings.pop(index, None)
+            choices = result.get("space_modes_by_uuid")
+            if isinstance(choices, dict) and isinstance(old_uuid, str):
+                choices.pop(old_uuid, None)
+    return result
+
+
 def _file_token(path: Path) -> str | None:
     try:
         raw = path.read_bytes()
@@ -645,7 +669,7 @@ def _save_config_locked(
         else:
             patch = updates
 
-        data = _deep_merge(base, patch)
+        data = _merge_config_patch(base, patch)
         if existing_version is not _NO_CHANGE:
             data["_version"] = existing_version
         else:
@@ -695,7 +719,7 @@ def save_config_if_unchanged(
             if updates is None
             else updates
         )
-        data = _deep_merge(base, patch)
+        data = _merge_config_patch(base, patch)
         if existing_version is not _NO_CHANGE:
             data["_version"] = existing_version
         else:

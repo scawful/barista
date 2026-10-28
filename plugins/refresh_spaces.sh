@@ -3,7 +3,12 @@ set -euo pipefail
 
 PATH="${PATH:-}:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin"
 
+_caller_config_dir="${CONFIG_DIR:-}"
 _d="${0%/*}"; [ -z "$_d" ] && _d="."; [ -r "${_d}/lib/common.sh" ] && . "${_d}/lib/common.sh"
+if [ -n "$_caller_config_dir" ]; then
+  CONFIG_DIR="$_caller_config_dir"
+  STATE_FILE="$CONFIG_DIR/state.json"
+fi
 
 SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-${SKETCHYBAR_BIN:-}}"
 YABAI_BIN="${BARISTA_YABAI_BIN:-$(command -v yabai 2>/dev/null || true)}"
@@ -57,7 +62,7 @@ queue_coalesced_refresh() {
   local kind="topology"
   case "$reason" in
     space_changed) kind="active" ;;
-    display_changed|display_added|display_removed) kind="display" ;;
+    display_added|display_removed) kind="display" ;;
     space_topology_repair) kind="repair" ;;
   esac
   mkdir -p "$(dirname "$PENDING_REFRESH_FILE")" >/dev/null 2>&1 || true
@@ -96,7 +101,7 @@ queue_coalesced_refresh() {
         case "$pending_kind" in
           active) pending_reason="space_changed"; pending_active=1 ;;
           topology) pending_reason="coalesced_refresh" ;;
-          display) pending_reason="display_changed" ;;
+          display) pending_reason="display_added" ;;
           repair) pending_retry=1 ;;
         esac
       fi
@@ -125,8 +130,10 @@ update_external_bar_if_needed() {
     should_update=1
   fi
 
+  # Yabai re-tiles every visible space on external_bar, so focus-only
+  # display_changed events must not force it.
   case "${BARISTA_REASON:-${SENDER:-}}" in
-    display_changed|display_added|display_removed)
+    display_added|display_removed)
       should_update=1
       ;;
   esac
@@ -482,7 +489,7 @@ if [ -n "$current_display_state$current_space_state" ]; then
     && [ "${BARISTA_TOPOLOGY_APPLY_RETRY:-0}" != "1" ] && [ ! -f "$TOPOLOGY_DIRTY_FILE" ]; then
     if space_items_present && space_items_match_expected_height; then
       case "${BARISTA_REASON:-${SENDER:-}}" in
-        display_changed|display_added|display_removed)
+        display_added|display_removed)
           update_external_bar_if_needed "$(resolve_external_bar_height "${1:-}")"
           ;;
       esac

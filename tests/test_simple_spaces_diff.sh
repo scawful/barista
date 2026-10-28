@@ -61,6 +61,11 @@ cat > "$BIN_DIR/sketchybar" <<EOF2
 set -euo pipefail
 LOG_FILE="$LOG_FILE"
 if [ "\${1:-}" = "--query" ] && [ "\${2:-}" = "bar" ]; then
+  if [ -n "\${BARISTA_TEST_BUSY_UNTIL:-}" ] \
+    && python3 -c 'import sys, time; sys.exit(time.time() >= float(sys.argv[1]))' "\$BARISTA_TEST_BUSY_UNTIL"; then
+    sleep 0.1
+    exit 0
+  fi
   printf '{"height":28,"items":["front_app","front_app_divider","space.1","space.2","space_creator"]}\n'
   exit 0
 fi
@@ -109,5 +114,22 @@ grep -Fxq 'strategy=incremental_reorder' "$METRICS_FILE" || { echo "FAIL: reorde
 grep -Fxq 'added=0' "$METRICS_FILE" || { echo "FAIL: reorder diff path should report zero added spaces" >&2; exit 1; }
 grep -Fxq 'removed=0' "$METRICS_FILE" || { echo "FAIL: reorder diff path should report zero removed spaces" >&2; exit 1; }
 grep -Fxq 'updated=2' "$METRICS_FILE" || { echo "FAIL: reorder diff path should report updated spaces" >&2; exit 1; }
+
+# A busy bar answers queries with nothing: the client gives up after 100 ms.
+# That is not an empty bar, so it must not force a full rebuild of the spaces.
+cat > "$CONFIG_DIR/.spaces_signatures" <<'SIG'
+topology=1 1,1 2
+creator_topology=creator_mode=primary|creator_targets=1
+SIG
+: > "$LOG_FILE"
+BARISTA_TEST_BUSY_UNTIL="$(python3 -c 'import time; print(time.time() + 0.8)')" \
+  BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
+  BARISTA_YABAI_BIN="$BIN_DIR/yabai" \
+  BARISTA_SPACE_METRICS_FILE="$METRICS_FILE" \
+  CONFIG_DIR="$CONFIG_DIR" "$SCRIPT"
+if grep -Fq -- "--remove /space\\..*/" "$LOG_FILE"; then
+  echo "FAIL: a busy bar's empty reply must not force a full rebuild" >&2
+  exit 1
+fi
 
 printf 'test_simple_spaces_diff.sh: ok\n'

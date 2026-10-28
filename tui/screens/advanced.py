@@ -112,6 +112,10 @@ class AdvancedTab(Vertical):
         with Horizontal(classes="toggle-row"):
             yield Label("Yabai Shortcuts")
             yield Switch(value=self.config.toggles.yabai_shortcuts, id="toggle_yabai_shortcuts")
+
+        with Horizontal(classes="toggle-row"):
+            yield Label("Stack Position Badge")
+            yield Switch(value=self.config.toggles.stack_indicator, id="toggle_stack_indicator")
         
         yield Static("Raw Configuration Preview", classes="section-header")
         yield Static(
@@ -166,8 +170,9 @@ class AdvancedTab(Vertical):
         }
         
         # Toggles
-        switch = self.query_one("#toggle_yabai_shortcuts", Switch)
-        values["toggles"]["yabai_shortcuts"] = switch.value
+        for toggle_key in ("yabai_shortcuts", "stack_indicator"):
+            switch = self.query_one(f"#toggle_{toggle_key}", Switch)
+            values["toggles"][toggle_key] = switch.value
         
         return values
     

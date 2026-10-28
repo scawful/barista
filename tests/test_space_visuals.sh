@@ -7,6 +7,8 @@ SCRIPT="$ROOT_DIR/plugins/space_visuals.sh"
 STATS_SCRIPT="$ROOT_DIR/bin/barista-stats.sh"
 TMP_DIR="$(mktemp -d)"
 CONFIG_DIR="$TMP_DIR/config"
+# The desktop host exports BARISTA_CONFIG_DIR; isolate every helper/cache write.
+export BARISTA_CONFIG_DIR="$CONFIG_DIR"
 BIN_DIR="$TMP_DIR/bin"
 SCRIPTS_DIR="$TMP_DIR/scripts"
 BAR_STATE_DIR="$TMP_DIR/bar_state"
@@ -43,8 +45,11 @@ export BARISTA_PERF_CLOCK_LOG="$CLOCK_LOG"
 cat > "$CONFIG_DIR/state.json" <<'EOF'
 {
   "space_modes": {
+    "1": "float",
     "2": "bsp"
-  }
+  },
+  "space_mode_uuids": {"1": "moved-space"},
+  "space_modes_by_uuid": {"moved-space": "float"}
 }
 EOF
 
@@ -336,6 +341,10 @@ test_lock_available() {
 }
 
 run_visual "manual"
+if grep -Fq -- '-m space ' "$YABAI_LOG"; then
+  echo "FAIL: visual refresh must not change layouts, including stale saved index choices" >&2
+  exit 1
+fi
 [ "$(count_visual_events)" = "1" ] || { echo "FAIL: manual refresh should log exactly one event" >&2; exit 1; }
 jq -e -s '
   [.[] | select(.event == "space_visual_refresh")][0]
@@ -927,5 +936,22 @@ run_visual "manual" \
 expected_visual_events=$((expected_visual_events + 1))
 [ "$(count_visual_events)" = "$expected_visual_events" ] || { echo "FAIL: no-CMake mode should use the portable lock path" >&2; exit 1; }
 [ ! -e "$no_cmake_cc_log" ] || { echo "FAIL: no-CMake mode must not compile the native lock helper" >&2; exit 1; }
+
+# Glyph cache keys must match the earlier tr-based keys so existing cache
+# files stay valid, including under a UTF-8 locale.
+cache_key_fn="$(awk '/^app_cache_key_into\(\) \{/,/^\}/' "$SCRIPT")"
+[ -n "$cache_key_fn" ] || { echo "FAIL: app_cache_key_into not found" >&2; exit 1; }
+cache_key_output="$(CACHE_KEY_FN="$cache_key_fn" LC_ALL=en_US.UTF-8 /bin/bash -c '
+  eval "$CACHE_KEY_FN"
+  for app in "Visual Studio Code" "ChatGPT" "Google Chrome (Canary)" "a__b  c" "Mesen2.app" "zsh: ~/src"; do
+    app_cache_key_into key "$app"
+    printf "%s\n" "$key"
+  done
+')"
+expected_cache_keys=$'visual_studio_code\nchatgpt\ngoogle_chrome_canary_\na_b_c\nmesen2.app\nzsh_src'
+[ "$cache_key_output" = "$expected_cache_keys" ] || {
+  echo "FAIL: app glyph cache keys changed: $cache_key_output" >&2
+  exit 1
+}
 
 printf 'test_space_visuals.sh: ok\n'

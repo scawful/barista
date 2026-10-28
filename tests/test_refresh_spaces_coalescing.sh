@@ -122,15 +122,22 @@ grep -qx 'external_bar all:38:0' "$BARISTA_TEST_LOG" || {
   echo 'FAIL: direct display events must repair external_bar with unchanged spaces' >&2; exit 1;
 }
 
+# Moving focus to another display must not re-send external_bar (Yabai re-tiles).
+: > "$BARISTA_TEST_LOG"
+BARISTA_REASON=display_changed "$CONFIG_DIR/plugins/refresh_spaces.sh"
+if grep -q '^external_bar ' "$BARISTA_TEST_LOG"; then
+  echo 'FAIL: focus-only display_changed must not force external_bar' >&2; exit 1
+fi
+
 # A mixed repair/display retry may meet contention again before it samples.
 # Its retry flag must survive even though the display reason has priority.
 : > "$BARISTA_TEST_LOG"
 mkdir "$CONFIG_DIR/.refresh_spaces.lock"
-BARISTA_REASON=display_changed BARISTA_TOPOLOGY_APPLY_RETRY=1 BARISTA_SPACE_ACTIVE_PENDING=1 \
+BARISTA_REASON=display_added BARISTA_TOPOLOGY_APPLY_RETRY=1 BARISTA_SPACE_ACTIVE_PENDING=1 \
   "$CONFIG_DIR/plugins/refresh_spaces.sh"
 rmdir "$CONFIG_DIR/.refresh_spaces.lock"
 wait_for_queue
-grep -qx 'topology display_changed retry=1' "$BARISTA_TEST_LOG" || {
+grep -qx 'topology display_added retry=1' "$BARISTA_TEST_LOG" || {
   echo 'FAIL: recontended display repair must retain its topology retry flag' >&2; exit 1;
 }
 grep -qx 'external_bar all:38:0' "$BARISTA_TEST_LOG" || {
@@ -152,7 +159,6 @@ BARISTA_YABAI_BIN="$TMP_DIR/missing-yabai" "$SCRIPTS_DIR/update_external_bar.sh"
 if BARISTA_TEST_EXTERNAL_FAIL=1 "$SCRIPTS_DIR/update_external_bar.sh" 38; then
   echo 'FAIL: an available Yabai config failure must propagate from update_external_bar.sh' >&2; exit 1
 fi
-
 # Failed topology applies must not commit their new map into the focus cache.
 cat > "$BARISTA_TEST_SPACES" <<'EOF'
 [{"display":1,"index":1,"is-visible":true,"has-focus":true},{"display":3,"index":2,"is-visible":true,"has-focus":false}]

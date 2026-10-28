@@ -47,6 +47,7 @@ FRONT_APP_VISUAL_RETRY_LOCK_BACKEND=""
 FRONT_APP_VISUAL_WAIT_ATTEMPTS="${BARISTA_SPACE_FRONT_APP_VISUAL_WAIT_ATTEMPTS:-240}"
 FRONT_APP_VISUAL_WAIT_DELAY="${BARISTA_SPACE_FRONT_APP_VISUAL_WAIT_DELAY:-0.025}"
 FRONT_APP_VISUAL_WAITED=0
+VISUAL_LOCK_WAIT_MS=0
 SPACE_REFRESH_LOCK_DIR="${BARISTA_SPACE_REFRESH_LOCK_DIR:-$CONFIG_DIR/.refresh_spaces.lock}"
 STARTUP_TOPOLOGY_WAIT_ATTEMPTS="${BARISTA_SPACE_STARTUP_TOPOLOGY_WAIT_ATTEMPTS:-20}"
 STARTUP_TOPOLOGY_WAIT_DELAY="${BARISTA_SPACE_STARTUP_TOPOLOGY_WAIT_DELAY:-0.10}"
@@ -83,7 +84,6 @@ STYLE_VISIBLE_PROPS=""
 STYLE_IDLE_PROPS=""
 
 declare -a STATE_DEFAULT_ICONS
-declare -a STATE_SPACE_MODES
 declare -a CACHED_SPACE_ICONS
 declare -a SPACE_APP_BY_INDEX
 declare -a SPACE_APP_LOADED
@@ -297,9 +297,12 @@ record_perf() {
   local path="${4:-$SPACE_VISUAL_PATH}"
   [ -n "$start_ms" ] || return 0
   [ -x "$PERF_STATS_BIN" ] || return 0
-  local end_ms duration meta_json=""
+  local end_ms duration meta_json="" details
   end_ms="$(now_ms)"
   duration=$((end_ms - start_ms))
+  details="sender=${SENDER:-manual} spaces=$spaces_count visible=$visible_count path=$path"
+  # duration includes time queued behind another pass; wait separates it out.
+  [ "$VISUAL_LOCK_WAIT_MS" -le 0 ] || details+=" wait=$VISUAL_LOCK_WAIT_MS"
   if [ "$PHASE_METRICS_ENABLED" = "1" ] && [ -n "$JQ_BIN" ]; then
     meta_json="$("$JQ_BIN" -cn \
       --arg path "$path" \
@@ -333,10 +336,9 @@ record_perf() {
   fi
   if [ -n "$meta_json" ]; then
     BARISTA_EVENT_META_JSON="$meta_json" "$PERF_STATS_BIN" event space_visual_refresh "$duration" \
-      "sender=${SENDER:-manual} spaces=$spaces_count visible=$visible_count path=$path" >/dev/null 2>&1 || true
+      "$details" >/dev/null 2>&1 || true
   else
-    "$PERF_STATS_BIN" event space_visual_refresh "$duration" \
-      "sender=${SENDER:-manual} spaces=$spaces_count visible=$visible_count path=$path" >/dev/null 2>&1 || true
+    "$PERF_STATS_BIN" event space_visual_refresh "$duration" "$details" >/dev/null 2>&1 || true
   fi
 }
 
@@ -356,17 +358,38 @@ write_cached_icon() {
   printf '%s' "$icon_value" > "$ICON_CACHE_DIR/$space_index" 2>/dev/null || true
 }
 
-app_cache_key() {
-  local app_name="${1:-}"
-  [ -n "$app_name" ] || return 0
-  printf '%s' "$app_name" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]._' '_'
+# Lowercases A-Z and folds each run of other non-alphanumeric characters
+# (except . and _) and underscores into one "_". Pure bash because /bin/bash
+# 3.2 has no ${var,,} and this runs on every app switch. The letters are
+# listed because [A-Z] also matches lowercase under UTF-8 collation.
+app_cache_key_into() {
+  local output_name="${1:-}"
+  local app_name="${2:-}"
+  local folded_key="" char prefix i
+  local upper="ABCDEFGHIJKLMNOPQRSTUVWXYZ" lower="abcdefghijklmnopqrstuvwxyz"
+  [ -n "$output_name" ] || return 1
+  for ((i = 0; i < ${#app_name}; i++)); do
+    char="${app_name:i:1}"
+    case "$char" in
+      [ABCDEFGHIJKLMNOPQRSTUVWXYZ])
+        prefix="${upper%%"$char"*}"
+        char="${lower:${#prefix}:1}"
+        ;;
+      _|[!.[:alnum:]])
+        char="_"
+        [ "${folded_key: -1}" != "_" ] || continue
+        ;;
+    esac
+    folded_key+="$char"
+  done
+  printf -v "$output_name" '%s' "$folded_key"
 }
 
 read_cached_app_glyph() {
   local app_name="${1:-}"
   local cache_key
   [ -n "$app_name" ] || return 0
-  cache_key="$(app_cache_key "$app_name")"
+  app_cache_key_into cache_key "$app_name"
   [ -n "$cache_key" ] || return 0
   read_file_value "$APP_GLYPH_CACHE_DIR/$cache_key"
 }
@@ -377,7 +400,7 @@ write_cached_app_glyph() {
   local cache_key
   [ -n "$app_name" ] || return 0
   [ -n "$glyph" ] || return 0
-  cache_key="$(app_cache_key "$app_name")"
+  app_cache_key_into cache_key "$app_name"
   [ -n "$cache_key" ] || return 0
   mkdir -p "$APP_GLYPH_CACHE_DIR" 2>/dev/null || true
   printf '%s' "$glyph" > "$APP_GLYPH_CACHE_DIR/$cache_key" 2>/dev/null || true
@@ -815,7 +838,7 @@ ${app}"
   while IFS=$'\t' read -r app glyph; do
     [ -n "$app" ] || continue
     [ -n "$glyph" ] || continue
-    cache_key="$(app_cache_key "$app")"
+    app_cache_key_into cache_key "$app"
     [ -n "$cache_key" ] || continue
     write_cached_app_glyph "$app" "$glyph"
   done <<EOF
@@ -1030,16 +1053,14 @@ load_state_space_maps() {
   STATE_SPACE_MAPS_LOADED=1
   [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ] || return 0
 
-  local idx icon mode
-  while IFS=$'\x1f' read -r idx icon mode; do
+  local idx icon
+  while IFS=$'\x1f' read -r idx icon; do
     [ -n "$idx" ] || continue
     STATE_DEFAULT_ICONS[$idx]="$icon"
-    STATE_SPACE_MODES[$idx]="$mode"
   done < <("$JQ_BIN" -r '
     (.space_icons // {}) as $icons
-    | (.space_modes // {}) as $modes
-    | [($icons | keys[]?), ($modes | keys[]?)] | flatten | unique[]? as $idx
-    | [$idx, ($icons[$idx] // ""), ($modes[$idx] // "")] | join("\u001f")
+    | ($icons | keys[]?) as $idx
+    | [$idx, ($icons[$idx] // "")] | join("\u001f")
   ' "$STATE_FILE" 2>/dev/null || true)
 }
 
@@ -1089,6 +1110,7 @@ if ! acquire_visual_lock; then
   if ! wait_for_front_app_visual_lock; then
     exit 0
   fi
+  VISUAL_LOCK_WAIT_MS=$(( $(now_ms) - START_MS ))
 fi
 
 if should_skip_front_app_refresh; then
@@ -1149,7 +1171,7 @@ glyph_phase_start=0
 
 phase_begin phase_start
 load_cached_space_icons
-while IFS=' ' read -r space_index space_display is_visible has_focus space_type; do
+while IFS=' ' read -r space_index space_display is_visible has_focus; do
   [ -n "$space_index" ] || continue
   item="space.$space_index"
   [ "${SPACE_ITEM_PRESENT[$space_index]-0}" = "1" ] || continue
@@ -1191,11 +1213,6 @@ while IFS=' ' read -r space_index space_display is_visible has_focus space_type;
     visible_count=$((visible_count + 1))
   fi
 
-  desired_mode="${STATE_SPACE_MODES[$space_index]-}"
-  if [ "$is_visible" = "true" ] && [ -n "$desired_mode" ] && [ "$space_type" != "$desired_mode" ]; then
-    "$YABAI_BIN" -m space "$space_index" --layout "$desired_mode" >/dev/null 2>&1 || true
-  fi
-
   if [ "$has_focus" = "true" ]; then
     focused_space_index="$space_index"
     focused_display_index="$space_display"
@@ -1208,7 +1225,7 @@ while IFS=' ' read -r space_index space_display is_visible has_focus space_type;
     FAST_ARGS+=(--set "$item" icon="$icon_value")
     append_style_args "$item" idle
   fi
-done < <(printf '%s\n' "$ALL_SPACES_DATA" | "$JQ_BIN" -r 'sort_by(.display, .index)[] | "\(.index) \(.display) \(.["is-visible"]) \(.["has-focus"] // false) \(.type // "unknown")"')
+done < <(printf '%s\n' "$ALL_SPACES_DATA" | "$JQ_BIN" -r 'sort_by(.display, .index)[] | "\(.index) \(.display) \(.["is-visible"]) \(.["has-focus"] // false)"')
 phase_add PHASE_LOOP_MS "$phase_start"
 
 [ ${#FAST_ARGS[@]} -gt 0 ] || exit 0

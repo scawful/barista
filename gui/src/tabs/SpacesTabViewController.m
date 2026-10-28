@@ -280,7 +280,8 @@
   self.resetModesButton = [[NSButton alloc] initWithFrame:NSZeroRect];
   [self.resetModesButton setButtonType:NSButtonTypeMomentaryPushIn];
   [self.resetModesButton setBezelStyle:NSBezelStyleRounded];
-  self.resetModesButton.title = @"Reset All";
+  self.resetModesButton.title = @"Clear Saved Layouts";
+  self.resetModesButton.toolTip = @"Clear saved layout preferences. Current windows stay in place.";
   self.resetModesButton.target = self;
   self.resetModesButton.action = @selector(resetAllModes:);
   [buttonRow addView:self.resetModesButton inGravity:NSStackViewGravityLeading];
@@ -476,12 +477,11 @@
 - (void)resetAllModes:(id)sender {
   ConfigurationManager *config = [ConfigurationManager sharedManager];
   BaristaCommandBus *commandBus = [BaristaCommandBus sharedBus];
-  [config setValue:[NSMutableDictionary dictionary] forKeyPath:@"space_modes"];
-
-  NSString *script = [[config.configPath stringByAppendingPathComponent:@"plugins"] stringByAppendingPathComponent:@"set_space_mode.sh"];
-  if ([[NSFileManager defaultManager] fileExistsAtPath:script]) {
-    [commandBus runScriptNamed:@"set_space_mode.sh" arguments:@[[NSString stringWithFormat:@"%ld", (long)self.currentSpace], @"float"]];
-  }
+  [config performBatchUpdates:^{
+    [config setValue:[NSMutableDictionary dictionary] forKeyPath:@"space_modes"];
+    [config setValue:[NSMutableDictionary dictionary] forKeyPath:@"space_modes_by_uuid"];
+    [config setValue:[NSMutableDictionary dictionary] forKeyPath:@"space_mode_uuids"];
+  }];
 
   [commandBus reloadSketchyBar];
   [self loadSpaceSettings];

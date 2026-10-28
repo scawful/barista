@@ -187,6 +187,65 @@ swap_indicator_enabled() {
   [ "$(normalize_bool "$enabled")" = "true" ]
 }
 
+max_spaces_per_display() {
+  local val
+  val=$(state_value '.spaces.max_spaces_per_display' '8')
+  case "$val" in
+    ''|*[!0-9]*) printf '8' ;;
+    *) printf '%s' "$val" ;;
+  esac
+}
+
+min_spaces_per_display() {
+  local val
+  val=$(state_value '.spaces.min_spaces_per_display' '1')
+  case "$val" in
+    ''|*[!0-9]*|0) printf '1' ;;
+    *) printf '%s' "$val" ;;
+  esac
+}
+
+destroy_non_empty_policy() {
+  local val
+  val=$(state_value '.spaces.destroy_non_empty_policy' 'allow')
+  case "$val" in
+    allow|refuse|evacuate) printf '%s' "$val" ;;
+    *) printf 'allow' ;;
+  esac
+}
+
+new_space_layout_policy() {
+  local val
+  val=$(state_value '.spaces.new_space_layout' 'default')
+  case "$val" in
+    default|bsp|stack|float|inherit) printf '%s' "$val" ;;
+    *) printf 'default' ;;
+  esac
+}
+
+space_is_locked() {
+  local space_idx="${1:-}"
+  local space_uuid="${2:-}"
+  [ "${FORCE_SPACE_ACTION:-0}" != "1" ] || return 1
+  [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ] || return 1
+  if [ -z "$space_uuid" ] && [ -n "$YABAI_BIN" ]; then
+    space_uuid="$(run_with_timeout 1 "$YABAI_BIN" -m query --spaces 2>/dev/null \
+      | "$JQ_BIN" -r --arg idx "$space_idx" 'map(select((.index | tostring) == $idx))[0].uuid // empty' 2>/dev/null || true)"
+  fi
+  "$JQ_BIN" -e --arg idx "$space_idx" --arg uuid "$space_uuid" '
+    (.spaces.locked_spaces // {}) as $locked
+    | if ($locked | type) == "array" then
+        ($locked | map(tostring) | index($idx) != null)
+        or (($uuid != "") and ($locked | map(tostring) | index($uuid) != null))
+      elif ($locked | type) == "object" then
+        (($locked[$idx] // false) == true)
+        or (($uuid != "") and (($locked[$uuid] // false) == true))
+      else
+        false
+      end
+  ' "$STATE_FILE" >/dev/null 2>&1
+}
+
 modifier_has() {
   local needle="$1"
   local raw="${MODIFIER:-${modifiers:-}}"
@@ -291,8 +350,10 @@ arm_swap_state() {
 }
 
 ensure_swap_indicator_item() {
-  local indicator_height
-  indicator_height="$(resolve_space_item_height)"
+  local indicator_height="${1:-}"
+  if [ -z "$indicator_height" ]; then
+    indicator_height="$(resolve_space_item_height)"
+  fi
   if ! swap_indicator_enabled; then
     return 0
   fi
@@ -319,7 +380,7 @@ ensure_swap_indicator_item() {
 sync_swap_indicator() {
   local indicator_height
   indicator_height="$(resolve_space_item_height)"
-  ensure_swap_indicator_item
+  ensure_swap_indicator_item "$indicator_height"
   if ! swap_indicator_enabled; then
     sketchybar --set "$SPACE_SWAP_INDICATOR_ITEM" drawing=off >/dev/null 2>&1 || true
     return 0
@@ -446,6 +507,25 @@ neighbor_display() {
 neighbor_space_on_display() {
   local current_idx="$1"
   local direction="$2"
+  if [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ]; then
+    local spaces_json
+    spaces_json="$(run_with_timeout 1 "$YABAI_BIN" -m query --spaces 2>/dev/null || true)"
+    if [ -n "$spaces_json" ]; then
+      printf '%s' "$spaces_json" | "$JQ_BIN" -r --argjson cur "$current_idx" --arg dir "$direction" '
+        (map(select(.index == $cur))[0].display // empty) as $disp
+        | if $disp == "" then empty
+          else
+            (map(select(.display == $disp) | .index) | sort) as $list
+            | ($list | index($cur)) as $pos
+            | if $pos == null or ($list | length) <= 1 then empty
+              elif $dir == "left" and $pos > 0 then ($list[$pos - 1] | tostring)
+              elif $dir == "right" and $pos < (($list | length) - 1) then ($list[$pos + 1] | tostring)
+              else empty end
+          end
+      ' 2>/dev/null
+      return 0
+    fi
+  fi
   local display_idx
   display_idx=$(space_display "$current_idx" || true)
   [ -n "$display_idx" ] || return 1
@@ -483,6 +563,11 @@ move_space_to_display_neighbor() {
   local direction="$2"
   [ -n "$YABAI_BIN" ] || return 1
 
+  if space_is_locked "$space_idx"; then
+    echo "Refusing to move locked space $space_idx across displays (spaces.locked_spaces)." >&2
+    return 1
+  fi
+
   local current_display target_display
   current_display=$(space_display "$space_idx" || true)
   [ -n "$current_display" ] || return 1
@@ -500,6 +585,24 @@ move_space_to_display_neighbor() {
   esac
   [ -n "$target_display" ] || return 0
 
+  if [ "${FORCE_SPACE_ACTION:-0}" != "1" ] && [ -n "$JQ_BIN" ]; then
+    local max_spaces dest_count src_count min_spaces
+    max_spaces="$(max_spaces_per_display)"
+    min_spaces="$(min_spaces_per_display)"
+    src_count="$(display_space_count "$current_display" || echo 0)"
+    if [ "${src_count:-0}" -le "$min_spaces" ]; then
+      echo "Refusing to move space $space_idx off display $current_display: minimum of $min_spaces space(s) required." >&2
+      return 1
+    fi
+    if [ "${max_spaces:-0}" -gt 0 ]; then
+      dest_count="$(display_space_count "$target_display" || echo 0)"
+      if [ "${dest_count:-0}" -ge "$max_spaces" ]; then
+        echo "Refusing to move space $space_idx to display $target_display: limit of $max_spaces spaces reached." >&2
+        return 1
+      fi
+    fi
+  fi
+
   run_with_timeout 1 "$YABAI_BIN" -m space "$space_idx" --display "$target_display" >/dev/null 2>&1 || true
   refresh_space_items
 }
@@ -511,8 +614,12 @@ move_space() {
   if [ "$from_idx" = "$to_idx" ]; then
     return 0
   fi
+  if space_is_locked "$from_idx" || space_is_locked "$to_idx"; then
+    echo "Refusing to reorder locked space ($from_idx <-> $to_idx; spaces.locked_spaces)." >&2
+    return 1
+  fi
   if native_space_manager_available; then
-    "$SPACE_MANAGER_BIN" move "$from_idx" "$to_idx" >/dev/null 2>&1 || true
+    BARISTA_SPACE_MANAGER_NO_TRIGGER=1 "$SPACE_MANAGER_BIN" move "$from_idx" "$to_idx" >/dev/null 2>&1 || true
   else
     run_with_timeout 1 "$YABAI_BIN" -m space "$from_idx" --move "$to_idx" >/dev/null 2>&1 || true
   fi
@@ -526,8 +633,12 @@ swap_spaces() {
   if [ "$from_idx" = "$to_idx" ]; then
     return 0
   fi
+  if space_is_locked "$from_idx" || space_is_locked "$to_idx"; then
+    echo "Refusing to swap locked space ($from_idx <-> $to_idx; spaces.locked_spaces)." >&2
+    return 1
+  fi
   if native_space_manager_available; then
-    "$SPACE_MANAGER_BIN" swap "$from_idx" "$to_idx" >/dev/null 2>&1 || true
+    BARISTA_SPACE_MANAGER_NO_TRIGGER=1 "$SPACE_MANAGER_BIN" swap "$from_idx" "$to_idx" >/dev/null 2>&1 || true
   else
     run_with_timeout 1 "$YABAI_BIN" -m space "$from_idx" --swap "$to_idx" >/dev/null 2>&1 || true
   fi
@@ -543,45 +654,171 @@ reorder_space_relative() {
   move_space "$space_idx" "$neighbor"
 }
 
+cleanup_destroyed_space_state() {
+  local space_idx="$1"
+  local space_uuid="${2:-}"
+  local state_writer=""
+  if [ -f "$CONFIG_DIR/scripts/yabai_state.py" ]; then
+    state_writer="$CONFIG_DIR/scripts/yabai_state.py"
+  elif [ -f "$(dirname "${BASH_SOURCE[0]}")/yabai_state.py" ]; then
+    state_writer="$(dirname "${BASH_SOURCE[0]}")/yabai_state.py"
+  fi
+  if [ -n "$state_writer" ] && [ -f "$STATE_FILE" ] && command -v python3 >/dev/null 2>&1; then
+    python3 "$state_writer" "$STATE_FILE" space-unset "$space_idx" "$space_uuid" >/dev/null 2>&1 || true
+  fi
+}
+
 destroy_space() {
   local space_idx="$1"
   [ -n "$YABAI_BIN" ] || return 1
 
-  local display_idx
-  display_idx=$(space_display "$space_idx" || true)
+  local display_idx="" count="0" focused="false" alt="" space_uuid="" is_fullscreen="false" win_count="0" win_ids=""
+  if [ -n "$JQ_BIN" ]; then
+    local spaces_json info_tsv
+    spaces_json="$(run_with_timeout 1 "$YABAI_BIN" -m query --spaces 2>/dev/null || true)"
+    if [ -n "$spaces_json" ]; then
+      info_tsv="$(printf '%s' "$spaces_json" | "$JQ_BIN" -r --argjson idx "$space_idx" '
+        (map(select(.index == $idx))[0]) as $target
+        | if $target == null then ""
+          else
+            ($target.display) as $disp
+            | (map(select(.display == $disp))) as $on_disp
+            | [
+                ($disp | tostring),
+                ($on_disp | length | tostring),
+                (($target."has-focus" // false) | tostring),
+                (($on_disp | map(.index) | map(select(. != $idx))[0] // "") | tostring),
+                ($target.uuid // ""),
+                (($target."is-native-fullscreen" // false) | tostring),
+                ((($target.windows // []) | length) | tostring),
+                ((($target.windows // []) | map(tostring) | join(" ")))
+              ] | @tsv
+          end
+      ' 2>/dev/null || true)"
+      if [ -n "$info_tsv" ]; then
+        IFS=$'\t' read -r display_idx count focused alt space_uuid is_fullscreen win_count win_ids <<< "$info_tsv"
+      fi
+    fi
+  else
+    display_idx=$(space_display "$space_idx" || true)
+    if [ -n "$display_idx" ]; then
+      count=$(display_space_count "$display_idx" || echo 0)
+      focused=$(space_has_focus "$space_idx" || echo false)
+      alt=$(alternate_space_on_display "$display_idx" "$space_idx" || true)
+    fi
+  fi
+
   if [ -z "$display_idx" ]; then
     return 1
   fi
 
-  local count
-  count=$(display_space_count "$display_idx" || echo 0)
+  if [ "$is_fullscreen" = "true" ]; then
+    echo "Refusing to destroy space $space_idx while it is in native fullscreen" >&2
+    return 1
+  fi
+
+  if space_is_locked "$space_idx" "$space_uuid"; then
+    echo "Refusing to destroy locked space $space_idx (spaces.locked_spaces)" >&2
+    return 1
+  fi
+
+  local min_spaces=1
+  if [ "${FORCE_SPACE_ACTION:-0}" != "1" ]; then
+    min_spaces="$(min_spaces_per_display)"
+  fi
   if [ "${count:-0}" -le 1 ]; then
     echo "Refusing to destroy last space on display $display_idx" >&2
     return 1
   fi
+  if [ "${count:-0}" -le "$min_spaces" ]; then
+    echo "Refusing to destroy space $space_idx on display $display_idx: minimum of $min_spaces spaces required (spaces.min_spaces_per_display)" >&2
+    return 1
+  fi
 
-  local focused
-  focused=$(space_has_focus "$space_idx" || echo false)
-  if [ "$focused" = "true" ]; then
-    local alt
-    alt=$(alternate_space_on_display "$display_idx" "$space_idx" || true)
-    if [ -n "$alt" ]; then
-      run_with_timeout 1 "$YABAI_BIN" -m space --focus "$alt" >/dev/null 2>&1 || true
-    fi
+  if [ "${FORCE_SPACE_ACTION:-0}" != "1" ] && [ "${win_count:-0}" -gt 0 ]; then
+    local ne_policy
+    ne_policy="$(destroy_non_empty_policy)"
+    case "$ne_policy" in
+      refuse)
+        echo "Refusing to destroy non-empty space $space_idx ($win_count window(s) present; spaces.destroy_non_empty_policy=refuse)" >&2
+        return 1
+        ;;
+      evacuate)
+        if [ -n "$alt" ] && [ -n "$win_ids" ]; then
+          local wid
+          for wid in $win_ids; do
+            run_with_timeout 1 "$YABAI_BIN" -m window "$wid" --space "$alt" >/dev/null 2>&1 || true
+          done
+        fi
+        ;;
+    esac
+  fi
+
+  if [ "$focused" = "true" ] && [ -n "$alt" ]; then
+    run_with_timeout 1 "$YABAI_BIN" -m space --focus "$alt" >/dev/null 2>&1 || true
   fi
 
   if native_space_manager_available; then
-    "$SPACE_MANAGER_BIN" destroy "$space_idx" >/dev/null 2>&1 || true
+    BARISTA_SPACE_MANAGER_NO_TRIGGER=1 "$SPACE_MANAGER_BIN" destroy "$space_idx" >/dev/null 2>&1 || true
   else
     run_with_timeout 1 "$YABAI_BIN" -m space "$space_idx" --destroy >/dev/null 2>&1 || true
   fi
 
+  # Saved labels and layouts belong to the surviving space if the destroy was
+  # refused, so only clear them once the uuid is confirmed gone.
+  if [ -n "$space_uuid" ] && [ -n "$JQ_BIN" ]; then
+    if run_with_timeout 1 "$YABAI_BIN" -m query --spaces 2>/dev/null \
+      | "$JQ_BIN" -e --arg uuid "$space_uuid" 'any(.[]; .uuid == $uuid) | not' >/dev/null 2>&1; then
+      cleanup_destroyed_space_state "$space_idx" "$space_uuid"
+    else
+      echo "Space $space_idx was not destroyed; keeping its saved state" >&2
+      refresh_space_items
+      return 1
+    fi
+  fi
   refresh_space_items
 }
 
 create_space() {
   local target_display="${1:-active}"
   [ -n "$YABAI_BIN" ] || return 1
+
+  local pre_spaces_json="" resolved_display="" display_count="0" focused_layout="" pre_uuids_csv=""
+  local layout_policy="default"
+  if [ -n "$JQ_BIN" ]; then
+    layout_policy="$(new_space_layout_policy)"
+    local max_spaces
+    max_spaces="$(max_spaces_per_display)"
+    if [ "${FORCE_SPACE_ACTION:-0}" != "1" ] && [ "${max_spaces:-0}" -gt 0 ] || [ "$layout_policy" != "default" ]; then
+      pre_spaces_json="$(run_with_timeout 1 "$YABAI_BIN" -m query --spaces 2>/dev/null || true)"
+      if [ -n "$pre_spaces_json" ]; then
+        local pre_tsv
+        pre_tsv="$(printf '%s' "$pre_spaces_json" | "$JQ_BIN" -r --arg td "$target_display" '
+          (if ($td == "" or $td == "active") then
+            (map(select(."has-focus" == true))[0].display // .[0].display // 1)
+          else
+            ($td | tonumber? // 1)
+          end) as $disp
+          | (map(select(.display == $disp))) as $on_disp
+          | [
+              ($disp | tostring),
+              ($on_disp | length | tostring),
+              ((map(select(."has-focus" == true))[0].type // $on_disp[-1].type // "bsp") | tostring),
+              (map(.uuid // "") | join(","))
+            ] | @tsv
+        ' 2>/dev/null || true)"
+        if [ -n "$pre_tsv" ]; then
+          IFS=$'\t' read -r resolved_display display_count focused_layout pre_uuids_csv <<< "$pre_tsv"
+        fi
+      fi
+    fi
+    if [ "${FORCE_SPACE_ACTION:-0}" != "1" ] && [ "${max_spaces:-0}" -gt 0 ] && [ -n "$resolved_display" ]; then
+      if [ "${display_count:-0}" -ge "$max_spaces" ]; then
+        echo "Refusing to create space on display $resolved_display: limit of $max_spaces spaces reached (spaces.max_spaces_per_display)" >&2
+        return 1
+      fi
+    fi
+  fi
 
   case "$target_display" in
     ""|active)
@@ -593,9 +830,40 @@ create_space() {
   esac
 
   if native_space_manager_available; then
-    "$SPACE_MANAGER_BIN" create >/dev/null 2>&1 || true
+    BARISTA_SPACE_MANAGER_NO_TRIGGER=1 "$SPACE_MANAGER_BIN" create >/dev/null 2>&1 || true
   else
     run_with_timeout 1 "$YABAI_BIN" -m space --create >/dev/null 2>&1 || true
+  fi
+
+  if [ -n "$JQ_BIN" ] && [ "$layout_policy" != "default" ]; then
+    local desired_layout="$layout_policy"
+    if [ "$desired_layout" = "inherit" ]; then
+      desired_layout="${focused_layout:-bsp}"
+    fi
+    case "$desired_layout" in
+      bsp|stack|float)
+        local post_spaces_json new_space_idx=""
+        post_spaces_json="$(run_with_timeout 1 "$YABAI_BIN" -m query --spaces 2>/dev/null || true)"
+        if [ -n "$post_spaces_json" ]; then
+          # Creating a space shifts every later index, so only the uuid
+          # identifies the new space on multi-display setups.
+          new_space_idx="$(printf '%s' "$post_spaces_json" | "$JQ_BIN" -r --arg pre "$pre_uuids_csv" --arg disp "${resolved_display:-1}" '
+            ($pre | split(",")) as $known
+            | (map(select((.uuid // "") as $u | $u != "" and ($known | index($u) == null)))[0].index)
+              // (map(select((.display | tostring) == $disp))[-1].index)
+              // empty
+          ' 2>/dev/null || true)"
+        fi
+        if [ -n "$new_space_idx" ]; then
+          if [ -x "$CONFIG_DIR/plugins/set_space_mode.sh" ]; then
+            BARISTA_CONFIG_DIR="$CONFIG_DIR" BARISTA_STATE_FILE="$STATE_FILE" \
+              "$CONFIG_DIR/plugins/set_space_mode.sh" "$new_space_idx" "$desired_layout" >/dev/null 2>&1 || true
+          else
+            run_with_timeout 1 "$YABAI_BIN" -m space "$new_space_idx" --layout "$desired_layout" >/dev/null 2>&1 || true
+          fi
+        fi
+        ;;
+    esac
   fi
 
   refresh_space_items
@@ -701,6 +969,7 @@ Commands:
 USAGE
 }
 
+FORCE_SPACE_ACTION="${BARISTA_SPACE_FORCE:-0}"
 parse_space_arg() {
   local space_idx=""
   while [ $# -gt 0 ]; do
@@ -715,10 +984,32 @@ parse_space_arg() {
   printf '%s' "$space_idx"
 }
 
+scan_force_flag() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force|-f)
+        FORCE_SPACE_ACTION=1
+        export FORCE_SPACE_ACTION
+        ;;
+    esac
+    shift || true
+  done
+}
+
 command="${1:-}"
 shift || true
+scan_force_flag "$@"
 
-sync_swap_indicator >/dev/null 2>&1 || true
+case "$command" in
+  focus|menu|click)
+    if [ -f "$(swap_state_file)" ]; then
+      sync_swap_indicator >/dev/null 2>&1 || true
+    fi
+    ;;
+  *)
+    sync_swap_indicator >/dev/null 2>&1 || true
+    ;;
+esac
 
 case "$command" in
   create)

@@ -4,7 +4,7 @@ set -euo pipefail
 
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH:-}"
 
-CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/sketchybar}"
+CONFIG_DIR="${CONFIG_DIR:-${BARISTA_CONFIG_DIR:-$HOME/.config/sketchybar}}"
 SKETCHYBAR_BIN="${BARISTA_SKETCHYBAR_BIN:-$(command -v sketchybar 2>/dev/null || true)}"
 YABAI_BIN="${BARISTA_YABAI_BIN:-$(command -v yabai 2>/dev/null || true)}"
 JQ_BIN="${BARISTA_JQ_BIN:-$(command -v jq 2>/dev/null || true)}"
@@ -31,6 +31,7 @@ STATE_CREATOR_HOVER_DURATION="8"
 CREATOR_HOVER_SCRIPT=""
 BAR_QUERY_JSON=""
 BAR_SNAPSHOT_LOADED=0
+BAR_SNAPSHOT_TRIED=0
 BAR_HEIGHT_SNAPSHOT=""
 BAR_ITEMS_LOOKUP=""
 BAR_SPACE_ITEM_COUNT=""
@@ -122,22 +123,26 @@ initialize_creator_hover_script() {
 
 ensure_bar_snapshot_loaded() {
   [ "$BAR_SNAPSHOT_LOADED" -eq 0 ] || return 0
+  [ "$BAR_SNAPSHOT_TRIED" -eq 0 ] || return 0
+  BAR_SNAPSHOT_TRIED=1
   [ -n "$SKETCHYBAR_BIN" ] || return 0
   [ -n "$JQ_BIN" ] || return 0
-  local snapshot_records=""
-  BAR_QUERY_JSON="$("$SKETCHYBAR_BIN" --query bar 2>/dev/null || true)"
-  [ -n "$BAR_QUERY_JSON" ] || return 0
-  if ! snapshot_records="$(printf '%s' "$BAR_QUERY_JSON" | "$JQ_BIN" -r '("H\t" + ((.height // empty) | tostring)), (.items[]? | "I\t" + .)' 2>/dev/null)"; then
+  local snapshot_records="" attempt
+  # The client prints nothing once the bar is busy for 100 ms. An empty
+  # snapshot reads as "no space items" and forces a full rebuild, which keeps
+  # the bar busy long enough for the next query to come back empty too.
+  for attempt in 1 2 3 4 5 6 7 8; do
+    BAR_QUERY_JSON="$("$SKETCHYBAR_BIN" --query bar 2>/dev/null || true)"
+    if [ -n "$BAR_QUERY_JSON" ] \
+      && snapshot_records="$(printf '%s' "$BAR_QUERY_JSON" | "$JQ_BIN" -r '("H\t" + ((.height // empty) | tostring)), (.items[]? | "I\t" + .)' 2>/dev/null)"; then
+      case "$snapshot_records" in
+        H$'\t'*) break ;;
+      esac
+    fi
     BAR_QUERY_JSON=""
-    return 0
-  fi
-  case "$snapshot_records" in
-    H$'\t'*) ;;
-    *)
-      BAR_QUERY_JSON=""
-      return 0
-      ;;
-  esac
+    [ "$attempt" -eq 8 ] || sleep 0.15
+  done
+  [ -n "$BAR_QUERY_JSON" ] || return 0
   BAR_HEIGHT_SNAPSHOT=""
   BAR_ITEMS_SNAPSHOT=""
   local item line_type line_value
@@ -656,7 +661,7 @@ schedule_spaces_retry() {
   printf '%s' "$now" > "$RETRY_FILE" 2>/dev/null || true
   (
     sleep 0.15
-    CONFIG_DIR="$CONFIG_DIR" "$CONFIG_DIR/plugins/refresh_spaces.sh" >/dev/null 2>&1 || true
+    BARISTA_CONFIG_DIR="$CONFIG_DIR" CONFIG_DIR="$CONFIG_DIR" "$CONFIG_DIR/plugins/refresh_spaces.sh" >/dev/null 2>&1 || true
   ) &
 }
 
@@ -671,7 +676,7 @@ schedule_topology_apply_retry() {
     BARISTA_TOPOLOGY_APPLY_RETRY=1 \
       BARISTA_REASON=space_topology_repair SENDER=space_topology_repair \
       BARISTA_ALL_SPACES_DATA="" BARISTA_SPACE_METRICS_FILE="" \
-      CONFIG_DIR="$CONFIG_DIR" \
+      BARISTA_CONFIG_DIR="$CONFIG_DIR" CONFIG_DIR="$CONFIG_DIR" \
       "$CONFIG_DIR/plugins/refresh_spaces.sh" >/dev/null 2>&1 || true
   ) &
 }
@@ -683,9 +688,6 @@ fi
 CREATOR_MODE="$(normalize_creator_mode "${STATE_CREATOR_MODE:-per_display}")"
 initialize_creator_hover_script
 ensure_bar_snapshot_loaded
-if [ "$BAR_SNAPSHOT_LOADED" -eq 0 ]; then
-  ensure_bar_snapshot_loaded
-fi
 SPACE_ITEM_HEIGHT="$(resolve_space_item_height)"
 SIMPLE_SPACES_START_MS="$(now_ms)"
 initialize_action_prefixes
@@ -934,7 +936,7 @@ apply_space_updates() {
 sync_creator_items() {
   local anchor_item="${1:-}"
   local last_creator="$anchor_item"
-  local creator_target creator_item creator_cmd existing_item expected_lookup=""
+  local creator_target creator_item creator_cmd existing_item expected_lookup=$'\n'
   local -a creator_args=()
   local creator_associated_display creator_associated_space creator_ignore_association
 
@@ -953,7 +955,7 @@ sync_creator_items() {
       creator_ignore_association="off"
     fi
 
-    expected_lookup+=$'\n'"$creator_item"
+    expected_lookup+="$creator_item"$'\n'
     if ! snapshot_item_exists "$creator_item"; then
       creator_args+=(--add item "$creator_item" left)
       creator_args+=(--subscribe "$creator_item" mouse.entered mouse.exited)
@@ -988,7 +990,7 @@ sync_creator_items() {
   while IFS= read -r existing_item; do
     [ -n "$existing_item" ] || continue
     case "$expected_lookup" in
-      *$'\n'"$existing_item") ;;
+      *$'\n'"$existing_item"$'\n'*) ;;
       *) creator_args=(--remove "$existing_item" "${creator_args[@]}") ;;
     esac
   done < <(snapshot_creator_items)

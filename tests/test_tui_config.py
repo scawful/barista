@@ -145,6 +145,105 @@ class TuiConfigPersistenceTests(unittest.TestCase):
         expected["system_info_items"]["cpu"] = True
         self.assertEqual(self.read_json(self.state_file), expected)
 
+    def test_legacy_layout_edits_release_only_the_changed_uuid(self) -> None:
+        original = lua_shaped_state()
+        original.update({
+            "space_modes": {"1": "bsp", "2": "float"},
+            "space_mode_uuids": {"1": "uuid-one", "2": "uuid-two"},
+            "space_modes_by_uuid": {"uuid-one": "bsp", "uuid-two": "float"},
+        })
+        for mode in ("stack", None, ""):
+            for exact_snapshot in (False, True):
+                with self.subTest(mode=mode, exact_snapshot=exact_snapshot):
+                    self.write_json(original)
+                    config = load_config(state_file=self.state_file)
+                    updates = {"space_modes": {"1": mode, "2": "float"}}
+                    if exact_snapshot:
+                        _, token = config_module.load_config_document_snapshot(self.state_file)
+                        self.assertTrue(config_module.save_config_if_unchanged(
+                            config, updates=updates, state_file=self.state_file,
+                            expected_token=token,
+                        ))
+                    else:
+                        save_config(config, updates=updates, state_file=self.state_file)
+                    saved = self.read_json(self.state_file)
+                    self.assertEqual(saved["space_modes"],
+                                     {"1": "stack", "2": "float"} if mode == "stack" else {"2": "float"})
+                    self.assertEqual(saved["space_mode_uuids"], {"2": "uuid-two"})
+                    self.assertEqual(saved["space_modes_by_uuid"], {"uuid-two": "float"})
+                    self.assertEqual(saved["future_top_level"], original["future_top_level"])
+
+    def test_unchanged_legacy_layout_preserves_uuid_and_exact_bytes(self) -> None:
+        original = lua_shaped_state()
+        original.update({
+            "space_modes": {"1": "float"},
+            "space_mode_uuids": {"1": "uuid-one"},
+            "space_modes_by_uuid": {"uuid-one": "float"},
+        })
+        self.write_json(original)
+        before = self.state_file.read_bytes()
+        config = load_config(state_file=self.state_file)
+        save_config(config, updates={"space_modes": {"1": "float"}}, state_file=self.state_file)
+        self.assertEqual(self.state_file.read_bytes(), before)
+
+    def test_legacy_layout_edit_merges_against_latest_uuid_binding(self) -> None:
+        original = lua_shaped_state()
+        original.update({
+            "space_modes": {"1": "bsp"},
+            "space_mode_uuids": {"1": "uuid-one"},
+            "space_modes_by_uuid": {"uuid-one": "bsp"},
+        })
+        self.write_json(original)
+        config = load_config(state_file=self.state_file)
+        latest = copy.deepcopy(original)
+        latest["space_mode_uuids"]["1"] = "uuid-two"
+        latest["space_modes_by_uuid"]["uuid-two"] = "bsp"
+        self.write_json(latest)
+        save_config(config, updates={"space_modes": {"1": "stack"}}, state_file=self.state_file)
+        saved = self.read_json(self.state_file)
+        self.assertEqual(saved["space_mode_uuids"], {})
+        self.assertEqual(saved["space_modes_by_uuid"], {"uuid-one": "bsp"})
+        self.assertEqual(saved["space_modes"], {"1": "stack"})
+
+    def test_yabai_writer_shares_tui_lock_through_config_directory_alias(self) -> None:
+        self.write_json({"unrelated": True})
+        alias = self.root / "config-alias"
+        alias.symlink_to(self.state_file.parent, target_is_directory=True)
+        code = """
+import sys
+sys.path.insert(0, sys.argv[1])
+import yabai_state
+print("ready", flush=True)
+yabai_state.update(sys.argv[2], "shortcuts-state", ["false"])
+"""
+        process = None
+        try:
+            with config_module.config_write_lock(self.state_file):
+                process = subprocess.Popen(
+                    [sys.executable, "-c", code, str(ROOT / "scripts"), str(alias / "state.json")],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+                self.assertEqual(process.stdout.readline().strip(), "ready")
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    process.wait(timeout=0.2)
+                self.assertEqual(self.read_json(self.state_file), {"unrelated": True})
+                save_config(
+                    BaristaConfig(), updates={"from_tui": "preserve"},
+                    state_file=self.state_file, acquire_lock=False,
+                )
+            _, errors = process.communicate(timeout=5)
+            self.assertEqual(process.returncode, 0, errors)
+            saved = self.read_json(self.state_file)
+            self.assertTrue(saved["unrelated"])
+            self.assertEqual(saved["from_tui"], "preserve")
+            self.assertFalse(saved["toggles"]["yabai_shortcuts"])
+            self.assertFalse(Path(str(self.state_file) + ".yabai.lock").exists())
+        finally:
+            if process is not None:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+
     def test_external_key_written_before_save_survives(self) -> None:
         original = lua_shaped_state()
         self.write_json(original)

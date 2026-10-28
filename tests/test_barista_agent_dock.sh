@@ -67,4 +67,16 @@ run toggle >/dev/null
 [ "$(value autohide)" = 0 ] && [ "$(value autohide-delay)" = 0.5 ] \
   || fail "toggle back should restore autohide=0 and delay=0.5, got $(value autohide)/$(value autohide-delay)"
 
+# Paths are XML text in the plist; & and < must not break it.
+ODD_BUILD="$TMP_DIR/R&D <builds>"
+mkdir -p "$ODD_BUILD/release"
+cp "$TMP_DIR/build/release/barista-agent" "$ODD_BUILD/release/"
+BARISTA_AGENT_BUILD_DIR="$ODD_BUILD" PATH="$BIN_DIR:/usr/bin:/bin" HOME="$TMP_DIR/home" \
+  XDG_STATE_HOME="$TMP_DIR/state" bash "$ROOT_DIR/scripts/barista_agent.sh" dock barista >/dev/null
+python3 - "$PLIST" "$ODD_BUILD/release/barista-agent" <<'PY' || fail "plist must stay valid XML for paths with & and <"
+import plistlib, sys
+with open(sys.argv[1], "rb") as handle:
+    assert plistlib.load(handle)["ProgramArguments"][0] == sys.argv[2]
+PY
+
 echo "test_barista_agent_dock.sh: ok"

@@ -40,8 +40,17 @@ restore_dock_value() {
   fi
 }
 
+# Paths go into XML; bash's ${var//&/...} treats & differently in 3.2 and 5.2+.
+xml_escape() {
+  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
 write_plist() {
   mkdir -p "$(dirname "$PLIST")" "$LOG_DIR"
+  local binary script log
+  binary="$(xml_escape "$BINARY")"
+  script="$(xml_escape "$ROOT/scripts/barista_agent.sh")"
+  log="$(xml_escape "$LOG_DIR/barista-agent.log")"
   cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -51,13 +60,13 @@ write_plist() {
   <string>$LABEL</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$BINARY</string>
+    <string>$binary</string>
     <string>run</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
     <key>BARISTA_AGENT_SCRIPT</key>
-    <string>$ROOT/scripts/barista_agent.sh</string>
+    <string>$script</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -72,9 +81,9 @@ write_plist() {
     <string>Aqua</string>
   </array>
   <key>StandardOutPath</key>
-  <string>$LOG_DIR/barista-agent.log</string>
+  <string>$log</string>
   <key>StandardErrorPath</key>
-  <string>$LOG_DIR/barista-agent.log</string>
+  <string>$log</string>
 </dict>
 </plist>
 EOF

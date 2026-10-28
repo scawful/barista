@@ -1048,7 +1048,7 @@ state_app_command() {
 }
 
 rules_json() {
-  [[ -n "${YABAI_BIN:-}" ]] || { echo "yabai is required to apply app defaults" >&2; return 1; }
+  [[ -n "${YABAI_BIN:-}" ]] || { echo "yabai is required to change window rules" >&2; return 1; }
   require_jq
   local rules
   rules="$(run_with_timeout "$SPACE_QUERY_TIMEOUT_SEC" "$YABAI_BIN" -m rule --list)" || return 1

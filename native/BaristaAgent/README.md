@@ -47,6 +47,7 @@ The agent runs as `dev.barista.agent` and logs to
 | `FileBrowserModel.swift` | Barista Files' pure model: tab history, in-window tabs, listing, sorting, filtering, and `FileOperations` (Finder's names for new folders, copies, and kept-both clashes; rename; repo root). |
 | `FileBrowser.swift` | The Barista Files window: path bar, tabs, sidebar, table, preview, in-place rename, and `BrowserWindow`, which drives the Quick Look panel. |
 | `Git.swift` | Barista Files' git: porcelain v2 status and worktree parsing, `Git.inspect` (no optional locks), and `Tool` for running Homebrew and cargo tools from launchd. |
+| `FileViews.swift` | Barista Files' icon and column views. The column view draws the shown folder as its live column, with the folders above it and a selected folder's contents as read-only columns around it. |
 | `Search.swift` | Barista Files' search scopes: `FileSearch` (the fd and rg commands and their output) and `ToolRun`, which streams a tool's lines and stops it at a limit or on cancel. |
 | `Jump.swift` | ⌘K: candidate ranking, `JumpIndex` (places, zoxide, repos under `~/src`), and the sheet. |
 | `Preview.swift` | Barista Files' preview pane: `Preview.load` (Markdown, org, text, JSON, ROM, image), `Org` to Markdown, and `SNESHeader`. |

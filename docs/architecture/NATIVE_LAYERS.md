@@ -230,8 +230,17 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   Quick Look (Space; arrows follow the list), drag in and out, and Finder's
   shortcuts (⌘T, ⌘W, ⌘N, ⌘[ and ⌘], ⌘↑, ⌘↓, ⇧⌘., ⌘F, ⌃Tab, ⌘1–9, ⌘⌫, ⇧⌘N
   New Folder, ⌘D Duplicate, ⌘C then ⌘V to copy or ⌥⌘V to move here).
-  Return opens the selection; Rename (in place) is on the right-click menu,
-  with Open With, Open in Cursor or Emacs, Terminal Here, and Copy Relative
+  Return renames in place, as in Finder: the name up to its extension is
+  selected, so typing keeps `.asm`; ⌘O, ⌘↓, or a double-click opens. The
+  folder shows as a list, icons, or columns (⌥⌘1–3, since ⌘1–9 pick tabs;
+  the toolbar picker; or View on the empty-space menu, beside Sort By), and
+  new windows open in the last one chosen. In columns the shown folder is
+  the live column, so search, file operations, and git work as in the list;
+  the folders above it (from Home, or the root outside it) are columns to
+  its left, a selected folder's contents a column to its right, → enters
+  and ← goes up. Icons take ⌘- and ⇧-clicks and all four arrows. Until a
+  list is clicked, ↑ and ↓ still move its selection. The right-click menu
+  has Rename, Open With, Open in Cursor or Emacs, Terminal Here, and Copy Relative
   Path (relative to the enclosing git repo or worktree). Right-click on empty
   space for the folder's own menu. Name clashes keep both (`name 2`), copies
   are `name copy`, and a failed operation shows an alert. The Finder tile
@@ -378,8 +387,7 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
 
 ## Next slices
 
-- Barista Files: column and icon views, Return to rename (Finder's key; it
-  opens today), and acting on AFS items (status, ack) from the context panel.
+- Barista Files: acting on AFS items (status, ack) from the context panel.
 - EventKit reminders and calendar into the agent cache, surfaced by the
   existing calendar/task popups.
 - halext-org API client in the agent (admin status, reminders sync).

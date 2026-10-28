@@ -112,9 +112,20 @@ final class BrowserController {
       case ([.control, .shift], 48, _): state.selectNeighborTab(-1)
       case (.command, _, _) where Int(key).map({ (1...9).contains($0) }) == true:
         state.select(tab: state.tabs.tabs[min(Int(key)! - 1, state.tabs.tabs.count - 1)].id)
+      // Finder's ⌘1–⌘3, moved under ⌥ because ⌘1–⌘9 pick tabs here.
+      case ([.command, .option], _, _) where Int(key).map({ (1...3).contains($0) }) == true:
+        state.layout = BrowserLayout.allCases[Int(key)! - 1]
       case (.command, 126, _): state.up()
-      case (.command, 125, _): state.openSelection()
-      case ([], 36, _) where !typing, ([], 76, _) where !typing: state.openSelection()
+      case (.command, 125, _), (.command, _, "o"): state.openSelection()
+      case ([], 36, _) where !typing, ([], 76, _) where !typing: state.renameSelection()
+      case ([], 123...126, _) where !typing && state.layout == .icons: state.moveSelection(keyCode: event.keyCode)
+      // A list that has focus moves (and ⇧-extends) on its own; until one
+      // is clicked, as in a new window, the arrows still move the selection.
+      case ([], 125...126, _) where !typing && !(window.firstResponder is NSTableView):
+        state.moveSelection(keyCode: event.keyCode)
+      case ([], 124, _) where !typing && state.layout == .columns && state.selectedFolder != nil:
+        state.enterSelectedFolder()
+      case ([], 123, _) where !typing && state.layout == .columns: state.up()
       case ([], 49, _) where !typing: state.onQuickLook?()
       case ([.command, .shift], _, "p"), ([.command, .shift], _, "P"): state.showPreview.toggle()
       case ([.command, .shift], _, "n"), ([.command, .shift], _, "N"): state.newFolder()
@@ -147,6 +158,11 @@ final class BrowserState: ObservableObject {
   @Published private(set) var searchNote: String?
   @Published var hidden = false
   @Published var showPreview = true
+  @Published var layout = BrowserLayout.remembered {
+    didSet { UserDefaults.standard.set(layout.rawValue, forKey: BrowserLayout.defaultsKey) }
+  }
+  /// Icons per row in the icon view, for the up and down arrows.
+  var gridColumns = 1
   @Published private(set) var shown: [FileEntry] = []
   /// Bumped to move focus to the search field.
   @Published var focusSearch = 0
@@ -177,6 +193,8 @@ final class BrowserState: ObservableObject {
   private var results: [FileEntry]?
   private var searchRun: ToolRun?
   private var searchWork: DispatchWorkItem?
+  /// Where a shift-click's range starts in the icon view.
+  private var anchor: URL?
 
   init(location: URL, selecting: URL? = nil) {
     tabs = BrowserTabs(location)
@@ -279,13 +297,15 @@ final class BrowserState: ObservableObject {
   /// Once new rows are shown: select what an action asked for (a renamed or
   /// made file, the folder you came up from), else keep what's still there.
   private func settleSelection() {
-    let present = Set(shown.map(\.url))
     if let pending = pendingSelection {
-      selection = pending.intersection(present)
+      // By path: the folder you came up from is a tab's standardized
+      // location, without the trailing `/` its row's URL has.
+      let wanted = Set(pending.map(\.standardizedFileURL.path))
+      selection = Set(shown.map(\.url).filter { wanted.contains($0.standardizedFileURL.path) })
       pendingSelection = nil
       scrollTarget = selectedURLs.first
     } else {
-      selection = selection.intersection(present)
+      selection = selection.intersection(shown.map(\.url))
     }
   }
 
@@ -436,6 +456,49 @@ final class BrowserState: ObservableObject {
     renaming = url
   }
 
+  /// Return renames the one selected item, as in Finder; ⌘O opens it.
+  func renameSelection() {
+    guard selection.count == 1, let url = selection.first else { return }
+    beginRename(url)
+  }
+
+  /// A click in the icon view: ⌘ toggles, ⇧ extends from the last click.
+  func click(_ url: URL, modifiers: NSEvent.ModifierFlags) {
+    let urls = shown.map(\.url)
+    if modifiers.contains(.command) {
+      selection.formSymmetricDifference([url])
+      anchor = url
+    } else if modifiers.contains(.shift), let anchor, let from = urls.firstIndex(of: anchor),
+              let to = urls.firstIndex(of: url) {
+      selection = Set(urls[min(from, to)...max(from, to)])
+    } else {
+      selection = [url]
+      anchor = url
+    }
+  }
+
+  /// An arrow key: across the icon grid, or along a list.
+  func moveSelection(keyCode: UInt16) {
+    let urls = shown.map(\.url)
+    let current = selectedURLs.last.flatMap { urls.firstIndex(of: $0) }
+    guard let index = BrowserLayout.step(from: current, count: urls.count,
+                                         columns: layout == .icons ? gridColumns : 1, keyCode: keyCode)
+    else { return }
+    selection = [urls[index]]
+    anchor = urls[index]
+    scrollTarget = urls[index]
+  }
+
+  /// The one selected folder, which the column view previews and → enters.
+  var selectedFolder: URL? {
+    guard selection.count == 1 else { return nil }
+    return shown.first { selection.contains($0.url) && $0.isFolder }?.url
+  }
+
+  func enterSelectedFolder() {
+    if let folder = selectedFolder { go(to: folder) }
+  }
+
   /// Ends the edit for `url` once: Return and losing focus both commit.
   func commitRename(_ url: URL, to name: String) {
     guard renaming == url else { return }
@@ -499,6 +562,22 @@ final class BrowserState: ObservableObject {
   /// Search results come from many folders, so a drop on them has no one
   /// place to go; a row dragged a little and let go would move out of its own.
   var acceptsDrops: Bool { !isDeepSearch }
+
+  /// Files dropped on any of the views; false when they take no drops.
+  func drop(_ providers: [NSItemProvider]) -> Bool {
+    guard acceptsDrops else { return false }
+    var urls: [URL] = []
+    let group = DispatchGroup()
+    for provider in providers {
+      group.enter()
+      _ = provider.loadObject(ofClass: URL.self) { url, _ in
+        if let url { DispatchQueue.main.async { urls.append(url) } }
+        group.leave()
+      }
+    }
+    group.notify(queue: .main) { [weak self] in self?.receive(urls) }
+    return true
+  }
 
   /// Dropped files move within a volume and copy across volumes, as in Finder.
   func receive(_ urls: [URL]) {
@@ -579,6 +658,11 @@ struct BrowserView: View {
         .disabled(state.tabs.selected.parent == nil).help("Enclosing Folder (⌘↑)")
       PathBar(location: state.location) { state.go(to: $0) }
       Spacer(minLength: 8)
+      Picker("View", selection: $state.layout) {
+        ForEach(BrowserLayout.allCases) { Image(systemName: $0.symbol).help("View \($0.title)").tag($0) }
+      }
+      .pickerStyle(.segmented).labelsHidden().fixedSize()
+      .help("List, icons, or columns (⌥⌘1, ⌥⌘2, ⌥⌘3)")
       Button { state.jumping = true } label: { Image(systemName: "arrow.up.forward.square") }
         .help("Jump to a Folder (⌘K)")
       TextField("Search", text: $state.query)
@@ -710,7 +794,11 @@ struct BrowserView: View {
         .foregroundStyle(.secondary).multilineTextAlignment(.center).padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     } else {
-      FileTable(state: state)
+      switch state.layout {
+      case .list: FileTable(state: state)
+      case .icons: IconGrid(state: state)
+      case .columns: ColumnBrowser(state: state)
+      }
     }
   }
 
@@ -800,9 +888,7 @@ private struct FileTable: View {
           Image(nsImage: NSWorkspace.shared.icon(forFile: entry.url.path)).resizable().frame(width: 16, height: 16)
           if state.renaming == entry.url {
             // The on-disk name: a localized name can hide the extension.
-            RenameField(text: entry.url.lastPathComponent,
-                        commit: { state.commitRename(entry.url, to: $0) },
-                        cancel: { state.renaming = nil })
+            RenameField(state: state, entry: entry)
           } else {
             Text(entry.name).lineLimit(1).truncationMode(.middle).layoutPriority(1)
             if let match = entry.match {
@@ -841,29 +927,22 @@ private struct FileTable: View {
       }
     }
     .contextMenu(forSelectionType: URL.self) { urls in
-      menu(for: urls)
+      EntryMenu(state: state, urls: urls)
     } primaryAction: { urls in
       state.selection = urls
       state.openSelection()
     }
-    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-      guard state.acceptsDrops else { return false }
-      var urls: [URL] = []
-      let group = DispatchGroup()
-      for provider in providers {
-        group.enter()
-        _ = provider.loadObject(ofClass: URL.self) { url, _ in
-          if let url { DispatchQueue.main.async { urls.append(url) } }
-          group.leave()
-        }
-      }
-      group.notify(queue: .main) { state.receive(urls) }
-      return true
-    }
+    .onDrop(of: [.fileURL], isTargeted: nil, perform: state.drop)
   }
+}
 
-  @ViewBuilder
-  private func menu(for urls: Set<URL>) -> some View {
+/// The right-click menu for `urls`, or for the shown folder when the click
+/// was on empty space.
+struct EntryMenu: View {
+  @ObservedObject var state: BrowserState
+  let urls: Set<URL>
+
+  var body: some View {
     if urls.isEmpty {
       folderMenu
     } else {
@@ -924,6 +1003,13 @@ private struct FileTable: View {
     Button("Paste") { state.paste(move: false) }.disabled(!state.canPaste)
     Button("Move Items Here") { state.paste(move: true) }.disabled(!state.canPaste)
     Button("Get Info") { state.inspecting = [state.location] }
+    Divider()
+    Picker("View", selection: $state.layout) {
+      ForEach(BrowserLayout.allCases) { Text($0.title).tag($0) }
+    }
+    Picker("Sort By", selection: $state.sortKey) {
+      ForEach(FileSortKey.allCases) { Text($0.title).tag($0) }
+    }
     Divider()
     ToolButtons(urls: [state.location], directory: state.location)
     Divider()
@@ -1032,21 +1118,37 @@ private struct OpenWithMenu: View {
 
 /// The name being edited in place: Return renames, Escape keeps the old
 /// name, and clicking away renames, as in Finder.
-private struct RenameField: View {
-  @State var text: String
-  let commit: (String) -> Void
-  let cancel: () -> Void
+struct RenameField: View {
+  let state: BrowserState
+  let entry: FileEntry
+  @State private var text: String
   @FocusState private var focused: Bool
+
+  init(state: BrowserState, entry: FileEntry) {
+    self.state = state
+    self.entry = entry
+    // The on-disk name: a localized name can hide the extension.
+    _text = State(initialValue: entry.url.lastPathComponent)
+  }
 
   var body: some View {
     TextField("Name", text: $text)
       .textFieldStyle(.plain)
       .focused($focused)
-      .onSubmit { commit(text) }
-      .onExitCommand(perform: cancel)
-      .onChange(of: focused) { if !focused { commit(text) } }
-      // The table is still settling the row when the field appears.
-      .onAppear { DispatchQueue.main.async { focused = true } }
+      .onSubmit { state.commitRename(entry.url, to: text) }
+      .onExitCommand { state.renaming = nil }
+      .onChange(of: focused) { if !focused { state.commitRename(entry.url, to: text) } }
+      // The row is still being laid out when the field appears, and focus
+      // selects the whole name before the stem can be selected.
+      .onAppear {
+        DispatchQueue.main.async {
+          focused = true
+          DispatchQueue.main.async {
+            guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.string == text else { return }
+            editor.setSelectedRange(FileOperations.stem(text, isFolder: entry.isFolder))
+          }
+        }
+      }
   }
 }
 
@@ -1119,7 +1221,7 @@ extension FileEntry {
   var sortableSize: Int64 { size ?? -1 }
 }
 
-private extension GitMark {
+extension GitMark {
   var color: Color {
     switch self {
     case .modified, .renamed: return .orange

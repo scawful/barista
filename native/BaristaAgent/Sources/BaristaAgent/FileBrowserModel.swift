@@ -108,8 +108,82 @@ struct FileEntry: Identifiable, Equatable {
   var id: URL { url }
 }
 
-enum FileSortKey: String, CaseIterable {
+enum FileSortKey: String, CaseIterable, Identifiable {
   case name, modified, size, kind
+
+  var id: Self { self }
+
+  var title: String {
+    switch self {
+    case .name: return "Name"
+    case .modified: return "Date Modified"
+    case .size: return "Size"
+    case .kind: return "Kind"
+    }
+  }
+}
+
+/// How a browser draws its folder, as Finder's View menu offers.
+enum BrowserLayout: String, CaseIterable, Identifiable {
+  case list, icons, columns
+
+  static let defaultsKey = "BaristaFilesLayout"
+
+  var id: Self { self }
+
+  var title: String {
+    switch self {
+    case .list: return "as List"
+    case .icons: return "as Icons"
+    case .columns: return "as Columns"
+    }
+  }
+
+  var symbol: String {
+    switch self {
+    case .list: return "list.bullet"
+    case .icons: return "square.grid.2x2"
+    case .columns: return "rectangle.split.3x1"
+    }
+  }
+
+  /// The last one chosen, for new windows.
+  static var remembered: BrowserLayout {
+    UserDefaults.standard.string(forKey: defaultsKey).flatMap(BrowserLayout.init) ?? .list
+  }
+
+  /// The folders drawn as columns before `location`'s own: its enclosing
+  /// folders from Home, or from the volume root outside Home.
+  static func columnFolders(for location: URL, home: URL) -> [URL] {
+    let location = location.standardizedFileURL
+    let start = location.isWithin(home) ? home.standardizedFileURL : URL(fileURLWithPath: "/")
+    var folders: [URL] = []
+    var folder = location
+    while folder.path != start.path && folder.path != "/" {
+      folder.deleteLastPathComponent()
+      folders.insert(URL(fileURLWithPath: folder.path), at: 0)
+    }
+    return folders
+  }
+
+  /// The icon an arrow key moves to in a grid `columns` wide: left and right
+  /// step, up and down move a row, and down from a short last row's row
+  /// above lands on the last icon, as in Finder. The first press picks the
+  /// first icon.
+  static func step(from index: Int?, count: Int, columns: Int, keyCode: UInt16) -> Int? {
+    guard count > 0 else { return nil }
+    guard let index else { return 0 }
+    let columns = max(1, columns)
+    let next: Int
+    switch keyCode {
+    case 123: next = index - 1
+    case 124: next = index + 1
+    case 125: next = index / columns < (count - 1) / columns ? min(index + columns, count - 1) : index
+    case 126: next = index - columns
+    default: return index
+    }
+    return (0..<count).contains(next) ? next : index
+  }
 }
 
 enum FileListing {
@@ -232,6 +306,16 @@ enum FileOperations {
       try FileManager.default.copyItem(at: url, to: destination)
     }
     return destination
+  }
+
+  /// What Finder selects when a rename begins: a file's name up to its
+  /// extension, so typing keeps `.asm`; all of a folder's or a dotfile's.
+  static func stem(_ name: String, isFolder: Bool) -> NSRange {
+    let whole = NSRange(location: 0, length: (name as NSString).length)
+    let ext = (name as NSString).pathExtension
+    guard !isFolder, !ext.isEmpty else { return whole }
+    let length = whole.length - (ext as NSString).length - 1
+    return length > 0 ? NSRange(location: 0, length: length) : whole
   }
 
   static func rename(_ url: URL, to newName: String) throws -> URL {

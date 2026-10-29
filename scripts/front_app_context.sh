@@ -201,8 +201,12 @@ select_matching_window_json() {
 
   focused_window_json="$(query_focused_window_json)"
   if [ -n "$focused_window_json" ]; then
-    if printf '%s\n' "$focused_window_json" | "$JQ_BIN" -e --arg app "$app_name" \
-      '((.app // "") | ascii_downcase) == ($app | ascii_downcase) and (."is-minimized" // false) == false' >/dev/null 2>&1; then
+    if printf '%s\n' "$focused_window_json" | "$JQ_BIN" -e --arg app "$app_name" '
+      ((((.app // "") | ascii_downcase) == ($app | ascii_downcase)) or
+       ($app == "Barista Files" and .app == "barista-agent" and ((.title // "") | contains("Barista Files"))) or
+       ($app == "Barista View" and .app == "barista-agent" and ((.title // "") | contains("Barista View"))))
+      and (."is-minimized" // false) == false
+    ' >/dev/null 2>&1; then
       printf '%s' "$focused_window_json"
       return 0
     fi
@@ -214,7 +218,12 @@ select_matching_window_json() {
     --arg app "$app_name" \
     --argjson space "$current_space" \
     --argjson display "$current_display" '
-      map(select(((.app // "") | ascii_downcase) == ($app | ascii_downcase) and (."is-minimized" // false) == false))
+      map(select(
+        ((((.app // "") | ascii_downcase) == ($app | ascii_downcase)) or
+         ($app == "Barista Files" and .app == "barista-agent" and ((.title // "") | contains("Barista Files"))) or
+         ($app == "Barista View" and .app == "barista-agent" and ((.title // "") | contains("Barista View"))))
+        and (."is-minimized" // false) == false
+      ))
       | sort_by(
           (if ."has-focus" == true then 0 else 1 end),
           (if (.space // 0) == $space then 0 else 1 end),
@@ -388,8 +397,15 @@ main() {
 
   if [ -n "$window_json" ]; then
     window_app="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.app // empty' 2>/dev/null || true)"
+    window_title="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.title // empty' 2>/dev/null || true)"
     if [ -n "$window_app" ] && [ "$(printf '%s' "$window_app" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$app_name" | tr '[:upper:]' '[:lower:]')" ]; then
       app_name="$window_app"
+    fi
+    if [ "$app_name" = "barista-agent" ]; then
+      case "$window_title" in
+        *"Barista Files"*) app_name="Barista Files" ;;
+        *"Barista View"*) app_name="Barista View" ;;
+      esac
     fi
     window_space="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.space // empty' 2>/dev/null || true)"
     window_display="$(printf '%s\n' "$window_json" | "$JQ_BIN" -r '.display // empty' 2>/dev/null || true)"

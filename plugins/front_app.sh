@@ -160,6 +160,15 @@ case "$APP_NAME" in
   config_menu|config_menu_v2|Barista|BaristaControlPanel|"Barista Control Panel"|help_center|icon_browser|sketchybar)
     exit 0
     ;;
+  barista-agent)
+    if [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ] && [ -n "$WINDOW_ID" ]; then
+      W_TITLE="$(run_with_timeout 1 "$YABAI_BIN" -m query --windows --window "$WINDOW_ID" 2>/dev/null | "$JQ_BIN" -r '.title // ""' 2>/dev/null || true)"
+      case "$W_TITLE" in
+        *"Barista Files"*) APP_NAME="Barista Files" ;;
+        *"Barista View"*) APP_NAME="Barista View" ;;
+      esac
+    fi
+    ;;
 esac
 
 if [ -x "$APP_ICON_SCRIPT" ]; then

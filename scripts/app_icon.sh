@@ -75,12 +75,12 @@ resolve_app_icon() {
     "Skype") echo "󰒯" ;;
 
     # Productivity
-    "Finder"|"访达") echo "󰀶" ;;
+    "Finder"|"访达"|"Barista Files"|"barista-files"|"barista-agent") echo "󰀶" ;;
     "Notes"|"备忘录") echo "󰎚" ;;
     "Reminders"|"提醒事项") echo "󰃮" ;;
     "Calendar"|"日历"|"Fantastical") echo "" ;;
     "Mail"|"邮件") echo "󰇮" ;;
-    "Preview"|"预览") echo "󰈙" ;;
+    "Preview"|"预览"|"Barista View"|"barista-view") echo "󰈙" ;;
     "System Settings"|"System Preferences"|"系统设置") echo "" ;;
     "App Store") echo "󰓇" ;;
 

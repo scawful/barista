@@ -22,3 +22,4 @@ state.json.*backup
 *.icon_backup
 modules/icons_enhanced.lua
 modules/menu_fixed.lua
+space_visual_helper

@@ -417,13 +417,24 @@ static NSInteger window_rank(NSDictionary *window, NSString *appName, NSNumber *
   return rank;
 }
 
+static BOOL is_app_match(NSString *windowApp, NSString *windowTitle, NSString *appName) {
+  if (windowApp.length == 0 || appName.length == 0) return NO;
+  if ([windowApp caseInsensitiveCompare:appName] == NSOrderedSame) return YES;
+  if ([windowApp isEqualToString:@"barista-agent"]) {
+    if ([appName isEqualToString:@"Barista Files"] && ([windowTitle containsString:@"Barista Files"] || [windowTitle hasSuffix:@"- Barista Files"])) return YES;
+    if ([appName isEqualToString:@"Barista View"] && ([windowTitle containsString:@"Barista View"] || [windowTitle hasSuffix:@"- Barista View"])) return YES;
+  }
+  return NO;
+}
+
 static NSDictionary *select_matching_window(NSString *appName, NSNumber *spaceIndex, NSNumber *displayIndex, NSDictionary *focusedWindow) {
   if (appName.length == 0) {
     return nil;
   }
 
   NSString *focusedApp = string_value(focusedWindow[@"app"]);
-  if (focusedWindow && focusedApp.length > 0 && [focusedApp caseInsensitiveCompare:appName] == NSOrderedSame && !bool_value(focusedWindow[@"is-minimized"])) {
+  NSString *focusedTitle = string_value(focusedWindow[@"title"]);
+  if (focusedWindow && focusedApp.length > 0 && is_app_match(focusedApp, focusedTitle, appName) && !bool_value(focusedWindow[@"is-minimized"])) {
     return focusedWindow;
   }
 
@@ -436,7 +447,8 @@ static NSDictionary *select_matching_window(NSString *appName, NSNumber *spaceIn
     }
     NSDictionary *window = (NSDictionary *)candidate;
     NSString *windowApp = string_value(window[@"app"]);
-    if (windowApp.length == 0 || [windowApp caseInsensitiveCompare:appName] != NSOrderedSame || bool_value(window[@"is-minimized"])) {
+    NSString *windowTitle = string_value(window[@"title"]);
+    if (windowApp.length == 0 || !is_app_match(windowApp, windowTitle, appName) || bool_value(window[@"is-minimized"])) {
       continue;
     }
     NSInteger rank = window_rank(window, appName, spaceIndex, displayIndex);
@@ -473,6 +485,14 @@ static NSDictionary<NSString *, NSString *> *build_front_app_record(void) {
     NSString *windowApp = string_value(window[@"app"]);
     if (windowApp.length > 0 && [windowApp caseInsensitiveCompare:appName] == NSOrderedSame) {
       appName = windowApp;
+    }
+    NSString *windowTitle = string_value(window[@"title"]);
+    if ([appName isEqualToString:@"barista-agent"]) {
+      if ([windowTitle containsString:@"Barista Files"] || [windowTitle hasSuffix:@"- Barista Files"]) {
+        appName = @"Barista Files";
+      } else if ([windowTitle containsString:@"Barista View"] || [windowTitle hasSuffix:@"- Barista View"]) {
+        appName = @"Barista View";
+      }
     }
 
     BOOL floating = bool_value(window[@"is-floating"]);

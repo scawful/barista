@@ -393,7 +393,16 @@ static NSString *BestAppFromWindowsData(NSData *data) {
   if (bestWindow == nil) {
     return nil;
   }
-  return [bestWindow[@"app"] isKindOfClass:[NSString class]] ? bestWindow[@"app"] : nil;
+  NSString *app = [bestWindow[@"app"] isKindOfClass:[NSString class]] ? bestWindow[@"app"] : nil;
+  if ([app isEqualToString:@"barista-agent"]) {
+    NSString *title = [bestWindow[@"title"] isKindOfClass:[NSString class]] ? bestWindow[@"title"] : @"";
+    if ([title containsString:@"Barista Files"] || [title hasSuffix:@"- Barista Files"]) {
+      return @"Barista Files";
+    } else if ([title containsString:@"Barista View"] || [title hasSuffix:@"- Barista View"]) {
+      return @"Barista View";
+    }
+  }
+  return app;
 }
 
 static int PrintVisibleApps(int argc, const char *argv[]) {

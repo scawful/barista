@@ -1034,7 +1034,12 @@ resolve_visible_space_app() {
   app_name="$(printf '%s\n' "$windows_json" | "$JQ_BIN" -r '
     map(select(."is-minimized" == false))
     | sort_by((if .["has-focus"] == true then 0 else 1 end), -(.id // 0))
-    | .[0].app // empty
+    | .[0]
+    | if .app == "barista-agent" then
+        if ((.title // "") | contains("Barista Files")) then "Barista Files"
+        elif ((.title // "") | contains("Barista View")) then "Barista View"
+        else "barista-agent" end
+      else (.app // empty) end
   ' 2>/dev/null || true)"
   SPACE_APP_BY_INDEX[$space_index]="$app_name"
   printf '%s' "$app_name"

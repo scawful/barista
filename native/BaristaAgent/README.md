@@ -91,9 +91,10 @@ float and fade. Movies wait to be played and loop. Keys: ←/→ step through th
 folder's pictures and movies, Space plays, 0 fits, 1–9 zoom to that
 multiple, +/− step the zoom, P toggles sharp pixels, I shows info, R and ⇧R
 rotate, C crops, ⇧C crops to the view, T trims a movie, ⌘S saves the edits,
-⌘C copies. Edits never touch the original: Save Copy writes
+⌘C copies, ⌘⌫ moves the file to the Trash and steps to the next one (⌘Z puts
+it back). Edits never touch the original: Save Copy writes
 `name (edited).ext` beside it and shows that. A trim alone copies the movie's
-samples; a crop re-encodes. Right-click has all of it.
+samples; a crop re-encodes. Right-click has all of it, plus Show in Files.
 
 Several pictures or movies tile in one window: `barista-agent view A B …`,
 opening a multi-selection in Barista Files, Add Pictures or Movies…, or a

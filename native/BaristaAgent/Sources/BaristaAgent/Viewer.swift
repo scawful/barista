@@ -91,6 +91,7 @@ final class ViewerController {
     window.contentView = host
     model.onTitle = { [weak window] title in window?.title = title + Self.titleSuffix }
     model.onTitle?(model.title)
+    model.undoManager = window.undoManager
     if model.isMedia { dressForMedia(window, model: model, host: host) }
     place(window)
     windows.append(window)
@@ -265,7 +266,8 @@ final class ViewerController {
   /// ←/→ step through the folder's pictures and movies, Space plays, 0 fits,
   /// 1–9 zoom to that multiple, +/− step the zoom, P sharp pixels, I info,
   /// R/⇧R rotate, C crop, ⇧C crop to the view, T trim, ⌘S save a copy, ⌘C
-  /// copy. With tiles, Tab/⇧Tab pick the next, Delete removes it, [ and ]
+  /// copy, ⌘Delete moves the file to the Trash. With tiles, Tab/⇧Tab pick
+  /// the next, Delete removes it, [ and ]
   /// move it, L changes the layout, F fills tiles or fits them. While
   /// cropping, Return applies and Escape cancels; while trimming the player
   /// has the keys.
@@ -285,6 +287,7 @@ final class ViewerController {
     switch (event.keyCode, command, key) {
     case (48, false, _): model.cycle(shift ? -1 : 1)
     case (51, false, _) where model.tiles.count > 1: model.remove(media)
+    case (51, true, _): model.trash(media)
     case (_, false, "[") where model.tiles.count > 1: model.move(media, by: -1)
     case (_, false, "]") where model.tiles.count > 1: model.move(media, by: 1)
     case (_, false, "l") where model.tiles.count > 1: model.cycleLayout()
@@ -478,6 +481,8 @@ final class ViewerModel: ObservableObject {
   var onResize: ((MediaState.Resize, _ locksShape: Bool) -> Void)?
   var onTilesChanged: (() -> Void)?
   var onEmpty: (() -> Void)?
+  /// The window's, where Move to Trash leaves its Undo.
+  weak var undoManager: UndoManager?
   private var watcher: FileWatcher?
   private var hideChrome: DispatchWorkItem?
   /// A tile's shape arriving or turning lays the tiles out again.
@@ -555,6 +560,42 @@ final class ViewerModel: ObservableObject {
 
   func focus(_ url: URL) {
     if let tile = tiles.first(where: { $0.url == url }) { focus(tile) }
+  }
+
+  /// Moves `tile`'s file to the Trash. A lone tile steps to the next picture
+  /// or movie in its folder first, so it never shows the file going; after
+  /// the folder's last one the window closes. ⌘Z puts the file back and shows it.
+  func trash(_ tile: MediaState) {
+    let url = tile.url
+    // Undo shows the file where it was: in the lone tile, or as a tile again.
+    let lone = tiles.count == 1
+    if !lone {
+      remove(tile)
+    } else if let next = Self.neighbor(of: url, in: ViewerKind.siblings(of: url)) {
+      tile.show(next)
+    }
+    FileOperations.trash([url], undo: undoManager, target: self) { [weak self] trashed, restored, problem in
+      guard let self else { return }
+      if let problem { self.media?.show(status: problem) }
+      for tile in self.tiles where trashed.contains(tile.url) {
+        if self.tiles.count == 1, let next = Self.neighbor(of: tile.url, in: ViewerKind.siblings(of: tile.url)) {
+          tile.show(next)
+        } else {
+          self.remove(tile)
+        }
+      }
+      guard let back = restored.first else { return }
+      if lone, let media = self.media { media.show(back) } else { self.add(restored) }
+    }
+  }
+
+  /// The file after `url` in its folder's order, or before it at the end;
+  /// `url` itself may already be gone from `siblings`.
+  static func neighbor(of url: URL, in siblings: [URL]) -> URL? {
+    let others = siblings.filter { $0 != url }
+    return others.first {
+      $0.lastPathComponent.localizedStandardCompare(url.lastPathComponent) == .orderedDescending
+    } ?? others.last
   }
 
   func cycle(_ offset: Int) {

@@ -30,6 +30,15 @@ final class MediaViewerTests: XCTestCase {
                    ["notes.md"])
   }
 
+  func testTrashingStepsToTheNextFileOrBackFromTheLast() {
+    let urls = ["a.png", "b.png", "c.png"].map { URL(fileURLWithPath: "/shots/\($0)") }
+    XCTAssertEqual(ViewerModel.neighbor(of: urls[1], in: urls), urls[2])
+    XCTAssertEqual(ViewerModel.neighbor(of: urls[2], in: urls), urls[1])
+    XCTAssertEqual(ViewerModel.neighbor(of: urls[1], in: [urls[0], urls[2]]), urls[2], "already gone from the folder")
+    XCTAssertEqual(ViewerModel.neighbor(of: URL(fileURLWithPath: "/shots/d.png"), in: urls), urls[2])
+    XCTAssertNil(ViewerModel.neighbor(of: urls[0], in: [urls[0]]))
+  }
+
   func testCropHandlesMoveTheirEdgesAndStayInsideThePicture() {
     let rect = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
     XCTAssertEqual(MediaEdit.adjust(rect, handle: (0, 0), by: CGSize(width: 0.5, height: -0.5)),

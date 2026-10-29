@@ -1011,6 +1011,7 @@ enum MediaMenu {
     menu.addItem(.separator())
     add(media.isVideo ? "Copy File" : "Copy Image", "c", .command) { media.copy() }
     add("Show Info", "i", on: media.showsInfo) { media.showsInfo.toggle() }
+    add("Show in Files") { BrowserController.shared.open(media.url) }
     add("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([media.url]) }
     media.loadOpeners()
     let openWith = submenu("Open With")
@@ -1019,6 +1020,8 @@ enum MediaMenu {
         NSWorkspace.shared.open([media.url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
       }
     }
+    menu.addItem(.separator())
+    add("Move to Trash", "\u{8}", .command) { model.trash(media) }
     menu.addItem(.separator())
     add("Add Pictures or Movies…") { model.add(chooseFiles(near: media.url)) }
     guard model.tiles.count > 1 else { return menu }
@@ -1239,6 +1242,7 @@ private struct MediaBar: View {
     let preferred = NSWorkspace.shared.urlForApplication(toOpen: url)
     return Menu {
       Button(media.isVideo ? "Copy File" : "Copy Image") { media.copy() }
+      Button("Show in Files") { BrowserController.shared.open(url) }
       Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
       Menu("Open With") {
         if let preferred {
@@ -1263,6 +1267,7 @@ private struct MediaBar: View {
         .pickerStyle(.menu)
         Button("Remove This Tile") { model.remove(media) }
       }
+      Button("Move to Trash") { model.trash(media) }
       Divider()
       Picker("Scroll to Zoom", selection: Binding(get: { preferences.scrollZoom },
                                                   set: { preferences.set(scrollZoom: $0) })) {

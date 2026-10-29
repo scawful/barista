@@ -389,6 +389,10 @@ final class ViewerPreferences: ObservableObject {
 
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
+    /// Points of trackpad scroll a mouse wheel's notch counts as: at
+    /// `normal` a notch zooms about 12%, at `fine` 5%, at `fast` 35%.
+    static let notch: CGFloat = 12
+
     /// Zoom per point scrolled, on a log scale: 100 points of a trackpad
     /// scroll at `normal` zoom in about 2.7 times.
     var rate: CGFloat {

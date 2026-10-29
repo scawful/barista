@@ -1580,14 +1580,16 @@ final class ImageScrollView: NSScrollView {
     }
     // Momentum would keep zooming after the fingers lift.
     guard event.momentumPhase.isEmpty else { return }
-    // Pulling toward you zooms in, with natural scrolling or without; a
-    // wheel's line is about 25 points of a trackpad's scroll.
+    // Pulling toward you zooms in, with natural scrolling or without.
     let toward = event.isDirectionInvertedFromDevice ? event.scrollingDeltaY : -event.scrollingDeltaY
-    let amount = toward * (event.hasPreciseScrollingDeltas ? 1 : 25) * rate
-    guard amount != 0 else { return }
+    guard toward != 0 else { return }
+    // A wheel zooms one step per notch however fast it spins, as PictureView
+    // does: the system's wheel acceleration would jump several at once.
+    let precise = event.hasPreciseScrollingDeltas
+    let amount = precise ? toward * rate : (toward > 0 ? 1 : -1) * rate * ViewerPreferences.ScrollZoom.notch
     var target = magnification * exp(amount)
     if imageView.pixelated {
-      scrolled += amount
+      scrolled += precise ? amount : (amount > 0 ? 0.2 : -0.2)
       guard abs(scrolled) >= 0.2 else { return }
       let steps = MediaState.pixelSteps
       target = (scrolled > 0 ? steps.first { $0 > magnification + 0.01 } : steps.last { $0 < magnification - 0.01 })

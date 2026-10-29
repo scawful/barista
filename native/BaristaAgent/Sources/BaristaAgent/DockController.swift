@@ -134,6 +134,7 @@ final class DockController {
   private var outsideSince: Date?
   private var edgeTrigger = EdgeTrigger()
   private var edgeScreen: NSScreen?
+  private var restWorkItem: DispatchWorkItem?
   private var menuOpen = false
   private var syncPending = false
   private var cancellables: Set<AnyCancellable> = []
@@ -190,6 +191,10 @@ final class DockController {
       NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] event in
         self?.pointerMoved(event)
       },
+      NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] event in
+        self?.pointerMoved(event)
+        return event
+      },
       // Global monitors only see clicks in other apps, so this closes a popover on outside clicks.
       NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
         self?.popover.close()
@@ -198,6 +203,8 @@ final class DockController {
   }
 
   func hide() {
+    restWorkItem?.cancel()
+    restWorkItem = nil
     guard screen != nil else { return }
     screen = nil
     pointerTimer?.invalidate()
@@ -219,28 +226,52 @@ final class DockController {
     if edge !== edgeScreen {
       edgeScreen = edge
       edgeTrigger.reset()
+      restWorkItem?.cancel()
+      restWorkItem = nil
     }
-    guard let edge, edge !== screen else { return }
+    guard let edge, edge !== screen else {
+      if edge == nil {
+        restWorkItem?.cancel()
+        restWorkItem = nil
+      }
+      return
+    }
     let settings = store.settings
-    let arming = !edgeTrigger.isArmed
     if edgeTrigger.update(deltaY: event.deltaY, now: ProcessInfo.processInfo.systemUptime,
                           push: settings.revealPush, delay: settings.revealDelay) {
       show(on: edge)
-    } else if arming {
-      // Resting sends no events, so check again once the delay has passed.
-      DispatchQueue.main.asyncAfter(deadline: .now() + settings.revealDelay + 0.01) { [weak self] in
-        guard let self, self.edgeScreen === edge, edge !== self.screen,
-              Self.bottomEdgeScreen(at: NSEvent.mouseLocation) === edge,
-              self.edgeTrigger.update(deltaY: 0, now: ProcessInfo.processInfo.systemUptime,
-                                      push: self.store.settings.revealPush,
-                                      delay: self.store.settings.revealDelay)
-        else { return }
-        self.show(on: edge)
-      }
+    } else if restWorkItem == nil {
+      scheduleRestTimer(on: edge)
     }
   }
 
+  private func scheduleRestTimer(on edge: NSScreen) {
+    let now = ProcessInfo.processInfo.systemUptime
+    let since = edgeTrigger.since ?? now
+    let remaining = max(0.01, store.settings.revealDelay - (now - since))
+    let item = DispatchWorkItem { [weak self] in
+      guard let self, self.edgeScreen === edge, edge !== self.screen,
+            Self.bottomEdgeScreen(at: NSEvent.mouseLocation) === edge
+      else {
+        self?.restWorkItem = nil
+        return
+      }
+      let current = ProcessInfo.processInfo.systemUptime
+      if self.edgeTrigger.update(deltaY: 0, now: current,
+                                 push: self.store.settings.revealPush,
+                                 delay: self.store.settings.revealDelay) {
+        self.show(on: edge)
+      } else {
+        self.scheduleRestTimer(on: edge)
+      }
+    }
+    restWorkItem = item
+    DispatchQueue.main.asyncAfter(deadline: .now() + remaining + 0.01, execute: item)
+  }
+
   private func show(on target: NSScreen) {
+    restWorkItem?.cancel()
+    restWorkItem = nil
     screen = target
     edgeTrigger.reset()
     outsideSince = nil
@@ -354,7 +385,8 @@ final class DockController {
     }
     let attention = Set(tiles.flatMap { tile -> [DockTile] in
       expanded[tile.id] != nil ? tile.visibleChildren : [tile]
-    }.filter { store.hasFinished($0) || store.waiting(on: $0) > 0 }.map(\.id))
+    }.filter { $0.item.kind != .group && $0.item.kind != .folder }
+     .filter { store.hasFinished($0) || store.waiting(on: $0) > 0 }.map(\.id))
     scene.update(DockScene.Input(pinned: store.pinned.map(\.id),
                                  running: store.running.map(\.id),
                                  others: store.others.map(\.id),
@@ -420,7 +452,8 @@ final class DockController {
                       height: dock.height - DockLayout.margin + slack)
     let inPopover = [popover.frame, card.frame].contains { $0?.insetBy(dx: -slack, dy: -slack).contains(point) ?? false }
     let stillSinceNavigating = popover.frame != nil && popover.pointerAtPresent == point
-    if zone.contains(point) || inPopover || stillSinceNavigating {
+    let atEdge = Self.bottomEdgeScreen(at: point) === screen
+    if zone.contains(point) || inPopover || stillSinceNavigating || atEdge {
       outsideSince = nil
     } else if let since = outsideSince {
       if Date().timeIntervalSince(since) >= store.settings.hideDelay { hide() }
@@ -444,10 +477,10 @@ final class DockController {
     let screens = NSScreen.screens
     return screens.first { screen in
       let frame = screen.frame
-      guard point.x >= frame.minX, point.x < frame.maxX,
-            point.y >= frame.minY - 0.5, point.y < frame.minY + 1
+      guard point.x >= frame.minX, point.x <= frame.maxX,
+            point.y >= frame.minY - 1, point.y <= frame.minY + 3
       else { return false }
-      let below = NSPoint(x: point.x, y: frame.minY - 1)
+      let below = NSPoint(x: point.x, y: frame.minY - 2)
       return !screens.contains { $0 !== screen && $0.frame.contains(below) }
     }
   }
@@ -457,7 +490,7 @@ final class DockController {
 /// `push` points further down or rested there for `delay` seconds, so
 /// brushing the edge on the way somewhere else does nothing.
 struct EdgeTrigger {
-  private var since: TimeInterval?
+  private(set) var since: TimeInterval?
   private var pushed: CGFloat = 0
 
   var isArmed: Bool { since != nil }

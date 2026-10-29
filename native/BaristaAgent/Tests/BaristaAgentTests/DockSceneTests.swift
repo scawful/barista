@@ -223,6 +223,17 @@ final class DockSceneTests: XCTestCase {
     XCTAssertTrue(trigger.update(deltaY: 0, now: 2, push: 0, delay: 0.5), "push 0 reveals on touch")
   }
 
+  func testEdgeTriggerPreservesSinceUntilReset() {
+    var trigger = EdgeTrigger()
+    XCTAssertNil(trigger.since)
+    _ = trigger.update(deltaY: 5, now: 10.0, push: 10, delay: 0.5)
+    XCTAssertEqual(trigger.since, 10.0)
+    _ = trigger.update(deltaY: 2, now: 10.2, push: 10, delay: 0.5)
+    XCTAssertEqual(trigger.since, 10.0)
+    trigger.reset()
+    XCTAssertNil(trigger.since)
+  }
+
   func testRectSpringKeepsTheDrawnRectThenSettlesOnTheTarget() {
     var spring = RectSpring()
     let drawn = CGRect(x: 0, y: 0, width: 50, height: 50)

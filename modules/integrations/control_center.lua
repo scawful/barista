@@ -570,6 +570,20 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     click_script = close_after(shell_command(config_dir .. "/scripts/barista_agent.sh", "dock toggle")),
   }, settings_name)
 
+  -- Barista's own controls (formerly the Apple menu's Controls section).
+  add_row("cc.barista", {
+    icon = "󰒓",
+    color = tc("SKY"),
+    label = "Barista",
+    click_script = close_after(shell_utils.call_script(config_dir .. "/bin/open_control_panel.sh", "--tab", "home")),
+  })
+  add_row("cc.reload", {
+    icon = "󰑐",
+    color = tc("YELLOW"),
+    label = "Reload",
+    click_script = close_after(shell_utils.call_script(config_dir .. "/plugins/reload_sketchybar.sh")),
+  })
+
   return items, { submenu_parents = submenu_parents }
 end
 

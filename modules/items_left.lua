@@ -123,14 +123,6 @@ local function get_layout(ctx)
         order = 10,
       },
       {
-        id = "barista_settings",
-        label = "Barista Settings",
-        icon = "󰒓",
-        icon_color = tc("SAPPHIRE"),
-        action = ctx.call_script and ctx.call_script(CONFIG_DIR .. "/bin/open_control_panel.sh", "--tab", "home") or "",
-        order = 20,
-      },
-      {
         id = "extension_guide",
         label = "Extension Guide",
         icon = "󰘥",
@@ -139,6 +131,17 @@ local function get_layout(ctx)
         order = 30,
       },
     }
+    -- control_center always carries its own Barista row.
+    if surface ~= "control_center" then
+      table.insert(rows, {
+        id = "barista_settings",
+        label = "Barista Settings",
+        icon = "󰒓",
+        icon_color = tc("SAPPHIRE"),
+        action = ctx.call_script and ctx.call_script(CONFIG_DIR .. "/bin/open_control_panel.sh", "--tab", "home") or "",
+        order = 20,
+      })
+    end
     if surface == "front_app" and path_exists(CONFIG_DIR .. "/scripts/open_keyboard_overlay.sh") then
       table.insert(rows, {
         id = "keyboard_overlay",
@@ -257,7 +260,9 @@ local function get_layout(ctx)
   if oracle_module and type(oracle_module.create_triforce_widget) == "function" then
     local triforce_start_ms = current_time_ms()
     if type(oracle_module.build_menu_model) == "function" then
-      oracle_menu_model = oracle_module.build_menu_model(ctx)
+      oracle_menu_model = oracle_module.build_menu_model(ctx, {
+        extension_items = interface_extensions.for_surface(CONFIG_DIR, code_dir, state, "triforce"),
+      })
     end
     local triforce_widget = oracle_module.create_triforce_widget({
       ctx = ctx,
@@ -810,12 +815,15 @@ local function get_layout(ctx)
   if type(state.widgets) == "table" and state.widgets.agents == true then
     table.insert(left_group_children, "agents")
   end
-  -- control_center (yabai controls), shortcut_mode and front_app follow the
-  -- group but keep their own chips.
-  local left_order = { table.unpack(left_group_children) }
+  -- control_center (yabai controls) leads as its own chip, the anchor in the
+  -- Apple menu's old slot; shortcut_mode and front_app follow the group.
+  local left_order = {}
   if control_center_item_name then
     table.insert(left_order, control_center_item_name)
     table.insert(popup_parents, control_center_item_name)
+  end
+  for _, child in ipairs(left_group_children) do
+    table.insert(left_order, child)
   end
   table.insert(left_order, "shortcut_mode")
   table.insert(left_order, "front_app")

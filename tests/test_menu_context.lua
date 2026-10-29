@@ -1,5 +1,25 @@
 local menu = require("menu")
 
+run_test("menu: menus.apple.enabled=false skips the Apple chip", function()
+  local previous = package.loaded.apple_menu_enhanced
+  local setup_calls = 0
+  package.loaded.apple_menu_enhanced = {
+    setup = function()
+      setup_calls = setup_calls + 1
+      return { popup_parents = { "apple_menu" } }
+    end,
+  }
+  local ok, metadata = pcall(menu.render_all_menus, {
+    state = { menus = { apple = { enabled = false } } },
+    theme = { WHITE = "0xffffffff", bar = { bg = "0xff000000" } },
+    scripts = { yabai_control = "/tmp/scripts/yabai_control.sh" },
+  })
+  package.loaded.apple_menu_enhanced = previous
+  assert_true(ok, metadata)
+  assert_equal(setup_calls, 0, "disabled Apple menu should not render")
+  assert_equal(#metadata.popup_parents, 0, "disabled Apple menu registers no popup parent")
+end)
+
 run_test("menu: enhanced Apple menu receives the resolved SketchyBar binary", function()
   local previous = package.loaded.apple_menu_enhanced
   local received = nil

@@ -284,7 +284,7 @@ run_test("create_popup_items: separates this space from global settings and app 
     assert_true(action.click_script:find("--set cc.more popup.drawing=off --set cc.settings popup.drawing=off --set control_center popup.drawing=off", 1, true) ~= nil,
       "actions close both children and the root")
   end
-  assert_equal(count_position(items, "popup.control_center"), 8, "space root has seven visible rows plus hidden feedback")
+  assert_equal(count_position(items, "popup.control_center"), 10, "space root has nine visible rows plus hidden feedback")
   assert_equal(count_position(items, "popup.cc.more"), 6, "arrange submenu keeps only layout operations")
   assert_equal(count_position(items, "popup.cc.settings"), 8, "settings has visibility scope, choices, shortcuts, and dock switch")
   local dock = find_item(items, "cc.dock")
@@ -300,6 +300,13 @@ run_test("create_popup_items: separates this space from global settings and app 
   assert_nil(find_item(items, "cc.defaults.unset"), "app defaults belong in the app menu")
   assert_equal(table.concat(metadata.submenu_parents, "|"), "cc.more|cc.settings", "both submenus register")
   assert_nil(find_item(items, "cc.workspace"), "obsolete workspace row remains removed")
+  local barista = find_item(items, "cc.barista")
+  local reload = find_item(items, "cc.reload")
+  assert_equal(barista.position, "popup.control_center", "Barista row sits in the root popup")
+  assert_equal(reload.position, "popup.control_center", "Reload row sits in the root popup")
+  assert_true(barista.click_script:find("open_control_panel.sh\" \"--tab\" \"home\"", 1, true) ~= nil, "Barista row opens the control panel")
+  assert_true(reload.click_script:find("reload_sketchybar.sh", 1, true) ~= nil, "Reload row relaunches the bar")
+  assert_true(reload.click_script:find("--set control_center popup.drawing=off", 1, true) ~= nil, "Reload row closes the popup")
 end)
 
 run_test("create_popup_items: required mode without yabai omits nested controls", function()

@@ -502,7 +502,10 @@ local function take_entries(entries, limit)
   return result
 end
 
-function oracle.build_menu_model(ctx)
+-- opts.extension_items: interface extensions on the "triforce" surface; they
+-- join the Apps section after the built-in rows.
+function oracle.build_menu_model(ctx, opts)
+  opts = opts or {}
   local state = build_state(ctx)
   local ui = state.ui
 
@@ -566,6 +569,14 @@ function oracle.build_menu_model(ctx)
     table.insert(app_entries, make_entry("mesen_oos", "Mesen2 OoS", "󰁆", state.mesen_action, {
       icon_color = theme_color(ctx, "RED"),
     }))
+  end
+  for _, item in ipairs(opts.extension_items or {}) do
+    if item.available ~= false and (item.action or "") ~= "" then
+      table.insert(app_entries, make_entry(item.id, item.label, item.icon, item.action, {
+        icon_color = item.icon_color,
+        label_color = item.label_color,
+      }))
+    end
   end
   add_section(sections, "apps", app_entries)
 

@@ -164,6 +164,29 @@ run_test("oracle integration: shared model respects section visibility overrides
   assert_equal(#model.sections, 2, "triforce should stay shallow but include session and launcher sections")
 end)
 
+run_test("oracle integration: triforce-surface extensions join the apps section", function()
+  local model = oracle.build_menu_model(build_ctx(), {
+    extension_items = {
+      { id = "oracle_prototype_lab", label = "Prototype Lab", icon = "󰯙", icon_color = "0xffa6e3a1", action = "'/tmp/open-prototype-lab.sh'" },
+      { id = "missing_tool", label = "Missing", action = "", available = false },
+    },
+  })
+  local apps = nil
+  for _, section in ipairs(model.sections) do
+    if section.id == "apps" then
+      apps = section
+    end
+  end
+  assert_true(apps ~= nil, "apps section should exist")
+  local last = apps.entries[#apps.entries]
+  assert_equal(last.id, "oracle_prototype_lab", "extension row should follow the built-in apps")
+  assert_equal(last.action, "'/tmp/open-prototype-lab.sh'", "extension row keeps its action")
+  assert_equal(last.icon_color, "0xffa6e3a1", "extension row keeps its icon color")
+  for _, entry in ipairs(apps.entries) do
+    assert_true(entry.id ~= "missing_tool", "unavailable extension rows are skipped")
+  end
+end)
+
 run_test("oracle integration: triforce widget uses runtime overrides", function()
   local widget = oracle.create_triforce_widget({ ctx = build_ctx() })
   assert_true(widget ~= nil, "widget should be created")

@@ -178,6 +178,7 @@ local default_state = {
   },
   menus = {
     apple = {
+      enabled = true,   -- false hides the Apple chip; control_center leads
       show_missing = false,
       items = {},
       custom = {},

@@ -579,6 +579,7 @@ local function test_items_left_integration_models_and_anchor_order()
   print("Testing items_left integration models and anchor order...")
 
   local oracle_model_calls = 0
+  local received_oracle_extensions = nil
   local control_center_status_calls = 0
   local received_widget_model = nil
   local received_popup_model = nil
@@ -645,8 +646,9 @@ local function test_items_left_integration_models_and_anchor_order()
     sbar = { remove = function() end },
     integrations = {
       oracle = {
-        build_menu_model = function(ctx)
+        build_menu_model = function(ctx, opts)
           oracle_model_calls = oracle_model_calls + 1
+          received_oracle_extensions = opts and opts.extension_items
           return {
             title = "Oracle Hub",
             state = {
@@ -745,6 +747,7 @@ local function test_items_left_integration_models_and_anchor_order()
   local layout, _, metadata = items_left.get_layout(mock_ctx)
   assert_type(layout, "table", "layout should be a table")
   assert_equal(oracle_model_calls, 1, "oracle model should be built once per layout pass")
+  assert_type(received_oracle_extensions, "table", "oracle model should receive triforce-surface extension rows")
   assert_type(received_widget_model, "table", "oracle widget should receive the shared model")
   assert_equal(received_widget_model, received_popup_model, "oracle popup should reuse the shared model")
   assert_equal(control_center_status_calls, 1, "control_center status should be computed once per layout pass")
@@ -784,12 +787,12 @@ local function test_items_left_integration_models_and_anchor_order()
   assert_equal(anchor_order_count, 1, "left anchors should use one deterministic post-config reorder command")
   assert_true(anchor_order_command:find('--move "shortcut_mode" before "front_app"', 1, true) ~= nil,
     "shortcut mode should be placed directly before front_app")
-  assert_true(anchor_order_command:find('--move "control_center" before "shortcut_mode"', 1, true) ~= nil,
-    "control_center should be placed before shortcut mode")
-  assert_true(anchor_order_command:find('--move "music_studio" before "control_center"', 1, true) ~= nil,
-    "music should be placed before control_center")
+  assert_true(anchor_order_command:find('--move "music_studio" before "shortcut_mode"', 1, true) ~= nil,
+    "music should be placed before shortcut mode")
   assert_true(anchor_order_command:find('--move "triforce" before "music_studio"', 1, true) ~= nil,
     "triforce should be placed before music")
+  assert_true(anchor_order_command:find('--move "control_center" before "triforce"', 1, true) ~= nil,
+    "control_center should lead the left group as the anchor chip")
   assert_true(anchor_order_command:match("^sleep%s") == nil,
     "anchor ordering should dispatch immediately after the config commit")
 

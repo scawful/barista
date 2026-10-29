@@ -361,6 +361,8 @@ Common supported keys:
 
 Supported keys used by the Apple menu:
 
+- `enabled` (default `true`; `false` drops the Apple chip and the yabai
+  control_center chip leads the bar; the agents popup keeps its launchers)
 - `show_missing`
 - `terminal`
 - `launch`

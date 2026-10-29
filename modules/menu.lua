@@ -222,6 +222,13 @@ end
 -- === MAIN RENDER FUNCTION === --
 
 function menu.render_all_menus(ctx)
+  -- menus.apple.enabled=false drops the Apple chip. menu.prepare still runs:
+  -- the agents widget reads its launchers from the prepared Apple menu.
+  local apple_state = ctx.state and ctx.state.menus and ctx.state.menus.apple
+  if type(apple_state) == "table" and apple_state.enabled == false then
+    return { popup_parents = {}, submenu_parents = {}, submenu_ancestors = {} }
+  end
+
   local function list_from_set(set)
     local items = {}
     for name, enabled in pairs(set or {}) do

@@ -2,7 +2,7 @@
 
 Interface extensions are script-backed menu rows that can appear in the Apple
 menu, the disabled front-app/yabai replacement area, the disabled Control
-Center replacement area, or the LM Studio popup.
+Center replacement area, the Triforce popup, or the LM Studio popup.
 
 They are intended for machine-local tools. The committed default
 `data/project_shortcuts.json` stays empty so personal apps do not appear on a
@@ -14,10 +14,12 @@ work or restricted Mac unless that machine opts into a local extension file.
 - `front_app`: rows under the front-app popup `Desk` section when yabai controls are unavailable
 - `control_center`: rows under the Control Center `Desk` section when yabai is disabled or unavailable
 - `lmstudio`: model preset rows in the LM Studio popup
+- `triforce`: rows under the Triforce (Oracle) popup `Apps` section
 - `all`: all extension-aware surfaces
 
 When yabai is disabled, Barista always provides a few safe Desk rows:
-Mission Control, Barista Settings, and this guide. Local extension rows are
+Mission Control, Barista Settings (front-app only; Control Center has its own
+Barista row), and this guide. Local extension rows are
 added below those rows.
 
 ## Local Install

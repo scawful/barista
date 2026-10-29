@@ -4,6 +4,9 @@
 # (hover/restore only). Values intentionally include the full property set so a
 # hovered item can return to focused/visible/idle state without guessing.
 
+# Also simple_spaces.sh's default, for the chips it creates.
+SPACE_ICON_FONT="${SPACE_ICON_FONT:-Hack Nerd Font:Bold:16.0}"
+
 SPACE_FOCUSED_BG="${SPACE_FOCUSED_BG:-0xffd8c4ff}"
 SPACE_FOCUSED_BORDER_WIDTH="${SPACE_FOCUSED_BORDER_WIDTH:-2}"
 SPACE_FOCUSED_BORDER_COLOR="${SPACE_FOCUSED_BORDER_COLOR:-0xffffffff}"
@@ -40,6 +43,7 @@ space_style_props() {
   case "${1:-idle}" in
     focused)
       printf '%s\n' \
+        "icon.font=$SPACE_ICON_FONT" \
         "label.drawing=off" \
         "background.drawing=on" \
         "background.color=$SPACE_FOCUSED_BG" \
@@ -49,6 +53,7 @@ space_style_props() {
       ;;
     visible)
       printf '%s\n' \
+        "icon.font=$SPACE_ICON_FONT" \
         "label.drawing=off" \
         "background.drawing=on" \
         "background.color=$SPACE_VISIBLE_BG" \
@@ -58,6 +63,7 @@ space_style_props() {
       ;;
     hover)
       printf '%s\n' \
+        "icon.font=$SPACE_ICON_FONT" \
         "label.drawing=off" \
         "background.drawing=on" \
         "background.color=$SPACE_HOVER_BG" \
@@ -67,6 +73,7 @@ space_style_props() {
       ;;
     idle|*)
       printf '%s\n' \
+        "icon.font=$SPACE_ICON_FONT" \
         "label.drawing=off" \
         "background.drawing=on" \
         "background.color=$SPACE_IDLE_BG" \

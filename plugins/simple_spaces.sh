@@ -18,6 +18,8 @@ SPACE_ACTION_SCRIPT="$CONFIG_DIR/scripts/space_action.sh"
 SPACE_MANAGER_BIN="$CONFIG_DIR/bin/space_manager"
 PERF_CLOCK_BIN="${BARISTA_PERF_CLOCK_BIN:-$CONFIG_DIR/bin/perf_clock}"
 SPACE_METRICS_FILE="${BARISTA_SPACE_METRICS_FILE:-}"
+# Same default as plugins/lib/space_style.sh, which restyles the chips later.
+SPACE_ICON_FONT="${SPACE_ICON_FONT:-Hack Nerd Font:Bold:16.0}"
 BARISTA_ALL_SPACES_DATA="${BARISTA_ALL_SPACES_DATA:-}"
 # OPTIMIZED: Reduced retry attempts and delays for faster startup
 MAX_SPACE_QUERY_ATTEMPTS=3
@@ -1050,8 +1052,9 @@ apply_incremental_space_items() {
         associated_space="$space_index"
         ignore_association=off
         icon="$icon"
-        icon.padding_left=7
-        icon.padding_right=7
+        icon.font="$SPACE_ICON_FONT"
+        icon.padding_left=5
+        icon.padding_right=5
         icon.color=0xffbac2de
         label=""
         label.drawing=off
@@ -1074,8 +1077,9 @@ apply_incremental_space_items() {
         associated_space="$space_index"
         ignore_association=off
         icon="$icon"
-        icon.padding_left=7
-        icon.padding_right=7
+        icon.font="$SPACE_ICON_FONT"
+        icon.padding_left=5
+        icon.padding_right=5
         icon.color=0xffbac2de
         label=""
         label.drawing=off
@@ -1157,8 +1161,9 @@ for entry in "${SPACE_LINES[@]}"; do
                           associated_space="$space_index" \
                           ignore_association=off \
                           icon="$icon" \
-                          icon.padding_left=7 \
-                          icon.padding_right=7 \
+                          icon.font="$SPACE_ICON_FONT" \
+                          icon.padding_left=5 \
+                          icon.padding_right=5 \
                           icon.color=0xffbac2de \
                           label="" \
                           label.drawing=off \

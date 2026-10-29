@@ -45,7 +45,8 @@ The agent runs as `dev.barista.agent` and logs to
 | `Shelf.swift` | The shelf's file references and snippets. |
 | `Yabai.swift` | Window and space queries, `yabai_control.sh` actions bound to a window, and the rule that floats viewer windows. |
 | `Markdown.swift` | Markdown to blocks (headings, lists, code, quotes, tables, images); inline syntax is left to `AttributedString`. |
-| `Viewer.swift` | The viewer windows for Markdown and images, and `FileWatcher`, which reloads a file when it is saved. |
+| `Viewer.swift` | The viewer windows for Markdown, images, and movies, their keys and sizing, and `FileWatcher`, which reloads a file when it is saved. |
+| `MediaViewer.swift` | The picture and movie window: zoom, sharp pixels, rotate, crop, trim, the info panel, and the bar that shows on hover; `MediaEdit` saves edits as copies. |
 | `FileBrowserModel.swift` | Barista Files' pure model: tab history, in-window tabs, listing, sorting, filtering, and `FileOperations` (Finder's names for new folders, copies, and kept-both clashes; rename; repo root). |
 | `FileBrowser.swift` | The Barista Files window: path bar, tabs, sidebar, table, preview, in-place rename, Finder's shortcuts and the Go and View menus, and `BrowserWindow`, which drives the Quick Look panel. |
 | `FileIcons.swift` | `FileIcons`: Finder icons drawn into small bitmaps off the main thread, or Quick Look thumbnails for images and videos, cached by path, size, and modification date (bounded by bytes); `FileIcon` shows one when it's ready. |
@@ -75,6 +76,35 @@ per viewer or browser. Viewer windows are titled `<file> - Barista Viewer`
 and `Yabai.ensureViewerRule` floats that title on the raised layer; browser
 windows match no rule and tile. Tabs in Barista Files are drawn inside the
 window, which is the point: native tabs are separate windows to yabai.
+
+Pictures and movies AVFoundation can play open in a window that is only the
+picture, like PictureView: it keeps the picture's shape as it resizes, and
+the window buttons and a bar of controls fade in while the pointer is over
+it. Small PNG, GIF, and BMP files open in sharp-pixel mode at the biggest
+whole multiple that fits, so emulator captures and sprites don't blur.
+Zooming by scroll, pinch, keys, or double-click sizes the window to the
+picture around the pointer, up to the screen, so no black shows; dragging an
+edge moves it over a still picture, stopping at the picture's edges (⌥ scales
+the view with the window instead). The part showing is only a view until
+Crop to View (⇧C) or the C handles and Return make it an edit. Scroll bars
+float and fade. Movies wait to be played and loop. Keys: ←/→ step through the
+folder's pictures and movies, Space plays, 0 fits, 1–9 zoom to that
+multiple, +/− step the zoom, P toggles sharp pixels, I shows info, R and ⇧R
+rotate, C crops, ⇧C crops to the view, T trims a movie, ⌘S saves the edits,
+⌘C copies. Edits never touch the original: Save Copy writes
+`name (edited).ext` beside it and shows that. A trim alone copies the movie's
+samples; a crop re-encodes. Right-click has all of it.
+
+Several pictures or movies tile in one window: `barista-agent view A B …`,
+opening a multi-selection in Barista Files, Add Pictures or Movies…, or a
+drop. Tab cycles the active tile, Delete removes it, `[` and `]` move it, L
+cycles the layout (grid, row, column, main with a strip, or rows justified
+by shape), F switches between whole pictures and filling the tiles. Each tile
+decodes at its share of the screen and more only when zoomed; hidden and
+minimized windows let movie decoders go, and memory pressure sheds pixels.
+
+`dock.json` settings: `viewer_scroll_zoom` (`off`, `fine`, `normal`,
+`fast`) and `viewer_loops_movies`; the bar's More menu writes both.
 
 From a shell, `barista-agent {view|browse|open} PATH` posts a distributed
 notification to the running agent (`scripts/barista_agent.sh view PATH` does

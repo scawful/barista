@@ -136,6 +136,11 @@ struct DockSettings: Equatable {
   /// A Shortcuts shortcut the controls callout's Focus switch runs; macOS
   /// has no API to switch a Focus. Empty opens Focus settings instead.
   var focusShortcut = ""
+  /// How fast scrolling over a picture in the viewer zooms it: `off`
+  /// scrolls instead, else `fine`, `normal`, or `fast`.
+  var viewerScrollZoom = "normal"
+  /// Movies in the viewer start over when they end.
+  var viewerLoopsMovies = true
 
   var clamped: DockSettings {
     var settings = self
@@ -163,6 +168,8 @@ extension DockSettings: Codable {
     case shelfDays = "shelf_days"
     case filesBrowser = "files_browser"
     case focusShortcut = "focus_shortcut"
+    case viewerScrollZoom = "viewer_scroll_zoom"
+    case viewerLoopsMovies = "viewer_loops_movies"
   }
 
   init(from decoder: Decoder) throws {
@@ -182,6 +189,9 @@ extension DockSettings: Codable {
     theme = try container.decodeIfPresent(String.self, forKey: .theme) ?? defaults.theme
     filesBrowser = try container.decodeIfPresent(String.self, forKey: .filesBrowser) ?? defaults.filesBrowser
     focusShortcut = try container.decodeIfPresent(String.self, forKey: .focusShortcut) ?? defaults.focusShortcut
+    viewerScrollZoom = try container.decodeIfPresent(String.self, forKey: .viewerScrollZoom) ?? defaults.viewerScrollZoom
+    viewerLoopsMovies = try container.decodeIfPresent(Bool.self, forKey: .viewerLoopsMovies)
+      ?? defaults.viewerLoopsMovies
   }
 }
 

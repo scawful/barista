@@ -821,6 +821,14 @@ final class DockStore: ObservableObject {
     return "\(tile.id)|\(tile.item.icon ?? "")|\(tile.url?.path ?? "")|\(iconPixels)"
   }
 
+  func updateSettings(_ change: (inout DockSettings) -> Void) {
+    edit { config in
+      change(&config.settings)
+      config.settings = config.settings.clamped
+    }
+    applySettings()
+  }
+
   /// Edits never overwrite a config file that failed to parse.
   private func edit(_ change: (inout DockConfig) -> Void) {
     loadConfig()

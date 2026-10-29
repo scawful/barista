@@ -757,7 +757,15 @@ final class BrowserState: ObservableObject {
     }
     // Each opens after the selected tab, so the last goes in first.
     for folder in chosen.filter(\.isFolder).reversed() { tabs.open(folder.url, select: false) }
-    chosen.filter { !$0.isFolder }.forEach(open)
+    let files = chosen.filter { !$0.isFolder }
+    // Several pictures and movies share one viewer window as tiles.
+    let tiled = files.filter { OpenRules.app(for: $0.url) == nil && ViewerKind.of($0.url)?.isMedia == true }
+      .map(\.url)
+    if tiled.count > 1, ViewerController.shared.open(tiled) {
+      files.filter { !tiled.contains($0.url) }.forEach(open)
+    } else {
+      files.forEach(open)
+    }
   }
 
   func trashSelection() {

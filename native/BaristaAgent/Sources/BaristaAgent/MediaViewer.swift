@@ -34,6 +34,17 @@ enum MediaEdit {
     return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
   }
 
+  /// `rect` on the picture turned clockwise by quarter turns.
+  static func turn(_ rect: CGRect, quarterTurns: Int) -> CGRect {
+    var rect = rect
+    for _ in 0..<((quarterTurns % 4 + 4) % 4) {
+      rect = CGRect(x: 1 - rect.maxY, y: rect.minX, width: rect.height, height: rect.width)
+    }
+    return rect
+  }
+
+  static func isWhole(_ rect: CGRect) -> Bool { rect.width > 0.999 && rect.height > 0.999 }
+
   /// `crop` in whole pixels of a picture `size` pixels big.
   static func pixels(_ crop: CGRect, in size: CGSize) -> CGRect {
     CGRect(x: (crop.minX * size.width).rounded(), y: (crop.minY * size.height).rounded(),
@@ -84,30 +95,58 @@ enum MediaEdit {
     return context.makeImage()
   }
 
-  /// Writes the turned and cropped picture next to `url`, in its format when
-  /// ImageIO can write that and as PNG otherwise. Blocking.
-  static func writeImage(_ url: URL, rotation: Int, crop: CGRect?) throws -> URL {
-    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil), let type = CGImageSourceGetType(source),
-          let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-          let width = properties[kCGImagePropertyPixelWidth] as? Int,
-          let height = properties[kCGImagePropertyPixelHeight] as? Int,
-          // The thumbnail at full size is the only ImageIO call that applies EXIF orientation.
-          let upright = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: max(width, height),
-          ] as CFDictionary),
-          var image = rotate(upright, quarterTurns: rotation)
+  /// The picture at `maxPixels` on its longest side at most, upright, or
+  /// whole when nil, and the longest side it got. Animations and drawings
+  /// load whole so they keep playing and stay sharp. Blocking.
+  static func decode(_ url: URL, header: ImageHeader, maxPixels: CGFloat?) -> (image: NSImage, pixels: CGFloat)? {
+    if header.frames > 1 || header.drawn {
+      return NSImage(contentsOf: url).map { ($0, header.drawn ? .infinity : max(header.pixels.width, header.pixels.height)) }
+    }
+    return upright(url, header: header, maxPixels: maxPixels)
+      .map { (NSImage(cgImage: $0, size: header.points), CGFloat(max($0.width, $0.height))) }
+  }
+
+  /// The first frame's pixels, upright, at most `maxPixels` on the longest side. Blocking.
+  static func upright(_ url: URL, header: ImageHeader, maxPixels: CGFloat?) -> CGImage? {
+    if header.drawn {
+      var rect = CGRect(origin: .zero, size: header.pixels)
+      return NSImage(contentsOf: url)?.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+    }
+    let longest = max(header.pixels.width, header.pixels.height)
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
+    else { return nil }
+    // The thumbnail is the only ImageIO call that applies EXIF orientation.
+    return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceShouldCacheImmediately: true,
+      kCGImageSourceThumbnailMaxPixelSize: Int(min(maxPixels ?? longest, longest)),
+    ] as CFDictionary)
+  }
+
+  /// The whole picture upright, turned, and cropped. Blocking.
+  static func render(_ url: URL, rotation: Int, crop: CGRect?) throws -> CGImage {
+    guard let header = ImageHeader.read(url),
+          let picture = upright(url, header: header, maxPixels: nil),
+          var image = rotate(picture, quarterTurns: rotation)
     else { throw Failure("Can't read \(url.lastPathComponent).") }
     if let crop {
       guard let cropped = image.cropping(to: pixels(crop, in: CGSize(width: image.width, height: image.height)))
       else { throw Failure("The crop is outside the picture.") }
       image = cropped
     }
+    return image
+  }
+
+  /// Writes the turned and cropped picture next to `url`, in its format when
+  /// ImageIO can write that and as PNG otherwise. Blocking.
+  static func writeImage(_ url: URL, rotation: Int, crop: CGRect?) throws -> URL {
+    let image = try render(url, rotation: rotation, crop: crop)
     let writable = (CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? []
-    let keepsType = writable.contains(type as String)
-    let copy = copyURL(for: url, ext: keepsType ? url.pathExtension : "png")
-    guard let destination = CGImageDestinationCreateWithURL(copy as CFURL, keepsType ? type : UTType.png.identifier as CFString,
+    let kept = CGImageSourceCreateWithURL(url as CFURL, nil).flatMap(CGImageSourceGetType)
+      .map { $0 as String }.flatMap { writable.contains($0) ? $0 : nil }
+    let copy = copyURL(for: url, ext: kept == nil ? "png" : url.pathExtension)
+    guard let destination = CGImageDestinationCreateWithURL(copy as CFURL, (kept ?? UTType.png.identifier) as CFString,
                                                             1, nil)
     else { throw Failure("Can't write \(copy.lastPathComponent).") }
     CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.95] as CFDictionary)
@@ -161,11 +200,178 @@ enum MediaEdit {
   }
 }
 
-/// The picture or movie in a viewer window: its zoom and turn, the crop
-/// and trim being made, and the bar that shows while the pointer is over it.
-/// Used on the main thread only; background work hands results back there.
-final class MediaState: ObservableObject, @unchecked Sendable {
-  enum Zoom: Equatable { case fit, scale(CGFloat) }
+/// What a picture file says about itself before its pixels are decoded.
+struct ImageHeader: Equatable {
+  /// Upright, after the EXIF orientation.
+  let pixels: CGSize
+  /// The size AppKit draws it at: Retina screenshots at half their pixels.
+  let points: CGSize
+  let frames: Int
+  /// A format only AppKit draws, like SVG; it has no pixels to downsample.
+  var drawn = false
+
+  static func read(_ url: URL) -> ImageHeader? {
+    if let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+       let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+       let width = properties[kCGImagePropertyPixelWidth] as? Int,
+       let height = properties[kCGImagePropertyPixelHeight] as? Int, width > 0, height > 0 {
+      let sideways = (5...8).contains(properties[kCGImagePropertyOrientation] as? Int ?? 1)
+      let pixels = sideways ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
+      let dpi = properties[kCGImagePropertyDPIWidth] as? Double ?? 72
+      let scale = (72...288).contains(dpi) ? 72 / dpi : 1
+      return ImageHeader(pixels: pixels,
+                         points: CGSize(width: (pixels.width * scale).rounded(), height: (pixels.height * scale).rounded()),
+                         frames: CGImageSourceGetCount(source))
+    }
+    guard let drawing = NSImage(contentsOf: url), drawing.size.width > 0, drawing.size.height > 0 else { return nil }
+    return ImageHeader(pixels: drawing.size, points: drawing.size, frames: 1, drawn: true)
+  }
+}
+
+/// How tiles share a window.
+enum TileLayout: String, CaseIterable, Identifiable {
+  /// Rows and columns, however many fit 4:3 pictures biggest.
+  case grid
+  case row
+  case column
+  /// The active tile big, the others in a strip beside or below it.
+  case main
+  /// Rows of tiles as wide as their pictures' shapes, without bars.
+  case shapes
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .grid: return "Grid"
+    case .row: return "Side by Side"
+    case .column: return "Stacked"
+    case .main: return "Main and Strip"
+    case .shapes: return "By Shape"
+    }
+  }
+}
+
+/// Where tiles go in a window. A short last row is centered.
+enum TileGrid {
+  static let gap: CGFloat = 2
+
+  /// `active` is the main tile's index; `aspects` are the pictures' widths
+  /// over their heights, for `shapes`.
+  static func frames(count: Int, in size: CGSize, layout: TileLayout = .grid, active: Int = 0,
+                     aspects: [CGFloat] = []) -> [CGRect] {
+    guard count > 1 else { return count == 1 ? [CGRect(origin: .zero, size: size)] : [] }
+    switch layout {
+    case .grid:
+      return grid(count, in: size, columns: (1...count).max { a, b in
+        let (one, other) = (cell(count, in: size, columns: a), cell(count, in: size, columns: b))
+        return min(one.width, one.height * 4 / 3) < min(other.width, other.height * 4 / 3)
+      } ?? 1)
+    case .row:
+      return grid(count, in: size, columns: count)
+    case .column:
+      return grid(count, in: size, columns: 1)
+    case .main:
+      return main(count, in: size, active: min(max(active, 0), count - 1))
+    case .shapes:
+      return shapes((0..<count).map { $0 < aspects.count && aspects[$0] > 0 ? aspects[$0] : 4.0 / 3 }, in: size)
+    }
+  }
+
+  private static func cell(_ count: Int, in size: CGSize, columns: Int) -> CGSize {
+    let rows = (count + columns - 1) / columns
+    return CGSize(width: max((size.width - gap * CGFloat(columns - 1)) / CGFloat(columns), 1),
+                  height: max((size.height - gap * CGFloat(rows - 1)) / CGFloat(rows), 1))
+  }
+
+  /// A quarter of the window's longer side holds the others.
+  private static func main(_ count: Int, in size: CGSize, active: Int) -> [CGRect] {
+    let wide = size.width >= size.height
+    let strip = ((wide ? size.width : size.height) - gap) / 4
+    let others = wide
+      ? grid(count - 1, in: CGSize(width: strip, height: size.height), columns: 1)
+        .map { $0.offsetBy(dx: size.width - strip, dy: 0) }
+      : grid(count - 1, in: CGSize(width: size.width, height: strip), columns: count - 1)
+        .map { $0.offsetBy(dx: 0, dy: size.height - strip) }
+    var frames = others
+    frames.insert(CGRect(x: 0, y: 0, width: wide ? size.width - strip - gap : size.width,
+                         height: wide ? size.height : size.height - strip - gap), at: active)
+    return frames
+  }
+
+  /// Rows in order, each tile as wide as its shape at its row's height and
+  /// each row as wide as the window, scaled down to fit the height. Tries
+  /// every count of rows and keeps the one that shows the most picture.
+  private static func shapes(_ aspects: [CGFloat], in size: CGSize) -> [CGRect] {
+    var best: (area: CGFloat, frames: [CGRect]) = (-1, [])
+    for rows in 1...aspects.count {
+      let groups = split(aspects, into: rows)
+      let heights = groups.map { max(size.width - gap * CGFloat($0.count - 1), 1) / $0.reduce(0, +) }
+      let gaps = gap * CGFloat(groups.count - 1)
+      let scale = min(1, max(size.height - gaps, 1) / heights.reduce(0, +))
+      var y = (size.height - heights.reduce(0, +) * scale - gaps) / 2
+      var frames: [CGRect] = []
+      for (group, height) in zip(groups, heights) {
+        let tall = height * scale
+        var x = (size.width - group.reduce(0) { $0 + $1 * tall } - gap * CGFloat(group.count - 1)) / 2
+        for aspect in group {
+          frames.append(CGRect(x: x, y: y, width: aspect * tall, height: tall))
+          x += aspect * tall + gap
+        }
+        y += tall + gap
+      }
+      let area = frames.reduce(0) { $0 + $1.width * $1.height }
+      if area > best.area { best = (area, frames) }
+    }
+    return best.frames
+  }
+
+  /// Splits in order into up to `rows` runs whose shapes add up about evenly.
+  private static func split(_ aspects: [CGFloat], into rows: Int) -> [[CGFloat]] {
+    let target = aspects.reduce(0, +) / CGFloat(rows)
+    var groups: [[CGFloat]] = [[]]
+    var sum: CGFloat = 0
+    for (index, aspect) in aspects.enumerated() {
+      let rowsLeft = rows - groups.count
+      if !groups[groups.count - 1].isEmpty, rowsLeft > 0,
+         sum + aspect / 2 > target || aspects.count - index == rowsLeft {
+        groups.append([])
+        sum = 0
+      }
+      groups[groups.count - 1].append(aspect)
+      sum += aspect
+    }
+    return groups
+  }
+
+  private static func grid(_ count: Int, in size: CGSize, columns: Int) -> [CGRect] {
+    let rows = (count + columns - 1) / columns
+    let tile = cell(count, in: size, columns: columns)
+    return (0..<count).map { index in
+      let (row, column) = (index / columns, index % columns)
+      let inRow = row == rows - 1 ? count - row * columns : columns
+      let inset = (size.width - CGFloat(inRow) * tile.width - gap * CGFloat(inRow - 1)) / 2
+      return CGRect(x: inset + CGFloat(column) * (tile.width + gap), y: CGFloat(row) * (tile.height + gap),
+                    width: tile.width, height: tile.height)
+    }
+  }
+}
+
+/// One picture or movie in a viewer window: its file, zoom and turn, the
+/// crop and trim being made, and what part of it the window shows. Used on
+/// the main thread only; background work hands results back there.
+final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
+  enum Zoom: Equatable {
+    /// This part of the picture, in fractions with the origin top left, as big as fits.
+    case region(CGRect)
+    /// This multiple, centered on a point of the picture in fractions.
+    case focus(CGFloat, CGPoint)
+    /// This multiple wherever the picture is scrolled: after a pinch, a
+    /// scroll, a pan, or a resize.
+    case scale(CGFloat)
+
+    static let fit = Zoom.region(MediaEdit.whole)
+  }
 
   /// A content size for the window; the controller fits it to the screen.
   enum Resize {
@@ -191,6 +397,16 @@ final class MediaState: ObservableObject, @unchecked Sendable {
   /// Whole multiples keep every pixel the same size.
   static let pixelSteps: [CGFloat] = [0.25, 0.5, 1, 2, 3, 4, 5, 6, 8, 10, 12, 16]
 
+  /// The longest side, in pixels, pictures decode at until a zoom needs more.
+  static var screenPixels: CGFloat {
+    NSScreen.screens.map { max($0.frame.width, $0.frame.height) * $0.backingScaleFactor }.max() ?? 3024
+  }
+
+  @Published private(set) var url: URL
+  @Published private(set) var kind: ViewerKind
+  @Published private(set) var error: String?
+  /// Position among the folder's files the arrow keys reach, for "3 of 12".
+  @Published private(set) var position: (index: Int, count: Int)?
   @Published var zoom = Zoom.fit
   /// What the picture is drawn at now, fitted or not, for the readout.
   @Published private(set) var scale: CGFloat = 1
@@ -204,71 +420,194 @@ final class MediaState: ObservableObject, @unchecked Sendable {
   @Published private(set) var pixelSize: CGSize?
   @Published private(set) var info: [InfoRow] = []
   @Published private(set) var openers: [URL] = []
-  @Published var showsInfo = false
-  @Published private(set) var showsChrome = false
+  @Published var showsInfo = false {
+    didSet { if showsInfo { loadInfo() } }
+  }
   @Published private(set) var cropping = false
   @Published var crop = MediaEdit.whole
+  /// A crop waiting for Save Copy, from Crop to View or the crop handles.
+  @Published private(set) var applied: CGRect?
+  /// Some of the picture is outside the window: zoomed in, or cut off by a resize.
+  @Published private(set) var viewIsPartial = false
   @Published fileprivate(set) var trimming = false
   @Published private(set) var trim: CMTimeRange?
   @Published private(set) var status: String?
 
   var resize: ((Resize) -> Void)?
-  var openFile: ((URL) -> Void)?
+  /// Zooms the shown picture and sizes its window around it; false when
+  /// the picture shares its window.
+  var zoomWindow: ((CGFloat) -> Bool)?
+  /// The tile shows another file: stepped to, or a saved copy.
+  var onShow: ((URL) -> Void)?
   fileprivate var beginTrim: (() -> Void)?
 
-  private(set) var url: URL?
+  /// The part of the picture in the window, in fractions, origin top left.
+  private(set) var view = MediaEdit.whole
+  private var header: ImageHeader?
   private var original: NSImage?
+  /// The longest side the picture is decoded at; 0 while it isn't.
+  private(set) var decoded: CGFloat = 0
+  /// The longest side a picture decodes at until a zoom needs more: a
+  /// screen's worth, shared among the tiles in a row.
+  private let baseLimit: CGFloat
+  /// The longest side last asked of the decoder.
+  private var requested: CGFloat = 0
   private var generation = 0
   private var sized = false
   private var saving = false
-  private var hideChrome: DispatchWorkItem?
+  private var suspended = false
+  private var resumeAt: CMTime?
+  private var beforeCrop: Zoom?
+  private var watcher: FileWatcher?
+  private var endObserver: NSObjectProtocol?
 
-  var isVideo: Bool { player != nil }
-  var hasEdits: Bool { rotation != 0 || trim != nil }
+  var isVideo: Bool { kind == .video }
+  var hasEdits: Bool { rotation != 0 || trim != nil || applied != nil }
+  var isFitted: Bool {
+    if case .region = zoom { return true }
+    return false
+  }
 
-  /// Nil, or why the file can't be shown. `fresh` is another file; otherwise
-  /// the same one changed on disk and keeps its zoom and edits.
-  func load(_ url: URL, kind: ViewerKind, fresh: Bool) -> String? {
+  /// `tiles` is how many share the window as it opens.
+  init(url: URL, kind: ViewerKind, tiles: Int = 1) {
     self.url = url
+    self.kind = kind
+    baseLimit = Self.screenPixels / Double(max(tiles, 1)).squareRoot().rounded(.up)
+    load(fresh: true)
+  }
+
+  deinit {
+    endObserver.map(NotificationCenter.default.removeObserver)
+  }
+
+  /// The same file changed on disk; zoom and edits stay.
+  func reload() { load(fresh: false) }
+
+  func step(_ offset: Int) {
+    let siblings = ViewerKind.siblings(of: url)
+    guard siblings.count > 1, let index = siblings.firstIndex(of: url) else { return }
+    show(siblings[(index + offset + siblings.count) % siblings.count])
+  }
+
+  func show(_ next: URL) {
+    guard let kind = ViewerKind.of(next), kind.isMedia else { return }
+    url = next
+    self.kind = kind
+    load(fresh: true)
+    onShow?(next)
+  }
+
+  private func load(fresh: Bool) {
+    guard fresh || !suspended else { return }
     generation += 1
     if fresh {
       zoom = .fit
       rotation = 0
       cropping = false
       crop = MediaEdit.whole
+      applied = nil
       trim = nil
-      openers = DefaultApps.choices(for: url)
+      openers = []
+      info = []
+      view = MediaEdit.whole
+      viewIsPartial = false
+      decoded = 0
+      watcher = FileWatcher(url: url) { [weak self] in self?.reload() }
+      let siblings = ViewerKind.siblings(of: url)
+      position = siblings.firstIndex(of: url).map { ($0 + 1, siblings.count) }
     }
-    if kind == .video {
-      // A recording still being written changes on every write.
-      guard fresh || player == nil else { return nil }
-      player?.pause()
-      original = nil
-      image = nil
-      let player = AVPlayer(url: url)
-      self.player = player
-      player.play()
-      loadVideo(url, generation: generation, fresh: fresh)
-      return nil
-    }
-    player?.pause()
-    player = nil
-    guard let loaded = NSImage(contentsOf: url) else {
-      original = nil
-      image = nil
-      info = Self.fileRows(url)
-      return "Can't open \(url.lastPathComponent) as an image."
-    }
-    original = loaded
-    if fresh { pixelated = Self.looksLikePixelArt(url, loaded) }
-    render()
-    info = Self.imageInfo(url)
-    if fresh, let size { place(size) }
-    return nil
+    if isVideo { loadMovie(fresh: fresh) } else { loadPicture(fresh: fresh) }
+    if showsInfo { loadInfo() }
   }
 
+  private func loadMovie(fresh: Bool) {
+    // A recording still being written changes on every write.
+    guard fresh || player == nil else { return }
+    header = nil
+    original = nil
+    image = nil
+    error = nil
+    player?.pause()
+    let player = AVPlayer(url: url)
+    player.actionAtItemEnd = .pause
+    self.player = player
+    watchEnd(of: player.currentItem)
+    loadVideo(url, generation: generation, fresh: fresh)
+  }
+
+  private func loadPicture(fresh: Bool) {
+    player?.pause()
+    player = nil
+    watchEnd(of: nil)
+    guard let header = ImageHeader.read(url) else {
+      self.header = nil
+      original = nil
+      image = nil
+      error = "Can't open \(url.lastPathComponent) as an image."
+      return
+    }
+    error = nil
+    self.header = header
+    info = []
+    if fresh {
+      pixelated = Self.looksLikePixelArt(url, header)
+      // The last file's picture would show at this one's shape until it decodes.
+      original = nil
+      image = nil
+    }
+    geometry()
+    decode(limit: fresh ? baseLimit : max(requested, baseLimit))
+    if fresh, let size { place(size) }
+  }
+
+  /// Pauses and releases the player, for a closed window or tile.
   func stop() {
     player?.pause()
+    player?.replaceCurrentItem(with: nil)
+    watchEnd(of: nil)
+    watcher = nil
+  }
+
+  func pause() {
+    player?.pause()
+  }
+
+  /// Lets go of the pixels and the movie's decoder until `resume`, for a
+  /// minimized window or one out of sight under memory pressure.
+  func suspend() {
+    guard !suspended else { return }
+    suspended = true
+    generation += 1
+    if let player {
+      resumeAt = player.currentTime()
+      player.pause()
+      player.replaceCurrentItem(with: nil)
+      watchEnd(of: nil)
+    }
+    original = nil
+    image = nil
+    decoded = 0
+    requested = 0
+  }
+
+  func resume() {
+    guard suspended else { return }
+    suspended = false
+    guard let player else { return decode(limit: baseLimit) }
+    let item = AVPlayerItem(url: url)
+    if let trim {
+      item.reversePlaybackEndTime = trim.start
+      item.forwardPlaybackEndTime = trim.end
+    }
+    player.replaceCurrentItem(with: item)
+    watchEnd(of: item)
+    if let resumeAt { player.seek(to: resumeAt, toleranceBefore: .zero, toleranceAfter: .zero) }
+  }
+
+  /// Under memory pressure: back to the pixels it opened with.
+  func shedPixels() {
+    guard !isVideo, !suspended, requested > baseLimit else { return }
+    decode(limit: baseLimit)
   }
 
   // MARK: Zoom
@@ -280,65 +619,91 @@ final class MediaState: ObservableObject, @unchecked Sendable {
     if let next { magnify(to: next) }
   }
 
-  /// A multiple of the picture's size; the window grows or shrinks to it.
+  /// A multiple of the picture's size about the middle of what shows; the
+  /// window grows or shrinks with it.
   func magnify(to scale: CGFloat) {
     guard let size, !cropping else { return }
-    if !isVideo { zoom = .scale(scale) }
-    resize?(.exact(CGSize(width: size.width * scale, height: size.height * scale)))
+    guard !isVideo else { return resize?(.exact(CGSize(width: size.width * scale, height: size.height * scale))) ?? () }
+    if zoomWindow?(scale) == true { return }
+    zoom = .focus(scale, CGPoint(x: view.midX, y: view.midY))
+    resize?(.exact(CGSize(width: size.width * view.width * scale, height: size.height * view.height * scale)))
   }
 
+  /// The whole picture, or the crop waiting to be saved, and the window takes its shape.
   func fit() {
-    zoom = .fit
-    if let size { resize?(.sameWidth(size)) }
+    guard let size else { return }
+    let region = isVideo ? MediaEdit.whole : applied ?? MediaEdit.whole
+    zoom = .region(region)
+    resize?(.sameWidth(CGSize(width: size.width * region.width, height: size.height * region.height)))
   }
 
   func toggleActualSize() {
-    if zoom == .fit { magnify(to: 1) } else { fit() }
+    if isFitted { magnify(to: 1) } else { fit() }
   }
 
-  fileprivate func shown(at scale: CGFloat) {
+  /// The picture is drawn at `scale` on a screen with `backing` pixels per
+  /// point; past the decoded pixels, it decodes again with room to zoom.
+  func shown(at scale: CGFloat, backing: CGFloat) {
     if abs(self.scale - scale) > 0.001 { self.scale = scale }
+    guard let header, let size, decoded > 0 else { return }
+    let longest = max(header.pixels.width, header.pixels.height)
+    let needed = scale * backing * max(size.width, size.height)
+    guard requested < longest, needed > requested * 1.05 else { return }
+    decode(limit: min(longest, max(needed * 1.25, baseLimit)))
   }
 
-  // MARK: Chrome
-
-  /// The pointer at `point` (top-left origin) over the window, or gone.
-  /// The bar shows on any move and hides two seconds after one away from it.
-  func pointer(_ point: CGPoint?) {
-    hideChrome?.cancel()
-    guard let point else { return setChrome(cropping) }
-    setChrome(true)
-    guard point.y > 44 else { return }
-    let work = DispatchWorkItem { [weak self] in self?.setChrome(self?.cropping == true) }
-    hideChrome = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
-  }
-
-  private func setChrome(_ shown: Bool) {
-    if showsChrome != shown { showsChrome = shown }
+  /// The window shows `rect` of the picture.
+  func viewed(_ rect: CGRect) {
+    view = rect
+    let partial = !MediaEdit.isWhole(rect)
+    if partial != viewIsPartial { viewIsPartial = partial }
   }
 
   // MARK: Edits
 
   func rotate(_ quarterTurns: Int) {
-    guard original != nil, !cropping else { return }
+    guard !isVideo, header != nil, !cropping else { return }
     rotation = (rotation + quarterTurns + 4) % 4
+    applied = applied.map { MediaEdit.turn($0, quarterTurns: quarterTurns) }
+    geometry()
     render()
-    zoom = .fit
-    if let size { resize?(.sameWidth(size)) }
+    fit()
   }
 
+  /// Shows the handles over the whole picture, starting from the crop
+  /// waiting to be saved or else the part the window showed.
   func beginCrop() {
-    guard size != nil, !trimming else { return }
+    guard size != nil, !trimming, !cropping else { return }
+    beforeCrop = isVideo ? nil : .region(view)
+    crop = applied ?? (viewIsPartial && !isVideo ? view : MediaEdit.whole)
     zoom = .fit
-    crop = MediaEdit.whole
     cropping = true
-    setChrome(true)
   }
 
   func cancelCrop() {
+    guard cropping else { return }
     cropping = false
-    crop = MediaEdit.whole
+    if let beforeCrop { zoom = beforeCrop }
+  }
+
+  /// Keeps the handles' crop for Save Copy and shows just that part.
+  func applyCrop() {
+    guard cropping else { return }
+    cropping = false
+    applied = MediaEdit.isWhole(crop) ? nil : crop
+    fit()
+  }
+
+  /// Keeps the part of the picture in the window as the crop for Save Copy.
+  func cropToView() {
+    guard !isVideo, !cropping, viewIsPartial else { return }
+    applied = view
+    let area = MediaEdit.pixels(view, in: pixelSize ?? .zero)
+    show(status: "Crop \(Int(area.width)) × \(Int(area.height)): Save Copy keeps it")
+  }
+
+  func clearCrop() {
+    applied = nil
   }
 
   func beginTrimming() {
@@ -359,10 +724,9 @@ final class MediaState: ObservableObject, @unchecked Sendable {
   /// Writes the turn, crop, and trim to a new file beside this one, then
   /// shows that file.
   func saveCopy() {
-    guard let url, !saving else { return }
-    let area = cropping && crop != MediaEdit.whole ? crop : nil
-    cropping = false
-    guard area != nil || hasEdits else { return }
+    if cropping { applyCrop() }
+    guard hasEdits, !saving else { return }
+    let (url, area) = (url, applied)
     saving = true
     show(status: "Saving…", clears: false)
     if isVideo {
@@ -391,30 +755,36 @@ final class MediaState: ObservableObject, @unchecked Sendable {
     saving = false
     switch result {
     case .success(let copy):
-      openFile?(copy)
+      show(copy)
       show(status: "Saved \(copy.lastPathComponent)")
     case .failure(let error):
       show(status: "Couldn't save: \(error.localizedDescription)")
     }
   }
 
+  /// The picture with its edits at full size, or the movie file.
   func copy() {
     NSPasteboard.general.clearContents()
-    if !isVideo, let image {
-      NSPasteboard.general.writeObjects([image])
+    if !isVideo, let image = try? MediaEdit.render(url, rotation: rotation, crop: applied) {
+      NSPasteboard.general.writeObjects([NSImage(cgImage: image, size: .zero)])
       show(status: "Copied image")
-    } else if let url {
+    } else {
       NSPasteboard.general.writeObjects([url as NSURL])
       show(status: "Copied file")
     }
   }
 
-  private func show(status: String, clears: Bool = true) {
+  func show(status: String, clears: Bool = true) {
     self.status = status
     guard clears else { return }
     DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
       if self?.status == status { self?.status = nil }
     }
+  }
+
+  /// Apps for the Open With menu, looked up when the bar first shows.
+  func loadOpeners() {
+    if openers.isEmpty { openers = DefaultApps.choices(for: url) }
   }
 
   // MARK: Loading
@@ -424,21 +794,58 @@ final class MediaState: ObservableObject, @unchecked Sendable {
     sized = true
   }
 
+  private func geometry() {
+    guard let header else { return }
+    let turned = { (size: CGSize) in self.rotation % 2 == 0 ? size : CGSize(width: size.height, height: size.width) }
+    size = turned(header.points)
+    pixelSize = turned(header.pixels)
+  }
+
+  private func decode(limit: CGFloat) {
+    guard let header else { return }
+    requested = limit
+    generation += 1
+    let (url, generation) = (url, generation)
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      let picture = MediaEdit.decode(url, header: header, maxPixels: limit)
+      DispatchQueue.main.async {
+        guard let self, self.generation == generation else { return }
+        guard let picture else {
+          self.error = "Can't open \(url.lastPathComponent) as an image."
+          return
+        }
+        self.decoded = picture.pixels
+        self.original = picture.image
+        self.render()
+      }
+    }
+  }
+
   private func render() {
-    guard let original else { return }
-    let turned = rotation % 2 == 0 ? original.size : CGSize(width: original.size.height, height: original.size.width)
+    guard let original, let size else { return }
     if rotation == 0 {
       image = original
     } else if let source = original.cgImage(forProposedRect: nil, context: nil, hints: nil),
               let rotated = MediaEdit.rotate(source, quarterTurns: rotation) {
-      image = NSImage(cgImage: rotated, size: turned)
+      image = NSImage(cgImage: rotated, size: size)
     }
-    size = turned
-    if let rep = original.representations.first, rep.pixelsWide > 0 {
-      let pixels = CGSize(width: rep.pixelsWide, height: rep.pixelsHigh)
-      pixelSize = rotation % 2 == 0 ? pixels : CGSize(width: pixels.height, height: pixels.width)
-    } else {
-      pixelSize = turned
+  }
+
+  private func watchEnd(of item: AVPlayerItem?) {
+    endObserver.map(NotificationCenter.default.removeObserver)
+    endObserver = item.map { item in
+      NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: item,
+                                             queue: .main) { [weak self] _ in self?.ended() }
+    }
+  }
+
+  /// Starts over from the trim's start, when movies loop.
+  private func ended() {
+    guard ViewerPreferences.shared.loopsMovies, let player, let item = player.currentItem else { return }
+    let start = item.reversePlaybackEndTime.isNumeric ? item.reversePlaybackEndTime : .zero
+    player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero) { [weak player] finished in
+      guard finished else { return }
+      DispatchQueue.main.async { player?.play() }
     }
   }
 
@@ -465,9 +872,9 @@ final class MediaState: ObservableObject, @unchecked Sendable {
       }
       let file = Self.fileRows(url)
       DispatchQueue.main.async {
-        guard let self, self.generation == generation else { return }
+        guard let self, self.url == url else { return }
         self.info = rows + file
-        guard let shown else { return }
+        guard let shown, self.generation == generation else { return }
         self.size = shown
         self.pixelSize = shown
         if fresh { self.place(shown) }
@@ -475,9 +882,15 @@ final class MediaState: ObservableObject, @unchecked Sendable {
     }
   }
 
+  /// Picture info is read when the panel opens; a movie's comes with its size.
+  private func loadInfo() {
+    guard !isVideo, info.isEmpty else { return }
+    info = Self.imageInfo(url)
+  }
+
   /// Small lossless pictures are sprites, tiles, and emulator captures.
-  private static func looksLikePixelArt(_ url: URL, _ image: NSImage) -> Bool {
-    guard let rep = image.representations.first, max(rep.pixelsWide, rep.pixelsHigh) <= 1024,
+  private static func looksLikePixelArt(_ url: URL, _ header: ImageHeader) -> Bool {
+    guard !header.drawn, max(header.pixels.width, header.pixels.height) <= 1024,
           let type = UTType(filenameExtension: url.pathExtension) else { return false }
     return type.conforms(to: .png) || type.conforms(to: .gif) || type.conforms(to: .bmp)
   }
@@ -532,70 +945,221 @@ final class MediaState: ObservableObject, @unchecked Sendable {
   }
 }
 
+/// The right-click menu for a tile: what its bar and keys do, and with
+/// several tiles, how they share the window. Shortcuts show as hints.
+enum MediaMenu {
+  static func make(model: ViewerModel, media: MediaState) -> NSMenu {
+    let menu = NSMenu()
+    menu.autoenablesItems = false
+    func add(_ title: String, _ key: String = "", _ modifiers: NSEvent.ModifierFlags = [], on: Bool = false,
+             to target: NSMenu? = nil, _ perform: @escaping () -> Void) {
+      let item = MenuChoice.item(title, perform: perform)
+      item.keyEquivalent = key
+      item.keyEquivalentModifierMask = modifiers
+      item.state = on ? .on : .off
+      (target ?? menu).addItem(item)
+    }
+    func submenu(_ title: String) -> NSMenu {
+      let holder = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+      holder.submenu = NSMenu(title: title)
+      menu.addItem(holder)
+      return holder.submenu!
+    }
+
+    if media.cropping {
+      add("Apply Crop", "\r") { media.applyCrop() }
+      add("Cancel Crop", "\u{1b}") { media.cancelCrop() }
+      return menu
+    }
+    let preferences = ViewerPreferences.shared
+    if media.isVideo {
+      add(media.player?.timeControlStatus == .playing ? "Pause" : "Play", " ") { media.togglePlayback() }
+      add("Loop Movies", on: preferences.loopsMovies) { preferences.set(loopsMovies: !preferences.loopsMovies) }
+      menu.addItem(.separator())
+      add("Trim…", "t") { media.beginTrimming() }
+    } else {
+      add("Zoom to Fit", "0") { media.fit() }
+      add("Actual Size", "1") { media.magnify(to: 1) }
+      add("Zoom In", "+") { media.magnify(by: 1) }
+      add("Zoom Out", "-") { media.magnify(by: -1) }
+      add("Sharp Pixels", "p", on: media.pixelated) { media.pixelated.toggle() }
+      let scroll = submenu("Scroll to Zoom")
+      for choice in ViewerPreferences.ScrollZoom.allCases {
+        add(choice.title, on: preferences.scrollZoom == choice, to: scroll) { preferences.set(scrollZoom: choice) }
+      }
+      menu.addItem(.separator())
+      add("Rotate Left", "r", .shift) { media.rotate(-1) }
+      add("Rotate Right", "r") { media.rotate(1) }
+    }
+    add("Crop…", "c") { media.beginCrop() }
+    if !media.isVideo, media.viewIsPartial { add("Crop to View", "c", .shift) { media.cropToView() } }
+    if media.applied != nil { add("Remove Crop") { media.clearCrop() } }
+    if media.hasEdits { add("Save Copy", "s", .command) { media.saveCopy() } }
+    menu.addItem(.separator())
+    add(media.isVideo ? "Copy File" : "Copy Image", "c", .command) { media.copy() }
+    add("Show Info", "i", on: media.showsInfo) { media.showsInfo.toggle() }
+    add("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([media.url]) }
+    media.loadOpeners()
+    let openWith = submenu("Open With")
+    for app in media.openers {
+      add(DefaultApps.name(app), to: openWith) {
+        NSWorkspace.shared.open([media.url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
+      }
+    }
+    menu.addItem(.separator())
+    add("Add Pictures or Movies…") { model.add(chooseFiles(near: media.url)) }
+    guard model.tiles.count > 1 else { return menu }
+    let layout = submenu("Layout")
+    for choice in TileLayout.allCases {
+      add(choice.title, on: model.layout == choice, to: layout) { model.layout = choice }
+    }
+    layout.addItem(.separator())
+    add("Next Layout", "l", to: layout) { model.cycleLayout() }
+    let fit = submenu("Fit")
+    add("Whole Pictures", on: !model.fills, to: fit) { model.fills = false }
+    add("Fill the Tiles", "f", on: model.fills, to: fit) { model.fills = true }
+    let index = model.tiles.firstIndex { $0 === media } ?? 0
+    if index > 0 {
+      add("Move Earlier", "[") { model.move(media, by: -1) }
+      add("Move to Start") { model.move(media, by: -index) }
+    }
+    if index < model.tiles.count - 1 { add("Move Later", "]") { model.move(media, by: 1) } }
+    add("Remove Tile", "\u{8}") { model.remove(media) }
+    return menu
+  }
+
+  static func chooseFiles(near url: URL) -> [URL] {
+    let panel = NSOpenPanel()
+    panel.allowsMultipleSelection = true
+    panel.canChooseDirectories = false
+    panel.allowedContentTypes = [.image, .movie]
+    panel.directoryURL = url.deletingLastPathComponent()
+    return panel.runModal() == .OK ? panel.urls : []
+  }
+}
+
 // MARK: Views
 
-/// The picture or movie filling the window, with a bar over the top that
-/// shows while the pointer is over the window.
+/// The window's tiles, one filling it unless more were added, with the bar
+/// over the top while the pointer is over the window. Dropping pictures or
+/// movies on it adds tiles.
 struct MediaView: View {
+  @ObservedObject var model: ViewerModel
+
+  var body: some View {
+    GeometryReader { geometry in
+      let frames = model.frames(in: geometry.size)
+      let tiled = model.tiles.count > 1
+      ZStack(alignment: .topLeading) {
+        Color.black
+        ForEach(Array(model.tiles.enumerated()), id: \.element.id) { index, tile in
+          if index < frames.count {
+            MediaTileView(media: tile, tiled: tiled, active: tiled && tile === model.media,
+                          fills: tiled && model.fills)
+              .frame(width: frames[index].width, height: frames[index].height)
+              .offset(x: frames[index].minX, y: frames[index].minY)
+          }
+        }
+      }
+    }
+    .overlay {
+      if let media = model.media { MediaChrome(model: model, media: media) }
+    }
+    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+      for provider in providers {
+        _ = provider.loadObject(ofClass: URL.self) { url, _ in
+          guard let url else { return }
+          DispatchQueue.main.async { model.add([url]) }
+        }
+      }
+      return true
+    }
+    .ignoresSafeArea()
+  }
+}
+
+/// The bar, info panel, and status line for the active tile.
+private struct MediaChrome: View {
   @ObservedObject var model: ViewerModel
   @ObservedObject var media: MediaState
 
   var body: some View {
+    let shown = model.showsChrome || media.cropping
+    Color.clear
+      .allowsHitTesting(false)
+      .overlay(alignment: .top) {
+        MediaBar(model: model, media: media)
+          .opacity(shown ? 1 : 0)
+          .allowsHitTesting(shown)
+          .animation(.easeOut(duration: 0.2), value: shown)
+      }
+      .overlay(alignment: .topTrailing) {
+        if media.showsInfo, !media.info.isEmpty {
+          InfoPanel(rows: media.info).padding(.top, 44).padding(.trailing, 10)
+        }
+      }
+      .overlay(alignment: .bottom) {
+        if let status = media.status {
+          Text(status)
+            .font(.callout)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.regularMaterial, in: Capsule())
+            .environment(\.colorScheme, .dark)
+            .padding(.bottom, media.isVideo ? 70 : 14)
+        }
+      }
+  }
+}
+
+private struct MediaTileView: View {
+  @ObservedObject var media: MediaState
+  let tiled: Bool
+  let active: Bool
+  let fills: Bool
+
+  var body: some View {
     ZStack {
       Color.black
-      if let error = model.error {
-        Text(error).foregroundStyle(.secondary)
+      if let error = media.error {
+        Text(error).foregroundStyle(.secondary).padding()
       } else if let player = media.player {
-        VideoView(player: player, media: media)
+        VideoView(player: player, media: media, fills: fills && !media.cropping)
       } else if let image = media.image {
-        ZoomableImage(image: image, zoom: media.zoom, pixelated: media.pixelated, media: media)
+        ZoomableImage(image: image, zoom: media.zoom, pixelated: media.pixelated, ownsWindow: !tiled,
+                      frozen: media.cropping, fills: fills && !media.cropping, media: media)
+      } else if !media.isVideo {
+        ProgressView().controlSize(.small)
       }
       if media.cropping, let size = media.size {
         CropOverlay(rect: $media.crop, size: size, pixels: media.pixelSize ?? size)
       }
     }
-    .overlay(alignment: .top) {
-      MediaBar(model: model, media: media)
-        .opacity(media.showsChrome ? 1 : 0)
-        .allowsHitTesting(media.showsChrome)
-        .animation(.easeOut(duration: 0.2), value: media.showsChrome)
+    .overlay {
+      if active { Rectangle().strokeBorder(Color.accentColor, lineWidth: 2).allowsHitTesting(false) }
     }
-    .overlay(alignment: .topTrailing) {
-      if media.showsInfo, !media.info.isEmpty {
-        InfoPanel(rows: media.info).padding(.top, 44).padding(.trailing, 10)
-      }
-    }
-    .overlay(alignment: .bottom) {
-      if let status = media.status {
-        Text(status)
-          .font(.callout)
-          .padding(.horizontal, 12)
-          .padding(.vertical, 6)
-          .background(.regularMaterial, in: Capsule())
-          .environment(\.colorScheme, .dark)
-          .padding(.bottom, media.isVideo ? 70 : 14)
-      }
-    }
-    .ignoresSafeArea()
+    .clipped()
   }
 }
 
 private struct MediaBar: View {
   @ObservedObject var model: ViewerModel
   @ObservedObject var media: MediaState
+  @ObservedObject private var preferences = ViewerPreferences.shared
 
   var body: some View {
     HStack(spacing: 4) {
-      Text(model.url.lastPathComponent).font(.headline).lineLimit(1).truncationMode(.middle)
-      if let position = model.position, position.count > 1 {
+      Text(media.url.lastPathComponent).font(.headline).lineLimit(1).truncationMode(.middle)
+      if let position = media.position, position.count > 1 {
         Text("\(position.index) of \(position.count)").font(.caption).foregroundStyle(.white.opacity(0.7))
           .fixedSize()
       }
       Spacer(minLength: 8)
       if media.cropping {
-        Text("Drag the corners to crop").font(.caption).foregroundStyle(.white.opacity(0.7)).fixedSize()
+        Text("Drag the edges to crop").font(.caption).foregroundStyle(.white.opacity(0.7)).fixedSize()
         Button("Cancel") { media.cancelCrop() }.buttonStyle(.bordered).help("Cancel (Esc)")
-        Button("Save Copy") { media.saveCopy() }.buttonStyle(.borderedProminent).help("Save the crop as a new file (Return)")
+        Button("Apply") { media.applyCrop() }.buttonStyle(.borderedProminent)
+          .help("Keep this crop; Save Copy writes it (Return)")
       } else {
         controls
       }
@@ -622,45 +1186,84 @@ private struct MediaBar: View {
       Button { media.toggleActualSize() } label: {
         Text("\(Int((media.scale * 100).rounded()))%").monospacedDigit().frame(minWidth: 40)
       }
-      .help(media.zoom == .fit ? "Actual Size (1)" : "Fit to Window (0)")
+      .help(media.isFitted ? "Actual Size (1)" : "Fit to Window (0)")
       icon("plus.magnifyingglass", "Zoom In (+)") { media.magnify(by: 1) }
       icon("square.grid.3x3", "Sharp Pixels (P)", on: media.pixelated) { media.pixelated.toggle() }
       icon("rotate.left", "Rotate Left (⇧R)") { media.rotate(-1) }
       icon("rotate.right", "Rotate Right (R)") { media.rotate(1) }
     }
     icon("crop", "Crop (C)") { media.beginCrop() }
+    if !media.isVideo, media.viewIsPartial, media.applied != media.view {
+      Button("Crop to View") { media.cropToView() }.buttonStyle(.bordered)
+        .help("Keep the part in the window as the crop (⇧C)")
+    }
+    if let applied = media.applied {
+      let area = MediaEdit.pixels(applied, in: media.pixelSize ?? .zero)
+      HStack(spacing: 2) {
+        Text("\(Int(area.width)) × \(Int(area.height))").font(.caption.monospacedDigit())
+        Button { media.clearCrop() } label: { Image(systemName: "xmark.circle.fill") }.help("Remove the crop")
+      }
+      .padding(.horizontal, 6)
+      .padding(.vertical, 2)
+      .background(Color.white.opacity(0.18), in: Capsule())
+      .fixedSize()
+    }
     if media.hasEdits {
       Button("Save Copy") { media.saveCopy() }.buttonStyle(.borderedProminent).help("Save the edits as a new file (⌘S)")
     }
     icon("info.circle", "Info (I)", on: media.showsInfo) { media.showsInfo.toggle() }
-    icon("doc.on.doc", media.isVideo ? "Copy File (⌘C)" : "Copy Image (⌘C)") { media.copy() }
     Image(systemName: "hand.draw")
       .frame(width: 24, height: 24)
       .contentShape(Rectangle())
-      .onDrag { NSItemProvider(object: model.url as NSURL) }
+      .onDrag { NSItemProvider(object: media.url as NSURL) }
       .help("Drag the file out")
-    openWith
-    icon("folder", "Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([model.url]) }
+    more
   }
 
-  private var openWith: some View {
-    let url = model.url
+  private var more: some View {
+    let url = media.url
     let preferred = NSWorkspace.shared.urlForApplication(toOpen: url)
     return Menu {
-      if let preferred {
-        Button("\(DefaultApps.name(preferred)) (default)") { open(url, with: preferred) }
-        Divider()
+      Button(media.isVideo ? "Copy File" : "Copy Image") { media.copy() }
+      Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+      Menu("Open With") {
+        if let preferred {
+          Button("\(DefaultApps.name(preferred)) (default)") { open(url, with: preferred) }
+          Divider()
+        }
+        ForEach(media.openers.filter { $0 != preferred }, id: \.self) { app in
+          Button(DefaultApps.name(app)) { open(url, with: app) }
+        }
       }
-      ForEach(media.openers.filter { $0 != preferred }, id: \.self) { app in
-        Button(DefaultApps.name(app)) { open(url, with: app) }
+      Divider()
+      Button("Add Pictures or Movies…") { model.add(MediaMenu.chooseFiles(near: media.url)) }
+      if model.tiles.count > 1 {
+        Picker("Layout", selection: $model.layout) {
+          ForEach(TileLayout.allCases) { Text($0.title).tag($0) }
+        }
+        .pickerStyle(.menu)
+        Picker("Fit", selection: $model.fills) {
+          Text("Whole Pictures").tag(false)
+          Text("Fill the Tiles").tag(true)
+        }
+        .pickerStyle(.menu)
+        Button("Remove This Tile") { model.remove(media) }
       }
+      Divider()
+      Picker("Scroll to Zoom", selection: Binding(get: { preferences.scrollZoom },
+                                                  set: { preferences.set(scrollZoom: $0) })) {
+        ForEach(ViewerPreferences.ScrollZoom.allCases) { Text($0.title).tag($0) }
+      }
+      .pickerStyle(.menu)
+      Toggle("Loop Movies", isOn: Binding(get: { preferences.loopsMovies },
+                                          set: { preferences.set(loopsMovies: $0) }))
     } label: {
-      Image(systemName: "arrow.up.forward.app")
+      Image(systemName: "ellipsis.circle")
     }
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
     .fixedSize()
-    .help("Open With")
+    .help("More")
   }
 
   private func open(_ url: URL, with app: URL) {
@@ -797,6 +1400,7 @@ private struct CropOverlay: View {
 private struct VideoView: NSViewRepresentable {
   let player: AVPlayer
   let media: MediaState
+  let fills: Bool
 
   func makeNSView(context: Context) -> AVPlayerView {
     let view = AVPlayerView()
@@ -818,38 +1422,68 @@ private struct VideoView: NSViewRepresentable {
 
   func updateNSView(_ view: AVPlayerView, context: Context) {
     if view.player !== player { view.player = player }
+    let gravity: AVLayerVideoGravity = fills ? .resizeAspectFill : .resizeAspect
+    if view.videoGravity != gravity { view.videoGravity = gravity }
   }
 }
 
-/// Pinch zooms in place; double-click toggles fit and actual size. While
-/// the whole picture shows, dragging it moves the window; past that, it pans.
+/// Pinch and scroll zoom at the pointer; double-click toggles fit and
+/// actual size. While the whole picture shows, dragging it moves the
+/// window; past that, it pans. Resizing the window crops the view.
 private struct ZoomableImage: NSViewRepresentable {
   let image: NSImage
   let zoom: MediaState.Zoom
   let pixelated: Bool
+  let ownsWindow: Bool
+  let frozen: Bool
+  let fills: Bool
   let media: MediaState
 
   func makeNSView(context: Context) -> ImageScrollView {
     let view = ImageScrollView()
+    media.zoomWindow = { [weak view] scale in view?.zoomWindow(to: scale) ?? false }
     view.onDoubleClick = { [weak media] in media?.toggleActualSize() }
-    view.onPinch = { [weak media] scale in media?.zoom = .scale(scale) }
+    view.onZoom = { [weak media] zoom in media?.zoom = zoom }
     // Reported from layout, which can run inside a SwiftUI update.
-    view.onScale = { [weak media] scale in DispatchQueue.main.async { media?.shown(at: scale) } }
+    view.onScale = { [weak media] scale, backing in DispatchQueue.main.async { media?.shown(at: scale, backing: backing) } }
+    view.onView = { [weak media] rect in DispatchQueue.main.async { media?.viewed(rect) } }
     return view
   }
 
   func updateNSView(_ view: ImageScrollView, context: Context) {
-    view.show(image, zoom: zoom, pixelated: pixelated)
+    view.ownsWindow = ownsWindow
+    view.frozen = frozen
+    view.show(image, zoom: zoom, pixelated: pixelated, fills: fills)
   }
 }
 
 final class ImageScrollView: NSScrollView {
   var onDoubleClick: (() -> Void)?
-  var onPinch: ((CGFloat) -> Void)?
-  var onScale: ((CGFloat) -> Void)?
+  /// A zoom the view made itself: a pinch, a scroll, a pan, or a resize.
+  var onZoom: ((MediaState.Zoom) -> Void)?
+  var onScale: ((CGFloat, CGFloat) -> Void)?
+  /// The part of the picture in view, in fractions, origin top left.
+  var onView: ((CGRect) -> Void)?
+  /// The picture is alone in its window: zooms size the window around it,
+  /// and a live resize keeps it still and moves the window's edges over it.
+  var ownsWindow = true
+  /// Cropping: the picture stays fitted under the handles.
+  var frozen = false
   private let imageView = PixelImageView()
   private var zoom = MediaState.Zoom.fit
+  /// A fitted region covers the view, cut at its edges, instead of showing whole.
+  private var fills = false
   private var panStart: (point: NSPoint, origin: NSPoint)?
+  private var resizeStart: (frame: NSRect, origin: NSPoint)?
+  /// Scrolling adds up to the next whole multiple for sharp pixels.
+  private var scrolled: CGFloat = 0
+  private var shown: CGRect?
+
+  /// Scroll bars float over the picture and fade, whatever the system's setting.
+  override var scrollerStyle: NSScroller.Style {
+    get { .overlay }
+    set { super.scrollerStyle = .overlay }
+  }
 
   init() {
     super.init(frame: .zero)
@@ -861,35 +1495,172 @@ final class ImageScrollView: NSScrollView {
     allowsMagnification = true
     minMagnification = 0.02
     maxMagnification = 32
+    hasVerticalScroller = true
+    hasHorizontalScroller = true
     autohidesScrollers = true
+    scrollerKnobStyle = .light
+    super.scrollerStyle = .overlay
     drawsBackground = false
     // The title bar is hidden over the picture, not above it.
     automaticallyAdjustsContentInsets = false
     contentInsets = NSEdgeInsetsZero
+    contentView.postsBoundsChangedNotifications = true
     NotificationCenter.default.addObserver(self, selector: #selector(pinched),
                                            name: NSScrollView.didEndLiveMagnifyNotification, object: self)
+    NotificationCenter.default.addObserver(self, selector: #selector(scrolledClip),
+                                           name: NSView.boundsDidChangeNotification, object: contentView)
   }
 
   required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
   @objc private func pinched() {
-    zoom = .scale(magnification)
-    onPinch?(magnification)
-    onScale?(magnification)
+    zoomed(.scale(magnification))
   }
 
-  func show(_ image: NSImage, zoom: MediaState.Zoom, pixelated: Bool) {
-    let changed = imageView.image !== image || self.zoom != zoom
+  @objc private func scrolledClip() {
+    report()
+  }
+
+  func show(_ image: NSImage, zoom: MediaState.Zoom, pixelated: Bool, fills: Bool) {
+    let resized = imageView.image?.size != image.size
     imageView.image = image
     imageView.frame = NSRect(origin: .zero, size: image.size)
     imageView.pixelated = pixelated
+    let changed = self.zoom != zoom || self.fills != fills
     self.zoom = zoom
-    if changed { applyZoom() }
+    self.fills = fills
+    if changed || resized { applyZoom() }
   }
 
   override func layout() {
     super.layout()
-    if zoom == .fit { applyZoom() }
+    if let start = resizeStart, let window {
+      // The window's left and bottom edges moved; the picture stays put under them.
+      scroll(to: NSPoint(x: start.origin.x + (window.frame.minX - start.frame.minX) / magnification,
+                         y: start.origin.y + (window.frame.minY - start.frame.minY) / magnification))
+    } else if case .scale = zoom {
+      report()
+    } else {
+      applyZoom()
+    }
+  }
+
+  /// The window's edges stop at the picture's, so a resize shows no black;
+  /// with ⌥ the part in view scales with the window and keeps its shape.
+  override func viewWillStartLiveResize() {
+    super.viewWillStartLiveResize()
+    guard ownsWindow, !frozen, let window, let size = imageView.image?.size else { return }
+    if NSEvent.modifierFlags.contains(.option) {
+      if let shown { zoomed(.region(shown)) }
+      window.aspectRatio = window.frame.size
+      return
+    }
+    zoomed(.scale(magnification))
+    resizeStart = (window.frame, contentView.bounds.origin)
+    window.maxSize = NSSize(width: size.width * magnification, height: size.height * magnification)
+  }
+
+  override func viewDidEndLiveResize() {
+    super.viewDidEndLiveResize()
+    resizeStart = nil
+    guard ownsWindow, let window else { return }
+    window.resizeIncrements = NSSize(width: 1, height: 1)
+    window.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+  }
+
+  override func magnify(with event: NSEvent) {
+    guard ownsWindow, !frozen else { return frozen ? () : super.magnify(with: event) }
+    zoomWindow(to: magnification * (1 + event.magnification), around: event.locationInWindow)
+  }
+
+  override func scrollWheel(with event: NSEvent) {
+    let rate = ViewerPreferences.shared.scrollZoom.rate
+    guard rate > 0, !frozen, !event.modifierFlags.contains(.command), imageView.image != nil else {
+      return super.scrollWheel(with: event)
+    }
+    // Momentum would keep zooming after the fingers lift.
+    guard event.momentumPhase.isEmpty else { return }
+    // Pushing away zooms in, with natural scrolling or without; a wheel's
+    // line is about 25 points of a trackpad's scroll.
+    let toward = event.isDirectionInvertedFromDevice ? -event.scrollingDeltaY : event.scrollingDeltaY
+    let amount = toward * (event.hasPreciseScrollingDeltas ? 1 : 25) * rate
+    guard amount != 0 else { return }
+    var target = magnification * exp(amount)
+    if imageView.pixelated {
+      scrolled += amount
+      guard abs(scrolled) >= 0.2 else { return }
+      let steps = MediaState.pixelSteps
+      target = (scrolled > 0 ? steps.first { $0 > magnification + 0.01 } : steps.last { $0 < magnification - 0.01 })
+        ?? magnification
+      scrolled = 0
+    }
+    if zoomWindow(to: target, around: event.locationInWindow) { return }
+    setMagnification(min(max(target, minMagnification), maxMagnification),
+                     centeredAt: imageView.convert(event.locationInWindow, from: nil))
+    zoomed(.scale(magnification))
+  }
+
+  /// Zooms to `scale` and sizes the window to the picture at that size,
+  /// keeping the point under `anchor` (in the window; its middle when nil)
+  /// still. Zooming in grows the window around it up to the screen; zooming
+  /// out shows more of the picture, then shrinks the window to its edges,
+  /// so no black shows. False when the picture shares its window.
+  @discardableResult
+  func zoomWindow(to scale: CGFloat, around anchor: NSPoint? = nil) -> Bool {
+    guard ownsWindow, !frozen, let window, let size = imageView.image?.size, size.width > 0, size.height > 0,
+          var screen = (window.screen ?? NSScreen.main)?.visibleFrame
+    else { return false }
+    let scale = min(max(scale, minMagnification), maxMagnification)
+    let old = magnification
+    let view = window.convertToScreen(convert(bounds, to: nil))
+    let pointer = anchor.map { window.convertToScreen(NSRect(origin: $0, size: .zero)).origin }
+      ?? NSPoint(x: view.midX, y: view.midY)
+    let held = NSPoint(x: contentView.bounds.minX + (pointer.x - view.minX) / old,
+                       y: contentView.bounds.minY + (pointer.y - view.minY) / old)
+    let ratio = scale / old
+    var frame = ratio > 1
+      ? NSRect(x: pointer.x + (view.minX - pointer.x) * ratio, y: pointer.y + (view.minY - pointer.y) * ratio,
+               width: view.width * ratio, height: view.height * ratio)
+      : view
+    var visible = NSRect(x: held.x - (pointer.x - frame.minX) / scale, y: held.y - (pointer.y - frame.minY) / scale,
+                         width: frame.width / scale, height: frame.height / scale)
+    let picture = visible.intersection(NSRect(origin: .zero, size: size))
+    guard !picture.isNull, picture.width > 0, picture.height > 0 else { return false }
+    frame = NSRect(x: frame.minX + (picture.minX - visible.minX) * scale,
+                   y: frame.minY + (picture.minY - visible.minY) * scale,
+                   width: picture.width * scale, height: picture.height * scale)
+    visible = picture
+    // The window may sit inset from the view's edges; the screen shrinks by as much.
+    let (left, bottom) = (view.minX - window.frame.minX, view.minY - window.frame.minY)
+    let (right, top) = (window.frame.maxX - view.maxX, window.frame.maxY - view.maxY)
+    screen = NSRect(x: screen.minX + left, y: screen.minY + bottom,
+                    width: screen.width - left - right, height: screen.height - bottom - top)
+    // Small enough to fit moves onto the screen; bigger is cut to it.
+    if frame.width <= screen.width {
+      frame.origin.x = min(max(frame.minX, screen.minX), screen.maxX - frame.width)
+    } else {
+      visible.origin.x += (screen.minX - frame.minX) / scale
+      visible.size.width = screen.width / scale
+      frame.origin.x = screen.minX
+      frame.size.width = screen.width
+    }
+    if frame.height <= screen.height {
+      frame.origin.y = min(max(frame.minY, screen.minY), screen.maxY - frame.height)
+    } else {
+      visible.origin.y += (screen.minY - frame.minY) / scale
+      visible.size.height = screen.height / scale
+      frame.origin.y = screen.minY
+      frame.size.height = screen.height
+    }
+    zoom = .scale(scale)
+    magnification = scale
+    window.setFrame(NSRect(x: frame.minX - left, y: frame.minY - bottom,
+                           width: frame.width + left + right, height: frame.height + bottom + top),
+                    display: true)
+    window.contentView?.layoutSubtreeIfNeeded()
+    scroll(to: visible.origin)
+    zoomed(.scale(scale))
+    return true
   }
 
   override func mouseDown(with event: NSEvent) {
@@ -897,16 +1668,15 @@ final class ImageScrollView: NSScrollView {
     if fitsInside {
       window?.performDrag(with: event)
     } else {
+      if case .scale = zoom {} else { zoomed(.scale(magnification)) }
       panStart = (event.locationInWindow, contentView.bounds.origin)
     }
   }
 
   override func mouseDragged(with event: NSEvent) {
     guard let start = panStart else { return }
-    let target = NSPoint(x: start.origin.x - (event.locationInWindow.x - start.point.x) / magnification,
-                         y: start.origin.y - (event.locationInWindow.y - start.point.y) / magnification)
-    contentView.scroll(to: contentView.constrainBoundsRect(NSRect(origin: target, size: contentView.bounds.size)).origin)
-    reflectScrolledClipView(contentView)
+    scroll(to: NSPoint(x: start.origin.x - (event.locationInWindow.x - start.point.x) / magnification,
+                       y: start.origin.y - (event.locationInWindow.y - start.point.y) / magnification))
   }
 
   override func mouseUp(with event: NSEvent) {
@@ -914,23 +1684,56 @@ final class ImageScrollView: NSScrollView {
   }
 
   private var fitsInside: Bool {
-    let shown = imageView.frame.size
-    return shown.width * magnification <= contentSize.width + 1 && shown.height * magnification <= contentSize.height + 1
+    let size = imageView.frame.size
+    return size.width * magnification <= contentSize.width + 1 && size.height * magnification <= contentSize.height + 1
+  }
+
+  private func zoomed(_ zoom: MediaState.Zoom) {
+    self.zoom = zoom
+    onZoom?(zoom)
+    report()
   }
 
   private func applyZoom() {
-    guard let size = imageView.image?.size, size.width > 0, size.height > 0 else { return }
+    guard let size = imageView.image?.size, size.width > 0, size.height > 0,
+          contentSize.width > 0, contentSize.height > 0 else { return }
     switch zoom {
-    case .fit: magnification = min(contentSize.width / size.width, contentSize.height / size.height)
-    case .scale(let scale): magnification = scale
+    case .region(let region):
+      let across = contentSize.width / (size.width * region.width)
+      let down = contentSize.height / (size.height * region.height)
+      magnification = fills ? max(across, down) : min(across, down)
+      center(on: CGPoint(x: region.midX, y: region.midY), in: size)
+    case .focus(let scale, let point):
+      magnification = scale
+      center(on: point, in: size)
+    case .scale(let scale):
+      magnification = scale
     }
-    // Scroll bars only say where you are in a picture bigger than the window.
-    let overflows = !fitsInside
-    if hasVerticalScroller != overflows {
-      hasVerticalScroller = overflows
-      hasHorizontalScroller = overflows
-    }
-    onScale?(magnification)
+    report()
+  }
+
+  /// Scrolls `point` of the picture, in fractions from the top left, to the middle.
+  private func center(on point: CGPoint, in size: CGSize) {
+    let visible = contentView.bounds.size
+    scroll(to: NSPoint(x: point.x * size.width - visible.width / 2,
+                       y: (1 - point.y) * size.height - visible.height / 2))
+  }
+
+  private func scroll(to origin: NSPoint) {
+    contentView.scroll(to: contentView.constrainBoundsRect(NSRect(origin: origin, size: contentView.bounds.size)).origin)
+    reflectScrolledClipView(contentView)
+  }
+
+  private func report() {
+    onScale?(magnification, window?.backingScaleFactor ?? 2)
+    guard let size = imageView.image?.size, size.width > 0, size.height > 0 else { return }
+    let visible = contentView.documentVisibleRect.intersection(NSRect(origin: .zero, size: size))
+    guard !visible.isNull, visible.width > 0, visible.height > 0 else { return }
+    let rect = CGRect(x: visible.minX / size.width, y: (size.height - visible.maxY) / size.height,
+                      width: visible.width / size.width, height: visible.height / size.height)
+    guard rect != shown else { return }
+    shown = rect
+    onView?(rect)
   }
 }
 

@@ -257,8 +257,12 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   row's `open` path. Open with Default App stays on the right-click menu.
   Markdown renders headings, lists and task boxes, code, quotes, tables, and
   images next to the file; relative `.md` links open in the same window.
-  Images fit the window, pinch to zoom, and step through the folder's other
-  images with ←/→ (0 fits, 1 is actual size, double-click toggles). Both
+  Pictures and movies open in a window that is only the picture: zooming
+  (scroll, pinch, keys, double-click) sizes the window to the picture, and
+  resizing moves the window's edges over it, up to its edges.
+  `viewer_scroll_zoom` (`off`, `fine`, `normal`, `fast`) sets how fast
+  scrolling zooms; `viewer_loops_movies` loops movies once played. Several
+  files tile in one window, laid out from its right-click menu. Both kinds
   reload when the file is saved. ⌘E opens the file in its editor, Escape or
   ⌘W closes.
 - Barista Files is a Finder replacement that tiles: one window with its tabs
@@ -439,7 +443,9 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
     "shelf_days": 3,
     "theme": "barista",
     "files_browser": "barista",
-    "focus_shortcut": ""
+    "focus_shortcut": "",
+    "viewer_scroll_zoom": "normal",
+    "viewer_loops_movies": true
   },
   "pinned": [
     { "kind": "app", "path": "/Applications/Ghostty.app", "bundle_id": "com.mitchellh.ghostty" },

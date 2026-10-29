@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 /// Hands control back to the native Dock. The script restores the Dock's
 /// settings before unloading this agent's LaunchAgent, which ends this process.
@@ -12,7 +13,9 @@ func useNativeDock() {
 }
 
 /// `barista-agent view|browse|open PATH` from a shell reaches the running
-/// agent as a distributed notification whose object is the absolute path.
+/// agent as a distributed notification whose object is the absolute path;
+/// `view` with several paths sends them a line each and tiles the pictures
+/// and movies among them in one window.
 enum OpenRequest: String, CaseIterable {
   case view, browse, open
 
@@ -38,10 +41,18 @@ enum OpenRequest: String, CaseIterable {
 final class AgentDelegate: NSObject, NSApplicationDelegate {
   private let store = DockStore()
   private lazy var dock = DockController(store: store, onUseNativeDock: useNativeDock)
+  private var viewerSettings: AnyCancellable?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSWindow.allowsAutomaticWindowTabbing = false
     AgentWindows.installEditMenu()
+    viewerSettings = store.$settings.sink { ViewerPreferences.shared.apply($0) }
+    ViewerPreferences.shared.persist = { [weak self] zoom, loops in
+      self?.store.updateSettings { settings in
+        settings.viewerScrollZoom = zoom.rawValue
+        settings.viewerLoopsMovies = loops
+      }
+    }
     NotificationCenter.default.addObserver(
       forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
     ) { [weak self] _ in self?.dock.hide() }
@@ -51,8 +62,13 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     for request in OpenRequest.allCases {
       DistributedNotificationCenter.default().addObserver(forName: request.notification, object: nil,
                                                           queue: .main) { note in
-        guard let path = note.object as? String else { return }
-        request.route(path).perform()
+        guard let object = note.object as? String else { return }
+        let paths = object.split(separator: "\n").map(String.init)
+        if request == .view, paths.count > 1 {
+          ViewerController.shared.open(paths.filter { $0.hasPrefix("/") }.map { URL(fileURLWithPath: $0).standardizedFileURL })
+        } else {
+          request.route(object).perform()
+        }
       }
     }
     DistributedNotificationCenter.default().addObserver(forName: groupRequest, object: nil, queue: .main) { [weak self] note in
@@ -92,13 +108,14 @@ case nil, "run":
   app.delegate = delegate
   app.setActivationPolicy(.accessory)
   app.run()
-case let command? where OpenRequest(rawValue: command) != nil && arguments.count == 2:
-  let path = URL(fileURLWithPath: arguments[1],
-                 relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)).standardizedFileURL.path
-  post(OpenRequest(rawValue: command)!.notification, path)
+case let command? where OpenRequest(rawValue: command) != nil && arguments.count == 2
+  || command == OpenRequest.view.rawValue && arguments.count > 2:
+  let here = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+  let paths = arguments.dropFirst().map { URL(fileURLWithPath: $0, relativeTo: here).standardizedFileURL.path }
+  post(OpenRequest(rawValue: command)!.notification, paths.joined(separator: "\n"))
 case "group" where arguments.count == 2:
   post(groupRequest, arguments[1])
 default:
-  FileHandle.standardError.write(Data("usage: barista-agent [run] | {view|browse|open} PATH | group TITLE\n".utf8))
+  FileHandle.standardError.write(Data("usage: barista-agent [run] | {view|browse|open} PATH | view PATH... | group TITLE\n".utf8))
   exit(2)
 }

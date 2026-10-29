@@ -8,14 +8,25 @@ struct FolderView: Codable, Equatable {
   var ascending: Bool?
   var iconSize: Double?
 
-  static let iconSizes: ClosedRange<Double> = 32...128
-  static let iconStep: Double = 16
+  /// Up to Finder's largest; the steps grow with the icons, so ⌘= crosses
+  /// the range in a dozen presses.
+  static let iconSizes: [Double] = [32, 48, 64, 80, 96, 128, 160, 192, 256, 320, 384, 512]
   static let fallback = FolderView(layout: .list, sortKey: .name, ascending: true, iconSize: 64)
 
   /// Icons come in steps, so a few sizes are drawn and cached, not one per
   /// slider position.
   static func iconSize(_ points: Double) -> Double {
-    min(max((points / iconStep).rounded() * iconStep, iconSizes.lowerBound), iconSizes.upperBound)
+    iconSizes[iconStep(of: points)]
+  }
+
+  /// The size `steps` sizes bigger (or smaller, when negative) than `points`.
+  static func iconSize(_ points: Double, steppedBy steps: Int) -> Double {
+    iconSizes[min(max(iconStep(of: points) + steps, 0), iconSizes.count - 1)]
+  }
+
+  /// The index of the size nearest `points`.
+  static func iconStep(of points: Double) -> Int {
+    iconSizes.indices.min { abs(iconSizes[$0] - points) < abs(iconSizes[$1] - points) } ?? 0
   }
 
   /// `self`, with what it leaves out taken from `other`.

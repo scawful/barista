@@ -100,9 +100,13 @@ final class FolderViewTests: XCTestCase {
     let beta = FolderView.Finder(records: try XCTUnwrap(DSStore.records(in: data, named: "beta")))
     XCTAssertNil(beta.layout)
     XCTAssertEqual(beta.list, FolderView(sortKey: .size, ascending: true))
-    XCTAssertEqual(FolderView.iconSize(500), 128)
+    XCTAssertEqual(FolderView.iconSize(900), 512)
+    XCTAssertEqual(FolderView.iconSize(500), 512)
     XCTAssertEqual(FolderView.iconSize(20), 32)
     XCTAssertEqual(FolderView.iconSize(70), 64)
+    XCTAssertEqual(FolderView.iconSize(128, steppedBy: 1), 160)
+    XCTAssertEqual(FolderView.iconSize(512, steppedBy: 1), 512)
+    XCTAssertEqual(FolderView.iconSize(48, steppedBy: -3), 32)
   }
 
   func testFinderSettingsAreReadFromTheFolderAndItsParent() throws {

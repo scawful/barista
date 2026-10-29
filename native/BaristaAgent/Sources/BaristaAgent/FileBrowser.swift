@@ -47,6 +47,7 @@ final class BrowserController {
     window.tabbingMode = .disallowed
     window.titlebarAppearsTransparent = true
     window.titleVisibility = .hidden
+    window.backgroundColor = .controlBackgroundColor
     window.minSize = NSSize(width: 480, height: 300)
     window.contentView = NSHostingView(rootView: BrowserView(state: state))
     state.onTitle = { [weak window] name in window?.title = name + Self.titleSuffix }
@@ -280,7 +281,7 @@ final class BrowserState: ObservableObject {
   @Published var selection: Set<URL> = []
   @Published var sortKey = FileSortKey.name { didSet { sortChanged { $0.sortKey = sortKey } } }
   @Published var ascending = true { didSet { sortChanged { $0.ascending = ascending } } }
-  /// Points per icon in the icon view, in `FolderView.iconStep` steps.
+  /// Points per icon in the icon view, one of `FolderView.iconSizes`.
   @Published var iconSize = FolderView.fallback.iconSize ?? 64 { didSet { remember { $0.iconSize = iconSize } } }
   @Published var query = "" { didSet { search() } }
   @Published var scope = SearchScope.folder { didSet { if scope != oldValue { search() } } }
@@ -593,10 +594,10 @@ final class BrowserState: ObservableObject {
     views.update(location, change)
   }
 
-  /// One `FolderView.iconStep` bigger (1) or smaller (-1); icons only.
-  func stepIconSize(_ steps: Double) {
+  /// `steps` of `FolderView.iconSizes` bigger, or smaller when negative; icons only.
+  func stepIconSize(_ steps: Int) {
     guard layout == .icons, !boardShown else { return NSSound.beep() }
-    let size = FolderView.iconSize(iconSize + steps * FolderView.iconStep)
+    let size = FolderView.iconSize(iconSize, steppedBy: steps)
     if size != iconSize { iconSize = size }
   }
 
@@ -1093,6 +1094,7 @@ struct BrowserView: View {
   @FocusState private var searchFocused: Bool
   @AppStorage("BaristaFilesSidebarWidth") private var sidebarWidth = 180.0
   @AppStorage("BaristaFilesPreviewWidth") private var previewWidth = 320.0
+  static let surface = Color(nsColor: .controlBackgroundColor)
   private static let sidebarWidths: ClosedRange<Double> = 140...360
   private static let previewWidths: ClosedRange<Double> = 200...720
 
@@ -1123,6 +1125,11 @@ struct BrowserView: View {
       statusBar
     }
     .ignoresSafeArea(edges: .top)
+    // One surface under the sidebar, list, and preview; scrolling still
+    // works by trackpad and wheel without bars.
+    .scrollContentBackground(.hidden)
+    .scrollIndicators(.never)
+    .background(Self.surface)
     .onChange(of: state.focusSearch) { searchFocused = true }
     .sheet(isPresented: $state.jumping) { JumpView(state: state) }
     .sheet(isPresented: Binding(get: { !state.inspecting.isEmpty }, set: { if !$0 { state.inspecting = [] } })) {
@@ -1393,11 +1400,14 @@ struct BrowserView: View {
       if !state.boardShown && state.layout == .icons {
         HStack(spacing: 4) {
           Image(systemName: "square.grid.3x3").imageScale(.small)
-          Slider(value: $state.iconSize, in: FolderView.iconSizes, step: FolderView.iconStep).controlSize(.mini)
+          Slider(value: Binding(get: { Double(FolderView.iconStep(of: state.iconSize)) },
+                                set: { state.iconSize = FolderView.iconSizes[Int($0.rounded())] }),
+                 in: 0...Double(FolderView.iconSizes.count - 1), step: 1)
+            .controlSize(.mini)
           Image(systemName: "square.grid.2x2").imageScale(.medium)
         }
-        .frame(width: 110)
-        .help("Icon size for this folder (⌘- and ⌘=)")
+        .frame(width: 130)
+        .help("Icon size for this folder (⌘- and ⌘=, or pinch)")
       }
       if !state.boardShown {
         Button(state.measuringSizes ? "Hide Folder Sizes" : "Calculate Sizes") { state.measuringSizes.toggle() }
@@ -1602,6 +1612,7 @@ private struct FileTable: View {
       state.selection = urls
       state.openSelection()
     }
+    .alternatingRowBackgrounds(.disabled)
     .onDrop(of: [.fileURL], isTargeted: nil, perform: state.drop)
   }
 

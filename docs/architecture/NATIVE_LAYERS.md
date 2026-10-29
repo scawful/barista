@@ -290,7 +290,9 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
 - Views are remembered per folder. Picking a layout in a folder makes it
   always open that way, as Finder's "Always open in"; other folders keep
   the window's layout, and columns stay columns while browsing. Sort and
-  icon size (the status-bar slider, or ⌘- and ⌘=) are the folder's own.
+  icon size (32 to 512 points, by the status-bar slider, ⌘- and ⌘=, or a
+  pinch) are the folder's own. The sidebar, list, and preview share one
+  surface, with no row stripes or scroll bars.
   Barista's choices live in its defaults; where it has none, it reads what
   Finder recorded in `.DS_Store` (the parent's record under the folder's
   name, or the folder's own `.`), off the main thread, and never writes

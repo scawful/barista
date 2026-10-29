@@ -4,6 +4,7 @@ import SwiftUI
 /// The icon view: the shown rows as a grid, with Finder's clicks and arrows.
 struct IconGrid: View {
   @ObservedObject var state: BrowserState
+  @State private var pinchStart: Double?
   private static let spacing: CGFloat = 8
 
   /// Room for two lines of name under the icon, and no narrower than a
@@ -35,6 +36,7 @@ struct IconGrid: View {
           }
         }
         .onDrop(of: [.fileURL], isTargeted: nil, perform: state.drop)
+        .simultaneousGesture(pinch)
         .onChange(of: state.scrollTarget) { scroll(proxy) }
         .onAppear {
           state.gridColumns = columns
@@ -43,6 +45,18 @@ struct IconGrid: View {
         .onChange(of: columns) { state.gridColumns = columns }
       }
     }
+  }
+
+  /// Pinching scales the icons from their size when the pinch began.
+  private var pinch: some Gesture {
+    MagnifyGesture()
+      .onChanged { value in
+        let start = pinchStart ?? state.iconSize
+        pinchStart = start
+        let size = FolderView.iconSize(start * value.magnification)
+        if size != state.iconSize { state.iconSize = size }
+      }
+      .onEnded { _ in pinchStart = nil }
   }
 
   private func scroll(_ proxy: ScrollViewProxy) {

@@ -390,13 +390,13 @@ final class ViewerPreferences: ObservableObject {
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
     /// Zoom per point scrolled, on a log scale: 100 points of a trackpad
-    /// scroll at `normal` zoom in about 1.6 times.
+    /// scroll at `normal` zoom in about 2.7 times.
     var rate: CGFloat {
       switch self {
       case .off: return 0
-      case .fine: return 0.002
-      case .normal: return 0.005
-      case .fast: return 0.012
+      case .fine: return 0.004
+      case .normal: return 0.01
+      case .fast: return 0.025
       }
     }
   }

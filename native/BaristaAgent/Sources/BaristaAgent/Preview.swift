@@ -294,7 +294,6 @@ struct BrowserPreview: View {
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
-    .background(Color.primary.opacity(0.02))
     // Keyed by the whole entry, so a save (new modified date) reloads it.
     .task(id: entry) {
       guard let entry, !entry.isFolder else { return }
@@ -430,7 +429,7 @@ private struct PlainTextView: NSViewRepresentable {
   func makeNSView(context: Context) -> NSScrollView {
     let scroll = NSTextView.scrollableTextView()
     scroll.drawsBackground = false
-    scroll.hasHorizontalScroller = true
+    scroll.hasVerticalScroller = false
     if let view = scroll.documentView as? NSTextView {
       view.isEditable = false
       view.isSelectable = true

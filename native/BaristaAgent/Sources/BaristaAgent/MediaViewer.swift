@@ -1580,9 +1580,9 @@ final class ImageScrollView: NSScrollView {
     }
     // Momentum would keep zooming after the fingers lift.
     guard event.momentumPhase.isEmpty else { return }
-    // Pushing away zooms in, with natural scrolling or without; a wheel's
-    // line is about 25 points of a trackpad's scroll.
-    let toward = event.isDirectionInvertedFromDevice ? -event.scrollingDeltaY : event.scrollingDeltaY
+    // Pulling toward you zooms in, with natural scrolling or without; a
+    // wheel's line is about 25 points of a trackpad's scroll.
+    let toward = event.isDirectionInvertedFromDevice ? event.scrollingDeltaY : -event.scrollingDeltaY
     let amount = toward * (event.hasPreciseScrollingDeltas ? 1 : 25) * rate
     guard amount != 0 else { return }
     var target = magnification * exp(amount)

@@ -141,6 +141,8 @@ Common keys:
 - `menu_item_height`, `menu_header_height`, `menu_padding`
 - `menu_item_corner_radius`, `menu_font_style`, `menu_header_font_style`, `menu_font_size_offset`
 - `bar_padding_left`, `bar_padding_right`, `bar_margin`, `bar_y_offset`
+- `corner_radius`, `bar_corners` (`all`, `top`, `bottom`, `none`), `bar_color`, `blur_radius`
+- `group_bg_color`, `group_border_color`, `group_border_width`, `group_corner_radius`
 - `popup_padding`, `popup_corner_radius`, `popup_border_width`, `popup_border_color`, `popup_bg_color`
 - `popup_blur_radius`, `popup_shadow` (native window shadow), `popup_icon_width` (fixed icon column for single-glyph popup rows)
 - `hover_color`, `hover_border_color`, `hover_animation_curve`, `hover_animation_duration`
@@ -170,6 +172,13 @@ configuration is `"blur_radius": 0` and `"hover_animation_duration": 0` inside
 connection type from monitor names or disable effects automatically. Merge
 these keys into the existing local file, then use
 `./plugins/reload_sketchybar.sh`. Restore your prior values to undo the change.
+
+`bar_corners` picks which corners `corner_radius` rounds. `"bottom"` keeps the
+bar flush with the top edge and rounds only the lower corners. Values other than
+`all` need the Barista SketchyBar fork (`sketchybar --bar corners=bottom`);
+`all` is the default and is never sent, so stock SketchyBar keeps working. The
+bar blur covers the whole window rectangle, so on a busy wallpaper a faint
+blurred square can show outside a rounded corner; `"blur_radius": 0` removes it.
 
 Barista's normal top placement keeps `bar_y_offset` explicit. The live default
 is `0`; do not introduce implicit offset behavior when debugging popup clicks.

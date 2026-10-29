@@ -59,6 +59,12 @@ function compute(state, theme, state_module, associated_displays, detected_displ
   local bar_height = state_module.get_appearance(state, "bar_height", 28)
   local configured_bar_height = bar_height
   local bar_corner_radius = state_module.get_appearance(state, "corner_radius", 0)
+  -- Which corners corner_radius rounds: all, top, bottom, none. Needs the
+  -- Barista SketchyBar fork, so "all" (stock behavior) is never sent.
+  local bar_corners = tostring(state_module.get_appearance(state, "bar_corners", "all")):lower()
+  if bar_corners ~= "top" and bar_corners ~= "bottom" and bar_corners ~= "none" then
+    bar_corners = nil
+  end
   local bar_color = parse_color(state_module.get_appearance(state, "bar_color", theme.bar.bg))
   local bar_blur_radius = tonumber(state_module.get_appearance(state, "blur_radius", 30))
   local bar_padding_left = tonumber(state_module.get_appearance(state, "bar_padding_left", 14)) or 14
@@ -297,6 +303,7 @@ function compute(state, theme, state_module, associated_displays, detected_displ
       padding_left = bar_padding_left,
       padding_right = bar_padding_right,
       corner_radius = bar_corner_radius,
+      corners = bar_corners,
       y_offset = bar_y_offset,
       border_width = bar_border_width,
       border_color = bar_border_color,

@@ -32,6 +32,17 @@ run_test("bar_config.compute: more-space boost increases effective widget scale"
   assert_equal(result.bar_height, 38, "effective bar height matches inset")
 end)
 
+run_test("bar_config.compute: bar_corners passes only the fork's partial corners", function()
+  local stock = bar_config.compute({ appearance = {} }, theme, state_module, "all", {})
+  assert_equal(stock.bar.corners, nil, "default all is never sent to stock sketchybar")
+
+  local bottom = bar_config.compute({ appearance = { bar_corners = "Bottom" } }, theme, state_module, "all", {})
+  assert_equal(bottom.bar.corners, "bottom", "bottom corners reach the bar")
+
+  local junk = bar_config.compute({ appearance = { bar_corners = "sides" } }, theme, state_module, "all", {})
+  assert_equal(junk.bar.corners, nil, "unknown values fall back to all")
+end)
+
 run_test("bar_config.compute: zero motion reaches normal and fast hover", function()
   local result = bar_config.compute(
     { appearance = { hover_animation_duration = 0, blur_radius = 0 } },

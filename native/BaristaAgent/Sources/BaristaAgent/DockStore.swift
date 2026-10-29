@@ -159,6 +159,7 @@ final class DockStore: ObservableObject {
     for child in [actions.objectWillChange, shelf.objectWillChange] {
       child.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
     }
+    objectWillChange.sink { [weak self] _ in self?.looks.removeAll(keepingCapacity: true) }.store(in: &cancellables)
     // A build or a prune changes what the group info rows report.
     actions.onFinish = { [weak self] _ in
       guard let self else { return }
@@ -232,6 +233,29 @@ final class DockStore: ObservableObject {
     }
     guard !unwarmed.isEmpty else { return }
     RunLoop.main.perform(inModes: [.default]) { [weak self] in self?.warmNextImages() }
+  }
+
+  /// What a tile's face shows besides its size and place.
+  struct Look {
+    let image: TileImage
+    let badge: String?
+    let badgeColor: Color
+    let finished: Bool
+    let state: ActionRunner.State?
+  }
+
+  /// Every tile's look on every frame of a reveal or a magnification sweep
+  /// costs a few tenths of a millisecond; each is kept until the store next changes.
+  private var looks: [String: Look] = [:]
+
+  func look(for tile: DockTile) -> Look {
+    if let cached = looks[tile.id] { return cached }
+    let badge = badgeText(for: tile)
+    let look = Look(image: image(for: tile), badge: badge,
+                    badgeColor: badge == nil ? .clear : badgeColor(for: tile),
+                    finished: badge == nil && hasFinished(tile), state: actionState(for: tile))
+    looks[tile.id] = look
+    return look
   }
 
   /// A tile's badge: its badge command's output, the shelf's item count, or

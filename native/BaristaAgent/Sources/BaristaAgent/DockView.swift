@@ -60,13 +60,12 @@ struct DockView: View {
 
   private func tileView(_ tile: DockTile, size: CGSize, frame: DockScene.Frame) -> some View {
     let dragged = frame.draggedID == tile.id
-    let badge = store.badgeText(for: tile)
-    let face = TileFace(image: store.image(for: tile), theme: store.theme, size: size,
+    let look = store.look(for: tile)
+    let face = TileFace(image: look.image, theme: store.theme, size: size,
                         highlighted: frame.hoveredID == tile.id || dropTarget == tile.id
                           || scene.openPopoverID == tile.id,
-                        dimmed: tile.isHidden, state: store.actionState(for: tile),
-                        badge: badge, badgeColor: badge == nil ? .clear : store.badgeColor(for: tile),
-                        finished: badge == nil && store.hasFinished(tile),
+                        dimmed: tile.isHidden, state: look.state,
+                        badge: look.badge, badgeColor: look.badgeColor, finished: look.finished,
                         running: tile.isRunning && !dragged, active: tile.isActive,
                         removing: dragged && frame.removing)
     return DockTileView(tile: tile, face: face, store: store, actions: actions, dropTarget: $dropTarget)

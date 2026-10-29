@@ -56,7 +56,9 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   `BARISTA_DOCK_CONFIG`), copied once from the native Dock's `persistent-apps`
   and `persistent-others`. After that the native Dock is never written; delete
   the file to copy it again. Sections: `pinned`, then running apps that are not
-  pinned, then `others` and the Trash. Running apps update from NSWorkspace
+  pinned, then `others`, minimized windows, and `system` (the shelf and the
+  controls) beside the Trash. A config without `system` moves its top-level
+  shelf and controls tiles there when it is read. Running apps update from NSWorkspace
   notifications, with no polling; the file and Barista's `state.json` are
   re-read on reveal only when their modification time changed.
 - Editing: drag an icon sideways to reorder it, or above the dock to remove
@@ -203,14 +205,15 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   Trash. Downloads and other protected folders need a one-time
   Files and Folders permission for `barista-agent`, which macOS may ask for
   again after a rebuild because the binary is ad-hoc signed.
-- The shelf (`{ "kind": "shelf" }`) is a scratch space: drop files to keep a
+- The shelf (`{ "kind": "shelf" }` in `system`, or Add Shelf to Dock on the
+  dock's menu) is a scratch space: drop files to keep a
   reference (nothing moves), or text to save it as a snippet. Its callout
   lists them newest first for opening or dragging out, with Clear Shelf and
   per-item Remove from Shelf. Items go after `shelf_days` (default 3), and
   missing files drop off. State lives in `~/.local/state/barista/shelf.json`
   (override with `BARISTA_SHELF_FILE`), snippets in `shelf/snippets/` next
   to it.
-- The controls tile (`{ "kind": "controls" }`, or Add Controls to Dock on
+- The controls tile (`{ "kind": "controls" }` in `system`, or Add Controls to Dock on
   the dock's menu) opens Control Center's everyday switches: Wi-Fi, Dark
   Mode, Night Shift, Keep Awake (holds the display on until switched off or
   the agent quits), and Low Power (asks for an administrator password);
@@ -494,7 +497,9 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   ],
   "others": [
     { "kind": "folder", "path": "~/src", "sort": "name" },
-    { "kind": "folder", "path": "~/Downloads" },
+    { "kind": "folder", "path": "~/Downloads" }
+  ],
+  "system": [
     { "kind": "shelf" },
     { "kind": "controls" }
   ]

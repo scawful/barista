@@ -114,6 +114,40 @@ final class DockSceneTests: XCTestCase {
     XCTAssertFalse(scene.frame.items.contains { $0.id == "c" })
   }
 
+  func testDroppingOnAGroupsMiddleAddsToItAndItsEdgesStillReorder() {
+    var grouped = input
+    grouped.groups = ["c"]
+    let scene = makeScene()
+    scene.update(grouped)
+    scene.show()
+    run(scene, seconds: 1.5)
+    var outcomes: [DockScene.Outcome] = []
+    scene.onCommit = { outcomes.append($0) }
+    let a = rect(scene, "a"), c = rect(scene, "c")
+    let start = CGPoint(x: 500, y: 20)
+
+    // Past the group's edge: an ordinary reorder, nothing highlighted.
+    let edge = c.midX - a.midX + c.width * 0.4
+    scene.dragChanged(id: "a", scope: .list(.pinned), mouse: start, translation: .zero)
+    scene.dragChanged(id: "a", scope: .list(.pinned), mouse: CGPoint(x: start.x + edge, y: start.y),
+                      translation: CGSize(width: edge, height: 0))
+    run(scene, seconds: 0.1)
+    XCTAssertNil(scene.frame.intoID)
+
+    // Over its middle: the group lights up and the order stays put.
+    let middle = c.midX - a.midX
+    scene.dragChanged(id: "a", scope: .list(.pinned), mouse: CGPoint(x: start.x + middle, y: start.y),
+                      translation: CGSize(width: middle, height: 0))
+    run(scene, seconds: 0.5)
+    XCTAssertEqual(scene.frame.intoID, "c")
+    XCTAssertEqual(rect(scene, "c").midX, c.midX, accuracy: 1)
+    scene.dragEnded(commit: true)
+    XCTAssertEqual(outcomes, [.group(id: "a", into: "c")])
+    run(scene, seconds: 1)
+    XCTAssertFalse(scene.frame.items.contains { $0.id == "a" })
+    XCTAssertNil(scene.frame.intoID)
+  }
+
   func testTilesSlideFromWhereTheyWereWhenTheOrderChanges() {
     let scene = revealed()
     let trashBefore = rect(scene, "trash")

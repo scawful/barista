@@ -373,6 +373,8 @@ final class DockController {
       if let tile = tiles[id] { store.move(tile, to: index) }
     case .remove(let id):
       if let tile = tiles[id] { store.remove(tile) }
+    case .group(let id, let groupID):
+      if let tile = tiles[id], let group = tiles[groupID] { store.addToGroup(tile, group: group) }
     }
   }
 
@@ -383,9 +385,11 @@ final class DockController {
     for group in tiles where store.expanded.contains(group.id) {
       expanded[group.id] = group.visibleChildren.map(\.id)
     }
-    let attention = Set(tiles.flatMap { tile -> [DockTile] in
+    let drawn = tiles.flatMap { tile -> [DockTile] in
       expanded[tile.id] != nil ? tile.visibleChildren : [tile]
-    }.filter { $0.item.kind != .group && $0.item.kind != .folder }
+    }
+    let groups = Set(drawn.filter { $0.item.kind == .group && expanded[$0.id] == nil }.map(\.id))
+    let attention = Set(drawn.filter { $0.item.kind != .group && $0.item.kind != .folder }
      .filter { store.hasFinished($0) || store.waiting(on: $0) > 0 }.map(\.id))
     scene.update(DockScene.Input(pinned: store.pinned.map(\.id),
                                  running: store.running.map(\.id),
@@ -394,6 +398,7 @@ final class DockController {
                                  system: store.system.map(\.id),
                                  trash: store.trash.map { [$0.id] } ?? [],
                                  expanded: expanded,
+                                 groups: groups,
                                  attention: attention,
                                  icon: CGFloat(settings.iconSize),
                                  magnification: CGFloat(settings.magnification),

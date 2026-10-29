@@ -32,6 +32,8 @@ final class DockScene: ObservableObject {
     var trash: [String] = []
     /// Groups drawn open, as their members between dividers, by group id.
     var expanded: [String: [String]] = [:]
+    /// Closed group tiles a dragged tile can be dropped into.
+    var groups: Set<String> = []
     /// Tiles that hop after the reveal to ask for a look.
     var attention: Set<String> = []
     var icon: CGFloat = 44
@@ -76,6 +78,8 @@ final class DockScene: ObservableObject {
     var hoveredID: String?
     var draggedID: String?
     var removing = false
+    /// The group tile a drop would add the dragged tile to.
+    var intoID: String?
   }
 
   /// What a drag reorders: a top-level list, or the members of an open group.
@@ -94,6 +98,7 @@ final class DockScene: ObservableObject {
     var translation: CGSize = .zero
     var target: Int
     var removing = false
+    var into: String?
 
     var rect: CGRect { origin.offsetBy(dx: translation.width, dy: translation.height) }
   }
@@ -101,6 +106,7 @@ final class DockScene: ObservableObject {
   enum Outcome: Equatable {
     case move(id: String, scope: Scope, index: Int)
     case remove(id: String)
+    case group(id: String, into: String)
   }
 
   @Published private(set) var frame = Frame()
@@ -227,9 +233,10 @@ final class DockScene: ObservableObject {
 
   // MARK: Dragging
 
-  /// Drag sideways to reorder within a list or an open group; drag well above
-  /// the dock to remove. `mouse` is in screen coordinates; `translation` is the
-  /// gesture's, used only to find where the drag began.
+  /// Drag sideways to reorder within a list or an open group, onto the middle
+  /// of a closed group to add to it, or well above the dock to remove. `mouse`
+  /// is in screen coordinates; `translation` is the gesture's, used only to
+  /// find where the drag began.
   func dragChanged(id: String, scope: Scope?, mouse: CGPoint, translation: CGSize) {
     guard let scope, revealed else { return }
     let start = drag?.startMouse
@@ -238,10 +245,15 @@ final class DockScene: ObservableObject {
                             target: index(of: id, in: scope))
     next.translation = CGSize(width: mouse.x - start.x, height: start.y - mouse.y)
     next.removing = next.translation.height < -input.icon * 1.1
-    if next.removing {
+    let center = next.origin.midX + next.translation.width
+    // A group's middle takes the tile in; its edges still reorder around it.
+    next.into = next.removing ? nil : input.groups.first { group in
+      guard group != id, let rest = restFrames[group] else { return false }
+      return abs(rest.midX - center) < rest.width * 0.3
+    }
+    if next.removing || next.into != nil {
       next.target = index(of: id, in: scope)
     } else {
-      let center = next.origin.midX + next.translation.width
       next.target = ids(in: scope).filter { $0 != id && restMidX($0) < center }.count
     }
     drag = next
@@ -260,14 +272,14 @@ final class DockScene: ObservableObject {
     shown[drag.id] = drag.rect
     // Each outcome is applied here before the store hears of it, so the next
     // frame does not briefly show the old order.
-    if commit, drag.removing {
+    if commit, drag.removing || drag.into != nil {
       var next = input
       next.pinned.removeAll { $0 == drag.id }
       next.others.removeAll { $0 == drag.id }
       next.system.removeAll { $0 == drag.id }
       next.expanded = next.expanded.mapValues { $0.filter { $0 != drag.id } }
       apply(next)
-      onCommit(.remove(id: drag.id))
+      onCommit(drag.into.map { .group(id: drag.id, into: $0) } ?? .remove(id: drag.id))
     } else if commit, drag.target != index(of: drag.id, in: drag.scope) {
       apply(reordered(input, drag: drag))
       onCommit(.move(id: drag.id, scope: drag.scope, index: drag.target))
@@ -356,7 +368,8 @@ final class DockScene: ObservableObject {
     let next = Frame(canvas: layout.canvas, bar: bar, barRise: reduceMotion ? 1 : barRise,
                      barOpacity: opacity(rise: barRise, phaseTime: phaseTime), items: items,
                      slide: layout.barHeight + DockLayout.edgeGap + 8,
-                     hoveredID: hovered, draggedID: drag?.id, removing: drag?.removing ?? false)
+                     hoveredID: hovered, draggedID: drag?.id, removing: drag?.removing ?? false,
+                     intoID: drag?.into)
     if next != frame { frame = next }
 
     // The drag room goes once the dropped tile has landed.

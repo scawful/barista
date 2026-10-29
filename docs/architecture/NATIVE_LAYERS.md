@@ -61,8 +61,9 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   shelf and controls tiles there when it is read. Running apps update from NSWorkspace
   notifications, with no polling; the file and Barista's `state.json` are
   re-read on reveal only when their modification time changed.
-- Editing: drag an icon sideways to reorder it, or above the dock to remove
-  it; drop apps from Finder onto the bar to pin them, folders, files, and web
+- Editing: drag an icon sideways to reorder it, onto the middle of a closed
+  group to add it to that group (the group lights up; its edges still
+  reorder), or above the dock to remove it; drop apps from Finder onto the bar to pin them, folders, files, and web
   links to add them to `others`. Right-click offers Add to Group (an existing
   group or New Group…) and, under Options, Keep in Dock / Remove from Dock. If
   `dock.json` fails to parse, the menu says so and edits are refused rather

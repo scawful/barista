@@ -84,8 +84,8 @@ end
 function ui.anchor_chip_style(ctx, opts)
   opts = opts or {}
   local height = opts.height or (ctx and ctx.widget_height) or 22
-  local radius = opts.corner_radius or math.max((ctx and ctx.widget_corner_radius) or 6, 10)
-  return {
+  local radius = opts.corner_radius or (ctx and ctx.widget_corner_radius) or 6
+  local style = {
     drawing = opts.drawing ~= false,
     color = opts.color or (ctx and ctx.anchor_idle_bg) or "0x18313a46",
     border_width = opts.border_width or (ctx and ctx.anchor_idle_border_width) or 0,
@@ -94,6 +94,46 @@ function ui.anchor_chip_style(ctx, opts)
     height = height,
     padding_left = opts.padding_left or 5,
     padding_right = opts.padding_right or 5,
+  }
+  -- The Barista SketchyBar fork draws these while the pointer is over the
+  -- item, so the chip needs no hover script.
+  if ctx and ctx.native_hover then
+    style.hover_color = opts.hover_bg or ctx.anchor_hover_bg or "0x28505a6a"
+    style.hover_border_color = opts.hover_border_color or ctx.anchor_hover_border_color or "0x00000000"
+    if opts.grouped then
+      -- Inside a group bracket the bracket is the pill; the item shows only
+      -- an inset highlight under the pointer.
+      style.color = "0x00000000"
+      style.border_width = 0
+      style.height = math.max(height - 4, 12)
+      style.corner_radius = math.max(radius - 2, 3)
+    elseif ctx.widget_corners then
+      style.corners = ctx.widget_corners
+    end
+  end
+  return style
+end
+
+-- Background for a bracket that groups bar widgets into one pill.
+function ui.group_background(ctx)
+  ctx = ctx or {}
+  local height = ctx.widget_height or 22
+  if ctx.native_hover then
+    return {
+      color = ctx.group_bg_color,
+      corner_radius = ctx.widget_corner_radius or 6,
+      corners = ctx.widget_corners,
+      height = height,
+      border_width = ctx.anchor_idle_border_width or 0,
+      border_color = ctx.group_border_color,
+    }
+  end
+  return {
+    color = ctx.group_bg_color,
+    corner_radius = math.max(ctx.group_corner_radius or 4, 4),
+    height = math.max(height + 2, 18),
+    border_width = ctx.group_border_width,
+    border_color = ctx.group_border_color,
   }
 end
 
@@ -327,10 +367,44 @@ function ui.popup_style(ctx, overrides)
     item_corner_radius = style.item_corner_radius,
     padding = style.padding or {},
     label_color = style.label_color or theme_color(ctx, "WHITE"),
-    header_bg_color = theme_color(ctx, "BG_SEC_COLR", "WHITE"),
     separator_color = theme_color(ctx, "DARK_WHITE", "SUBTEXT1"),
+    line_color = style_ctx.appearance.menu_separator_color
+      or style_ctx.appearance.popup_border_color
+      or "0x33ffffff",
+    -- Stretched popups (fork) widen rows to the menu, so lines can be real.
+    popup_lines = type(ctx) == "table" and ctx.popup_stretch == true,
   }
   return merge(result, overrides)
+end
+
+-- A hairline under a header's label, between the header and its rows. In a
+-- stretched popup it spans the menu; otherwise it underlines the label.
+function ui.header_line(style, color)
+  return {
+    drawing = true,
+    color = color or style.line_color or "0x33ffffff",
+    height = 1,
+    corner_radius = 0,
+    y_offset = -math.floor((style.header_height or 24) / 2),
+  }
+end
+
+-- Separator row props: a hairline across a stretched popup, or a dash label
+-- where rows only size to their content.
+function ui.separator_props(style, color)
+  color = color or style.line_color or style.separator_color
+  if style.popup_lines then
+    return {
+      icon = { string = "", drawing = false },
+      label = { string = "", drawing = false },
+      background = { drawing = true, color = color, height = 1, corner_radius = 0 },
+    }
+  end
+  return {
+    icon = { string = "", drawing = false },
+    label = { string = "───────────────", font = style.font_small, color = color },
+    background = { drawing = false },
+  }
 end
 
 function ui.item(parent, name, props, opts)
@@ -353,6 +427,7 @@ function ui.item(parent, name, props, opts)
   return merge(item, props)
 end
 
+-- Headers are bold text over a hairline; opts.line = false drops the line.
 function ui.header(layout, parent, name, label, opts)
   opts = opts or {}
   local style = opts.style or ui.popup_style(opts.ctx)
@@ -361,12 +436,8 @@ function ui.header(layout, parent, name, label, opts)
     label = label,
     ["label.font"] = opts["label.font"] or opts.font or style.font_header,
     ["label.color"] = opts["label.color"] or opts.color or style.label_color,
-    background = {
-      drawing = opts.background_drawing ~= false,
-      color = opts.background_color or style.header_bg_color,
-      corner_radius = style.item_corner_radius,
-      height = style.header_height,
-    },
+    background = opts.line == false and { drawing = false }
+      or ui.header_line(style, opts.line_color),
   }, { style = style })
   merge(item, opts.props)
   return append(layout, opts.layout_entry and { type = "item", name = name, props = item } or item)
@@ -375,13 +446,7 @@ end
 function ui.separator(layout, parent, name, opts)
   opts = opts or {}
   local style = opts.style or ui.popup_style(opts.ctx)
-  local item = ui.item(parent, name, {
-    icon = opts.icon or { string = "", drawing = false },
-    label = opts.label or "───────────────",
-    ["label.font"] = opts["label.font"] or opts.font or style.font_small,
-    ["label.color"] = opts["label.color"] or opts.color or style.separator_color,
-    background = { drawing = false },
-  }, { style = style })
+  local item = ui.item(parent, name, ui.separator_props(style, opts["label.color"] or opts.color), { style = style })
   merge(item, opts.props)
   return append(layout, opts.layout_entry and { type = "item", name = name, props = item } or item)
 end

@@ -54,9 +54,23 @@ run_test("create_widget: custom update_freq", function()
   assert_equal(widget.update_freq, 60, "custom 60s")
 end)
 
-run_test("create_widget: show_label defaults true", function()
+run_test("create_widget: icon-only by default, show_label=true shows the label", function()
   local widget = control_center.create_widget({})
-  assert_true(widget.label.drawing ~= false, "label drawing on by default")
+  assert_equal(widget.label.drawing, false, "label hidden by default")
+  local labeled = control_center.create_widget({ show_label = true })
+  assert_equal(labeled.label.drawing, true, "label shown on request")
+end)
+
+run_test("layout_icon: one distinct icon per layout mode", function()
+  local seen = {}
+  for _, layout in ipairs({ "bsp", "stack", "float", "disabled" }) do
+    local icon = control_center.layout_icon(layout)
+    assert_true(icon ~= "" and not seen[icon], "unique icon for " .. layout)
+    seen[icon] = true
+  end
+  assert_equal(control_center.layout_icon("unknown"), control_center.layout_icon("bsp"), "unknown falls back to tile")
+  assert_equal(control_center.layout_label("float"), "Manual", "float label")
+  assert_equal(control_center.layout_label("disabled", "Bar"), "Bar", "disabled label")
 end)
 
 run_test("create_widget: show_label=false hides label", function()

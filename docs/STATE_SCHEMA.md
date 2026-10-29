@@ -143,6 +143,10 @@ Common keys:
 - `bar_padding_left`, `bar_padding_right`, `bar_margin`, `bar_y_offset`
 - `corner_radius`, `bar_corners` (`all`, `top`, `bottom`, `none`), `bar_color`, `blur_radius`
 - `group_bg_color`, `group_border_color`, `group_border_width`, `group_corner_radius`
+- `native_hover` (`auto` default, `on`, `off`)
+- `widget_corners`, `popup_corners` (`all`, `top`, `bottom` default, `none`)
+- `widget_hover_color`, `widget_hover_border_color`, `widget_border_width`
+- `menu_separator_color` (popup header and separator hairlines; falls back to `popup_border_color`)
 - `popup_padding`, `popup_corner_radius`, `popup_border_width`, `popup_border_color`, `popup_bg_color`
 - `popup_blur_radius`, `popup_shadow` (native window shadow), `popup_icon_width` (fixed icon column for single-glyph popup rows)
 - `hover_color`, `hover_border_color`, `hover_animation_curve`, `hover_animation_duration`
@@ -157,6 +161,26 @@ When `auto_display_density` is enabled (default), Barista measures every Sketchy
 - **Split layouts** (laptop + portrait external): the wide desktop keeps the full widget set, labels, and clock. Optional/heavy widgets (`music_studio`, `agents`, `system_info`) and the full clock/volume/battery stay on wide displays. Narrow monitors get compact `clock_narrow` / `volume_narrow` / `battery_narrow` clones plus the usual spaces strip.
 - **All-narrow** (only a portrait/small display): global compact/dense chrome applies (`comfortable` / `compact` / `dense` by min width).
 - Display add/remove/rotate events recompute a density fingerprint (`plugins/display_density.sh`) and reload SketchyBar only when the mode changes.
+
+`native_hover` selects the Barista SketchyBar fork features. With `auto`,
+`main.lua` runs `sketchybar --query defaults` once at load: a `hover_color` key
+turns on native hover and a `popup.stretch` key turns on full-width popup rows.
+Stock SketchyBar answers with neither, so `auto` keeps the script hover and
+content-width rows there. With native hover:
+
+- the fork draws `widget_hover_color` and `widget_hover_border_color` under the
+  pointer, so widgets need no hover event script;
+- `widget_corners` and `popup_corners` round only the chosen corners;
+- left widgets (Triforce, music, control center, agents) share one `left_group`
+  bracket and right widgets share one `right_group` bracket, filled with
+  `group_bg_color`; each grouped widget draws only an inset hover highlight;
+- the front app chip and the spaces keep their own chips;
+- popups set `popup.stretch=on`, and separators and headers draw as
+  `menu_separator_color` hairlines.
+
+`main.lua` writes `cache/native_hover` (`1` or `0`) and `cache/chip_style`
+(`<height> <corner_radius> <corners>`) so shell plugins such as
+`plugins/simple_spaces.sh` style space chips without querying SketchyBar.
 
 Menu popup rows are separate from the bar now: `menu_item_height`, `menu_header_height`, and `menu_padding` control popup density without changing the bar height.
 
@@ -530,6 +554,7 @@ Known integration-specific keys used by the active runtime:
 
 - `integrations.control_center.enabled`
 - `integrations.control_center.item_name`
+- `integrations.control_center.show_label` (default `false`; icon only)
 
 `integrations.control_center.item_name` is optional. When set, Barista uses it as
 the shared item name for:

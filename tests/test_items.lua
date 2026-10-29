@@ -1137,8 +1137,11 @@ local function test_items_right_layout()
   -- Check for bracket
   local found_bracket = false
   for _, entry in ipairs(layout) do
-    if entry.type == "bracket" and (entry.name == "right_group_1" or entry.name == "right_group_2") then
+    if entry.type == "bracket" and entry.name == "right_group" then
       found_bracket = true
+      local members = table.concat(entry.children or {}, ",")
+      assert(members:find("clock", 1, true) and members:find("volume", 1, true)
+        and members:find("battery", 1, true), "right_group should hold every right-side widget: " .. members)
     end
   end
   assert(found_bracket, "bracket not found in layout")

@@ -128,9 +128,18 @@ init_cached_style_args() {
     "icon.color=$SPACE_IDLE_ICON_COLOR"
   )
 
-  printf -v STYLE_FOCUSED_PROPS '%s\n%s\n%s\n%s\n%s\n%s' "${STYLE_FOCUSED_ARGS[@]}"
-  printf -v STYLE_VISIBLE_PROPS '%s\n%s\n%s\n%s\n%s\n%s' "${STYLE_VISIBLE_ARGS[@]}"
-  printf -v STYLE_IDLE_PROPS '%s\n%s\n%s\n%s\n%s\n%s' "${STYLE_IDLE_ARGS[@]}"
+  # Native hover: per-state hover fills, matching space_style_hover_props.
+  if [ "${BARISTA_NATIVE_HOVER:-0}" = "1" ]; then
+    STYLE_FOCUSED_ARGS+=("background.hover_color=0x00000000" "background.hover_border_color=0x00000000")
+    STYLE_VISIBLE_ARGS+=("background.hover_color=$SPACE_HOVER_BG" "background.hover_border_color=$SPACE_HOVER_BORDER_COLOR")
+    STYLE_IDLE_ARGS+=("background.hover_color=$SPACE_HOVER_BG" "background.hover_border_color=$SPACE_HOVER_BORDER_COLOR")
+  fi
+  printf -v STYLE_FOCUSED_PROPS '%s\n' "${STYLE_FOCUSED_ARGS[@]}"
+  printf -v STYLE_VISIBLE_PROPS '%s\n' "${STYLE_VISIBLE_ARGS[@]}"
+  printf -v STYLE_IDLE_PROPS '%s\n' "${STYLE_IDLE_ARGS[@]}"
+  STYLE_FOCUSED_PROPS="${STYLE_FOCUSED_PROPS%$'\n'}"
+  STYLE_VISIBLE_PROPS="${STYLE_VISIBLE_PROPS%$'\n'}"
+  STYLE_IDLE_PROPS="${STYLE_IDLE_PROPS%$'\n'}"
 }
 
 cached_space_style_props_into() {

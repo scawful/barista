@@ -59,7 +59,7 @@ env "${COMMON_ENV[@]}" SENDER="mouse.entered" "$SCRIPT"
 
 CACHE_FILE="$STATE_DIR/space.12.state"
 [ -f "$CACHE_FILE" ] || { echo "FAIL: expected hover state cache file after mouse.entered" >&2; exit 1; }
-grep -Fq $'set\tspace.12 label.drawing=off background.drawing=on background.color=0xffd8c4ff background.border_width=2 background.border_color=0xffffffff icon.color=0xff11111b' "$LOG_FILE" || {
+grep -Fq $'set\tspace.12 label.drawing=off background.drawing=on background.color=0xffd8c4ff background.border_width=0 background.border_color=0xffffffff icon.color=0xff11111b' "$LOG_FILE" || {
   echo "FAIL: expected focused chip to stay focused on mouse.entered" >&2
   exit 1
 }
@@ -67,7 +67,7 @@ grep -Fq $'set\tspace.12 label.drawing=off background.drawing=on background.colo
 env "${COMMON_ENV[@]}" SENDER="mouse.exited" "$SCRIPT"
 
 [ ! -f "$CACHE_FILE" ] || { echo "FAIL: expected hover state cache file to be removed after mouse.exited" >&2; exit 1; }
-grep -Fq $'set\tspace.12 label.drawing=off background.drawing=on background.color=0xffd8c4ff background.border_width=2 background.border_color=0xffffffff icon.color=0xff11111b' "$LOG_FILE" || {
+grep -Fq $'set\tspace.12 label.drawing=off background.drawing=on background.color=0xffd8c4ff background.border_width=0 background.border_color=0xffffffff icon.color=0xff11111b' "$LOG_FILE" || {
   echo "FAIL: expected saved focused visual state to be restored on mouse.exited" >&2
   exit 1
 }
@@ -78,7 +78,7 @@ fi
 
 rm -f "$LOG_FILE"
 env "${COMMON_ENV[@]}" SENDER="mouse.exited" "$SCRIPT"
-grep -Fq $'set\tspace.12 label.drawing=off background.drawing=on background.color=0xffd8c4ff background.border_width=2 background.border_color=0xffffffff icon.color=0xff11111b' "$LOG_FILE" || {
+grep -Fq $'set\tspace.12 label.drawing=off background.drawing=on background.color=0xffd8c4ff background.border_width=0 background.border_color=0xffffffff icon.color=0xff11111b' "$LOG_FILE" || {
   echo "FAIL: mouse.exited should restore the saved style state even without a hover token" >&2
   exit 1
 }

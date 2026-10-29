@@ -112,8 +112,25 @@ run_test("ui_builder: anchor chip style and hover env", function()
   local chip = ui.anchor_chip_style(ctx)
   assert_equal(chip.drawing, true, "anchor chip should draw by default")
   assert_equal(chip.color, "0x18313a46", "anchor chip should use shared idle color")
-  assert_equal(chip.corner_radius, 10, "anchor chip should use pill radius")
+  assert_equal(chip.corner_radius, 6, "anchor chip should use widget_corner_radius")
   assert_equal(chip.height, 24, "anchor chip should use widget height")
+  assert_nil(chip.corners, "stock SketchyBar chip should not send corners")
+
+  local fork_chip = ui.anchor_chip_style({ native_hover = true, widget_corners = "bottom" })
+  assert_equal(fork_chip.corners, "bottom", "fork chip should round only the configured corners")
+
+  local grouped = ui.anchor_chip_style({ native_hover = true, widget_corners = "bottom", widget_height = 24 }, { grouped = true })
+  assert_equal(grouped.color, "0x00000000", "grouped chip should leave the fill to its bracket")
+  assert_equal(grouped.height, 20, "grouped chip should be an inset highlight")
+  assert_nil(grouped.corners, "grouped chip highlight should round every corner")
+  assert_true(grouped.hover_color ~= nil, "grouped chip should keep native hover")
+
+  local group_bg = ui.group_background({ native_hover = true, widget_corners = "bottom", widget_height = 24,
+    widget_corner_radius = 6, group_bg_color = "0x30ffffff" })
+  assert_equal(group_bg.corners, "bottom", "fork group bracket should round only the configured corners")
+  assert_equal(group_bg.height, 24, "fork group bracket should match the chip height")
+  assert_equal(group_bg.border_width, 0, "fork group bracket should have no outline by default")
+  assert_equal(ui.group_background({ widget_height = 24 }).height, 26, "stock group bracket keeps its taller pill")
 
   local env = ui.anchor_hover_env(ctx)
   assert_equal(env.BARISTA_ANCHOR_IDLE_DRAWING, "on", "hover env should preserve idle drawing")
@@ -161,12 +178,20 @@ run_test("ui_builder: popup headers rows separators and sections", function()
   ui.separator(layout, "triforce", "triforce.sep", { style = style })
 
   assert_equal(layout[1].position, "popup.triforce", "header should attach to parent popup")
-  assert_equal(layout[1].background.height, 25, "header should use menu_style header height")
+  assert_equal(layout[1].background.height, 1, "header should draw a hairline, not a pill")
+  assert_equal(layout[1].background.y_offset, -12, "header line should sit half a header height below the label")
   assert_equal(layout[2].background.height, 23, "row should use menu_style item height")
   assert_equal(layout[2].hover, true, "action rows should opt into hover treatment")
   assert_true(layout[2].click_script:find("continue%.sh", 1, false) ~= nil, "row should include action")
   assert_true(layout[2].click_script:find("popup.drawing=off", 1, true) ~= nil, "row action should close parent popup")
-  assert_equal(layout[3].label, "───────────────", "separator should use the standard label")
+  assert_equal(layout[3].label.string, "───────────────", "content-width popups keep the dash separator")
+
+  local stretched = ui.popup_style(test_ctx(), { popup_lines = true })
+  local line_layout = {}
+  ui.separator(line_layout, "triforce", "triforce.line", { style = stretched })
+  assert_equal(line_layout[1].label.drawing, false, "stretched popups draw the separator as a line")
+  assert_equal(line_layout[1].background.height, 1, "separator line should be a hairline")
+  assert_equal(line_layout[1].background.color, stretched.line_color, "separator line should use the line color")
 
   local section_layout = {}
   ui.section(section_layout, "triforce", "triforce.apps", {

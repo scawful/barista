@@ -57,10 +57,7 @@ local function get_layout(ctx)
   local music_module = ctx.integrations and ctx.integrations.music or nil
   local state = ctx.state
   local WINDOW_MANAGER_MODE = ctx.WINDOW_MANAGER_MODE
-  local group_bg_color = ctx.group_bg_color
   local group_border_color = ctx.group_border_color
-  local group_border_width = ctx.group_border_width
-  local group_corner_radius = ctx.group_corner_radius or 4
   local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
 
   local layout = {}
@@ -94,6 +91,10 @@ local function get_layout(ctx)
     overrides = overrides or {}
     overrides.height = overrides.height or widget_height
     return ui.anchor_chip_style(ctx, overrides)
+  end
+  -- Widgets inside left_group; front_app and shortcut_mode keep their own chip.
+  local function grouped_chip()
+    return anchor_chip({ grouped = true })
   end
 
   local function anchor_script(script, overrides)
@@ -250,7 +251,7 @@ local function get_layout(ctx)
       position = "left",
       popup_toggle_script = popup_toggle_action("triforce"),
       popup_background = popup_background(),
-      background = anchor_chip(),
+      background = grouped_chip(),
       icon_font = { family = settings.font.icon, size = settings.font.sizes.icon },
     })
 
@@ -349,7 +350,7 @@ local function get_layout(ctx)
       position = "left",
       popup_toggle_script = music_toggle_script,
       popup_background = popup_background(),
-      background = anchor_chip(),
+      background = grouped_chip(),
       icon_font = { family = settings.font.icon, size = settings.font.sizes.icon },
     })
 
@@ -441,7 +442,6 @@ local function get_layout(ctx)
       style = front_app_style,
       color = color,
       font = font_bold,
-      background_drawing = false,
     })
     add_front_popup_item(items[1])
   end
@@ -688,7 +688,11 @@ local function get_layout(ctx)
       icon_font = { family = settings.font.icon, size = settings.font.sizes.icon },
       label_font = font_string(settings.font.text, settings.font.style_map["Bold"], 11),
       label_color = "0xffcdd6f4",
-      show_label = not hide_anchor_labels,
+      -- Each layout has its own glyph, so the word is opt-in.
+      show_label = not hide_anchor_labels
+        and type(state.integrations) == "table"
+        and type(state.integrations.control_center) == "table"
+        and state.integrations.control_center.show_label == true,
       update_freq = 30,
       config_dir = CONFIG_DIR,
       scripts_dir = ctx.SCRIPTS_DIR,
@@ -721,6 +725,7 @@ local function get_layout(ctx)
       popup_background = cc_config.popup_background,
       popup_manager_script = ctx.popup_manager_script,
       popup_topology_token = ctx.popup_topology_token,
+      popup_lines = ctx.popup_stretch == true,
     })
     local cc_submenu_parents = (cc_popup_metadata and cc_popup_metadata.submenu_parents) or {}
     for _, submenu_name in ipairs(cc_submenu_parents) do
@@ -738,14 +743,18 @@ local function get_layout(ctx)
       })
 
     cc_widget.name = nil
-    cc_widget.background = anchor_chip()
+    cc_widget.background = grouped_chip()
     local cc_layout_rows = control_center_status and control_center_status.window_manager.enabled and "1" or "0"
     cc_widget.script = "BARISTA_CONTROL_CENTER_LAYOUT_ROWS=" .. cc_layout_rows .. " " .. anchor_script(cc_widget.script or (PLUGIN_DIR .. "/control_center.sh"))
     ui.anchor(layout, {
       ctx = ctx,
       name = control_center_item_name,
       props = cc_widget,
-      events = { "mouse.entered", "mouse.exited", "space_active_refresh", "space_mode_refresh", "system_woke" },
+      -- Native hover draws the chip highlight, so only stock SketchyBar needs
+      -- the enter/exit events.
+      events = ctx.native_hover
+        and { "space_active_refresh", "space_mode_refresh", "system_woke" }
+        or { "mouse.entered", "mouse.exited", "space_active_refresh", "space_mode_refresh", "system_woke" },
       associated_display = associated_displays,
       associated_space = "all",
     })
@@ -787,14 +796,20 @@ local function get_layout(ctx)
     table.insert(left_group_children, control_center_item_name)
     table.insert(popup_parents, control_center_item_name)
   end
-  table.insert(left_group_children, "shortcut_mode")
-  table.insert(left_group_children, "front_app")
+  -- items_right builds the agents widget; the post-config move puts it here.
+  if type(state.widgets) == "table" and state.widgets.agents == true then
+    table.insert(left_group_children, "agents")
+  end
+  -- shortcut_mode and front_app follow the group but keep their own chips.
+  local left_order = { table.unpack(left_group_children) }
+  table.insert(left_order, "shortcut_mode")
+  table.insert(left_order, "front_app")
 
-  if #left_group_children > 1 then
+  if #left_order > 1 then
     local anchor_moves = {}
-    local next_anchor = left_group_children[#left_group_children]
-    for index = #left_group_children - 1, 1, -1 do
-      local item_name = left_group_children[index]
+    local next_anchor = left_order[#left_order]
+    for index = #left_order - 1, 1, -1 do
+      local item_name = left_order[index]
       table.insert(anchor_moves, string.format("--move %q before %q", item_name, next_anchor))
       next_anchor = item_name
     end
@@ -804,15 +819,9 @@ local function get_layout(ctx)
     })
   end
 
-  if #left_group_children > 1 then
+  if #left_group_children > 0 then
     table.insert(layout, factory.create_bracket("left_group", left_group_children, {
-      background = {
-        color = group_bg_color,
-        corner_radius = math.max(group_corner_radius, 4),
-        height = math.max(widget_height + 2, 18),
-        border_width = group_border_width,
-        border_color = group_border_color,
-      }
+      background = ui.group_background(ctx),
     }))
   end
   metrics.group_ms = current_time_ms() - group_start_ms

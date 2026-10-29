@@ -929,17 +929,23 @@ function apple_menu.setup(ctx)
     }
   end
 
+  local appearance = ctx.appearance or {}
+  local line_style = {
+    header_height = popup_header_height,
+    font_small = font_small,
+    line_color = appearance.menu_separator_color or appearance.popup_border_color or "0x33ffffff",
+    popup_lines = ctx.popup_stretch == true,
+  }
+
   local function add_separator(popup_name, index)
-    sbar.add("item", string.format("menu.tools.sep.%s.%d", popup_key(popup_name), index), {
-      position = "popup." .. popup_name,
-      icon = { drawing = false },
-      label = { string = "───────────────", font = font_small, color = theme.DARK_WHITE },
-      ["label.padding_left"] = popup_padding.label_left or 6,
-      ["label.padding_right"] = popup_padding.label_right or 6,
-      background = { drawing = false },
-    })
+    local item = ui.separator_props(line_style)
+    item.position = "popup." .. popup_name
+    item["label.padding_left"] = popup_padding.label_left or 6
+    item["label.padding_right"] = popup_padding.label_right or 6
+    sbar.add("item", string.format("menu.tools.sep.%s.%d", popup_key(popup_name), index), item)
   end
 
+  -- Bold label over a hairline; the line, not a pill, sets the section apart.
   local function add_header(popup_name, meta, index)
     local label = meta.label or ""
     sbar.add("item", string.format("menu.tools.header.%s.%s.%d", popup_key(popup_name), meta.id or "section", index), {
@@ -948,12 +954,7 @@ function apple_menu.setup(ctx)
       label = { string = label, font = font_bold, color = meta.color or theme.WHITE },
       ["label.padding_left"] = popup_padding.label_left or 6,
       ["label.padding_right"] = popup_padding.label_right or 6,
-      background = {
-        drawing = true,
-        color = meta.bg_color or theme.BG_SEC_COLR or theme.bar.bg,
-        corner_radius = popup_item_corner_radius,
-        height = popup_header_height,
-      },
+      background = ui.header_line(line_style, meta.line_color),
     })
   end
 
@@ -1061,10 +1062,6 @@ function apple_menu.setup(ctx)
   local section_index = 1
   for _, entry in ipairs(rendered) do
     if entry.section ~= current_section then
-      if current_section ~= nil then
-        add_separator("apple_menu", section_index)
-        section_index = section_index + 1
-      end
       add_header("apple_menu", sections[entry.section] or { id = entry.section, label = entry.section }, section_index)
       section_index = section_index + 1
       current_section = entry.section

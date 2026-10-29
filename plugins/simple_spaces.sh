@@ -20,6 +20,33 @@ PERF_CLOCK_BIN="${BARISTA_PERF_CLOCK_BIN:-$CONFIG_DIR/bin/perf_clock}"
 SPACE_METRICS_FILE="${BARISTA_SPACE_METRICS_FILE:-}"
 # Same default as plugins/lib/space_style.sh, which restyles the chips later.
 SPACE_ICON_FONT="${SPACE_ICON_FONT:-Hack Nerd Font:Bold:16.0}"
+# Chip spacing: icon padding inside each chip, item padding between chips.
+SPACE_ICON_PADDING="${SPACE_ICON_PADDING:-8}"
+SPACE_ITEM_PADDING="${SPACE_ITEM_PADDING:-4}"
+# main.lua writes 1 here when the Barista SketchyBar fork draws hover itself;
+# the chips then carry hover colors and need no mouse.entered/exited script.
+SPACE_NATIVE_HOVER=0
+if [ -r "$CONFIG_DIR/cache/native_hover" ]; then
+  IFS= read -r SPACE_NATIVE_HOVER < "$CONFIG_DIR/cache/native_hover" || true
+fi
+# main.lua writes "height radius corners" so space chips match widget chips.
+SPACE_CHIP_HEIGHT=""
+SPACE_CHIP_RADIUS=""
+SPACE_CHIP_CORNERS=""
+if [ -r "$CONFIG_DIR/cache/chip_style" ]; then
+  read -r SPACE_CHIP_HEIGHT SPACE_CHIP_RADIUS SPACE_CHIP_CORNERS < "$CONFIG_DIR/cache/chip_style" || true
+fi
+SPACE_CHIP_RADIUS="${SPACE_CHIP_RADIUS:-10}"
+SPACE_FORK_ARGS=()
+CREATOR_FORK_ARGS=()
+if [ "$SPACE_NATIVE_HOVER" = "1" ]; then
+  # Same colors as plugins/lib/space_style.sh, which restyles chips per state.
+  SPACE_FORK_ARGS=(background.hover_color="${SPACE_HOVER_BG:-0x50d8c4ff}"
+                   background.hover_border_color="${SPACE_HOVER_BORDER_COLOR:-0x99d8c4ff}"
+                   background.corners="${SPACE_CHIP_CORNERS:-all}")
+  CREATOR_FORK_ARGS=(background.hover_color="${CREATOR_HOVER_BG:-0x33ffffff}"
+                     background.corners="${SPACE_CHIP_CORNERS:-all}")
+fi
 BARISTA_ALL_SPACES_DATA="${BARISTA_ALL_SPACES_DATA:-}"
 # OPTIMIZED: Reduced retry attempts and delays for faster startup
 MAX_SPACE_QUERY_ATTEMPTS=3
@@ -697,7 +724,7 @@ if [ "$BAR_SNAPSHOT_LOADED" -eq 0 ] && [ -n "$SKETCHYBAR_BIN" ] && [ -n "$JQ_BIN
   schedule_spaces_retry
   exit 1
 fi
-SPACE_ITEM_HEIGHT="$(resolve_space_item_height)"
+SPACE_ITEM_HEIGHT="${SPACE_CHIP_HEIGHT:-$(resolve_space_item_height)}"
 SIMPLE_SPACES_START_MS="$(now_ms)"
 initialize_action_prefixes
 
@@ -967,7 +994,7 @@ sync_creator_items() {
     expected_lookup+="$creator_item"$'\n'
     if ! snapshot_item_exists "$creator_item"; then
       creator_args+=(--add item "$creator_item" left)
-      creator_args+=(--subscribe "$creator_item" mouse.entered mouse.exited)
+      [ "$SPACE_NATIVE_HOVER" = "1" ] || creator_args+=(--subscribe "$creator_item" mouse.entered mouse.exited)
     fi
     creator_args+=(--set "$creator_item"
       display="$creator_target"
@@ -976,11 +1003,14 @@ sync_creator_items() {
       icon.color="0xB0bac2de"
       icon.padding_left=7
       icon.padding_right=7
+      padding_left="$SPACE_ITEM_PADDING"
+      padding_right="$SPACE_ITEM_PADDING"
+      ${CREATOR_FORK_ARGS[@]+"${CREATOR_FORK_ARGS[@]}"}
       label=""
       label.drawing=off
       background.drawing=on
       background.color="0x102a313c"
-      background.corner_radius=10
+      background.corner_radius="$SPACE_CHIP_RADIUS"
       background.height="$SPACE_ITEM_HEIGHT"
       script="$CREATOR_HOVER_SCRIPT"
       click_script="$creator_cmd")
@@ -1053,8 +1083,11 @@ apply_incremental_space_items() {
         ignore_association=off
         icon="$icon"
         icon.font="$SPACE_ICON_FONT"
-        icon.padding_left=5
-        icon.padding_right=5
+        icon.padding_left="$SPACE_ICON_PADDING"
+        icon.padding_right="$SPACE_ICON_PADDING"
+        padding_left="$SPACE_ITEM_PADDING"
+        padding_right="$SPACE_ITEM_PADDING"
+        ${SPACE_FORK_ARGS[@]+"${SPACE_FORK_ARGS[@]}"}
         icon.color=0xffbac2de
         label=""
         label.drawing=off
@@ -1063,7 +1096,7 @@ apply_incremental_space_items() {
         label.padding_right=2
         background.drawing=on
         background.color=0x18313a46
-        background.corner_radius=10
+        background.corner_radius="$SPACE_CHIP_RADIUS"
         background.height="$SPACE_ITEM_HEIGHT"
         script="$CONFIG_DIR/plugins/space.sh"
         click_script="$click_action")
@@ -1078,8 +1111,11 @@ apply_incremental_space_items() {
         ignore_association=off
         icon="$icon"
         icon.font="$SPACE_ICON_FONT"
-        icon.padding_left=5
-        icon.padding_right=5
+        icon.padding_left="$SPACE_ICON_PADDING"
+        icon.padding_right="$SPACE_ICON_PADDING"
+        padding_left="$SPACE_ITEM_PADDING"
+        padding_right="$SPACE_ITEM_PADDING"
+        ${SPACE_FORK_ARGS[@]+"${SPACE_FORK_ARGS[@]}"}
         icon.color=0xffbac2de
         label=""
         label.drawing=off
@@ -1088,11 +1124,11 @@ apply_incremental_space_items() {
         label.padding_right=2
         background.drawing=on
         background.color=0x18313a46
-        background.corner_radius=10
+        background.corner_radius="$SPACE_CHIP_RADIUS"
         background.height="$SPACE_ITEM_HEIGHT"
         script="$CONFIG_DIR/plugins/space.sh"
         click_script="$click_action")
-      update_args+=(--subscribe "$item" mouse.entered mouse.exited)
+      [ "$SPACE_NATIVE_HOVER" = "1" ] || update_args+=(--subscribe "$item" mouse.entered mouse.exited)
       added_count=$((added_count + 1))
       updated_count=$((updated_count + 1))
       strategy="incremental_add_remove"
@@ -1162,8 +1198,11 @@ for entry in "${SPACE_LINES[@]}"; do
                           ignore_association=off \
                           icon="$icon" \
                           icon.font="$SPACE_ICON_FONT" \
-                          icon.padding_left=5 \
-                          icon.padding_right=5 \
+                          icon.padding_left="$SPACE_ICON_PADDING" \
+                          icon.padding_right="$SPACE_ICON_PADDING" \
+                          padding_left="$SPACE_ITEM_PADDING" \
+                          padding_right="$SPACE_ITEM_PADDING" \
+                          ${SPACE_FORK_ARGS[@]+"${SPACE_FORK_ARGS[@]}"} \
                           icon.color=0xffbac2de \
                           label="" \
                           label.drawing=off \
@@ -1172,11 +1211,11 @@ for entry in "${SPACE_LINES[@]}"; do
                           label.padding_right=2 \
                           background.drawing=on \
                           background.color=0x18313a46 \
-                          background.corner_radius=10 \
+                          background.corner_radius="$SPACE_CHIP_RADIUS" \
                           background.height="$SPACE_ITEM_HEIGHT" \
                           script="$CONFIG_DIR/plugins/space.sh" \
                           click_script="$click_action")
-  SB_ARGS+=(--subscribe "$item" mouse.entered mouse.exited)
+  [ "$SPACE_NATIVE_HOVER" = "1" ] || SB_ARGS+=(--subscribe "$item" mouse.entered mouse.exited)
 
   if [ -n "$last_item" ]; then
     SB_ARGS+=(--move "$item" after "$last_item")
@@ -1307,11 +1346,13 @@ if [ "$DIFF_UPDATES_ENABLED" -eq 1 ] && [ "$FORCE_FULL_REBUILD" -eq 0 ]; then
           click_action="$(space_click_action "$space_index")"
           FAST_ARGS+=(--set "space.$space_index"
             click_script="$click_action"
-            icon.padding_left=7
-            icon.padding_right=7
+            icon.padding_left="$SPACE_ICON_PADDING"
+            icon.padding_right="$SPACE_ICON_PADDING"
+            padding_left="$SPACE_ITEM_PADDING"
+            padding_right="$SPACE_ITEM_PADDING"
             background.drawing=on
             background.color=0x18313a46
-            background.corner_radius=10
+            background.corner_radius="$SPACE_CHIP_RADIUS"
             background.height="$SPACE_ITEM_HEIGHT")
         done
       fi
@@ -1421,11 +1462,14 @@ for creator_target in "${CREATOR_TARGETS[@]-}"; do
                   icon.color="0xB0bac2de" \
                   icon.padding_left=7 \
                   icon.padding_right=7 \
+                  padding_left="$SPACE_ITEM_PADDING" \
+                  padding_right="$SPACE_ITEM_PADDING" \
+                  ${CREATOR_FORK_ARGS[@]+"${CREATOR_FORK_ARGS[@]}"} \
                   label="" \
                   label.drawing=off \
                   background.drawing=on \
                   background.color="0x102a313c" \
-                  background.corner_radius=10 \
+                  background.corner_radius="$SPACE_CHIP_RADIUS" \
                   background.height="$SPACE_ITEM_HEIGHT" \
                   script="$CREATOR_HOVER_SCRIPT" \
                   click_script="$creator_cmd")
@@ -1435,7 +1479,7 @@ for creator_target in "${CREATOR_TARGETS[@]-}"; do
   if [ -n "$creator_associated_space" ]; then
     SB_ARGS+=(associated_space="$creator_associated_space")
   fi
-  SB_ARGS+=(--subscribe "$creator_item" mouse.entered mouse.exited)
+  [ "$SPACE_NATIVE_HOVER" = "1" ] || SB_ARGS+=(--subscribe "$creator_item" mouse.entered mouse.exited)
   if [ -n "$last_item" ]; then
     SB_ARGS+=(--move "$creator_item" after "$last_item")
   fi

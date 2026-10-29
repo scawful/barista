@@ -1,5 +1,6 @@
 local menu_renderer = {}
 local menu_style = require("menu_style")
+local ui = require("ui_builder")
 local locator = require("tool_locator")
 
 local unpack = table.unpack or _G.unpack
@@ -168,6 +169,8 @@ function menu_renderer.create(ctx)
     return ctx.call_script(ctx.scripts.set_appearance, unpack(args))
   end
 
+  local line_style = ui.popup_style(ctx)
+
   local function add_menu_header(popup, entry)
     local padding = menu_entry_padding()
     sbar.add("item", entry.name, {
@@ -177,11 +180,7 @@ function menu_renderer.create(ctx)
       ["label.font"] = menu_font_header,
       ["label.color"] = theme.DARK_WHITE,
       ["icon.drawing"] = false,
-      background = {
-        drawing = false,
-        corner_radius = popup_item_corner_radius,
-        height = popup_header_height,
-      },
+      background = ui.header_line(line_style),
       ["label.padding_left"] = padding.label_left,
       ["label.padding_right"] = padding.label_right,
     })
@@ -189,17 +188,11 @@ function menu_renderer.create(ctx)
 
   local function add_menu_separator(popup, entry)
     local padding = menu_entry_padding()
-    sbar.add("item", entry.name, {
-      position = "popup." .. popup,
-      icon = "",
-      label = entry.label or "───────────────",
-      ["label.font"] = menu_font_small,
-      ["label.color"] = theme.DARK_WHITE,
-      ["icon.drawing"] = false,
-      background = { drawing = false },
-      ["label.padding_left"] = padding.label_left,
-      ["label.padding_right"] = padding.label_right,
-    })
+    local item = ui.separator_props(line_style)
+    item.position = "popup." .. popup
+    item["label.padding_left"] = padding.label_left
+    item["label.padding_right"] = padding.label_right
+    sbar.add("item", entry.name, item)
   end
 
   local function wrap_action(entry, popup_name)

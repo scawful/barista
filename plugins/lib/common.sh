@@ -28,6 +28,13 @@ if [ -z "$SKETCHYBAR_BIN" ] && [ -x "/opt/homebrew/bin/sketchybar" ]; then
   SKETCHYBAR_BIN="/opt/homebrew/bin/sketchybar"
 fi
 
+# main.lua writes 1 here when the Barista SketchyBar fork draws
+# background.hover_color itself, so plugins can skip scripted hover.
+BARISTA_NATIVE_HOVER="${BARISTA_NATIVE_HOVER:-0}"
+if [ -r "$CONFIG_DIR/cache/native_hover" ]; then
+  IFS= read -r BARISTA_NATIVE_HOVER < "$CONFIG_DIR/cache/native_hover" || true
+fi
+
 sketchybar() {
   if [ -n "$SKETCHYBAR_BIN" ]; then
     "$SKETCHYBAR_BIN" "$@"

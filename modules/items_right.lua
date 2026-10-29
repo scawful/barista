@@ -1,4 +1,5 @@
--- Right-side bar items: agents, clock, calendar, system_info, volume, battery, brackets.
+-- Right-side bar items: clock, calendar, system_info, volume, battery, brackets.
+-- The agents widget is built here too but sits on the left, after the layout glyph.
 
 local interface_extensions = require("interface_extensions")
 local popup_items = require("popup_items")
@@ -15,9 +16,6 @@ local function get_layout(ctx)
   local hover_script_cmd = ctx.hover_script_cmd
   local POST_CONFIG_DELAY = ctx.POST_CONFIG_DELAY
   local SKETCHYBAR_BIN = ctx.SKETCHYBAR_BIN
-  local group_bg_color = ctx.group_bg_color
-  local group_border_color = ctx.group_border_color
-  local group_border_width = ctx.group_border_width
   local group_corner_radius = ctx.group_corner_radius
   local icon_for = ctx.icon_for
   local state_module = ctx.state_module
@@ -107,6 +105,13 @@ local function get_layout(ctx)
     BARISTA_HOVER_ANIMATION_CURVE = tostring(hover_animation_curve),
     BARISTA_HOVER_ANIMATION_DURATION = tostring(hover_animation_duration),
   })
+  -- Right-side widgets share one group bracket. With native hover (Barista
+  -- SketchyBar fork) each widget keeps only an inset hover highlight.
+  local native_hover = ctx.native_hover == true
+  local function widget_pill(fallback)
+    if not native_hover then return fallback end
+    return ui.anchor_chip_style(ctx, { height = widget_height, grouped = true })
+  end
   local function close_popup_after(item_name, command)
     return ui.close_after(item_name, command, { sketchybar_bin = SKETCHYBAR_BIN })
   end
@@ -153,7 +158,7 @@ local function get_layout(ctx)
     local lmstudio_script = PLUGIN_DIR .. "/lmstudio_model.sh"
     local agents_session_rows = 8
     table.insert(layout, factory.create_item("agents", optional_display_props(icon_only_label({
-      position = "right",
+      position = "left",
       drawing = true,
       icon = {
         string = "󰚩",
@@ -172,17 +177,16 @@ local function get_layout(ctx)
       update_freq = 30,
       script = hover_env .. shell_quote(agents_script),
       click_script = ui.toggle_then_refresh_async("agents", shell_quote(agents_script) .. " popup", popup_toggle_options),
-      background = {
+      background = widget_pill({
         color = theme.BG_SEC_COLR or "0x18313a46",
         corner_radius = math.max(group_corner_radius, 4),
         height = widget_height,
-      },
+      }),
       popup = {
-        align = "right",
+        align = "left",
         background = popup_background(),
       },
     }))))
-    table.insert(right_group_children, "agents")
     table.insert(layout, { action = "subscribe_popup_autoclose", name = "agents" })
     table.insert(layout, { action = "attach_hover", name = "agents" })
     table.insert(layout, { action = "exec", cmd = string.format("sleep %.1f; %s --subscribe agents system_woke", POST_CONFIG_DELAY, SKETCHYBAR_BIN) })
@@ -336,11 +340,11 @@ local function get_layout(ctx)
       update_freq = 60,
       script = hover_env .. shell_quote(afs_approvals_script),
       click_script = ui.toggle_then_refresh_async("afs_approvals", afs_approvals_script, popup_toggle_options),
-      background = {
+      background = widget_pill({
         color = theme.BG_SEC_COLR or "0x18313a46",
         corner_radius = math.max(group_corner_radius, 4),
         height = widget_height,
-      },
+      }),
       popup = {
         align = "right",
         background = popup_background(),
@@ -422,6 +426,7 @@ local function get_layout(ctx)
 
   -- Clock (full on wide / all displays; narrow clones added below when split)
   table.insert(layout, factory.create_clock(wide_status_props({
+    background = widget_pill(),
     icon = icon_for("clock", "󰥔"),
     script = clock_script,
     update_freq = widget_daemon_enabled and false or 30,
@@ -449,11 +454,11 @@ local function get_layout(ctx)
       script = narrow_clock_script,
       update_freq = 30,
       click_script = "open -a Calendar",
-      background = {
+      background = widget_pill({
         color = theme.BG_SEC_COLR or "0x18313a46",
         corner_radius = math.max(group_corner_radius, 4),
         height = widget_height,
-      },
+      }),
     })))
     table.insert(layout, { action = "attach_hover", name = "clock_narrow" })
   end
@@ -544,6 +549,7 @@ local function get_layout(ctx)
       .. " popup_refresh || " .. system_info_script .. " popup_refresh"
   end
   table.insert(layout, factory.create_system_info(optional_display_props(icon_only_label({
+    background = widget_pill(),
     script = system_info_script,
     update_freq = widget_daemon_enabled and false or 45,
     daemon_managed = widget_daemon_enabled,
@@ -590,17 +596,6 @@ local function get_layout(ctx)
     table.insert(layout, { type = "item", name = item.name, props = opts, attach_hover = should_hover })
   end
 
-  if #right_group_children > 0 then
-    table.insert(layout, factory.create_bracket("right_group_1", right_group_children, {
-      background = {
-        color = group_bg_color,
-        corner_radius = math.max(group_corner_radius, 4),
-        height = math.max(widget_height + 2, 18),
-        border_width = group_border_width,
-        border_color = group_border_color,
-      }
-    }))
-  end
 
   -- Volume
   local volume_popup_helper = compiled_script("volume_popup_helper", "")
@@ -628,6 +623,7 @@ local function get_layout(ctx)
       .. " popup_refresh || " .. volume_script .. " popup_refresh"
   end
   table.insert(layout, factory.create_volume(wide_status_props(icon_only_label({
+    background = widget_pill(),
     script = volume_script,
     click_script = ui.toggle_then_refresh_async("volume", volume_popup_refresh, popup_toggle_options),
     popup = { align = "right", background = popup_background() }
@@ -663,11 +659,11 @@ local function get_layout(ctx)
       script = narrow_volume_script,
       update_freq = 0,
       click_script = "osascript -e 'set volume output muted not (output muted of (get volume settings))'",
-      background = {
+      background = widget_pill({
         color = theme.BG_SEC_COLR or "0x18313a46",
         corner_radius = math.max(group_corner_radius, 4),
         height = widget_height,
-      },
+      }),
     })))
     table.insert(layout, {
       action = "exec",
@@ -740,6 +736,7 @@ local function get_layout(ctx)
   })
   local battery_script = battery_env .. PLUGIN_DIR .. "/battery.sh " .. tc("GREEN") .. " " .. tc("YELLOW") .. " " .. tc("RED") .. " " .. tc("BLUE")
   table.insert(layout, factory.create_battery(wide_status_props(icon_only_label({
+    background = widget_pill(),
     script = battery_script,
     update_freq = widget_daemon_enabled and false or 120,
     daemon_managed = widget_daemon_enabled,
@@ -765,11 +762,11 @@ local function get_layout(ctx)
       script = narrow_battery_script,
       update_freq = 120,
       click_script = "open -b com.apple.systempreferences /System/Library/PreferencePanes/Battery.prefPane",
-      background = {
+      background = widget_pill({
         color = theme.BG_SEC_COLR or "0x18313a46",
         corner_radius = math.max(group_corner_radius, 4),
         height = widget_height,
-      },
+      }),
     })))
     table.insert(layout, {
       action = "exec",
@@ -806,14 +803,12 @@ local function get_layout(ctx)
     }))
   end
 
-  table.insert(layout, factory.create_bracket("right_group_2", { "volume", "battery" }, {
-    background = {
-      color = group_bg_color,
-      corner_radius = math.max(group_corner_radius, 4),
-      height = math.max(widget_height + 2, 18),
-      border_width = group_border_width,
-      border_color = group_border_color,
-    }
+  -- One group for every right-side widget; it is added last so volume and
+  -- battery exist when the bracket is created.
+  table.insert(right_group_children, "volume")
+  table.insert(right_group_children, "battery")
+  table.insert(layout, factory.create_bracket("right_group", right_group_children, {
+    background = ui.group_background(ctx),
   }))
 
   table.insert(layout, {

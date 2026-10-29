@@ -367,11 +367,11 @@ jq -e -s '
 [ "$(count_helper_line $'helper\tvisible-apps 1 3')" = "1" ] || { echo "FAIL: authoritative refresh should batch visible-space app lookup through the helper" >&2; exit 1; }
 [ "$(count_icon_line $'batch\tFocusApp')" = "1" ] || { echo "FAIL: focused app glyph should be resolved through one batch icon helper call" >&2; exit 1; }
 [ "$(count_icon_line $'batch\tVisibleApp')" = "1" ] || { echo "FAIL: visible app glyph should be resolved through one batch icon helper call" >&2; exit 1; }
-grep -Fq -- 'space.1 icon=X label.drawing=off background.drawing=on background.color=0xffd8c4ff background.border_width=2 background.border_color=0xffffffff icon.color=0xff11111b' "$SKETCHYBAR_LOG" || {
+grep -Fq -- 'space.1 icon=X label.drawing=off background.drawing=on background.color=0xffd8c4ff background.border_width=0 background.border_color=0xffffffff icon.color=0xff11111b' "$SKETCHYBAR_LOG" || {
   echo "FAIL: focused space should get the filled active pill with border" >&2
   exit 1
 }
-grep -Fq -- 'space.3 icon=X label.drawing=off background.drawing=on background.color=0x3a313a46 background.border_width=1 background.border_color=0x66d8c4ff icon.color=0xffcdd6f4' "$SKETCHYBAR_LOG" || {
+grep -Fq -- 'space.3 icon=X label.drawing=off background.drawing=on background.color=0x40d8c4ff background.border_width=0 background.border_color=0x66d8c4ff icon.color=0xffcdd6f4' "$SKETCHYBAR_LOG" || {
   echo "FAIL: visible inactive space should get the stronger dark pill with subtle border" >&2
   exit 1
 }
@@ -546,7 +546,7 @@ run_visual "front_app_switched" \
   INFO="VisibleApp"
 [ "$(count_visual_events)" = "12" ] || { echo "FAIL: cross-display focused refresh should be recorded" >&2; exit 1; }
 [ "$(latest_visual_path)" = "focus" ] || { echo "FAIL: cross-display transition should stay on the focused path" >&2; exit 1; }
-grep -Fq -- '--set space.2 label.drawing=off background.drawing=on background.color=0x3a313a46 background.border_width=1 background.border_color=0x66d8c4ff icon.color=0xffcdd6f4 --set space.3 icon=X' "$SKETCHYBAR_LOG" || {
+grep -Fq -- '--set space.2 label.drawing=off background.drawing=on background.color=0x40d8c4ff background.border_width=0 background.border_color=0x66d8c4ff icon.color=0xffcdd6f4 --set space.3 icon=X' "$SKETCHYBAR_LOG" || {
   echo "FAIL: cross-display transition should batch previous-visible and current-focused styles" >&2
   exit 1
 }
@@ -562,7 +562,7 @@ env \
   NAME="space.2" \
   SENDER="mouse.exited" \
   "$ROOT_DIR/plugins/space.sh"
-grep -Fq -- 'space.2 label.drawing=off background.drawing=on background.color=0x3a313a46 background.border_width=1 background.border_color=0x66d8c4ff icon.color=0xffcdd6f4' "$SKETCHYBAR_LOG" || {
+grep -Fq -- 'space.2 label.drawing=off background.drawing=on background.color=0x40d8c4ff background.border_width=0 background.border_color=0x66d8c4ff icon.color=0xffcdd6f4' "$SKETCHYBAR_LOG" || {
   echo "FAIL: hover exit should restore the cross-display visible state" >&2
   exit 1
 }

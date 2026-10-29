@@ -8,12 +8,13 @@
 SPACE_ICON_FONT="${SPACE_ICON_FONT:-Hack Nerd Font:Bold:16.0}"
 
 SPACE_FOCUSED_BG="${SPACE_FOCUSED_BG:-0xffd8c4ff}"
-SPACE_FOCUSED_BORDER_WIDTH="${SPACE_FOCUSED_BORDER_WIDTH:-2}"
+SPACE_FOCUSED_BORDER_WIDTH="${SPACE_FOCUSED_BORDER_WIDTH:-0}"
 SPACE_FOCUSED_BORDER_COLOR="${SPACE_FOCUSED_BORDER_COLOR:-0xffffffff}"
 SPACE_FOCUSED_ICON_COLOR="${SPACE_FOCUSED_ICON_COLOR:-0xff11111b}"
 
-SPACE_VISIBLE_BG="${SPACE_VISIBLE_BG:-0x3a313a46}"
-SPACE_VISIBLE_BORDER_WIDTH="${SPACE_VISIBLE_BORDER_WIDTH:-1}"
+# Chips are flat: fill alone marks focused and visible spaces.
+SPACE_VISIBLE_BG="${SPACE_VISIBLE_BG:-0x40d8c4ff}"
+SPACE_VISIBLE_BORDER_WIDTH="${SPACE_VISIBLE_BORDER_WIDTH:-0}"
 SPACE_VISIBLE_BORDER_COLOR="${SPACE_VISIBLE_BORDER_COLOR:-0x66d8c4ff}"
 SPACE_VISIBLE_ICON_COLOR="${SPACE_VISIBLE_ICON_COLOR:-0xffcdd6f4}"
 
@@ -23,9 +24,26 @@ SPACE_IDLE_BORDER_COLOR="${SPACE_IDLE_BORDER_COLOR:-0x00000000}"
 SPACE_IDLE_ICON_COLOR="${SPACE_IDLE_ICON_COLOR:-0xffbac2de}"
 
 SPACE_HOVER_BG="${SPACE_HOVER_BG:-0x50d8c4ff}"
-SPACE_HOVER_BORDER_WIDTH="${SPACE_HOVER_BORDER_WIDTH:-1}"
+SPACE_HOVER_BORDER_WIDTH="${SPACE_HOVER_BORDER_WIDTH:-0}"
 SPACE_HOVER_BORDER_COLOR="${SPACE_HOVER_BORDER_COLOR:-0x99d8c4ff}"
 SPACE_HOVER_ICON_COLOR="${SPACE_HOVER_ICON_COLOR:-0xffffffff}"
+
+# With native hover (the Barista SketchyBar fork; common.sh reads the marker
+# main.lua writes) each state carries its own hover fill instead of space.sh
+# swapping in the hover state. The focused chip keeps its look: alpha 0 means
+# "use the idle color".
+space_style_hover_props() {
+  [ "${BARISTA_NATIVE_HOVER:-0}" = "1" ] || return 0
+  case "${1:-idle}" in
+    focused)
+      printf '%s\n' "background.hover_color=0x00000000" "background.hover_border_color=0x00000000"
+      ;;
+    hover) ;;
+    *)
+      printf '%s\n' "background.hover_color=$SPACE_HOVER_BG" "background.hover_border_color=$SPACE_HOVER_BORDER_COLOR"
+      ;;
+  esac
+}
 
 space_style_state_root() {
   printf '%s/style_state' "${SPACE_VISUALS_STATE_DIR:?}"
@@ -82,6 +100,7 @@ space_style_props() {
         "icon.color=$SPACE_IDLE_ICON_COLOR"
       ;;
   esac
+  space_style_hover_props "${1:-idle}"
 }
 
 space_style_remember() {

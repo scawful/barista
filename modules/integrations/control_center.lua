@@ -224,30 +224,38 @@ function control_center.get_status(opts)
 end
 
 -- Create widget definition
+-- Layout mode glyphs (Symbols Nerd Font): tiled dashboard, stacked layers,
+-- overlapping windows, and a plain window when the bar runs without yabai.
+local LAYOUT_ICONS = {
+  bsp = "\u{f056e}",
+  stack = "\u{f0328}",
+  float = "\u{f05b2}",
+  disabled = "\u{f05af}",
+}
+local LAYOUT_LABELS = { bsp = "Tile", stack = "Stack", float = "Manual" }
+
+function control_center.layout_icon(layout)
+  return LAYOUT_ICONS[layout] or LAYOUT_ICONS.bsp
+end
+
+function control_center.layout_label(layout, disabled_label)
+  if layout == "disabled" then
+    return disabled_label or "Bar"
+  end
+  return LAYOUT_LABELS[layout] or "---"
+end
+
 function control_center.create_widget(opts)
   opts = opts or {}
   local status = opts.status or control_center.get_status(opts)
   local config_dir = resolve_config_dir(opts)
 
-  -- Icon based on overall health
-  local icon = status.all_healthy and "󰕮" or "󰕯"
+  -- One icon per layout mode; the color carries yabai/skhd health.
+  local icon = control_center.layout_icon(status.layout)
   local color = status.all_healthy and "0xffa6e3a1" or "0xfff38ba8"
 
-  -- Label shows layout mode prominently
-  local label_parts = {}
-  if status.layout == "bsp" then
-    table.insert(label_parts, "Tile")
-  elseif status.layout == "stack" then
-    table.insert(label_parts, "Stack")
-  elseif status.layout == "float" then
-    table.insert(label_parts, "Manual")
-  elseif status.layout == "disabled" then
-    table.insert(label_parts, opts.disabled_label or "Bar")
-  else
-    table.insert(label_parts, "---")
-  end
-
-  local label = table.concat(label_parts, " ")
+  -- The label repeats the layout in words; hidden unless show_label is set.
+  local label = control_center.layout_label(status.layout, opts.disabled_label)
 
   local popup_background = opts.popup_background or {
     drawing = true,
@@ -268,11 +276,11 @@ function control_center.create_widget(opts)
       font = opts.icon_font or { family = "Symbols Nerd Font", size = 14 },
       color = color,
       padding_left = 6,
-      padding_right = 4,
+      padding_right = opts.show_label == true and 4 or 6,
     },
     label = {
       string = label,
-      drawing = opts.show_label ~= false,
+      drawing = opts.show_label == true,
       font = opts.label_font or { style = "Bold", size = 11 },
       color = opts.label_color or "0xffcdd6f4",
       padding_left = 2,
@@ -315,6 +323,8 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     padding = { icon_left = 8, icon_right = 6, label_left = 4, label_right = 8 },
     label_color = theme.WHITE,
     separator_color = "0x40cdd6f4",
+    line_color = "0x40cdd6f4",
+    popup_lines = opts.popup_lines == true,
   }
   local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
   local function shell_command(path, args)
@@ -352,7 +362,6 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
       font = font_bold,
       color = color,
       icon = icon and { string = icon, color = icon_color or color, drawing = true } or { string = "", drawing = false },
-      background_drawing = false,
     })
     local item = built[1]
     normalize_label(item, label, font_bold, color)
@@ -361,22 +370,14 @@ function control_center.create_popup_items(sbar, theme, font_string, settings, o
     item["label.padding_right"] = 8
     item["icon.padding_left"] = icon and 6 or 8
     item["icon.padding_right"] = 6
-    item.background = { drawing = false }
     table.insert(items, item)
   end
 
   local function add_separator(name, parent)
     local built = {}
-    ui.separator(built, parent or item_name, name, {
-      style = style,
-      font = font_small,
-      color = "0x40cdd6f4",
-    })
+    ui.separator(built, parent or item_name, name, { style = style })
     local item = built[1]
-    normalize_label(item, "───────────────", font_small, "0x40cdd6f4")
-    item.icon = { drawing = false }
     item["label.padding_left"] = 8
-    item.background = { drawing = false }
     table.insert(items, item)
   end
 

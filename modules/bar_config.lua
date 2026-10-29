@@ -137,6 +137,17 @@ function compute(state, theme, state_module, associated_displays, detected_displ
   local popup_border_color = parse_color(state_module.get_appearance(state, "popup_border_color", theme.WHITE))
   local popup_blur_radius = tonumber(state_module.get_appearance(state, "popup_blur_radius", 20)) or 20
   local popup_shadow = truthy(state_module.get_appearance(state, "popup_shadow", true), true)
+  -- Which corners popups and bar widget chips round: all, top, bottom, none.
+  -- Only the Barista SketchyBar fork reads these; main.lua gates on it.
+  local function corners_setting(key, default)
+    local value = tostring(state_module.get_appearance(state, key, default)):lower()
+    if value == "all" or value == "top" or value == "bottom" or value == "none" then
+      return value
+    end
+    return default
+  end
+  local popup_corners = corners_setting("popup_corners", "bottom")
+  local widget_corners = corners_setting("widget_corners", "bottom")
   -- Popup bg defaults to bar color at 0xE0 alpha so the popup blur shows through
   local raw_popup_bg = state_module.get_appearance(state, "popup_bg_color", nil)
   local popup_bg_color
@@ -171,6 +182,11 @@ function compute(state, theme, state_module, associated_displays, detected_displ
   local group_border_color = parse_color(state_module.get_appearance(state, "group_border_color", "0x20585b70"))
   local group_border_width = tonumber(state_module.get_appearance(state, "group_border_width", 1)) or 1
   local group_corner_radius = tonumber(state_module.get_appearance(state, "group_corner_radius", 6)) or 6
+  -- Outline on each bar widget chip when the fork draws them (no brackets).
+  local widget_border_width = tonumber(state_module.get_appearance(state, "widget_border_width", 0)) or 0
+  -- Hover colors for bar widget pills when the fork draws hover natively.
+  local widget_hover_color = parse_color(state_module.get_appearance(state, "widget_hover_color", "0x33ffffff"))
+  local widget_hover_border_color = parse_color(state_module.get_appearance(state, "widget_hover_border_color", "0x4dffffff"))
 
   local widget_corner_radius = state.appearance and state.appearance.widget_corner_radius
   if type(widget_corner_radius) ~= "number" then
@@ -352,6 +368,9 @@ function compute(state, theme, state_module, associated_displays, detected_displ
     wide_displays = wide_displays,
     narrow_displays = narrow_displays,
     widget_corner_radius = widget_corner_radius,
+    widget_corners = widget_corners,
+    widget_border_width = widget_border_width,
+    popup_corners = popup_corners,
     item_padding = item_padding,
     icon_padding = icon_padding,
     label_padding = label_padding,
@@ -361,6 +380,8 @@ function compute(state, theme, state_module, associated_displays, detected_displ
     group_border_color = group_border_color,
     group_border_width = group_border_width,
     group_corner_radius = group_corner_radius,
+    widget_hover_color = widget_hover_color,
+    widget_hover_border_color = widget_hover_border_color,
     hover_color = hover_color,
     hover_border_color = hover_border_color,
     hover_border_width = hover_border_width,

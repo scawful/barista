@@ -190,6 +190,36 @@ local SCRIPTS_DIR = paths_module.resolve_scripts_dir(CONFIG_DIR, state)
 local SKETCHYBAR_BIN = binary_resolver.resolve_sketchybar_bin()
 local YABAI_BIN      = binary_resolver.resolve_yabai_bin()
 
+-- The Barista SketchyBar fork draws background.hover_color itself, so hover
+-- needs no event script, and it can stretch popup rows to the menu width.
+-- appearance.native_hover = false keeps the scripts and content-width rows.
+local function detect_native_features()
+  local setting = state_module.get_appearance(state, "native_hover", "auto")
+  if setting == false or setting == "off" then return false, false end
+  if setting == true or setting == "on" then return true, true end
+  -- A busy server can answer with nothing, so ask twice before giving up.
+  for _ = 1, 2 do
+    local handle = io.popen(string.format("%q --query defaults 2>/dev/null", SKETCHYBAR_BIN))
+    if not handle then return false, false end
+    local output = handle:read("*a") or ""
+    handle:close()
+    if output ~= "" then
+      return output:find('"hover_color"', 1, true) ~= nil,
+        output:find('"stretch"', 1, true) ~= nil
+    end
+  end
+  return false, false
+end
+local NATIVE_HOVER, POPUP_STRETCH = detect_native_features()
+-- Shell plugins read this marker instead of querying SketchyBar themselves.
+do
+  local marker = io.open(CONFIG_DIR .. "/cache/native_hover", "w")
+  if marker then
+    marker:write(NATIVE_HOVER and "1\n" or "0\n")
+    marker:close()
+  end
+end
+
 local POST_CONFIG_DELAY = 1.0
 local SPACE_POST_CONFIG_DELAY = 0.2
 local SPACE_STARTUP_SYNC_DELAY = 0.8
@@ -330,7 +360,16 @@ local function enqueue_hover_subscription(name)
   )
 end
 
+-- Set once the bar config is computed.
+local native_row_background = nil
+
 local function attach_hover(name)
+  if NATIVE_HOVER then
+    if native_row_background then
+      sbar.set(name, { background = native_row_background })
+    end
+    return
+  end
   enqueue_hover_subscription(name)
 end
 
@@ -340,7 +379,9 @@ local function subscribe_popup_autoclose(name)
   -- click as focus moves between the bar window and the popup surface; that
   -- makes the popup appear to ignore clicks by opening and immediately closing.
   -- Keep hover enter/exit for visual feedback and let explicit second-click,
-  -- popup actions, and space/display/wake events dismiss popups.
+  -- popup actions, and space/display/wake events dismiss popups. Native hover
+  -- needs neither event.
+  if NATIVE_HOVER then return end
   enqueue_hover_subscription(name)
 end
 
@@ -362,6 +403,40 @@ print("Associated spaces target: " .. associated_spaces)
 
 -- Bar appearance from bar_config module
 local bc = bar_config.compute(state, theme, state_module, associated_displays)
+-- plugins/simple_spaces.sh draws the space chips; this marker gives them the
+-- widget chips' height, radius, and corners without a query.
+do
+  local marker = io.open(CONFIG_DIR .. "/cache/chip_style", "w")
+  if marker then
+    marker:write(string.format("%d %d %s\n",
+      math.floor(bc.widget_height), math.floor(bc.widget_corner_radius),
+      NATIVE_HOVER and bc.widget_corners or "all"))
+    marker:close()
+  end
+end
+if NATIVE_HOVER then
+  -- Every popup, submenus included, inherits this from the defaults.
+  bc.defaults["popup.background.corners"] = bc.popup_corners
+  if POPUP_STRETCH then bc.defaults["popup.stretch"] = "on" end
+  native_row_background = { hover_color = bc.hover_color }
+  -- Every clickable popup row highlights under the pointer; native hover
+  -- costs no script, so rows need not opt in with hover = true.
+  local style_popup_row = bc.style_popup_row
+  bc.style_popup_row = function(props)
+    props = style_popup_row(props)
+    if type(props) == "table" and type(props.position) == "string"
+      and props.position:match("^popup%.")
+      and type(props.click_script) == "string" and props.click_script ~= "" then
+      if type(props.background) ~= "table" then
+        props.background = {}
+      end
+      if props.background.hover_color == nil then
+        props.background.hover_color = bc.hover_color
+      end
+    end
+    return props
+  end
+end
 if bc.display_density and bc.display_density ~= "" then
   print(string.format(
     "Display density: %s (min_width=%s wide=%s fingerprint=%s)",
@@ -444,6 +519,7 @@ local barista_context = {
   -- Bar geometry
   widget_height        = bc.widget_height,
   widget_corner_radius = bc.widget_corner_radius,
+  widget_corners = NATIVE_HOVER and bc.widget_corners or nil,
   popup_background     = bc.popup_background,
   style_popup_row      = bc.style_popup_row,
   font_string          = bc.font_string,
@@ -451,6 +527,14 @@ local barista_context = {
   group_border_color   = bc.group_border_color,
   group_border_width   = bc.group_border_width,
   group_corner_radius  = bc.group_corner_radius,
+  -- Native hover makes every bar item its own pill in the group colors.
+  native_hover              = NATIVE_HOVER,
+  popup_stretch             = POPUP_STRETCH,
+  anchor_idle_bg            = NATIVE_HOVER and bc.group_bg_color or nil,
+  anchor_idle_border_color  = NATIVE_HOVER and bc.group_border_color or nil,
+  anchor_idle_border_width  = NATIVE_HOVER and bc.widget_border_width or nil,
+  anchor_hover_bg           = NATIVE_HOVER and bc.widget_hover_color or nil,
+  anchor_hover_border_color = NATIVE_HOVER and bc.widget_hover_border_color or nil,
   hover_color               = bc.hover_color,
   hover_border_color        = bc.hover_border_color,
   hover_border_width        = bc.hover_border_width,
@@ -639,7 +723,9 @@ trace_startup("main:menus_rendered")
 -----------------------------------------------------------------------
 -- Layout Processing
 -----------------------------------------------------------------------
-local function process_layout(layout, ctx)
+-- deferred_brackets, when given, collects bracket entries instead of adding
+-- them, for brackets whose members a later layout creates.
+local function process_layout(layout, ctx, deferred_brackets)
   local sbar = ctx.sbar
   for _, entry in ipairs(layout) do
     if entry.type == "item" then
@@ -647,6 +733,8 @@ local function process_layout(layout, ctx)
       if entry.attach_hover then
         ctx.attach_hover(entry.name)
       end
+    elseif entry.type == "bracket" and deferred_brackets then
+      table.insert(deferred_brackets, entry)
     elseif entry.type == "bracket" then
       sbar.add("bracket", entry.children or entry.name, entry.props)
     elseif entry.type == "set" then
@@ -671,7 +759,10 @@ local function process_layout(layout, ctx)
     elseif entry.action == "subscribe_popup_autoclose" then
       ctx.subscribe_popup_autoclose(entry.name)
     elseif entry.action == "attach_hover" then
-      ctx.attach_hover(entry.name)
+      -- Bar widgets carry native hover colors in their pill props.
+      if not ctx.native_hover then
+        ctx.attach_hover(entry.name)
+      end
     end
   end
 end
@@ -685,7 +776,9 @@ local left_layout_metadata
 left_layout, left_layout_metrics, left_layout_metadata = items_left.get_layout(barista_context)
 left_layout_build_duration_ms = runtime_startup.current_time_ms() - left_layout_build_start_ms
 local left_layout_apply_start_ms = runtime_startup.current_time_ms()
-process_layout(left_layout, barista_context)
+-- left_group includes the agents widget, which items_right creates.
+local left_brackets = {}
+process_layout(left_layout, barista_context, left_brackets)
 left_layout_apply_duration_ms = runtime_startup.current_time_ms() - left_layout_apply_start_ms
 left_layout_duration_ms = left_layout_build_duration_ms + left_layout_apply_duration_ms
 trace_startup("main:left_layout_processed")
@@ -694,6 +787,7 @@ local right_layout, _, right_layout_metadata = items_right.get_layout(barista_co
 right_layout_build_duration_ms = runtime_startup.current_time_ms() - right_layout_build_start_ms
 local right_layout_apply_start_ms = runtime_startup.current_time_ms()
 process_layout(right_layout, barista_context)
+process_layout(left_brackets, barista_context)
 right_layout_apply_duration_ms = runtime_startup.current_time_ms() - right_layout_apply_start_ms
 right_layout_duration_ms = right_layout_build_duration_ms + right_layout_apply_duration_ms
 trace_startup("main:right_layout_processed")

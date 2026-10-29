@@ -143,21 +143,19 @@ health="healthy"
 if [[ "$WM_REQUIRED" -eq 1 && ( "$WM_YABAI_RUNNING" -ne 1 || "$WM_SKHD_RUNNING" -ne 1 ) ]]; then
   health="degraded"
 fi
-if [[ "$health" == "healthy" ]]; then
-  ICON="󰕮"
-  ICON_COLOR="0xffa6e3a1"
-else
-  ICON="󰕯"
-  ICON_COLOR="0xfff38ba8"
-fi
+ICON_COLOR="0xffa6e3a1"
+[[ "$health" == "healthy" ]] || ICON_COLOR="0xfff38ba8"
 
+# One icon per layout mode (matches control_center.layout_icon in Lua); the
+# label keeps the words for show_label setups.
+ICON="󰕮"
 LABEL="---"
 case "$SPACE_LAYOUT" in
-  bsp) LABEL="Tile" ;;
-  stack) LABEL="Stack" ;;
-  float) LABEL="Manual" ;;
+  bsp) ICON="󰕮"; LABEL="Tile" ;;
+  stack) ICON="󰌨"; LABEL="Stack" ;;
+  float) ICON="󰖲"; LABEL="Manual" ;;
 esac
-[[ "$WM_ENABLED" == "1" ]] || LABEL="Bar"
+[[ "$WM_ENABLED" == "1" ]] || { ICON="󰖯"; LABEL="Bar"; }
 
 ANCHOR=(--set "$NAME" "icon=$ICON" "icon.color=$ICON_COLOR" "label=$LABEL" label.color=0xffcdd6f4)
 UPDATES=()

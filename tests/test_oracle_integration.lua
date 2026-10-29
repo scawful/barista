@@ -415,8 +415,8 @@ run_test("oracle integration: triforce popup uses apple-style sections and Oracl
   assert_equal(by_name["oracle.triforce.apps.header"].label, "Apps", "apps section header should use the apple-style section label")
   assert_true(by_name["oracle.triforce.meta.sep"] ~= nil, "metadata separator should exist")
   assert_true(by_name["oracle.triforce.sep.apps"] ~= nil, "section separator should exist")
-  assert_true(by_name["oracle.triforce.play.header"].background.drawing == true, "section headers should draw a background like the apple menu")
-  assert_equal(by_name["oracle.triforce.play.header"].background.height, 25, "section header height should follow menu_style")
+  assert_true(by_name["oracle.triforce.play.header"].background.drawing == true, "section headers should draw a line like the apple menu")
+  assert_equal(by_name["oracle.triforce.play.header"].background.height, 1, "section header line should be a hairline")
   local test = by_name["oracle.triforce.play.launch_test"]
   assert_nil(by_name["oracle.triforce.play.launch_stable"], "stale stable launch row should be gone")
   assert_true(test ~= nil, "dev launch row should exist")

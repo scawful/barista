@@ -509,17 +509,18 @@ local function test_items_left_control_center_custom_name()
     end
     if entry.type == "bracket" and entry.name == "left_group" then
       for _, child in ipairs(entry.children or {}) do
-        if child == "status_hub" then
-          found_custom_bracket = true
-        end
-        assert_true(child ~= "control_center", "left_group should not fall back to the legacy hardcoded name")
+        assert_true(child ~= "status_hub" and child ~= "control_center",
+          "control_center keeps its own chip outside left_group")
       end
+    end
+    if entry.action == "exec" and entry.cmd and entry.cmd:find('--move "status_hub" before', 1, true) then
+      found_custom_bracket = true
     end
   end
 
   assert_true(found_custom_item, "custom control_center item should exist")
   assert_true(found_custom_subscribe, "custom control_center item should be subscribed by name")
-  assert_true(found_custom_bracket, "left_group should include custom control_center item name")
+  assert_true(found_custom_bracket, "left order should place the custom control_center item name")
   assert_true(found_custom_popup_action, "custom control_center popup action should exist")
   assert_true(custom_anchor.props.click_script:find(
     "sketchybar -m --set cc.more popup.drawing=off --set status_hub popup.drawing=toggle",

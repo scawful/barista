@@ -92,7 +92,8 @@ local function get_layout(ctx)
     overrides.height = overrides.height or widget_height
     return ui.anchor_chip_style(ctx, overrides)
   end
-  -- Widgets inside left_group; front_app and shortcut_mode keep their own chip.
+  -- Widgets inside left_group; control_center, front_app and shortcut_mode
+  -- keep their own chip.
   local function grouped_chip()
     return anchor_chip({ grouped = true })
   end
@@ -215,8 +216,12 @@ local function get_layout(ctx)
     icon = { drawing = false },
     label = { drawing = true, string = "·", color = separator_color },
     ["label.font"] = font_small,
-    ["label.padding_left"] = 4,
-    ["label.padding_right"] = 4,
+    -- Tight padding: the gap to the spaces should be close to the gaps
+    -- between widget chips.
+    padding_left = 0,
+    padding_right = 0,
+    ["label.padding_left"] = 2,
+    ["label.padding_right"] = 2,
     associated_display = associated_displays,
     associated_space = "all",
     background = { drawing = false },
@@ -743,7 +748,7 @@ local function get_layout(ctx)
       })
 
     cc_widget.name = nil
-    cc_widget.background = grouped_chip()
+    cc_widget.background = anchor_chip()
     local cc_layout_rows = control_center_status and control_center_status.window_manager.enabled and "1" or "0"
     cc_widget.script = "BARISTA_CONTROL_CENTER_LAYOUT_ROWS=" .. cc_layout_rows .. " " .. anchor_script(cc_widget.script or (PLUGIN_DIR .. "/control_center.sh"))
     ui.anchor(layout, {
@@ -792,16 +797,17 @@ local function get_layout(ctx)
     table.insert(left_group_children, music_name)
     table.insert(popup_parents, music_name)
   end
-  if control_center_item_name then
-    table.insert(left_group_children, control_center_item_name)
-    table.insert(popup_parents, control_center_item_name)
-  end
   -- items_right builds the agents widget; the post-config move puts it here.
   if type(state.widgets) == "table" and state.widgets.agents == true then
     table.insert(left_group_children, "agents")
   end
-  -- shortcut_mode and front_app follow the group but keep their own chips.
+  -- control_center (yabai controls), shortcut_mode and front_app follow the
+  -- group but keep their own chips.
   local left_order = { table.unpack(left_group_children) }
+  if control_center_item_name then
+    table.insert(left_order, control_center_item_name)
+    table.insert(popup_parents, control_center_item_name)
+  end
   table.insert(left_order, "shortcut_mode")
   table.insert(left_order, "front_app")
 

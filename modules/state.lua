@@ -121,6 +121,7 @@ local default_state = {
     modifier_reorder_enabled = true,
     context_menu_on_right_click = true,
     swap_indicator = true,
+    merge_front_app = true,
     experimental_diff_updates = true,
     max_spaces_per_display = 8,
     min_spaces_per_display = 1,

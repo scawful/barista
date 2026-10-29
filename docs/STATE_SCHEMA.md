@@ -174,7 +174,8 @@ content-width rows there. With native hover:
 - left widgets (Triforce, music, control center, agents) share one `left_group`
   bracket and right widgets share one `right_group` bracket, filled with
   `group_bg_color`; each grouped widget draws only an inset hover highlight;
-- the front app chip and the spaces keep their own chips;
+- the spaces keep their own chips, and so does the front app chip when
+  `spaces.merge_front_app` is `false`;
 - popups set `popup.stretch=on`, and separators and headers draw as
   `menu_separator_color` hairlines.
 
@@ -250,6 +251,7 @@ Supported keys under `spaces`:
 - `creator_mode`: `per_display` (default), `primary`, or `active`
 - `right_click_close`: `confirm` (default), `direct`, or `off`
 - `reorder_mode`: `menu` (default), `modifier_click`, or `off`
+- `merge_front_app`: `true` (default) hides the separate front app chip; a click on the already-active space chip opens the front app menu under that chip. `false` restores the front app chip.
 - `max_spaces_per_display`: maximum spaces allowed per display (`8` default; `0` = unlimited)
 - `min_spaces_per_display`: minimum spaces preserved per display (`1` default)
 - `destroy_non_empty_policy`: `allow` (default), `refuse` (blocks destroying spaces with windows), or `evacuate` (moves windows to an alternate space on the same display before destroying)

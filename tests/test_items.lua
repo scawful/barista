@@ -124,8 +124,15 @@ local function test_items_left_layout()
       found_front_app = true
       assert(entry.props.position == "left", "front_app should be on the left")
       assert_equal(entry.props.label.drawing, false, "front_app should default to icon-only label state")
-      assert_equal(entry.props.background.drawing, true, "front_app should render as a visible chip")
-      assert_equal(entry.props.background.color, "0x18313a46", "front_app should use the shared idle chip background")
+      -- spaces.merge_front_app defaults on: the active space chip stands in.
+      assert_equal(entry.props.icon.drawing, false, "merged front_app should draw no icon")
+      assert_equal(entry.props.background.drawing, false, "merged front_app should draw no chip")
+      assert_equal(entry.props.padding_left, 0, "merged front_app should add no gap")
+      assert_equal(entry.props.padding_right, 0, "merged front_app should add no gap")
+      assert_true(entry.props.script:find("BARISTA_FRONT_APP_CHIP=0", 1, true) ~= nil,
+        "merged front_app updates should keep the chip hidden")
+      assert_true(entry.props.click_script:find("BARISTA_FRONT_APP_CHIP=0", 1, true) ~= nil,
+        "merged front_app popup refresh should keep the chip hidden")
       assert_true(entry.props.click_script:find(
         "/custom/sketchybar -m --set front_app.more popup.drawing=off --set front_app.move popup.drawing=off --set front_app.defaults popup.drawing=off --set front_app popup.drawing=toggle",
         1,
@@ -267,6 +274,34 @@ local function test_items_left_layout()
   end
   assert(found_refresh_spaces, "refresh_spaces startup command not found in layout")
   assert(found_deferred_watch, "yabai signal registration should wait until after config commit")
+
+  local merged_hover = false
+  for _, entry in ipairs(layout) do
+    if entry.action == "attach_hover" and entry.name == "front_app" then
+      merged_hover = true
+    end
+  end
+  assert_true(not merged_hover, "merged front_app is never under the pointer")
+
+  mock_ctx.state.spaces = { merge_front_app = false }
+  local chip_layout = items_left.get_layout(mock_ctx)
+  mock_ctx.state.spaces = nil
+  local chip_entry, chip_hover = nil, false
+  for _, entry in ipairs(chip_layout) do
+    if entry.type == "item" and entry.name == "front_app" then
+      chip_entry = entry
+    elseif entry.action == "attach_hover" and entry.name == "front_app" then
+      chip_hover = true
+    end
+  end
+  assert_true(chip_entry ~= nil, "front_app should exist with merge_front_app off")
+  assert_equal(chip_entry.props.icon.drawing, true, "front_app chip should show the app icon")
+  assert_equal(chip_entry.props.background.drawing, true, "front_app should render as a visible chip")
+  assert_equal(chip_entry.props.background.color, "0x18313a46", "front_app should use the shared idle chip background")
+  assert_true(chip_entry.props.padding_left == nil, "front_app chip should keep the default item padding")
+  assert_true(chip_entry.props.script:find("BARISTA_FRONT_APP_CHIP=1", 1, true) ~= nil,
+    "front_app chip updates should keep the chip drawn")
+  assert_true(chip_hover, "front_app chip should attach hover")
 
   print("  items_left layout test passed!")
 end

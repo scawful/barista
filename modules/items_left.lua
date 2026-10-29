@@ -171,9 +171,14 @@ local function get_layout(ctx)
 
   -- Front App indicator
   local front_app_start_ms = current_time_ms()
+  -- Merged: the focused space chip already shows the front app's icon, so
+  -- front_app draws nothing and only owns the popup. scripts/space_action.sh
+  -- opens it under the active space chip when that chip is clicked.
+  local front_app_merged = not (state and state.spaces and state.spaces.merge_front_app == false)
   local front_app_script = string.format(
-    "BARISTA_FRONT_APP_ACTION_ROWS=%s %s",
+    "BARISTA_FRONT_APP_ACTION_ROWS=%s BARISTA_FRONT_APP_CHIP=%s %s",
     yabai_controls_enabled and "1" or "0",
+    front_app_merged and "0" or "1",
     anchor_script(PLUGIN_DIR .. "/front_app.sh")
   )
   local front_app_refresh_prefix = ctx.lua_only and "/usr/bin/env BARISTA_LUA_ONLY=1 " or ""
@@ -185,12 +190,21 @@ local function get_layout(ctx)
     CONFIG_DIR,
     front_app_script
   )
+  local front_app_icon = { drawing = true, string = "󰣆", padding_left = 8, padding_right = 8, color = theme.TEXT or theme.WHITE }
+  local front_app_background = anchor_chip()
+  if front_app_merged then
+    front_app_icon = { drawing = false, padding_left = 0, padding_right = 0 }
+    front_app_background = { drawing = false }
+  end
   ui.anchor(layout, {
     ctx = ctx,
     name = "front_app",
+    hover = not front_app_merged,
     props = {
     position = "left",
-    icon = { drawing = true, string = "󰣆", padding_left = 8, padding_right = 8, color = theme.TEXT or theme.WHITE },
+    padding_left = front_app_merged and 0 or nil,
+    padding_right = front_app_merged and 0 or nil,
+    icon = front_app_icon,
     label = { drawing = false },
     script = front_app_script,
     click_script = ui.toggle_then_refresh_async("front_app", front_app_popup_refresh, {
@@ -199,7 +213,7 @@ local function get_layout(ctx)
       popup_topology_token = ctx.popup_topology_token,
       close_popups = yabai_controls_enabled and front_app_children or nil,
     }),
-    background = anchor_chip(),
+    background = front_app_background,
     popup = {
       align = "left",
       background = popup_background()

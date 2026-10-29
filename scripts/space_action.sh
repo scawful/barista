@@ -90,7 +90,8 @@ state_value() {
   local fallback="$2"
   if [ -n "$JQ_BIN" ] && [ -f "$STATE_FILE" ]; then
     local value
-    value=$("$JQ_BIN" -r "$jq_query // empty" "$STATE_FILE" 2>/dev/null || true)
+    # `// empty` would also drop `false`, so a disabled toggle read as unset.
+    value=$("$JQ_BIN" -r "($jq_query) | select(. != null)" "$STATE_FILE" 2>/dev/null || true)
     if [ -n "$value" ] && [ "$value" != "null" ]; then
       printf '%s' "$value"
       return 0
@@ -184,6 +185,12 @@ context_menu_on_right_click() {
 swap_indicator_enabled() {
   local enabled
   enabled=$(state_value '.spaces.swap_indicator' 'true')
+  [ "$(normalize_bool "$enabled")" = "true" ]
+}
+
+front_app_merged() {
+  local enabled
+  enabled=$(state_value '.spaces.merge_front_app' 'true')
   [ "$(normalize_bool "$enabled")" = "true" ]
 }
 
@@ -424,12 +431,33 @@ refresh_space_items() {
   sketchybar --trigger space_mode_refresh >/dev/null 2>&1 || true
 }
 
+# With spaces.merge_front_app on, the active space chip stands in for the
+# front_app chip: front_app moves in front of that chip and its own click
+# script opens the app menu there.
+open_front_app_menu() {
+  local space_idx="$1"
+  local click_script=""
+  [ -n "$JQ_BIN" ] || return 1
+  click_script=$(sketchybar --query front_app 2>/dev/null \
+    | "$JQ_BIN" -r '.scripting.click_script // empty' 2>/dev/null || true)
+  [ -n "$click_script" ] || return 1
+  sketchybar --move front_app before "space.$space_idx" >/dev/null 2>&1 || true
+  /bin/sh -c "$click_script" >/dev/null 2>&1 || true
+}
+
 focus_space() {
   local space_idx="$1"
+  local focus_error=""
   if [ -z "$YABAI_BIN" ]; then
     return 1
   fi
-  run_with_timeout 1 "$YABAI_BIN" -m space --focus "$space_idx" >/dev/null 2>&1 || true
+  if focus_error=$(run_with_timeout 1 "$YABAI_BIN" -m space --focus "$space_idx" 2>&1 >/dev/null); then
+    :
+  elif [ -n "${BUTTON:-}" ] && [[ "$focus_error" == *"already focused"* ]] \
+      && front_app_merged && open_front_app_menu "$space_idx"; then
+    # A space_change trigger here would close the menu that just opened.
+    return 0
+  fi
   sketchybar --trigger space_change >/dev/null 2>&1 || true
   sketchybar --trigger space_mode_refresh >/dev/null 2>&1 || true
 }

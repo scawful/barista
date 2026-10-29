@@ -36,6 +36,8 @@ case "$FRONT_APP_ACTION_ROWS" in
   0) ;;
   *) FRONT_APP_ACTION_ROWS=1 ;;
 esac
+# 0 when spaces.merge_front_app is on: the active space chip shows the app.
+FRONT_APP_CHIP="${BARISTA_FRONT_APP_CHIP:-1}"
 FRONT_APP_IDLE_PROPS="$(anchor_idle_props) icon.color=$FRONT_APP_ICON_COLOR"
 FRONT_APP_HOVER_PROPS="$(anchor_hover_props) icon.color=$FRONT_APP_ICON_COLOR"
 
@@ -293,19 +295,32 @@ if [ -n "$STACK_BADGE" ]; then
   FRONT_APP_LABEL_DRAWING="on"
 fi
 
-FRONT_APP_UPDATE=(
-  "$NAME"
-  "icon=$APP_ICON"
-  icon.drawing=on
-  "icon.color=$FRONT_APP_ICON_COLOR"
-  icon.padding_left=8
-  icon.padding_right=8
-  "label=$STACK_BADGE"
-  "label.drawing=$FRONT_APP_LABEL_DRAWING"
-  background.drawing=on
-  "background.color=$FRONT_APP_IDLE_BG"
-  "background.border_width=$FRONT_APP_IDLE_BORDER_WIDTH"
-  "background.border_color=$FRONT_APP_IDLE_BORDER_COLOR"
+if [ "$FRONT_APP_CHIP" = "0" ]; then
+  FRONT_APP_UPDATE=(
+    "$NAME"
+    icon.drawing=off
+    label.drawing=off
+    background.drawing=off
+    padding_left=0
+    padding_right=0
+  )
+else
+  FRONT_APP_UPDATE=(
+    "$NAME"
+    "icon=$APP_ICON"
+    icon.drawing=on
+    "icon.color=$FRONT_APP_ICON_COLOR"
+    icon.padding_left=8
+    icon.padding_right=8
+    "label=$STACK_BADGE"
+    "label.drawing=$FRONT_APP_LABEL_DRAWING"
+    background.drawing=on
+    "background.color=$FRONT_APP_IDLE_BG"
+    "background.border_width=$FRONT_APP_IDLE_BORDER_WIDTH"
+    "background.border_color=$FRONT_APP_IDLE_BORDER_COLOR"
+  )
+fi
+FRONT_APP_UPDATE+=(
   --set front_app.header "label=$APP_NAME"
   --set front_app.state "icon=$STATE_ICON" "label=$STATE_LABEL"
   --set front_app.location "label=$LOCATION_LABEL"

@@ -236,7 +236,12 @@ final class ViewerController {
     guard model.isMedia, pickTile(event, in: window, model: model), let media = model.media, !media.trimming,
           let content = window.contentView
     else { return false }
-    NSMenu.popUpContextMenu(MediaMenu.make(model: model, media: media), with: event, for: content)
+    let menu = MediaMenu.make(model: model, media: media)
+    if !media.cropping {
+      menu.addItem(.separator())
+      menu.addItem(WindowMenu.item(for: window))
+    }
+    NSMenu.popUpContextMenu(menu, with: event, for: content)
     return true
   }
 

@@ -47,6 +47,8 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     NSWindow.allowsAutomaticWindowTabbing = false
     AgentWindows.installEditMenu()
     viewerSettings = store.$settings.sink { ViewerPreferences.shared.apply($0) }
+    WindowMenu.sizes = { [weak self] in self?.store.settings.windowSizes ?? [:] }
+    WindowMenu.setSize = { [weak self] app, size in self?.store.setWindowSize(app: app, size: size) }
     ViewerPreferences.shared.persist = { [weak self] zoom, loops in
       self?.store.updateSettings { settings in
         settings.viewerScrollZoom = zoom.rawValue
@@ -103,6 +105,7 @@ func post(_ name: Notification.Name, _ object: String) {
 let arguments = Array(CommandLine.arguments.dropFirst())
 switch arguments.first {
 case nil, "run":
+  OverlayScrollers.install()
   let app = NSApplication.shared
   let delegate = AgentDelegate()
   app.delegate = delegate

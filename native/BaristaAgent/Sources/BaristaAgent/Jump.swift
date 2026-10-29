@@ -102,11 +102,15 @@ final class JumpIndex: ObservableObject {
   }
 
   /// Folders browsed here count in zoxide, as `cd` does in the shell.
+  /// Off the main thread: starting a process there would hold up the
+  /// folder it was asked for.
   static func remember(_ url: URL) {
-    var isFolder: ObjCBool = false
-    guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder), isFolder.boolValue,
-          let zoxide = Tool.find("zoxide") else { return }
-    launch(zoxide, ["add", url.path], quiet: true)
+    DispatchQueue.global(qos: .utility).async {
+      var isFolder: ObjCBool = false
+      guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder), isFolder.boolValue,
+            let zoxide = Tool.find("zoxide") else { return }
+      launch(zoxide, ["add", url.path], quiet: true)
+    }
   }
 }
 

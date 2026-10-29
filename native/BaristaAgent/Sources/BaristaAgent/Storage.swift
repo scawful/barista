@@ -1,4 +1,5 @@
 import AppKit
+import os
 
 /// A mounted volume and how full it is, as Finder counts free space
 /// (purgeable space included).
@@ -60,12 +61,22 @@ struct Volume: Identifiable, Equatable {
     volumes.filter { url.isWithin($0.url) }.max { $0.url.path.count < $1.url.path.count }
   }
 
-  /// Free space on the volume holding `url`.
+  /// Free space on the volume holding `url`. Asking costs about 15 ms (APFS
+  /// counts purgeable space), so an answer stands for its volume a while.
   static func available(at url: URL) -> Int64? {
+    let volume = (try? url.resourceValues(forKeys: [.volumeURLKey]))?.volume?.path
+    let now = Date()
+    if let volume, let known = freeSpace.withLock({ $0[volume] }), now.timeIntervalSince(known.at) < 20 {
+      return known.bytes
+    }
     let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey,
                                                    .volumeAvailableCapacityKey])
-    return values.map(free)
+    let bytes = values.map(free)
+    if let volume, let bytes { freeSpace.withLock { $0[volume] = (bytes, now) } }
+    return bytes
   }
+
+  private static let freeSpace = OSAllocatedUnfairLock(initialState: [String: (bytes: Int64, at: Date)]())
 
   /// The larger count: APFS's for important use adds purgeable space, but
   /// exFAT and other non-APFS drives answer it with zero.

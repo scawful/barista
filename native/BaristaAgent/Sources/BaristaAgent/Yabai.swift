@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 struct YabaiWindow: Decodable, Identifiable, Equatable {
   let id: Int
@@ -20,6 +20,69 @@ struct YabaiWindow: Decodable, Identifiable, Equatable {
     case isFloating = "is-floating"
     case isSticky = "is-sticky"
     case hasFullscreenZoom = "has-fullscreen-zoom"
+  }
+}
+
+struct YabaiWindowState: Decodable, Equatable {
+  let id: Int
+  let app: String
+  let isFloating: Bool
+  let subLayer: String?
+
+  enum CodingKeys: String, CodingKey {
+    case id, app
+    case isFloating = "is-floating"
+    case subLayer = "sub-layer"
+  }
+
+  var level: WindowLevel? { subLayer.flatMap(WindowLevel.init(subLayer:)) }
+}
+
+/// A floating window's size, centered on its display as a yabai grid.
+enum WindowSize: String, CaseIterable {
+  case small, medium, large
+
+  var title: String {
+    switch self {
+    case .small: return "Small (half the screen)"
+    case .medium: return "Medium (two thirds)"
+    case .large: return "Large (four fifths)"
+    }
+  }
+
+  var grid: String {
+    switch self {
+    case .small: return "4:4:1:1:2:2"
+    case .medium: return "6:6:1:1:4:4"
+    case .large: return "10:10:1:1:8:8"
+    }
+  }
+}
+
+/// Where a window stacks, as `yabai_control.sh` names app levels and the
+/// sub-layer each one is.
+enum WindowLevel: String, CaseIterable {
+  case normal, raised, top
+
+  var title: String {
+    switch self {
+    case .normal: return "Normal"
+    case .raised: return "Raised"
+    case .top: return "Always on Top"
+    }
+  }
+
+  var subLayer: String {
+    switch self {
+    case .normal: return "below"
+    case .raised: return "normal"
+    case .top: return "above"
+    }
+  }
+
+  init?(subLayer: String) {
+    guard let level = Self.allCases.first(where: { $0.subLayer == subLayer }) else { return nil }
+    self = level
   }
 }
 
@@ -106,6 +169,49 @@ enum Yabai {
 
   static func runAsync(_ arguments: [String]) {
     DispatchQueue.global(qos: .userInitiated).async { run(arguments) }
+  }
+
+  /// What a menu shows about one of Barista's own windows, whose window
+  /// number is yabai's id; nil when yabai doesn't answer in time.
+  static func state(of window: NSWindow, timeout: TimeInterval = 0.4) -> YabaiWindowState? {
+    guard let data = run(["query", "--windows", "--window", String(window.windowNumber)], timeout: timeout)
+    else { return nil }
+    return try? JSONDecoder().decode(YabaiWindowState.self, from: data)
+  }
+
+  static let sizeRulePrefix = "barista-size-"
+
+  /// The grid rules that give each app in `sizes` its default size, and the
+  /// labels of Barista's size rules in `existing` that no longer belong.
+  /// The label names the size, so a rule that's there is the right one.
+  /// Another app's size applies when its windows float; Barista's own rule
+  /// floats Files windows at that size, and leaves viewers, which size to
+  /// what they show, alone.
+  static func sizeRuleChanges(_ sizes: [String: String], existing: [String]) -> (remove: [String], add: [[String]]) {
+    var wanted: [String: [String]] = [:]
+    for (app, name) in sizes {
+      guard let size = WindowSize(rawValue: name) else { continue }
+      let slug = app.lowercased().map { $0.isLetter || $0.isNumber ? String($0) : "-" }.joined()
+      let label = sizeRulePrefix + slug + "-" + size.rawValue
+      var rule = ["rule", "--add", "label=\(label)", "app=^\(NSRegularExpression.escapedPattern(for: app))$"]
+      if app == "barista-agent" {
+        rule += ["title=\(BrowserController.titleSuffix.trimmingCharacters(in: .whitespaces))$", "manage=off"]
+      }
+      wanted[label] = rule + ["grid=\(size.grid)"]
+    }
+    let ours = existing.filter { $0.hasPrefix(sizeRulePrefix) }
+    return (ours.filter { wanted[$0] == nil }.sorted(),
+            wanted.filter { !ours.contains($0.key) }.sorted { $0.key < $1.key }.map(\.value))
+  }
+
+  /// Brings yabai's rules in line with `sizes`. A yabai restart forgets
+  /// rules, so this runs again now and then, not only on a change.
+  static func syncSizeRules(_ sizes: [String: String]) {
+    guard let data = run(["rule", "--list"]),
+          let rules = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return }
+    let changes = sizeRuleChanges(sizes, existing: rules.compactMap { $0["label"] as? String })
+    for label in changes.remove { run(["rule", "--remove", label]) }
+    for rule in changes.add { run(rule) }
   }
 
   /// Runs `yabai_control.sh` actions in order, each bound to its window the

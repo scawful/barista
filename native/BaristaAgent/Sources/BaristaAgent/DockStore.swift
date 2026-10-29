@@ -123,6 +123,7 @@ final class DockStore: ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
   private var agentTimer: Timer?
   private let windowQueue = DispatchQueue(label: "dev.barista.agent.windows", qos: .userInitiated)
+  private var sizeRulesSyncedAt = Date.distantPast
   private static let trashURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")
 
   init() {
@@ -437,6 +438,7 @@ final class DockStore: ObservableObject {
       DispatchQueue.main.async { self?.windowsByPID = grouped }
     }
     refreshSpaces()
+    syncSizeRules()
   }
 
   /// Spaces for the Move to Space menu and for groups that open on a space.
@@ -737,6 +739,29 @@ final class DockStore: ObservableObject {
     appName(tile).flatMap { windowLevels[$0] }
   }
 
+  /// The size the app's new windows take when they float; nil leaves it to the app.
+  func setWindowSize(_ tile: DockTile, size: WindowSize?) {
+    guard let app = appName(tile) else { return }
+    setWindowSize(app: app, size: size)
+  }
+
+  func setWindowSize(app: String, size: WindowSize?) {
+    updateSettings { $0.windowSizes[app] = size?.rawValue }
+  }
+
+  func windowSize(_ tile: DockTile) -> WindowSize? {
+    appName(tile).flatMap { settings.windowSizes[$0] }.flatMap(WindowSize.init(rawValue:))
+  }
+
+  /// On a change, and at most once a minute while the dock is used, since a
+  /// yabai restart forgets the rules.
+  private func syncSizeRules(force: Bool = false) {
+    guard force || -sizeRulesSyncedAt.timeIntervalSinceNow > 60 else { return }
+    sizeRulesSyncedAt = Date()
+    let sizes = settings.windowSizes
+    windowQueue.async { Yabai.syncSizeRules(sizes) }
+  }
+
   func editConfig() {
     launch("/usr/bin/open", ["-t", configURL.path])
   }
@@ -803,7 +828,9 @@ final class DockStore: ObservableObject {
   private func applySettings() {
     resolvedURLs = [:]
     fileNames = [:]
+    let sizesChanged = config.settings.windowSizes != settings.windowSizes
     if config.settings != settings { settings = config.settings }
+    if sizesChanged { syncSizeRules(force: true) }
   }
 
   /// A magnified icon's side in pixels on a 2x display.

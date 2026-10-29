@@ -384,6 +384,29 @@ final class DockConfigTests: XCTestCase {
     XCTAssertFalse(YabaiSpace(index: 2, label: "", display: 1, hasFocus: false).matches([""]))
   }
 
+  func testDefaultWindowSizesBecomeYabaiGridRules() throws {
+    let json = #"{"settings": {"window_sizes": {"Ghostty": "medium", "Mail": "huge"}}}"#
+    let settings = try DockConfigFile.decode(Data(json.utf8)).settings.clamped
+    XCTAssertEqual(settings.windowSizes, ["Ghostty": "medium"], "an unknown size is dropped")
+
+    let fresh = Yabai.sizeRuleChanges(["Ghostty": "medium", "barista-agent": "small"], existing: ["other-rule"])
+    XCTAssertEqual(fresh.remove, [], "rules Barista didn't make stay")
+    XCTAssertEqual(fresh.add, [
+      ["rule", "--add", "label=barista-size-barista-agent-small", "app=^barista-agent$",
+       "title=- Barista Files$", "manage=off", "grid=4:4:1:1:2:2"],
+      ["rule", "--add", "label=barista-size-ghostty-medium", "app=^Ghostty$", "grid=6:6:1:1:4:4"],
+    ])
+
+    let changed = Yabai.sizeRuleChanges(["Ghostty": "large"],
+                                        existing: ["barista-size-ghostty-medium", "barista-size-barista-agent-small"])
+    XCTAssertEqual(changed.remove, ["barista-size-barista-agent-small", "barista-size-ghostty-medium"])
+    XCTAssertEqual(changed.add.map { $0[2] }, ["label=barista-size-ghostty-large"])
+    XCTAssertTrue(Yabai.sizeRuleChanges(["Ghostty": "large"], existing: ["barista-size-ghostty-large"]).add.isEmpty)
+
+    XCTAssertEqual(WindowLevel(subLayer: "above"), .top)
+    XCTAssertEqual(WindowLevel(subLayer: "below"), .normal)
+  }
+
   func testBaristaColorsParse() {
     let color = DockTheme.color("0xC021162F").map(NSColor.init)
     XCTAssertEqual(Double(color?.alphaComponent ?? 0), 192.0 / 255, accuracy: 0.001)

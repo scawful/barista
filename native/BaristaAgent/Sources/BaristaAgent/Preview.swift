@@ -429,7 +429,7 @@ private struct PlainTextView: NSViewRepresentable {
   func makeNSView(context: Context) -> NSScrollView {
     let scroll = NSTextView.scrollableTextView()
     scroll.drawsBackground = false
-    scroll.hasVerticalScroller = false
+    scroll.hasHorizontalScroller = true
     if let view = scroll.documentView as? NSTextView {
       view.isEditable = false
       view.isSelectable = true

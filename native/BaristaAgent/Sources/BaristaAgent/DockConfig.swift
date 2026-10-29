@@ -141,6 +141,9 @@ struct DockSettings: Equatable {
   var viewerScrollZoom = "normal"
   /// Movies in the viewer start over when they end.
   var viewerLoopsMovies = true
+  /// The size an app's new windows take when they float, by the name yabai
+  /// knows the app by: `small`, `medium`, or `large` (`WindowSize`).
+  var windowSizes: [String: String] = [:]
 
   var clamped: DockSettings {
     var settings = self
@@ -151,6 +154,7 @@ struct DockSettings: Equatable {
     settings.revealDelay = min(max(revealDelay, 0), 2)
     settings.hideDelay = min(max(hideDelay, 0), 3)
     settings.shelfDays = min(max(shelfDays, 0.1), 30)
+    settings.windowSizes = windowSizes.filter { WindowSize(rawValue: $0.value) != nil }
     return settings
   }
 }
@@ -170,6 +174,7 @@ extension DockSettings: Codable {
     case focusShortcut = "focus_shortcut"
     case viewerScrollZoom = "viewer_scroll_zoom"
     case viewerLoopsMovies = "viewer_loops_movies"
+    case windowSizes = "window_sizes"
   }
 
   init(from decoder: Decoder) throws {
@@ -192,6 +197,7 @@ extension DockSettings: Codable {
     viewerScrollZoom = try container.decodeIfPresent(String.self, forKey: .viewerScrollZoom) ?? defaults.viewerScrollZoom
     viewerLoopsMovies = try container.decodeIfPresent(Bool.self, forKey: .viewerLoopsMovies)
       ?? defaults.viewerLoopsMovies
+    windowSizes = try container.decodeIfPresent([String: String].self, forKey: .windowSizes) ?? defaults.windowSizes
   }
 }
 

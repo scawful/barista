@@ -1,38 +1,89 @@
 import AppKit
 import SwiftUI
 
-/// The icon view: the shown rows as a grid, with Finder's clicks and arrows.
+/// Where the icon view puts each icon: fixed cells in rows, the block
+/// centered across the width, so a cell's frame follows from its index
+/// whether or not the lazy grid has drawn it.
+struct IconLayout: Equatable {
+  static let spacing: CGFloat = 4
+  /// Around the icon and between it and its name.
+  static let inset: CGFloat = 3
+  /// A cell's height beyond its icon: two caption lines of name and insets.
+  static let nameRoom: CGFloat = 36
+  let cell: CGSize
+  let columns: Int
+  /// The block's left edge.
+  let left: CGFloat
+
+  /// Room for two caption lines of name under the icon, and no narrower
+  /// than a short name needs at the smallest size.
+  init(width: CGFloat, iconSize: Double) {
+    let icon = CGFloat(iconSize)
+    cell = CGSize(width: max(72, icon + 16), height: icon + Self.nameRoom)
+    let columns = max(1, Int((width - Self.spacing) / (cell.width + Self.spacing)))
+    self.columns = columns
+    left = max(0, (width - (CGFloat(columns) * cell.width + CGFloat(columns - 1) * Self.spacing)) / 2)
+  }
+
+  var blockWidth: CGFloat { CGFloat(columns) * cell.width + CGFloat(columns - 1) * Self.spacing }
+
+  func frame(at index: Int) -> CGRect {
+    CGRect(x: left + CGFloat(index % columns) * (cell.width + Self.spacing),
+           y: Self.spacing + CGFloat(index / columns) * (cell.height + Self.spacing),
+           width: cell.width, height: cell.height)
+  }
+
+  /// The icons a dragged rectangle touches, of `count`.
+  func indices(in rect: CGRect, count: Int) -> [Int] {
+    let stride = cell.height + Self.spacing
+    let first = max(0, Int((rect.minY - Self.spacing) / stride))
+    let last = min((count - 1) / columns, Int((rect.maxY - Self.spacing) / stride))
+    guard count > 0, first <= last else { return [] }
+    return (first * columns..<min(count, (last + 1) * columns)).filter { frame(at: $0).intersects(rect) }
+  }
+}
+
+/// The icon view: the shown rows as a grid, with Finder's clicks and arrows,
+/// and a rectangle dragged across empty space to select.
 struct IconGrid: View {
   @ObservedObject var state: BrowserState
   @State private var pinchStart: Double?
-  private static let spacing: CGFloat = 8
-
-  /// Room for two lines of name under the icon, and no narrower than a
-  /// name needs at the smallest size.
-  private var cell: CGSize {
-    let icon = CGFloat(state.iconSize)
-    return CGSize(width: max(88, icon + 40), height: icon + 44)
-  }
+  @State private var marquee: CGRect?
+  /// What stays selected under a drag: the selection before it, with ⇧ or ⌘.
+  @State private var marqueeKeeps: Set<URL> = []
 
   var body: some View {
     GeometryReader { geometry in
-      let cell = self.cell
-      let columns = max(1, Int((geometry.size.width - Self.spacing) / (cell.width + Self.spacing)))
+      let layout = IconLayout(width: geometry.size.width, iconSize: state.iconSize)
+      let columns = layout.columns
       ScrollViewReader { proxy in
         ScrollView {
-          LazyVGrid(columns: Array(repeating: GridItem(.fixed(cell.width), spacing: Self.spacing), count: columns),
-                    spacing: Self.spacing) {
+          LazyVGrid(columns: Array(repeating: GridItem(.fixed(layout.cell.width), spacing: IconLayout.spacing),
+                                   count: columns),
+                    spacing: IconLayout.spacing) {
             ForEach(state.shown) { entry in
-              IconCell(state: state, entry: entry, size: cell).id(entry.url)
+              IconCell(state: state, entry: entry, size: layout.cell).id(entry.url)
             }
           }
-          .padding(Self.spacing)
-          .frame(minHeight: geometry.size.height, alignment: .top)
-          // Behind the icons: a click between them clears the selection.
+          .frame(width: layout.blockWidth)
+          .padding(.vertical, IconLayout.spacing)
+          .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .top)
+          // Behind the icons: a click between them clears the selection,
+          // a drag selects what it covers.
           .background {
             Color.clear.contentShape(Rectangle())
               .onTapGesture { state.selection = [] }
+              .gesture(select(in: layout))
               .contextMenu { EntryMenu(state: state, urls: []) }
+          }
+          .overlay(alignment: .topLeading) {
+            if let marquee {
+              Rectangle().fill(Color.accentColor.opacity(0.15))
+                .overlay(Rectangle().strokeBorder(Color.accentColor.opacity(0.7)))
+                .frame(width: marquee.width, height: marquee.height)
+                .offset(x: marquee.minX, y: marquee.minY)
+                .allowsHitTesting(false)
+            }
           }
         }
         .onDrop(of: [.fileURL], isTargeted: nil, perform: state.drop)
@@ -45,6 +96,26 @@ struct IconGrid: View {
         .onChange(of: columns) { state.gridColumns = columns }
       }
     }
+  }
+
+  private func select(in layout: IconLayout) -> some Gesture {
+    DragGesture(minimumDistance: 4)
+      .onChanged { value in
+        if marquee == nil {
+          let adds = !NSEvent.modifierFlags.intersection([.shift, .command]).isEmpty
+          marqueeKeeps = adds ? state.selection : []
+        }
+        let rect = CGRect(x: min(value.startLocation.x, value.location.x),
+                          y: min(value.startLocation.y, value.location.y),
+                          width: abs(value.location.x - value.startLocation.x),
+                          height: abs(value.location.y - value.startLocation.y))
+        marquee = rect
+        let shown = state.shown
+        let covered = layout.indices(in: rect, count: shown.count).map { shown[$0].url }
+        let selection = marqueeKeeps.union(covered)
+        if selection != state.selection { state.selection = selection }
+      }
+      .onEnded { _ in marquee = nil }
   }
 
   /// Pinching scales the icons from their size when the pinch began.
@@ -72,8 +143,8 @@ private struct IconCell: View {
 
   var body: some View {
     let selected = state.selection.contains(entry.url)
-    VStack(spacing: 4) {
-      FileIcon(url: entry.url, points: size.height - 44, modified: entry.modified)
+    VStack(spacing: 2) {
+      FileIcon(url: entry.url, points: size.height - IconLayout.nameRoom, modified: entry.modified)
         .overlay(alignment: .bottomTrailing) {
           if let mark = state.git?.mark(for: entry.url, isFolder: entry.isFolder) {
             Text(mark.letter)
@@ -89,12 +160,12 @@ private struct IconCell: View {
       } else {
         Text(entry.name)
           .font(.caption).lineLimit(2).truncationMode(.middle).multilineTextAlignment(.center)
-          .padding(.horizontal, 4).padding(.vertical, 1)
+          .padding(.horizontal, 3)
           .foregroundStyle(selected ? Color.white : Color.primary)
           .background(selected ? Color.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 4))
       }
     }
-    .padding(4)
+    .padding(IconLayout.inset)
     .frame(width: size.width, height: size.height, alignment: .top)
     .background(selected ? Color.primary.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
     .contentShape(Rectangle())

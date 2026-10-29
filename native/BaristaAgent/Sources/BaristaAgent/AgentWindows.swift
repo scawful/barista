@@ -41,6 +41,12 @@ enum AgentWindows {
     previousApp?.activate()
   }
 
+  /// The yabai window menu at the pointer.
+  static func showWindowMenu(for window: NSWindow, defaultSizeApp: String? = nil) {
+    WindowMenu.make(for: window, defaultSizeApp: defaultSizeApp)
+      .popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+  }
+
   /// Accessory apps have no visible menu bar, but key equivalents still go
   /// through the main menu; without Edit, ⌘C does nothing in text.
   static func installEditMenu() {
@@ -58,5 +64,92 @@ enum AgentWindows {
     main.addItem(NSMenuItem(title: "barista-agent", action: nil, keyEquivalent: ""))
     main.addItem(editItem)
     NSApp.mainMenu = main
+  }
+}
+
+/// yabai's controls for one of Barista's own windows: float or tile, where
+/// it stacks, its size, and how new windows of its kind open.
+enum WindowMenu {
+  /// `DockSettings.windowSizes`, read and written through the dock's store.
+  static var sizes: () -> [String: String] = { [:] }
+  static var setSize: (String, WindowSize?) -> Void = { _, _ in }
+
+  /// A "Window" item for a context menu; it asks yabai only when opened.
+  static func item(for window: NSWindow) -> NSMenuItem {
+    let holder = NSMenuItem(title: "Window", action: nil, keyEquivalent: "")
+    let loader = Loader(window)
+    let submenu = NSMenu(title: "Window")
+    submenu.addItem(NSMenuItem(title: "Asking yabai…", action: nil, keyEquivalent: ""))
+    submenu.delegate = loader
+    holder.submenu = submenu
+    holder.representedObject = loader
+    return holder
+  }
+
+  private final class Loader: NSObject, NSMenuDelegate {
+    private weak var window: NSWindow?
+
+    init(_ window: NSWindow) { self.window = window }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+      guard let window else { return }
+      let filled = make(for: window)
+      let items = filled.items
+      filled.removeAllItems()
+      menu.removeAllItems()
+      items.forEach(menu.addItem)
+    }
+  }
+
+  /// `defaultSizeApp` is the app name whose new windows the last section
+  /// sizes; nil for windows that size themselves to what they show.
+  static func make(for window: NSWindow, defaultSizeApp: String? = nil) -> NSMenu {
+    let menu = NSMenu(title: "Window")
+    menu.autoenablesItems = false
+    guard let state = Yabai.state(of: window) else {
+      let item = NSMenuItem(title: "yabai isn't answering", action: nil, keyEquivalent: "")
+      item.isEnabled = false
+      menu.addItem(item)
+      return menu
+    }
+    let id = String(state.id)
+    func add(_ title: String, on: Bool = false, to target: NSMenu? = nil, _ perform: @escaping () -> Void) {
+      let item = MenuChoice.item(title, perform: perform)
+      item.state = on ? .on : .off
+      (target ?? menu).addItem(item)
+    }
+    func submenu(_ title: String) -> NSMenu {
+      let holder = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+      holder.submenu = NSMenu(title: title)
+      menu.addItem(holder)
+      return holder.submenu!
+    }
+    /// In order, off the main thread; a grid only sizes a floating window.
+    func run(_ commands: [[String]]) {
+      DispatchQueue.global(qos: .userInitiated).async { commands.forEach { Yabai.run($0) } }
+    }
+
+    add("Float", on: state.isFloating) { run([["window", id, "--toggle", "float"]]) }
+    let level = submenu("Level")
+    for choice in WindowLevel.allCases {
+      add(choice.title, on: state.level == choice, to: level) { run([["window", id, "--sub-layer", choice.subLayer]]) }
+    }
+    let size = submenu("Size")
+    for choice in WindowSize.allCases {
+      add(choice.title, to: size) {
+        run((state.isFloating ? [] : [["window", id, "--toggle", "float"]]) + [["window", id, "--grid", choice.grid]])
+      }
+    }
+    add("Next Display") { run([["window", id, "--display", "next"], ["window", id, "--focus"]]) }
+
+    guard let app = defaultSizeApp else { return menu }
+    menu.addItem(.separator())
+    let current = sizes()[app].flatMap(WindowSize.init(rawValue:))
+    let opens = submenu("New Windows Open")
+    add("Tiled", on: current == nil, to: opens) { setSize(app, nil) }
+    for choice in WindowSize.allCases {
+      add("Floating, \(choice.title)", on: current == choice, to: opens) { setSize(app, choice) }
+    }
+    return menu
   }
 }

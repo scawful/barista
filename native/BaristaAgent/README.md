@@ -48,7 +48,7 @@ The agent runs as `dev.barista.agent` and logs to
 | `Viewer.swift` | The viewer windows for Markdown, images, and movies, their keys and sizing, and `FileWatcher`, which reloads a file when it is saved. |
 | `MediaViewer.swift` | The picture and movie window: zoom, sharp pixels, rotate, crop, trim, the info panel, and the bar that shows on hover; `MediaEdit` saves edits as copies. |
 | `FileBrowserModel.swift` | Barista Files' pure model: tab history, in-window tabs, listing, sorting, filtering, and `FileOperations` (Finder's names for new folders, copies, and kept-both clashes; rename; repo root). |
-| `FileBrowser.swift` | The Barista Files window: path bar, tabs, sidebar, table, preview, in-place rename, Finder's shortcuts and the Go and View menus, and `BrowserWindow`, which drives the Quick Look panel. |
+| `FileBrowser.swift` | The Barista Files window: folder title, bottom path bar, tabs, sidebar, table, preview, in-place rename, Finder's shortcuts and the Go and View menus, `OverlayScrollers`, and `BrowserWindow`, which drives the Quick Look panel, hover scroll bars, and row drag-select. |
 | `FileIcons.swift` | `FileIcons`: Finder icons drawn into small bitmaps off the main thread, or Quick Look thumbnails for images and videos, cached by path, size, and modification date (bounded by bytes); `FileIcon` shows one when it's ready. |
 | `DSStore.swift` | A read-only reader for Finder's `.DS_Store` (the buddy-allocated B-tree of per-file records); Barista never writes one. |
 | `FolderViews.swift` | `FolderView` (layout, sort, icon size), what Finder recorded for a folder, Barista's own per-folder choices in its defaults, and the order they apply in. |
@@ -105,6 +105,11 @@ minimized windows let movie decoders go, and memory pressure sheds pixels.
 
 `dock.json` settings: `viewer_scroll_zoom` (`off`, `fine`, `normal`,
 `fast`) and `viewer_loops_movies`; the bar's More menu writes both.
+Right-click → Window (and the Window button in Barista Files) runs yabai on
+that window: Float, Level, Size, Next Display. `window_sizes` maps an app
+to `small`, `medium`, or `large` for its new floating windows, as yabai
+`grid=` rules labeled `barista-size-*`; Barista Files windows with a size
+float at it.
 
 From a shell, `barista-agent {view|browse|open} PATH` posts a distributed
 notification to the running agent (`scripts/barista_agent.sh view PATH` does

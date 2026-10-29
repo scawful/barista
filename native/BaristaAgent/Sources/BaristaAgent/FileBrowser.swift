@@ -48,10 +48,14 @@ final class BrowserController {
     window.titlebarAppearsTransparent = true
     window.titleVisibility = .hidden
     window.backgroundColor = .controlBackgroundColor
+    window.acceptsMouseMovedEvents = true
     window.minSize = NSSize(width: 480, height: 300)
     window.contentView = NSHostingView(rootView: BrowserView(state: state))
     state.onTitle = { [weak window] name in window?.title = name + Self.titleSuffix }
     state.onCloseWindow = { [weak window] in window?.performClose(nil) }
+    state.onWindowMenu = { [weak window] in
+      window.map { AgentWindows.showWindowMenu(for: $0, defaultSizeApp: "barista-agent") }
+    }
     state.reload()
     if !window.setFrameUsingName(Self.frameName) { window.center() }
     // The first browser keeps its frame across launches; one opened beside it cascades.
@@ -283,7 +287,8 @@ final class BrowserState: ObservableObject {
   @Published var ascending = true { didSet { sortChanged { $0.ascending = ascending } } }
   /// Points per icon in the icon view, one of `FolderView.iconSizes`.
   @Published var iconSize = FolderView.fallback.iconSize ?? 64 { didSet { remember { $0.iconSize = iconSize } } }
-  @Published var query = "" { didSet { search() } }
+  /// Going to a folder clears it; only a change re-sorts the rows.
+  @Published var query = "" { didSet { if query != oldValue { search() } } }
   @Published var scope = SearchScope.folder { didSet { if scope != oldValue { search() } } }
   /// fd or rg is running for the query.
   @Published private(set) var searching = false
@@ -343,6 +348,7 @@ final class BrowserState: ObservableObject {
   var places: () -> [(name: String, url: URL)] = { [] }
   var onTitle: ((String) -> Void)?
   var onCloseWindow: (() -> Void)?
+  var onWindowMenu: (() -> Void)?
   var onQuickLook: (() -> Void)?
   private var watcher: FileWatcher?
   /// The folder whose view is applied, and the layout the window had
@@ -429,25 +435,29 @@ final class BrowserState: ObservableObject {
       let listing = FileListing.load(folder, hidden: hidden)
       let workspace = Workspace.load(folder)
       let finder = FolderView.Finder.read(folder)
-      DispatchQueue.main.async { [weak self] in
+      // With the listing, so a folder change draws once, not twice; a
+      // network mount's free space waits until after it.
+      let local = (try? folder.resourceValues(forKeys: [.volumeIsLocalKey]))?.volumeIsLocal != false
+      let context = AFSContext.find(from: folder)
+      var available = local ? Volume.available(at: folder) : nil
+      DispatchQueue.main.async { [weak self, available] in
         guard let self, self.generation == token else { return }
         if let listing { ListingCache.shared.store(listing, for: folder, hidden: hidden) }
         self.finderRead(finder, for: folder)
         self.loading = false
         self.show(listing, listed: listed, final: true)
         self.show(workspace)
+        if self.available != available { self.available = available }
+        if self.contextRoot != context { self.contextRoot = context }
         if self.measuringSizes { self.measureSizes() }
       }
       // After the listing is shown: git should never hold it up, and on a
       // network mount it would read the whole tree over the wire.
-      let local = (try? folder.resourceValues(forKeys: [.volumeIsLocalKey]))?.volumeIsLocal != false
       let inspected = local ? Git.inspect(folder) : nil
-      let context = AFSContext.find(from: folder)
-      let available = Volume.available(at: folder)
-      DispatchQueue.main.async { [weak self] in
+      if !local { available = Volume.available(at: folder) }
+      DispatchQueue.main.async { [weak self, available] in
         guard let self, self.generation == token else { return }
         if self.available != available { self.available = available }
-        if self.contextRoot != context { self.contextRoot = context }
         if self.git != inspected?.status { self.git = inspected?.status }
         if self.worktrees != inspected?.worktrees ?? [] { self.worktrees = inspected?.worktrees ?? [] }
       }
@@ -1125,10 +1135,8 @@ struct BrowserView: View {
       statusBar
     }
     .ignoresSafeArea(edges: .top)
-    // One surface under the sidebar, list, and preview; scrolling still
-    // works by trackpad and wheel without bars.
+    // One surface under the sidebar, list, and preview.
     .scrollContentBackground(.hidden)
-    .scrollIndicators(.never)
     .background(Self.surface)
     .onChange(of: state.focusSearch) { searchFocused = true }
     .sheet(isPresented: $state.jumping) { JumpView(state: state) }
@@ -1157,7 +1165,7 @@ struct BrowserView: View {
         .disabled(!state.tabs.selected.canGoForward).help("Forward (⌘])")
       Button(action: state.up) { Image(systemName: "arrow.up") }
         .disabled(state.tabs.selected.parent == nil).help("Enclosing Folder (⌘↑)")
-      PathBar(location: state.location) { state.go(to: $0) }
+      FolderTitle(location: state.location) { state.go(to: $0) }
       Spacer(minLength: 8)
       // Nil is the board, so while it shows any layout leaves it.
       let shown = Binding<BrowserLayout?> {
@@ -1189,6 +1197,8 @@ struct BrowserView: View {
       Button { state.showPreview.toggle() } label: { Image(systemName: "sidebar.right") }
         .help("Preview Pane (⇧⌘P); Space opens Quick Look")
       Button { state.newTab(at: state.location) } label: { Image(systemName: "plus") }.help("New Tab (⌘T)")
+      Button { state.onWindowMenu?() } label: { Image(systemName: "macwindow") }
+        .help("Window: float or tile, level, size, and how new windows open (yabai)")
     }
     .buttonStyle(.borderless)
     .padding(.leading, 78)
@@ -1277,6 +1287,14 @@ struct BrowserView: View {
       }
     }
     .listStyle(.sidebar)
+    .environment(\.sidebarRowSize, .small)
+  }
+
+  /// Behind the sidebar row for the shown folder.
+  private func currentMark(_ url: URL) -> some View {
+    RoundedRectangle(cornerRadius: 5)
+      .fill(state.location.path == url.standardizedFileURL.path ? Color.accentColor.opacity(0.22) : Color.clear)
+      .padding(.horizontal, 8)
   }
 
   private func repoRow(_ git: GitStatus) -> some View {
@@ -1292,6 +1310,7 @@ struct BrowserView: View {
     }
     .help((git.root.path as NSString).abbreviatingWithTildeInPath)
     .contentShape(Rectangle())
+    .listRowBackground(currentMark(git.root))
     .onTapGesture { state.go(to: git.root) }
     .contextMenu { RepoMenu(root: git.root, branch: git.branch) }
   }
@@ -1323,6 +1342,7 @@ struct BrowserView: View {
     .help(volume.total > 0 ? "\(Self.bytes(volume.used)) of \(Self.bytes(volume.total)) used; right-click to find the largest folders"
           : (volume.url.path as NSString).abbreviatingWithTildeInPath)
     .contentShape(Rectangle())
+    .listRowBackground(currentMark(volume.url))
     .onTapGesture { state.go(to: volume.url) }
     .contextMenu {
       if volume.total > 0 && volume.responding {
@@ -1347,6 +1367,7 @@ struct BrowserView: View {
       .fontWeight(state.location.path == place.url.path ? .semibold : .regular)
       .help((place.url.path as NSString).abbreviatingWithTildeInPath)
       .contentShape(Rectangle())
+      .listRowBackground(currentMark(place.url))
       .onTapGesture { state.go(to: place.url) }
       .contextMenu {
         Button("Open in New Tab") { state.newTab(at: place.url) }
@@ -1374,8 +1395,12 @@ struct BrowserView: View {
     }
   }
 
+  /// The path on the left, counts and sizes on the right.
   private var statusBar: some View {
-    HStack {
+    HStack(spacing: 6) {
+      PathBar(location: state.location) { state.go(to: $0) }
+        .layoutPriority(-1)
+      Spacer(minLength: 8)
       if state.boardShown, let workspace = state.workspace {
         let open = workspace.tasks.filter { $0.state != .done }.count
         Text("\(open) open task\(open == 1 ? "" : "s") · \(workspace.notes.count) notes · \(workspace.ideas.count) ideas")
@@ -1392,7 +1417,6 @@ struct BrowserView: View {
         }
       }
       if state.hidden { Text("· hidden files shown") }
-      Spacer()
       if state.sizesPending > 0 {
         ProgressView().controlSize(.mini)
         Text("measuring \(state.sizesPending) folder\(state.sizesPending == 1 ? "" : "s")")
@@ -1418,8 +1442,9 @@ struct BrowserView: View {
     }
     .font(.caption)
     .foregroundStyle(.secondary)
-    .padding(.horizontal, 12)
-    .frame(height: 22)
+    .lineLimit(1)
+    .padding(.horizontal, 8)
+    .frame(height: 24)
   }
 }
 
@@ -1452,33 +1477,71 @@ private struct PaneHandle: View {
   }
 }
 
-/// Each enclosing folder as a button, so any of them is one click away.
+/// The shown folder and those around it, from the top of the disk down.
+private func enclosingFolders(of location: URL) -> [URL] {
+  let components = location.pathComponents
+  return components.indices.map { index in
+    URL(fileURLWithPath: NSString.path(withComponents: Array(components.prefix(index + 1))))
+  }
+}
+
+/// Finder's path bar, along the bottom: each enclosing folder as a button,
+/// so any of them is one click away.
 private struct PathBar: View {
   let location: URL
   let go: (URL) -> Void
 
   var body: some View {
-    let components = location.pathComponents
-    let urls = components.indices.map { index in
-      URL(fileURLWithPath: NSString.path(withComponents: Array(components.prefix(index + 1))))
-    }
-    // A tiled window can be narrow: fewer folders, never names broken over lines.
+    let urls = enclosingFolders(of: location)
+    // A narrow window drops folders from the top, never breaks a name.
     ViewThatFits(in: .horizontal) {
-      bar(urls.suffix(4))
-      bar(urls.suffix(2))
+      bar(urls[...])
+      bar(urls.suffix(5))
+      bar(urls.suffix(3))
       bar(urls.suffix(1))
     }
     .buttonStyle(.borderless)
   }
 
   private func bar(_ urls: ArraySlice<URL>) -> some View {
-    HStack(spacing: 2) {
+    HStack(spacing: 3) {
       ForEach(Array(urls.enumerated()), id: \.offset) { offset, url in
         if offset > 0 { Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary) }
-        Button { go(url) } label: { Text(DisplayNames.name(of: url)).lineLimit(1).fixedSize() }
-          .fontWeight(url == location ? .semibold : .regular)
+        Button { go(url) } label: {
+          HStack(spacing: 3) {
+            FileIcon(url: url, points: 14)
+            Text(DisplayNames.name(of: url)).lineLimit(1).fixedSize()
+          }
+        }
+        .foregroundStyle(url == location ? .primary : .secondary)
+        .fontWeight(url == location ? .medium : .regular)
+        .help((url.path as NSString).abbreviatingWithTildeInPath)
       }
     }
+  }
+}
+
+/// The shown folder's name in the toolbar; clicking it lists the folders
+/// above, as Finder's title does.
+private struct FolderTitle: View {
+  let location: URL
+  let go: (URL) -> Void
+
+  var body: some View {
+    Menu {
+      ForEach(enclosingFolders(of: location).dropLast().reversed(), id: \.self) { url in
+        Button { go(url) } label: { Text(DisplayNames.name(of: url)) }
+      }
+    } label: {
+      HStack(spacing: 5) {
+        FileIcon(url: location, points: 16)
+        Text(DisplayNames.name(of: location)).fontWeight(.semibold).lineLimit(1)
+      }
+    }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .fixedSize()
+    .help((location.path as NSString).abbreviatingWithTildeInPath)
   }
 }
 
@@ -1842,11 +1905,51 @@ struct RenameField: View {
 
 /// A browser window is the Quick Look panel's controller while it shows the
 /// window's selection, and keeps the panel on the selection as it changes.
+/// Barista's scroll bars float over what they scroll and fade, whatever the
+/// system's Show Scroll Bars setting; folder views show them on hover.
+enum OverlayScrollers {
+  static func install() {
+    guard let method = class_getClassMethod(NSScroller.self, #selector(getter: NSScroller.preferredScrollerStyle))
+    else { return }
+    let overlay: @convention(block) (AnyObject) -> Int = { _ in NSScroller.Style.overlay.rawValue }
+    method_setImplementation(method, imp_implementationWithBlock(overlay))
+  }
+}
+
 final class BrowserWindow: NSWindow, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
   private weak var state: BrowserState?
   private var selectionWatch: AnyCancellable?
+  private weak var hovered: NSScrollView?
+  private var hoverFlashedAt = Date.distantPast
 
   private var previewed: [URL] { state?.selectedURLs ?? [] }
+
+  override func sendEvent(_ event: NSEvent) {
+    switch event.type {
+    case .mouseMoved:
+      showScrollers(at: event.locationInWindow)
+    case .leftMouseDown:
+      // A drag up or down the list selects rows, as in Finder; sideways
+      // it still carries the files out.
+      var view = contentView?.hitTest(event.locationInWindow)
+      while let current = view, !(current is NSTableView) { view = current.superview }
+      (view as? NSTableView)?.verticalMotionCanBeginDrag = false
+    default:
+      break
+    }
+    super.sendEvent(event)
+  }
+
+  /// Overlay scroll bars only show while scrolling; these show while the
+  /// pointer moves over what scrolls.
+  private func showScrollers(at point: NSPoint) {
+    guard let scroll = contentView?.hitTest(point)?.enclosingScrollView else { return }
+    let now = Date()
+    guard scroll !== hovered || now.timeIntervalSince(hoverFlashedAt) > 0.6 else { return }
+    hovered = scroll
+    hoverFlashedAt = now
+    scroll.flashScrollers()
+  }
 
   func watch(_ state: BrowserState) {
     self.state = state

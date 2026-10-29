@@ -71,6 +71,18 @@ final class FolderViewTests: XCTestCase {
               Record(name: "beta", code: "cmmt", type: "ustr", payload: u32(2) + utf16("hi"))])
   }
 
+  func testADraggedRectangleSelectsTheIconsItTouches() {
+    let layout = IconLayout(width: 400, iconSize: 64)
+    XCTAssertEqual(layout.columns, 4, "64-point icons fit four across 400 points")
+    XCTAssertEqual(layout.frame(at: 0), CGRect(x: 34, y: 4, width: 80, height: 100), "the block is centered")
+    XCTAssertEqual(layout.frame(at: 5).origin, CGPoint(x: 118, y: 108))
+    XCTAssertEqual(layout.indices(in: CGRect(x: 30, y: 10, width: 10, height: 10), count: 7), [0])
+    XCTAssertEqual(layout.indices(in: CGRect(x: 100, y: 50, width: 100, height: 100), count: 7), [0, 1, 4, 5])
+    XCTAssertEqual(layout.indices(in: CGRect(x: 300, y: 120, width: 10, height: 10), count: 7), [],
+                   "past the last icon of a short row")
+    XCTAssertEqual(layout.indices(in: CGRect(x: 0, y: 0, width: 400, height: 2000), count: 7).count, 7)
+  }
+
   func testDSStoreReadsRecordsInEveryNode() throws {
     let data = try sample()
     let own = try XCTUnwrap(DSStore.records(in: data))

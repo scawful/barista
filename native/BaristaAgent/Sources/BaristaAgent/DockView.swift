@@ -425,6 +425,14 @@ struct AppMenu<Custom: View, Options: View>: View {
         Toggle("Tile", isOn: toggle(mode == "tile") { store.setWindowDefault(tile, mode: "tile") })
         Divider()
         Button("Follow yabai Rules") { store.setWindowDefault(tile, mode: "unset") }.disabled(mode == nil)
+        Divider()
+        let size = store.windowSize(tile)
+        Section("Size When Floating") {
+          Toggle("As the App Opens Them", isOn: toggle(size == nil) { store.setWindowSize(tile, size: nil) })
+          ForEach(WindowSize.allCases, id: \.self) { choice in
+            Toggle(choice.title, isOn: toggle(size == choice) { store.setWindowSize(tile, size: choice) })
+          }
+        }
       }
       let level = store.windowLevel(tile)
       Menu("Window Level") {

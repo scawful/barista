@@ -230,7 +230,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   Size, Tile Here, Next Display, Minimize, Close, applied to the focused or
   first window), Move to Space (every window of the app), Gather Windows
   Here, New Windows (Barista's float/tile app default, or Follow yabai
-  Rules), and Window Level (Normal, Raised, Always on Top, or Follow yabai
+  Rules, and Size When Floating: small, medium, or large, kept in
+  `window_sizes` and applied as a yabai `grid=` rule), and Window Level (Normal, Raised, Always on Top, or Follow yabai
   Rules; see `window_levels` in `docs/STATE_SCHEMA.md`). The window items run `scripts/yabai_control.sh` bound to the
   window, like the bar's window menu. Then Options (Keep in Dock / Remove
   from Dock / Remove from Group, Show in Finder, Dock Settings…, Use macOS
@@ -266,7 +267,10 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   reload when the file is saved. ⌘E opens the file in its editor, Escape or
   ⌘W closes.
 - Barista Files is a Finder replacement that tiles: one window with its tabs
-  inside it, back/forward history per tab, a path bar, a sidebar (⌥⌘S) of
+  inside it, back/forward history per tab, the folder's name in the toolbar
+  (click it for the folders above), Finder's path bar along the bottom, a
+  Window button (yabai: Float, Level, Size, Next Display, and New Windows
+  Open tiled or floating at a size), a sidebar (⌥⌘S) of
   Finder's own Favorites in Finder's order (read from Finder's sidebar list,
   so adding a favorite in Finder adds it here) and the dock's other folders,
   a sortable list, a preview pane (⇧⌘P), Quick Look (Space or ⌘Y; arrows
@@ -292,7 +296,10 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   the window's layout, and columns stay columns while browsing. Sort and
   icon size (32 to 512 points, by the status-bar slider, ⌘- and ⌘=, or a
   pinch) are the folder's own. The sidebar, list, and preview share one
-  surface, with no row stripes or scroll bars.
+  surface, with no row stripes; scroll bars float and show while the
+  pointer moves over what scrolls. Dragging across empty space in the icon
+  view selects what the rectangle touches (⇧ or ⌘ adds); in the list a
+  drag up or down selects rows and a drag sideways carries files out.
   Barista's choices live in its defaults; where it has none, it reads what
   Finder recorded in `.DS_Store` (the parent's record under the folder's
   name, or the folder's own `.`), off the main thread, and never writes
@@ -447,7 +454,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
     "files_browser": "barista",
     "focus_shortcut": "",
     "viewer_scroll_zoom": "normal",
-    "viewer_loops_movies": true
+    "viewer_loops_movies": true,
+    "window_sizes": { "Ghostty": "medium" }
   },
   "pinned": [
     { "kind": "app", "path": "/Applications/Ghostty.app", "bundle_id": "com.mitchellh.ghostty" },

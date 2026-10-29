@@ -50,6 +50,9 @@ final class ViewerController {
   private var chrome: [ObjectIdentifier: AnyCancellable] = [:]
   private var pressure: DispatchSourceMemoryPressure?
 
+  /// The picture or movie the bar acts on in `window`, if it is a viewer.
+  func media(in window: NSWindow) -> MediaState? { models[ObjectIdentifier(window)]?.media }
+
   /// Shows `url` if the viewer handles it; returns false when it doesn't.
   @discardableResult
   func open(_ url: URL) -> Bool { open([url]) }
@@ -183,6 +186,12 @@ final class ViewerController {
     model.onEmpty = { [weak window] in window?.close() }
   }
 
+  /// Toggles window zoom between standard/maximized frame and user frame.
+  static func toggleMaximize(_ window: NSWindow?) {
+    guard let window else { return }
+    window.performZoom(nil)
+  }
+
   /// Escape and ⌘W close, ⌘R reloads, ⌘E opens the file in its editor;
   /// picture and movie windows add `mediaKey`'s, a click picks a tile, and
   /// a right- or Control-click opens its menu.
@@ -197,6 +206,14 @@ final class ViewerController {
         return Self.showMenu(event, in: window, model: model) ? nil : event
       }
       if event.type == .leftMouseDown {
+        if event.clickCount == 2, let content = window.contentView {
+          let point = content.convert(event.locationInWindow, from: nil)
+          let fromTop = content.isFlipped ? point.y : content.bounds.height - point.y
+          if fromTop < 38 {
+            Self.toggleMaximize(window)
+            return nil
+          }
+        }
         Self.pickTile(event, in: window, model: model)
         return event
       }
@@ -272,10 +289,17 @@ final class ViewerController {
     case (_, false, "]") where model.tiles.count > 1: model.move(media, by: 1)
     case (_, false, "l") where model.tiles.count > 1: model.cycleLayout()
     case (_, false, "f") where model.tiles.count > 1: model.fills.toggle()
-    case (123, false, _): media.step(-1)
-    case (124, false, _): media.step(1)
+    case (123, false, _) where !media.viewIsPartial: media.step(-1)
+    case (124, false, _) where !media.viewIsPartial: media.step(1)
+    case (123, _, _) where media.viewIsPartial: media.pan(dx: -40, dy: 0)
+    case (124, _, _) where media.viewIsPartial: media.pan(dx: 40, dy: 0)
+    case (125, _, _) where media.viewIsPartial: media.pan(dx: 0, dy: -40)
+    case (126, _, _) where media.viewIsPartial: media.pan(dx: 0, dy: 40)
+    case (123, true, _): media.step(-1)
+    case (124, true, _): media.step(1)
     case (49, false, _) where media.isVideo: media.togglePlayback()
     case (_, false, "0"): media.fit()
+    case (_, true, "0"): media.magnify(to: 1)
     case (_, false, _) where Int(key).map((1...9).contains) == true: media.magnify(to: CGFloat(Int(key) ?? 1))
     case (_, _, "="), (_, _, "+"): media.magnify(by: 1)
     case (_, _, "-"): media.magnify(by: -1)
@@ -681,6 +705,7 @@ struct ViewerView: View {
     .padding(.leading, 78)
     .padding(.trailing, 12)
     .frame(height: 28)
+    .background { WindowDragArea() }
   }
 }
 

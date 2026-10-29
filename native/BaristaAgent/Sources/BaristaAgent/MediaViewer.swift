@@ -440,6 +440,7 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
   /// The tile shows another file: stepped to, or a saved copy.
   var onShow: ((URL) -> Void)?
   fileprivate var beginTrim: (() -> Void)?
+  var pan: ((CGFloat, CGFloat) -> Void)?
 
   /// The part of the picture in the window, in fractions, origin top left.
   private(set) var view = MediaEdit.whole
@@ -613,9 +614,9 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
   // MARK: Zoom
 
   func magnify(by direction: Int) {
-    guard !isVideo else { return }
     let steps = pixelated ? Self.pixelSteps : Self.steps
-    let next = direction > 0 ? steps.first { $0 > scale + 0.01 } : steps.last { $0 < scale - 0.01 }
+    let current = isVideo ? (scale > 0 ? scale : 1.0) : scale
+    let next = direction > 0 ? steps.first { $0 > current + 0.01 } : steps.last { $0 < current - 0.01 }
     if let next { magnify(to: next) }
   }
 
@@ -623,10 +624,19 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
   /// window grows or shrinks with it.
   func magnify(to scale: CGFloat) {
     guard let size, !cropping else { return }
-    guard !isVideo else { return resize?(.exact(CGSize(width: size.width * scale, height: size.height * scale))) ?? () }
+    guard !isVideo else {
+      self.scale = scale
+      zoom = .scale(scale)
+      resize?(.exact(CGSize(width: size.width * scale, height: size.height * scale)))
+      return
+    }
     if zoomWindow?(scale) == true { return }
     zoom = .focus(scale, CGPoint(x: view.midX, y: view.midY))
     resize?(.exact(CGSize(width: size.width * view.width * scale, height: size.height * view.height * scale)))
+  }
+
+  func pan(dx: CGFloat, dy: CGFloat) {
+    pan?(dx, dy)
   }
 
   /// The whole picture, or the crop waiting to be saved, and the window takes its shape.
@@ -977,16 +987,19 @@ enum MediaMenu {
       add("Loop Movies", on: preferences.loopsMovies) { preferences.set(loopsMovies: !preferences.loopsMovies) }
       menu.addItem(.separator())
       add("Trim…", "t") { media.beginTrimming() }
-    } else {
-      add("Zoom to Fit", "0") { media.fit() }
-      add("Actual Size", "1") { media.magnify(to: 1) }
-      add("Zoom In", "+") { media.magnify(by: 1) }
-      add("Zoom Out", "-") { media.magnify(by: -1) }
+    }
+    add("Zoom to Fit", "0") { media.fit() }
+    add("Actual Size", "1") { media.magnify(to: 1) }
+    add("Zoom In", "+") { media.magnify(by: 1) }
+    add("Zoom Out", "-") { media.magnify(by: -1) }
+    if !media.isVideo {
       add("Sharp Pixels", "p", on: media.pixelated) { media.pixelated.toggle() }
-      let scroll = submenu("Scroll to Zoom")
-      for choice in ViewerPreferences.ScrollZoom.allCases {
-        add(choice.title, on: preferences.scrollZoom == choice, to: scroll) { preferences.set(scrollZoom: choice) }
-      }
+    }
+    let scroll = submenu("Scroll to Zoom")
+    for choice in ViewerPreferences.ScrollZoom.allCases {
+      add(choice.title, on: preferences.scrollZoom == choice, to: scroll) { preferences.set(scrollZoom: choice) }
+    }
+    if !media.isVideo {
       menu.addItem(.separator())
       add("Rotate Left", "r", .shift) { media.rotate(-1) }
       add("Rotate Right", "r") { media.rotate(1) }
@@ -1181,13 +1194,14 @@ private struct MediaBar: View {
   @ViewBuilder private var controls: some View {
     if media.isVideo {
       icon("scissors", "Trim (T)") { media.beginTrimming() }
-    } else {
-      icon("minus.magnifyingglass", "Zoom Out (−)") { media.magnify(by: -1) }
-      Button { media.toggleActualSize() } label: {
-        Text("\(Int((media.scale * 100).rounded()))%").monospacedDigit().frame(minWidth: 40)
-      }
-      .help(media.isFitted ? "Actual Size (1)" : "Fit to Window (0)")
-      icon("plus.magnifyingglass", "Zoom In (+)") { media.magnify(by: 1) }
+    }
+    icon("minus.magnifyingglass", "Zoom Out (−)") { media.magnify(by: -1) }
+    Button { media.toggleActualSize() } label: {
+      Text("\(Int((media.scale * 100).rounded()))%").monospacedDigit().frame(minWidth: 40)
+    }
+    .help(media.isFitted ? "Actual Size (1)" : "Fit to Window (0)")
+    icon("plus.magnifyingglass", "Zoom In (+)") { media.magnify(by: 1) }
+    if !media.isVideo {
       icon("square.grid.3x3", "Sharp Pixels (P)", on: media.pixelated) { media.pixelated.toggle() }
       icon("rotate.left", "Rotate Left (⇧R)") { media.rotate(-1) }
       icon("rotate.right", "Rotate Right (R)") { media.rotate(1) }
@@ -1281,10 +1295,16 @@ private struct MediaBar: View {
   }
 }
 
-/// Dragging the bar's background moves the window; its title bar is hidden.
-private struct WindowDragArea: NSViewRepresentable {
+/// Dragging the bar's background moves the window; double-click maximizes.
+struct WindowDragArea: NSViewRepresentable {
   final class DragView: NSView {
-    override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
+    override func mouseDown(with event: NSEvent) {
+      if event.clickCount == 2 {
+        ViewerController.toggleMaximize(window)
+        return
+      }
+      window?.performDrag(with: event)
+    }
   }
 
   func makeNSView(context: Context) -> DragView { DragView() }
@@ -1397,13 +1417,66 @@ private struct CropOverlay: View {
   }
 }
 
+final class MoviePlayerView: AVPlayerView {
+  weak var media: MediaState?
+
+  private func isControlView(_ view: NSView?) -> Bool {
+    var v = view
+    while let current = v, current !== self {
+      if current is NSControl { return true }
+      let className = String(describing: type(of: current))
+      if className.contains("Button") || className.contains("Slider") || className.contains("Control") || className.contains("Scrubber") {
+        return true
+      }
+      v = current.superview
+    }
+    return false
+  }
+
+  override func mouseDown(with event: NSEvent) {
+    if event.clickCount == 2 {
+      media?.toggleActualSize()
+      return
+    }
+    let hit = super.hitTest(event.locationInWindow)
+    if isControlView(hit) {
+      super.mouseDown(with: event)
+      return
+    }
+    window?.performDrag(with: event)
+  }
+
+  override func scrollWheel(with event: NSEvent) {
+    let rate = ViewerPreferences.shared.scrollZoom.rate
+    guard rate > 0, !event.modifierFlags.contains(.command), let media = media else {
+      return super.scrollWheel(with: event)
+    }
+    guard event.momentumPhase.isEmpty else { return }
+    let toward = event.isDirectionInvertedFromDevice ? event.scrollingDeltaY : -event.scrollingDeltaY
+    guard toward != 0 else { return }
+    let precise = event.hasPreciseScrollingDeltas
+    let amount = precise ? toward * rate : (toward > 0 ? 1 : -1) * rate * ViewerPreferences.ScrollZoom.notch
+    let currentScale = media.scale > 0 ? media.scale : (window.map { $0.contentLayoutRect.width / max(media.size?.width ?? 640, 1) } ?? 1.0)
+    let target = min(max(currentScale * exp(amount), 0.1), 16.0)
+    media.magnify(to: target)
+  }
+
+  override func magnify(with event: NSEvent) {
+    guard let media = media else { return super.magnify(with: event) }
+    let currentScale = media.scale > 0 ? media.scale : (window.map { $0.contentLayoutRect.width / max(media.size?.width ?? 640, 1) } ?? 1.0)
+    let target = min(max(currentScale * (1 + event.magnification), 0.1), 16.0)
+    media.magnify(to: target)
+  }
+}
+
 private struct VideoView: NSViewRepresentable {
   let player: AVPlayer
   let media: MediaState
   let fills: Bool
 
-  func makeNSView(context: Context) -> AVPlayerView {
-    let view = AVPlayerView()
+  func makeNSView(context: Context) -> MoviePlayerView {
+    let view = MoviePlayerView()
+    view.media = media
     view.controlsStyle = .floating
     view.showsFullScreenToggleButton = true
     view.player = player
@@ -1420,7 +1493,8 @@ private struct VideoView: NSViewRepresentable {
     return view
   }
 
-  func updateNSView(_ view: AVPlayerView, context: Context) {
+  func updateNSView(_ view: MoviePlayerView, context: Context) {
+    view.media = media
     if view.player !== player { view.player = player }
     let gravity: AVLayerVideoGravity = fills ? .resizeAspectFill : .resizeAspect
     if view.videoGravity != gravity { view.videoGravity = gravity }
@@ -1442,6 +1516,7 @@ private struct ZoomableImage: NSViewRepresentable {
   func makeNSView(context: Context) -> ImageScrollView {
     let view = ImageScrollView()
     media.zoomWindow = { [weak view] scale in view?.zoomWindow(to: scale) ?? false }
+    media.pan = { [weak view] dx, dy in view?.pan(by: CGPoint(x: dx, y: dy)) }
     view.onDoubleClick = { [weak media] in media?.toggleActualSize() }
     view.onZoom = { [weak media] zoom in media?.zoom = zoom }
     // Reported from layout, which can run inside a SwiftUI update.
@@ -1683,6 +1758,13 @@ final class ImageScrollView: NSScrollView {
 
   override func mouseUp(with event: NSEvent) {
     panStart = nil
+  }
+
+  func pan(by delta: CGPoint) {
+    if case .scale = zoom {} else { zoomed(.scale(magnification)) }
+    let origin = contentView.bounds.origin
+    scroll(to: NSPoint(x: origin.x + delta.x / magnification, y: origin.y + delta.y / magnification))
+    report()
   }
 
   private var fitsInside: Bool {

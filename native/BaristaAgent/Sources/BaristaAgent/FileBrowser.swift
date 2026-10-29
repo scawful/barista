@@ -49,8 +49,12 @@ final class BrowserController {
     window.titleVisibility = .hidden
     window.backgroundColor = .controlBackgroundColor
     window.acceptsMouseMovedEvents = true
-    window.minSize = NSSize(width: 480, height: 300)
-    window.contentView = NSHostingView(rootView: BrowserView(state: state))
+    window.minSize = NSSize(width: 600, height: 300)
+    let host = NSHostingView(rootView: BrowserView(state: state))
+    // Otherwise SwiftUI lays the whole window out again on every change to
+    // work out its smallest size, a third of a folder change's main-thread time.
+    host.sizingOptions = []
+    window.contentView = host
     state.onTitle = { [weak window] name in window?.title = name + Self.titleSuffix }
     state.onCloseWindow = { [weak window] in window?.performClose(nil) }
     state.onWindowMenu = { [weak window] in
@@ -1106,6 +1110,7 @@ struct BrowserView: View {
   @AppStorage("BaristaFilesPreviewWidth") private var previewWidth = 320.0
   /// Sidebar sections closed by their header's chevron, one per line.
   @AppStorage("BaristaFilesCollapsedSections") private var collapsedSections = ""
+  @State private var width: CGFloat = 1000
   static let surface = Color(nsColor: .controlBackgroundColor)
   private static let sidebarWidths: ClosedRange<Double> = 140...360
   private static let previewWidths: ClosedRange<Double> = 200...720
@@ -1137,6 +1142,7 @@ struct BrowserView: View {
       statusBar
     }
     .ignoresSafeArea(edges: .top)
+    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     // One surface under the sidebar, list, and preview.
     .scrollContentBackground(.hidden)
     .background(Self.surface)
@@ -1158,8 +1164,10 @@ struct BrowserView: View {
     return state.selection.count == 1 ? state.shown.first { state.selection.contains($0.url) } : nil
   }
 
+  /// A narrow window keeps the buttons that have no key of their own.
   private var toolbar: some View {
-    HStack(spacing: 8) {
+    let compact = width < 760
+    return HStack(spacing: 8) {
       Button { state.showSidebar.toggle() } label: { Image(systemName: "sidebar.left") }.help("Sidebar (⌥⌘S)")
       Button(action: state.back) { Image(systemName: "chevron.left") }
         .disabled(!state.tabs.selected.canGoBack).help("Back (⌘[)")
@@ -1186,19 +1194,25 @@ struct BrowserView: View {
       .pickerStyle(.segmented).labelsHidden().fixedSize()
       .help(state.workspace == nil ? "List, icons, or columns (⌥⌘1, ⌥⌘2, ⌥⌘3)"
             : "Board, list, icons, or columns (⌥⌘4, ⌥⌘1, ⌥⌘2, ⌥⌘3)")
-      Button { state.jumping = true } label: { Image(systemName: "arrow.up.forward.square") }
-        .help("Jump to a Folder (⌘K)")
+      if !compact {
+        Button { state.jumping = true } label: { Image(systemName: "arrow.up.forward.square") }
+          .help("Jump to a Folder (⌘K)")
+      }
       TextField("Search", text: $state.query)
-        .textFieldStyle(.roundedBorder).frame(width: 180).focused($searchFocused)
+        .textFieldStyle(.roundedBorder).frame(width: compact ? 110 : 180).focused($searchFocused)
         .onExitCommand { state.query = "" }
         .help("Search (⌘F); ⇧⌘F searches file contents; Escape clears")
-      Button { state.hidden.toggle(); state.reload() } label: {
-        Image(systemName: state.hidden ? "eye" : "eye.slash")
-      }.help("Show Hidden Files (⇧⌘.)")
-      Button(action: state.newFolder) { Image(systemName: "folder.badge.plus") }.help("New Folder (⇧⌘N)")
+      if !compact {
+        Button { state.hidden.toggle(); state.reload() } label: {
+          Image(systemName: state.hidden ? "eye" : "eye.slash")
+        }.help("Show Hidden Files (⇧⌘.)")
+        Button(action: state.newFolder) { Image(systemName: "folder.badge.plus") }.help("New Folder (⇧⌘N)")
+      }
       Button { state.showPreview.toggle() } label: { Image(systemName: "sidebar.right") }
         .help("Preview Pane (⇧⌘P); Space opens Quick Look")
-      Button { state.newTab(at: state.location) } label: { Image(systemName: "plus") }.help("New Tab (⌘T)")
+      if !compact {
+        Button { state.newTab(at: state.location) } label: { Image(systemName: "plus") }.help("New Tab (⌘T)")
+      }
       Button { state.onWindowMenu?() } label: { Image(systemName: "macwindow") }
         .help("Window: float or tile, level, size, and how new windows open (yabai)")
     }

@@ -172,9 +172,13 @@ enum Yabai {
   }
 
   /// What a menu shows about one of Barista's own windows, whose window
-  /// number is yabai's id; nil when yabai doesn't answer in time.
-  static func state(of window: NSWindow, timeout: TimeInterval = 0.4) -> YabaiWindowState? {
-    guard let data = run(["query", "--windows", "--window", String(window.windowNumber)], timeout: timeout)
+  /// number is yabai's id; nil when yabai doesn't answer in time. Never on
+  /// the main thread: yabai asks the window's app about it through
+  /// Accessibility, which the app answers on its main thread.
+  static func state(ofWindow number: Int, timeout: TimeInterval = 1.5) -> YabaiWindowState? {
+    dispatchPrecondition(condition: .notOnQueue(.main))
+    guard let data = run(["query", "--windows", "id,app,is-floating,sub-layer", "--window", String(number)],
+                         timeout: timeout)
     else { return nil }
     return try? JSONDecoder().decode(YabaiWindowState.self, from: data)
   }

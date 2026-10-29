@@ -272,7 +272,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   (folders a narrow window can't fit wait behind …; the icon slider and
   free space give way first), a
   Window button (yabai: Float, Level, Size, Next Display, and New Windows
-  Open tiled or floating at a size), a sidebar (⌥⌘S) of
+  Open tiled or floating at a size; a window under 760 points wide keeps
+  only the toolbar buttons with no shortcut of their own), a sidebar (⌥⌘S) of
   Finder's own Favorites in Finder's order (read from Finder's sidebar list,
   so adding a favorite in Finder adds it here) and the dock's other folders,
   a sortable list, a preview pane (⇧⌘P), Quick Look (Space or ⌘Y; arrows

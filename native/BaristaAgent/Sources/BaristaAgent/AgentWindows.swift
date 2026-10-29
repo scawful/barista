@@ -41,10 +41,16 @@ enum AgentWindows {
     previousApp?.activate()
   }
 
-  /// The yabai window menu at the pointer.
+  /// The yabai window menu where the pointer was, once yabai has answered.
   static func showWindowMenu(for window: NSWindow, defaultSizeApp: String? = nil) {
-    WindowMenu.make(for: window, defaultSizeApp: defaultSizeApp)
-      .popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    let number = window.windowNumber
+    let point = NSEvent.mouseLocation
+    DispatchQueue.global(qos: .userInitiated).async {
+      let state = Yabai.state(ofWindow: number)
+      DispatchQueue.main.async {
+        WindowMenu.make(state, defaultSizeApp: defaultSizeApp).popUp(positioning: nil, at: point, in: nil)
+      }
+    }
   }
 
   /// Accessory apps have no visible menu bar, but key equivalents still go
@@ -86,27 +92,36 @@ enum WindowMenu {
     return holder
   }
 
+  /// Asks yabai when the submenu opens and fills it in while it shows.
   private final class Loader: NSObject, NSMenuDelegate {
-    private weak var window: NSWindow?
+    private let number: Int
+    private var asked = false
 
-    init(_ window: NSWindow) { self.window = window }
+    init(_ window: NSWindow) { number = window.windowNumber }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-      guard let window else { return }
-      let filled = make(for: window)
-      let items = filled.items
-      filled.removeAllItems()
-      menu.removeAllItems()
-      items.forEach(menu.addItem)
+      guard !asked else { return }
+      asked = true
+      DispatchQueue.global(qos: .userInitiated).async { [number] in
+        let state = Yabai.state(ofWindow: number)
+        DispatchQueue.main.async { [weak menu] in
+          guard let menu else { return }
+          let filled = make(state)
+          let items = filled.items
+          filled.removeAllItems()
+          menu.removeAllItems()
+          items.forEach(menu.addItem)
+        }
+      }
     }
   }
 
   /// `defaultSizeApp` is the app name whose new windows the last section
   /// sizes; nil for windows that size themselves to what they show.
-  static func make(for window: NSWindow, defaultSizeApp: String? = nil) -> NSMenu {
+  static func make(_ state: YabaiWindowState?, defaultSizeApp: String? = nil) -> NSMenu {
     let menu = NSMenu(title: "Window")
     menu.autoenablesItems = false
-    guard let state = Yabai.state(of: window) else {
+    guard let state else {
       let item = NSMenuItem(title: "yabai isn't answering", action: nil, keyEquivalent: "")
       item.isEnabled = false
       menu.addItem(item)

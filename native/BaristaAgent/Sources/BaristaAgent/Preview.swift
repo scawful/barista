@@ -281,7 +281,7 @@ struct BrowserPreview: View {
     PaneWidth {
       if let entry {
         if entry.isFolder {
-          details(entry)
+          FolderPreviewView(entry: entry, state: state)
         } else if loadedFor == entry, let content {
           view(for: content, entry: entry)
         } else {
@@ -342,6 +342,137 @@ struct BrowserPreview: View {
     .font(.callout)
     .padding()
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+}
+
+private struct FolderPreviewView: View {
+  let entry: FileEntry
+  @ObservedObject var state: BrowserState
+  @State private var items: [FileEntry] = []
+  @State private var itemCount: Int?
+
+  var body: some View {
+    ScrollView {
+      VStack(spacing: 12) {
+        FileIcon(url: entry.url, points: 128, modified: entry.modified)
+          .padding(.top, 8)
+        VStack(spacing: 4) {
+          Text(entry.name)
+            .font(.title3.weight(.semibold))
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+          Text(entry.kind)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          if let count = itemCount {
+            Text("\(count) item\(count == 1 ? "" : "s")")
+              .font(.caption.weight(.medium))
+              .foregroundStyle(.secondary)
+          }
+          if let size = entry.size {
+            Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+        }
+
+        HStack(spacing: 8) {
+          Button("Open") { state.go(to: entry.url) }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+          Button("New Tab") { state.newTab(at: entry.url) }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+          Button {
+            ActionRunner.openTerminal("cd " + ActionRunner.shellQuote(entry.url.path), arguments: [])
+          } label: {
+            Image(systemName: "terminal")
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .help("Open in Terminal")
+          Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(entry.url.path, forType: .string)
+          } label: {
+            Image(systemName: "doc.on.doc")
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .help("Copy Path")
+        }
+        .padding(.vertical, 4)
+
+        Divider()
+
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+          GridRow {
+            Text("Modified").foregroundStyle(.secondary)
+            Text(entry.modified, format: .dateTime)
+          }
+          GridRow {
+            Text("Created").foregroundStyle(.secondary)
+            Text(entry.created, format: .dateTime)
+          }
+          GridRow {
+            Text("Where").foregroundStyle(.secondary)
+            Text((entry.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
+              .lineLimit(1)
+              .truncationMode(.middle)
+          }
+        }
+        .font(.caption)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+
+        if !items.isEmpty {
+          Divider()
+          VStack(alignment: .leading, spacing: 6) {
+            Text("Contents").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            VStack(spacing: 2) {
+              ForEach(items.prefix(8)) { item in
+                HStack(spacing: 6) {
+                  FileIcon(url: item.url, points: 16, modified: item.modified)
+                  Text(item.name)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                  Spacer(minLength: 4)
+                  if item.isFolder {
+                    Image(systemName: "folder")
+                      .font(.caption2)
+                      .foregroundStyle(.tertiary)
+                  } else if let size = item.size {
+                    Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                      .font(.caption2)
+                      .foregroundStyle(.tertiary)
+                  }
+                }
+                .padding(.vertical, 2)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                  state.go(to: item.isFolder ? item.url : entry.url, selecting: item.isFolder ? nil : item.url)
+                }
+              }
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 16)
+        }
+      }
+      .padding(.vertical, 12)
+    }
+    .task(id: entry.url) {
+      let url = entry.url
+      let loaded = await Task.detached(priority: .userInitiated) { () -> [FileEntry]? in
+        FileListing.load(url, hidden: false)
+      }.value
+      guard !Task.isCancelled else { return }
+      if let loaded {
+        items = loaded
+        itemCount = loaded.count
+      }
+    }
   }
 }
 

@@ -152,19 +152,33 @@ enum Yabai {
   }
 
   static let viewerRuleLabel = "barista-agent-viewer"
+  static let settingsRuleLabel = "barista-agent-settings"
 
-  /// Viewer windows float on the raised layer; the file browser tiles like
-  /// any app window. Rules only reach windows created after them, and a yabai
-  /// restart forgets them, so this runs before each viewer window opens.
+  /// Viewer windows float on the below layer with tiled windows; the file browser
+  /// tiles like any app window. Placing them on the below layer allows focused tiled
+  /// windows to stack normally over them. Rules only reach windows created after them,
+  /// and a yabai restart forgets them, so this runs before each viewer window opens.
   static func ensureViewerRule() {
+    ensureBelowRule(label: viewerRuleLabel,
+                    title: "\(ViewerController.titleSuffix.trimmingCharacters(in: .whitespaces))$")
+  }
+
+  /// Settings window floats on the below layer so it doesn't interrupt tiled layout.
+  static func ensureSettingsRule() {
+    ensureBelowRule(label: settingsRuleLabel, title: "^\(SettingsWindowController.title)$")
+  }
+
+  /// A rule that leaves Barista's `title` windows floating on the below
+  /// layer; one added by an older build with another layer is replaced.
+  private static func ensureBelowRule(label: String, title: String) {
     if let data = run(["rule", "--list"]),
        let rules = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]],
-       rules.contains(where: { $0["label"] as? String == viewerRuleLabel }) {
-      return
+       let rule = rules.first(where: { $0["label"] as? String == label }) {
+      if rule["sub-layer"] as? String == "below" { return }
+      run(["rule", "--remove", label])
     }
-    run(["rule", "--add", "label=\(viewerRuleLabel)", "app=^barista-agent$",
-         "title=\(ViewerController.titleSuffix.trimmingCharacters(in: .whitespaces))$",
-         "manage=off", "sub-layer=normal"])
+    run(["rule", "--add", "label=\(label)", "app=^barista-agent$", "title=\(title)",
+         "manage=off", "sub-layer=below"])
   }
 
   static func runAsync(_ arguments: [String]) {

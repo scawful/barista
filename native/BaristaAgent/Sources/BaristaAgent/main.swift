@@ -39,9 +39,15 @@ enum OpenRequest: String, CaseIterable {
 }
 
 final class AgentDelegate: NSObject, NSApplicationDelegate {
-  private let store = DockStore()
+  static private(set) var shared: AgentDelegate?
+  let store = DockStore()
   private lazy var dock = DockController(store: store, onUseNativeDock: useNativeDock)
   private var viewerSettings: AnyCancellable?
+
+  override init() {
+    super.init()
+    Self.shared = self
+  }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSWindow.allowsAutomaticWindowTabbing = false

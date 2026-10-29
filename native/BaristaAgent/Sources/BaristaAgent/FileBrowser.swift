@@ -21,6 +21,9 @@ final class BrowserController {
   private var menuActions: [MenuAction] = []
   private var closeObservers: [ObjectIdentifier: NSObjectProtocol] = [:]
 
+  /// The browser `window` shows, if it is one.
+  func state(in window: NSWindow) -> BrowserState? { states[ObjectIdentifier(window)] }
+
   /// Opens `url` in a new tab of the front browser, or a new browser when
   /// there is none or `newWindow`. A file or package (an app) opens its folder
   /// with it selected.
@@ -169,6 +172,11 @@ final class BrowserController {
       case (.command, _, "e") where !typing: state.ejectSelectionOrShown()
       case (.command, _, "="), ([.command, .shift], _, "+"): state.stepIconSize(1)
       case (.command, _, "-"): state.stepIconSize(-1)
+      case (.command, _, "0"): state.resetIconSize()
+      case ([], 115, _) where !typing: state.selectFirst()
+      case ([], 119, _) where !typing: state.selectLast()
+      case ([], 116, _) where !typing: state.pageSelection(up: true)
+      case ([], 121, _) where !typing: state.pageSelection(up: false)
       case ([.command, .shift], 51, _) where !typing: self.emptyTrash(from: window)
       case ([], _, _) where !typing && !state.boardShown && Self.typesToSelect(key),
            ([.shift], _, _) where !typing && !state.boardShown && Self.typesToSelect(key):
@@ -242,8 +250,6 @@ final class BrowserController {
     let sortHolder = NSMenuItem(title: "Sort By", action: nil, keyEquivalent: "")
     sortHolder.submenu = sort
     view.addItem(sortHolder)
-    view.addItem(item("Bigger Icons", "=") { $0.stepIconSize(1) })
-    view.addItem(item("Smaller Icons", "-") { $0.stepIconSize(-1) })
     view.addItem(item("Use as Defaults") { $0.useAsDefaults() })
     view.addItem(.separator())
     view.addItem(item("Show or Hide Sidebar", "s", [.command, .option]) { $0.showSidebar.toggle() })
@@ -262,10 +268,24 @@ final class BrowserController {
     go.addItem(item("Go to Folder…", "g", [.command, .shift]) { $0.jumping = true })
     go.addItem(item("New Tab", "t") { $0.newTab(at: $0.location) })
     go.addItem(item("New Folder with Selection", "n", [.command, .control]) { $0.newFolderWithSelection() })
-    for menu in [view, go] {
-      let holder = NSMenuItem(title: menu.title, action: nil, keyEquivalent: "")
-      holder.submenu = menu
+    // The shared View menu keeps its Zoom items, which size icons here.
+    if let existingView = main.item(withTitle: "View")?.submenu {
+      existingView.addItem(.separator())
+      for entry in view.items {
+        view.removeItem(entry)
+        existingView.addItem(entry)
+      }
+    } else {
+      let holder = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
+      holder.submenu = view
       main.addItem(holder)
+    }
+    let goHolder = NSMenuItem(title: "Go", action: nil, keyEquivalent: "")
+    goHolder.submenu = go
+    if let windowIndex = main.items.firstIndex(where: { $0.title == "Window" }) {
+      main.insertItem(goHolder, at: windowIndex)
+    } else {
+      main.addItem(goHolder)
     }
   }
 }
@@ -615,6 +635,11 @@ final class BrowserState: ObservableObject {
     if size != iconSize { iconSize = size }
   }
 
+  /// Back to the default icon size.
+  func resetIconSize() {
+    iconSize = FolderView.fallback.iconSize ?? 64
+  }
+
   /// Finder's View → Use as Defaults: folders without a choice of their
   /// own, and new windows, look like this one.
   func useAsDefaults() {
@@ -923,6 +948,31 @@ final class BrowserState: ObservableObject {
     scrollTarget = urls[index]
   }
 
+  func selectFirst() {
+    guard let first = shown.first?.url else { return }
+    selection = [first]
+    anchor = first
+    scrollTarget = first
+  }
+
+  func selectLast() {
+    guard let last = shown.last?.url else { return }
+    selection = [last]
+    anchor = last
+    scrollTarget = last
+  }
+
+  func pageSelection(up: Bool) {
+    let urls = shown.map(\.url)
+    guard !urls.isEmpty else { return }
+    let step = max(1, (layout == .icons ? gridColumns : 1) * 4)
+    let current = selectedURLs.last.flatMap { urls.firstIndex(of: $0) } ?? (up ? urls.count - 1 : 0)
+    let next = up ? max(0, current - step) : min(urls.count - 1, current + step)
+    selection = [urls[next]]
+    anchor = urls[next]
+    scrollTarget = urls[next]
+  }
+
   /// The one selected folder, which the column view previews and → enters.
   var selectedFolder: URL? {
     guard selection.count == 1 else { return nil }
@@ -1105,6 +1155,7 @@ struct BrowserView: View {
   @ObservedObject var state: BrowserState
   @ObservedObject private var volumes = VolumeMonitor.shared
   @ObservedObject private var places = PlacesMonitor.shared
+  @ObservedObject private var sidebarPrefs = SidebarPreferences.shared
   @FocusState private var searchFocused: Bool
   @AppStorage("BaristaFilesSidebarWidth") private var sidebarWidth = 180.0
   @AppStorage("BaristaFilesPreviewWidth") private var previewWidth = 320.0
@@ -1167,16 +1218,18 @@ struct BrowserView: View {
   /// A narrow window keeps the buttons that have no key of their own.
   private var toolbar: some View {
     let compact = width < 760
-    return HStack(spacing: 8) {
-      Button { state.showSidebar.toggle() } label: { Image(systemName: "sidebar.left") }.help("Sidebar (⌥⌘S)")
-      Button(action: state.back) { Image(systemName: "chevron.left") }
-        .disabled(!state.tabs.selected.canGoBack).help("Back (⌘[)")
-      Button(action: state.forward) { Image(systemName: "chevron.right") }
-        .disabled(!state.tabs.selected.canGoForward).help("Forward (⌘])")
-      Button(action: state.up) { Image(systemName: "arrow.up") }
-        .disabled(state.tabs.selected.parent == nil).help("Enclosing Folder (⌘↑)")
+    return HStack(spacing: 6) {
+      HStack(spacing: 3) {
+        Button { state.showSidebar.toggle() } label: { Image(systemName: "sidebar.left") }.help("Sidebar (⌥⌘S)")
+        Button(action: state.back) { Image(systemName: "chevron.left") }
+          .disabled(!state.tabs.selected.canGoBack).help("Back (⌘[)")
+        Button(action: state.forward) { Image(systemName: "chevron.right") }
+          .disabled(!state.tabs.selected.canGoForward).help("Forward (⌘])")
+        Button(action: state.up) { Image(systemName: "arrow.up") }
+          .disabled(state.tabs.selected.parent == nil).help("Enclosing Folder (⌘↑)")
+      }
       FolderTitle(location: state.location) { state.go(to: $0) }
-      Spacer(minLength: 8)
+      Spacer(minLength: 6)
       // Nil is the board, so while it shows any layout leaves it.
       let shown = Binding<BrowserLayout?> {
         state.boardShown ? nil : state.layout
@@ -1194,32 +1247,46 @@ struct BrowserView: View {
       .pickerStyle(.segmented).labelsHidden().fixedSize()
       .help(state.workspace == nil ? "List, icons, or columns (⌥⌘1, ⌥⌘2, ⌥⌘3)"
             : "Board, list, icons, or columns (⌥⌘4, ⌥⌘1, ⌥⌘2, ⌥⌘3)")
-      if !compact {
-        Button { state.jumping = true } label: { Image(systemName: "arrow.up.forward.square") }
-          .help("Jump to a Folder (⌘K)")
+      if state.layout == .icons && !state.boardShown && !compact {
+        HStack(spacing: 2) {
+          Button { state.stepIconSize(-1) } label: { Image(systemName: "minus") }
+            .disabled(state.iconSize <= FolderView.iconSizes.first ?? 32)
+            .help("Smaller Icons (⌘-)")
+          Button { state.stepIconSize(1) } label: { Image(systemName: "plus") }
+            .disabled(state.iconSize >= FolderView.iconSizes.last ?? 128)
+            .help("Larger Icons (⌘+)")
+        }
       }
-      TextField("Search", text: $state.query)
-        .textFieldStyle(.roundedBorder).frame(width: compact ? 110 : 180).focused($searchFocused)
-        .onExitCommand { state.query = "" }
-        .help("Search (⌘F); ⇧⌘F searches file contents; Escape clears")
-      if !compact {
-        Button { state.hidden.toggle(); state.reload() } label: {
-          Image(systemName: state.hidden ? "eye" : "eye.slash")
-        }.help("Show Hidden Files (⇧⌘.)")
-        Button(action: state.newFolder) { Image(systemName: "folder.badge.plus") }.help("New Folder (⇧⌘N)")
+      HStack(spacing: 3) {
+        if !compact {
+          Button { state.jumping = true } label: { Image(systemName: "arrow.up.forward.square") }
+            .help("Jump to a Folder (⌘K)")
+        }
+        TextField("Search", text: $state.query)
+          .textFieldStyle(.roundedBorder).frame(width: compact ? 100 : 160).focused($searchFocused)
+          .onExitCommand { state.query = "" }
+          .help("Search (⌘F); ⇧⌘F searches file contents; Escape clears")
+        if !compact {
+          Button { state.hidden.toggle(); state.reload() } label: {
+            Image(systemName: state.hidden ? "eye" : "eye.slash")
+          }.help("Show Hidden Files (⇧⌘.)")
+          Button(action: state.newFolder) { Image(systemName: "folder.badge.plus") }.help("New Folder (⇧⌘N)")
+        }
       }
-      Button { state.showPreview.toggle() } label: { Image(systemName: "sidebar.right") }
-        .help("Preview Pane (⇧⌘P); Space opens Quick Look")
-      if !compact {
-        Button { state.newTab(at: state.location) } label: { Image(systemName: "plus") }.help("New Tab (⌘T)")
+      HStack(spacing: 3) {
+        Button { state.showPreview.toggle() } label: { Image(systemName: "sidebar.right") }
+          .help("Preview Pane (⇧⌘P); Space opens Quick Look")
+        if !compact {
+          Button { state.newTab(at: state.location) } label: { Image(systemName: "plus") }.help("New Tab (⌘T)")
+        }
+        Button { state.onWindowMenu?() } label: { Image(systemName: "macwindow") }
+          .help("Window: float or tile, level, size, and how new windows open (yabai)")
       }
-      Button { state.onWindowMenu?() } label: { Image(systemName: "macwindow") }
-        .help("Window: float or tile, level, size, and how new windows open (yabai)")
     }
     .buttonStyle(.borderless)
-    .padding(.leading, 78)
-    .padding(.trailing, 12)
-    .frame(height: 38)
+    .padding(.leading, 74)
+    .padding(.trailing, 10)
+    .frame(height: 34)
   }
 
   private var scopeBar: some View {
@@ -1236,8 +1303,8 @@ struct BrowserView: View {
       if let note = state.searchNote { Text(note).foregroundStyle(.secondary) }
     }
     .font(.callout)
-    .padding(.horizontal, 12)
-    .frame(height: 28)
+    .padding(.horizontal, 10)
+    .frame(height: 26)
   }
 
   private var tabStrip: some View {
@@ -1249,8 +1316,8 @@ struct BrowserView: View {
           Button { state.closeTab(tab.id) } label: { Image(systemName: "xmark").font(.caption2) }
             .buttonStyle(.borderless).opacity(selected ? 1 : 0.5)
         }
-        .padding(.horizontal, 10)
-        .frame(maxWidth: .infinity, minHeight: 24)
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, minHeight: 22)
         .background(selected ? Color.primary.opacity(0.1) : Color.primary.opacity(0.03))
         .contentShape(Rectangle())
         .onTapGesture { state.select(tab: tab.id) }
@@ -1272,36 +1339,43 @@ struct BrowserView: View {
 
   private var sidebar: some View {
     List {
-      Section("Favorites", isExpanded: expanded("Favorites")) {
+      Section(isExpanded: expanded("Favorites")) {
         ForEach(places.favorites, id: \.url) { place in placeRow(place) }
+      } header: {
+        Label("Favorites", systemImage: "star.fill")
       }
       // Finder's favorites already list most of what the dock pins.
       let favorites = Set(places.favorites.map(\.url.path))
       let dock = state.places().filter { !favorites.contains($0.url.standardizedFileURL.path) }
       if !dock.isEmpty {
-        Section("Dock", isExpanded: expanded("Dock")) {
+        Section(isExpanded: expanded("Dock")) {
           ForEach(dock, id: \.url) { place in
-            placeRow(Place(name: place.name, url: place.url, symbol: FinderFavorites.place(place.url).symbol))
+            placeRow(Place(name: place.name, url: place.url, symbol: sidebarPrefs.symbol(for: place.url)))
           }
+        } header: {
+          Label("Dock", systemImage: "dock.rectangle")
         }
       }
       if !volumes.volumes.isEmpty {
-        Section("Locations", isExpanded: expanded("Locations")) {
+        Section(isExpanded: expanded("Locations")) {
           ForEach(volumes.volumes) { volume in volumeRow(volume) }
+        } header: {
+          Label("Locations", systemImage: "internaldrive")
         }
       }
       // Last, so entering or leaving a repo never moves the places above.
       if let git = state.git {
-        Section("Repository", isExpanded: expanded("Repository")) {
+        Section(isExpanded: expanded("Repository")) {
           repoRow(git)
           if state.worktrees.count > 1 {
             ForEach(state.worktrees, id: \.path) { worktree in
               // Agent branches share prefixes (`claude/`, `codex/`); the
               // rest is what tells them apart in a narrow sidebar.
               let name = worktree.branch.map { ($0 as NSString).lastPathComponent } ?? worktree.path.lastPathComponent
-              Label(name, systemImage: "arrow.triangle.branch")
+              let isCurrent = worktree.path.path == git.root.path
+              Label(name, systemImage: isCurrent ? "arrow.triangle.branch" : "arrow.triangle.turn.up.right.diamond")
                 .lineLimit(1)
-                .fontWeight(worktree.path.path == git.root.path ? .semibold : .regular)
+                .fontWeight(isCurrent ? .semibold : .regular)
                 .help("\(worktree.branch ?? "Detached HEAD") at "
                       + "\((worktree.path.path as NSString).abbreviatingWithTildeInPath); "
                       + "opens the same folder there")
@@ -1310,11 +1384,15 @@ struct BrowserView: View {
                 .contextMenu { RepoMenu(root: worktree.path, branch: worktree.branch) }
             }
           }
+        } header: {
+          Label("Repository", systemImage: "shippingbox")
         }
       }
     }
     .listStyle(.sidebar)
-    .environment(\.sidebarRowSize, .small)
+    .font(.system(size: sidebarPrefs.fontSize))
+    .environment(\.sidebarRowSize, sidebarPrefs.fontSize < 12 ? .small : (sidebarPrefs.fontSize > 14 ? .large : .medium))
+    .contextMenu { fontSizeMenu }
   }
 
   /// Behind the sidebar row for the shown folder.
@@ -1339,7 +1417,11 @@ struct BrowserView: View {
     .contentShape(Rectangle())
     .listRowBackground(currentMark(git.root))
     .onTapGesture { state.go(to: git.root) }
-    .contextMenu { RepoMenu(root: git.root, branch: git.branch) }
+    .contextMenu {
+      RepoMenu(root: git.root, branch: git.branch)
+      Divider()
+      fontSizeMenu
+    }
   }
 
   private func volumeRow(_ volume: Volume) -> some View {
@@ -1383,13 +1465,16 @@ struct BrowserView: View {
         Divider()
         Button(volume.isLocal ? "Eject" : "Disconnect") { state.eject(volume) }
       }
+      Divider()
+      fontSizeMenu
     }
   }
 
   static func bytes(_ count: Int64) -> String { ByteCountFormatter.string(fromByteCount: count, countStyle: .file) }
 
   private func placeRow(_ place: Place) -> some View {
-    Label(place.name, systemImage: place.symbol)
+    let symbol = sidebarPrefs.symbol(for: place.url)
+    return Label(place.name, systemImage: symbol)
       .lineLimit(1)
       .fontWeight(state.location.path == place.url.path ? .semibold : .regular)
       .help((place.url.path as NSString).abbreviatingWithTildeInPath)
@@ -1400,7 +1485,57 @@ struct BrowserView: View {
         Button("Open in New Tab") { state.newTab(at: place.url) }
         Button("Get Info") { state.inspecting = [place.url] }
         Button("Copy Path") { copyText(place.url.path) }
+        Divider()
+        iconCustomizationMenu(for: place.url, current: symbol)
+        fontSizeMenu
       }
+  }
+
+  @ViewBuilder
+  private func iconCustomizationMenu(for url: URL, current: String) -> some View {
+    Menu {
+      ForEach(SidebarPreferences.presetIcons, id: \.category) { section in
+        Menu(section.category) {
+          ForEach(section.icons, id: \.self) { icon in
+            Button {
+              sidebarPrefs.setIcon(icon, for: url)
+            } label: {
+              Label(icon, systemImage: icon)
+            }
+          }
+        }
+      }
+      Divider()
+      Button("Custom Symbol Name…") {
+        SidebarPreferences.promptForCustomIcon(for: url, current: current) { chosen in
+          if let chosen { sidebarPrefs.setIcon(chosen, for: url) }
+        }
+      }
+      let path = url.standardizedFileURL.path
+      let tilde = (path as NSString).abbreviatingWithTildeInPath
+      if sidebarPrefs.customIcons[path] != nil || sidebarPrefs.customIcons[tilde] != nil || sidebarPrefs.customIcons[url.lastPathComponent] != nil {
+        Divider()
+        Button("Reset Icon to Default") {
+          sidebarPrefs.setIcon(nil, for: url)
+        }
+      }
+    } label: {
+      Label("Change Icon", systemImage: "paintbrush")
+    }
+  }
+
+  private var fontSizeMenu: some View {
+    Menu {
+      Button("Small (11 pt)") { sidebarPrefs.fontSize = 11 }
+      Button("Medium (13 pt)") { sidebarPrefs.fontSize = 13 }
+      Button("Large (15 pt)") { sidebarPrefs.fontSize = 15 }
+      Divider()
+      Button("Increase Text Size") { sidebarPrefs.stepFontSize(by: 1) }
+      Button("Decrease Text Size") { sidebarPrefs.stepFontSize(by: -1) }
+      Button("Reset Text Size (12 pt)") { sidebarPrefs.fontSize = 12 }
+    } label: {
+      Label("Sidebar Text Size (\(Int(sidebarPrefs.fontSize)) pt)", systemImage: "textformat.size")
+    }
   }
 
   @ViewBuilder
@@ -1456,8 +1591,8 @@ struct BrowserView: View {
     .font(.caption)
     .foregroundStyle(.secondary)
     .lineLimit(1)
-    .padding(.horizontal, 8)
-    .frame(height: 24)
+    .padding(.horizontal, 6)
+    .frame(height: 22)
   }
 
   private func statusDetails(slider: Bool, available: Bool) -> some View {
@@ -1477,16 +1612,30 @@ struct BrowserView: View {
           .help("Measuring \(state.sizesPending) folder\(state.sizesPending == 1 ? "" : "s")")
       }
       if slider && !state.boardShown && state.layout == .icons {
-        HStack(spacing: 4) {
-          Image(systemName: "square.grid.3x3").imageScale(.small)
+        HStack(spacing: 3) {
+          Button { state.stepIconSize(-1) } label: {
+            Image(systemName: "minus")
+              .font(.system(size: 9, weight: .bold))
+          }
+          .buttonStyle(.borderless)
+          .disabled(state.iconSize <= FolderView.iconSizes.first ?? 32)
+          .help("Smaller Icons (⌘-)")
+
           Slider(value: Binding(get: { Double(FolderView.iconStep(of: state.iconSize)) },
                                 set: { state.iconSize = FolderView.iconSizes[Int($0.rounded())] }),
                  in: 0...Double(FolderView.iconSizes.count - 1), step: 1)
             .controlSize(.mini)
-          Image(systemName: "square.grid.2x2").imageScale(.medium)
+
+          Button { state.stepIconSize(1) } label: {
+            Image(systemName: "plus")
+              .font(.system(size: 9, weight: .bold))
+          }
+          .buttonStyle(.borderless)
+          .disabled(state.iconSize >= FolderView.iconSizes.last ?? 128)
+          .help("Larger Icons (⌘+ or ⌘=)")
         }
-        .frame(width: 110)
-        .help("Icon size for this folder (⌘- and ⌘=, or pinch)")
+        .frame(width: 125)
+        .help("Icon size: \(Int(state.iconSize)) pt (⌘- and ⌘+, or pinch)")
       }
       if !state.boardShown {
         Button { state.measuringSizes.toggle() } label: {

@@ -60,7 +60,7 @@ enum FinderFavorites {
     return Place(name: name, url: url, symbol: symbol(for: url, home: home))
   }
 
-  static func symbol(for url: URL, home: URL) -> String {
+  static func symbol(for url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL) -> String {
     let path = url.path
     if path == home.path { return "house" }
     if path.contains("/Library/Mobile Documents/") { return "icloud" }
@@ -74,6 +74,9 @@ enum FinderFavorites {
     case "Music": return "music.note"
     case "Movies": return "film"
     case "Library": return "building.columns"
+    case "src", "code", "dev", "Developer": return "curlybraces"
+    case "Projects", "work", "folio": return "briefcase"
+    case "Games", "Zelda": return "gamecontroller"
     default: return "folder"
     }
   }

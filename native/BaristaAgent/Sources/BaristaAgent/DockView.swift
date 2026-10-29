@@ -268,7 +268,8 @@ private struct DockMenu: View {
   }
 
   @ViewBuilder private var dockItems: some View {
-    if !store.hasControls { Button("Add Controls to Dock", action: store.addControls) }
+    if !store.has(.shelf) { Button("Add Shelf to Dock") { store.addToSystem(.shelf) } }
+    if !store.has(.controls) { Button("Add Controls to Dock") { store.addToSystem(.controls) } }
     Button("Dock Settings…") { store.editConfig() }
     Button("Use macOS Dock", action: actions.useNativeDock)
   }

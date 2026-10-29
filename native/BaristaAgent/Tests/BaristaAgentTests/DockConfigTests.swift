@@ -56,6 +56,21 @@ final class DockConfigTests: XCTestCase {
     XCTAssertEqual(finder.settings.filesBrowser, "finder")
   }
 
+  func testShelfAndControlsMoveToTheSystemListOnce() throws {
+    let json = #"{"pinned": [{"kind": "controls"}], "others": [{"kind": "folder", "path": "~/src"}, {"kind": "shelf"}]}"#
+    var config = try DockConfigFile.decode(Data(json.utf8))
+    XCTAssertEqual(config.system.map(\.kind), [.controls, .shelf])
+    XCTAssertEqual(config.pinned, [])
+    XCTAssertEqual(config.others.map(\.kind), [.folder])
+
+    // Once the config names a system list, it is kept as written.
+    config.others.append(DockItem(kind: .shelf))
+    config.system.removeAll { $0.kind == .shelf }
+    let again = try DockConfigFile.decode(DockConfigFile.encode(config))
+    XCTAssertEqual(again.others.map(\.kind), [.folder, .shelf])
+    XCTAssertEqual(again.system.map(\.kind), [.controls])
+  }
+
   func testRoundTripKeepsSnakeCaseKeys() throws {
     var config = DockConfig()
     config.pinned = [DockItem(kind: .app, path: "/Applications/Safari.app", bundleID: "com.apple.Safari")]
@@ -325,7 +340,8 @@ final class DockConfigTests: XCTestCase {
     XCTAssertEqual(DockStore.menuActions(menu).map(\.title), ["Verify", "Maku", "D6"],
                    "submenus flatten so the tile's ring covers every entry")
     XCTAssertEqual(menu.first?.notify, true)
-    XCTAssertEqual(config.others.map(\.key), ["folder:\(NSHomeDirectory())/src", "shelf"])
+    XCTAssertEqual(config.others.map(\.key), ["folder:\(NSHomeDirectory())/src"])
+    XCTAssertEqual(config.system.map(\.key), ["shelf"])
     XCTAssertEqual(config.others.first?.sort, .name)
     let again = try DockConfigFile.decode(DockConfigFile.encode(config))
     XCTAssertEqual(again, config)

@@ -4,7 +4,7 @@ import SwiftUI
 import notify
 
 struct DockTile: Identifiable, Equatable {
-  enum Section { case pinned, running, others, minimized, trash }
+  enum Section { case pinned, running, others, minimized, system, trash }
 
   let id: String
   let item: DockItem
@@ -64,6 +64,7 @@ struct DockTile: Identifiable, Equatable {
     switch section {
     case .pinned: return .pinned
     case .others: return .others
+    case .system: return .system
     case .running, .minimized, .trash: return nil
     }
   }
@@ -89,6 +90,7 @@ final class DockStore: ObservableObject {
   @Published private(set) var pinned: [DockTile] = []
   @Published private(set) var running: [DockTile] = []
   @Published private(set) var others: [DockTile] = []
+  @Published private(set) var system: [DockTile] = []
   /// Minimized windows of running apps, oldest first.
   @Published private(set) var minimized: [DockTile] = []
   @Published private(set) var trash: DockTile?
@@ -184,7 +186,7 @@ final class DockStore: ObservableObject {
 
   /// Every section left to right; the Trash closes the dock.
   var sections: [[DockTile]] {
-    [pinned, running, others, minimized, trash.map { [$0] } ?? []]
+    [pinned, running, others, minimized, system + (trash.map { [$0] } ?? [])]
   }
 
   /// Every drawable tile by ID, including the members of open groups. The
@@ -426,6 +428,7 @@ final class DockStore: ObservableObject {
     }
     let pinned = tiles(config.pinned, section: .pinned)
     let others = tiles(config.others, section: .others)
+    let system = tiles(config.system, section: .system)
     let running = !settings.showRunning ? [] : launchOrder.compactMap { key -> DockTile? in
       guard let app = unclaimed[key], let url = app.bundleURL else { return nil }
       let item = DockItem(kind: .app, path: DockConfigFile.tilde(url.path), bundleID: app.bundleIdentifier)
@@ -437,18 +440,20 @@ final class DockStore: ObservableObject {
     let minimized = !settings.showMinimized ? [] : minimizedTiles(apps: apps, me: me)
 
     let space = spaces.first(where: \.hasFocus)
-    let expanded = Set((pinned + others).filter { group in
+    let expanded = Set((pinned + others + system).filter { group in
       guard group.item.kind == .group, group.item.expand != false, !group.visibleChildren.isEmpty else { return false }
       if settings.expandActiveGroup, group.isActive { return true }
       return space?.matches(group.item.spaces ?? []) ?? false
     }.map(\.id))
 
     let changed = pinned != self.pinned || running != self.running || others != self.others
-      || minimized != self.minimized || trash != self.trash || expanded != self.expanded
+      || minimized != self.minimized || system != self.system || trash != self.trash
+      || expanded != self.expanded
     if pinned != self.pinned { self.pinned = pinned }
     if running != self.running { self.running = running }
     if others != self.others { self.others = others }
     if minimized != self.minimized { self.minimized = minimized }
+    if system != self.system { self.system = system }
     if trash != self.trash { self.trash = trash }
     if expanded != self.expanded { self.expanded = expanded }
     if changed { indexTiles() }
@@ -570,7 +575,7 @@ final class DockStore: ObservableObject {
 
   /// Groups in the dock and their subgroups, for "Add to Group" menus.
   var groups: [DockTile] {
-    (pinned + others).flatMap { [$0] + $0.descendants }.filter { $0.item.kind == .group }
+    (pinned + others + system).flatMap { [$0] + $0.descendants }.filter { $0.item.kind == .group }
   }
 
   func group(id: String) -> DockTile? { groups.first { $0.id == id } }
@@ -711,10 +716,13 @@ final class DockStore: ObservableObject {
     }
   }
 
-  var hasControls: Bool { (pinned + others).contains { $0.item.kind == .controls } }
+  /// Whether the dock holds a shelf or controls tile; a removed one can be added back.
+  func has(_ kind: DockItem.Kind) -> Bool {
+    (pinned + others + system).contains { $0.item.kind == kind }
+  }
 
-  func addControls() {
-    edit { $0.insert([DockItem(kind: .controls)], at: nil, in: .others) }
+  func addToSystem(_ kind: DockItem.Kind) {
+    edit { $0.insert([DockItem(kind: kind)], at: kind == .shelf ? 0 : nil, in: .system) }
   }
 
   func keepInDock(_ tile: DockTile) {

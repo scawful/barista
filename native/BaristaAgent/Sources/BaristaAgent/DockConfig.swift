@@ -205,22 +205,36 @@ extension DockSettings: Codable {
   }
 }
 
-/// `pinned` sits left of the running apps, `others` right of them before the
-/// Trash, matching the native Dock's apps and stacks sections.
+/// `pinned` sits left of the running apps, `others` right of them, matching
+/// the native Dock's apps and stacks sections. `system` holds the shelf and
+/// the controls, beside the Trash.
 struct DockConfig: Equatable {
-  enum List { case pinned, others }
+  enum List { case pinned, others, system }
 
   var settings = DockSettings()
   var pinned: [DockItem] = []
   var others: [DockItem] = []
+  var system: [DockItem] = []
 
   subscript(_ list: List) -> [DockItem] {
-    get { list == .pinned ? pinned : others }
-    set { if list == .pinned { pinned = newValue } else { others = newValue } }
+    get {
+      switch list {
+      case .pinned: return pinned
+      case .others: return others
+      case .system: return system
+      }
+    }
+    set {
+      switch list {
+      case .pinned: pinned = newValue
+      case .others: others = newValue
+      case .system: system = newValue
+      }
+    }
   }
 
   /// Every group, subgroups included; titles are unique across all of them.
-  var groups: [DockItem] { Self.groups(in: pinned + others) }
+  var groups: [DockItem] { Self.groups(in: pinned + others + system) }
 
   private static func groups(in items: [DockItem]) -> [DockItem] {
     items.flatMap { $0.kind == .group ? [$0] + groups(in: $0.items ?? []) : [] }
@@ -228,7 +242,7 @@ struct DockConfig: Equatable {
 
   /// Skips items already in the dock, including inside groups.
   mutating func insert(_ items: [DockItem], at index: Int?, in list: List) {
-    var seen = Set((pinned + others).flatMap(\.allKeys))
+    var seen = Set((pinned + others + system).flatMap(\.allKeys))
     let fresh = items.filter { seen.insert($0.key).inserted }
     guard !fresh.isEmpty else { return }
     let position = min(max(index ?? self[list].count, 0), self[list].count)
@@ -253,6 +267,7 @@ struct DockConfig: Equatable {
     }
     pinned = strip(pinned)
     others = strip(others)
+    system = strip(system)
   }
 
   /// Wraps the item at `key` in a new group in its place (a subgroup when
@@ -329,6 +344,7 @@ struct DockConfig: Equatable {
     }
     pinned = unique(pinned)
     others = unique(others)
+    system = unique(system)
   }
 
   private mutating func updateGroup(_ groupKey: String, _ change: (inout DockItem) -> Void) {
@@ -355,13 +371,13 @@ struct DockConfig: Equatable {
       }
       return false
     }
-    return edit(&pinned) || edit(&others)
+    return edit(&pinned) || edit(&others) || edit(&system)
   }
 }
 
 extension DockConfig: Codable {
   enum CodingKeys: String, CodingKey {
-    case version, settings, pinned, others
+    case version, settings, pinned, others, system
   }
 
   init(from decoder: Decoder) throws {
@@ -369,6 +385,15 @@ extension DockConfig: Codable {
     settings = try container.decodeIfPresent(DockSettings.self, forKey: .settings) ?? DockSettings()
     pinned = try container.decodeIfPresent([DockItem].self, forKey: .pinned) ?? []
     others = try container.decodeIfPresent([DockItem].self, forKey: .others) ?? []
+    if let system = try container.decodeIfPresent([DockItem].self, forKey: .system) {
+      self.system = system
+    } else {
+      // Older configs kept the shelf and the controls with the stacks.
+      let isSystem = { (item: DockItem) in item.kind == .shelf || item.kind == .controls }
+      system = (pinned + others).filter(isSystem)
+      pinned.removeAll(where: isSystem)
+      others.removeAll(where: isSystem)
+    }
   }
 
   func encode(to encoder: Encoder) throws {
@@ -377,6 +402,7 @@ extension DockConfig: Codable {
     try container.encode(settings, forKey: .settings)
     try container.encode(pinned, forKey: .pinned)
     try container.encode(others, forKey: .others)
+    try container.encode(system, forKey: .system)
   }
 }
 

@@ -391,6 +391,7 @@ final class DockController {
                                  running: store.running.map(\.id),
                                  others: store.others.map(\.id),
                                  minimized: store.minimized.map(\.id),
+                                 system: store.system.map(\.id),
                                  trash: store.trash.map { [$0.id] } ?? [],
                                  expanded: expanded,
                                  attention: attention,

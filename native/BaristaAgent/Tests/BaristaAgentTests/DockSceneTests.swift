@@ -143,6 +143,20 @@ final class DockSceneTests: XCTestCase {
                    ["a", "b", "c", "d", "divider.1", "f", "divider.2", "w1", "w2", "divider.3", "trash"])
   }
 
+  func testSystemTilesShareTheTrashSectionAndReorderAmongThemselves() {
+    var docked = input
+    docked.system = ["shelf", "controls"]
+    XCTAssertEqual(docked.sections, [["a", "b", "c", "d"], [], [], [], ["shelf", "controls", "trash"]])
+
+    let scene = DockScene()
+    scene.currentTime = { [unowned self] in now }
+    scene.update(docked)
+    scene.show()
+    run(scene, seconds: 1.5)
+    XCTAssertEqual(scene.frame.items.map(\.id), ["a", "b", "c", "d", "divider.1", "shelf", "controls", "trash"])
+    XCTAssertEqual(scene.insertionIndex(in: .system, x: .greatestFiniteMagnitude), 2)
+  }
+
   func testAnOpenGroupGetsItsOwnSectionAndKeepsItsPlaceInDrags() {
     var open = input
     open.pinned = ["a", "g", "b"]

@@ -23,11 +23,12 @@ import QuartzCore
 final class DockScene: ObservableObject {
   struct Input: Equatable {
     /// Top-level tile ids, left to right: pins, running apps, others,
-    /// minimized windows, and the Trash.
+    /// minimized windows, and the system tiles that share the Trash's section.
     var pinned: [String] = []
     var running: [String] = []
     var others: [String] = []
     var minimized: [String] = []
+    var system: [String] = []
     var trash: [String] = []
     /// Groups drawn open, as their members between dividers, by group id.
     var expanded: [String: [String]] = [:]
@@ -51,7 +52,7 @@ final class DockScene: ObservableObject {
         }
         return result
       }
-      return split(pinned) + [running] + split(others) + [minimized, trash]
+      return split(pinned) + [running] + split(others) + [minimized, system + trash]
     }
   }
 
@@ -263,6 +264,7 @@ final class DockScene: ObservableObject {
       var next = input
       next.pinned.removeAll { $0 == drag.id }
       next.others.removeAll { $0 == drag.id }
+      next.system.removeAll { $0 == drag.id }
       next.expanded = next.expanded.mapValues { $0.filter { $0 != drag.id } }
       apply(next)
       onCommit(.remove(id: drag.id))
@@ -393,7 +395,9 @@ final class DockScene: ObservableObject {
 
   private func ids(in scope: Scope) -> [String] {
     switch scope {
-    case .list(let list): return list == .pinned ? input.pinned : input.others
+    case .list(.pinned): return input.pinned
+    case .list(.others): return input.others
+    case .list(.system): return input.system
     case .group(let id): return input.expanded[id] ?? []
     }
   }
@@ -421,6 +425,7 @@ final class DockScene: ObservableObject {
     switch drag.scope {
     case .list(.pinned): next.pinned = ids
     case .list(.others): next.others = ids
+    case .list(.system): next.system = ids
     case .group(let id): next.expanded[id] = ids
     }
     return next

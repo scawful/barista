@@ -47,7 +47,7 @@ final class ControlsTests: XCTestCase {
     """#
     var config = try DockConfigFile.decode(Data(json.utf8))
     XCTAssertEqual(config.settings.focusShortcut, "Toggle Work Focus")
-    XCTAssertEqual(config.others.map(\.key), ["shelf", "controls"])
+    XCTAssertEqual(config.system.map(\.key), ["shelf", "controls"])
     config.insert([DockItem(kind: .controls)], at: nil, in: .pinned)
     XCTAssertEqual(config.pinned.count, 0, "one controls tile per dock")
     XCTAssertEqual(try DockConfigFile.decode(DockConfigFile.encode(config)), config)

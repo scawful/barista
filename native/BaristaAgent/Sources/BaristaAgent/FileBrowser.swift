@@ -1527,7 +1527,7 @@ private struct FileTable: View {
     Table(of: FileEntry.self, selection: $state.selection, sortOrder: order, columnCustomization: $columns) {
       TableColumn("Name", value: \.name) { entry in
         HStack(spacing: 6) {
-          FileIcon(url: entry.url, points: 16)
+          FileIcon(url: entry.url, points: 16, modified: entry.modified)
           if state.isRenaming(entry.url) {
             // The on-disk name: a localized name can hide the extension.
             RenameField(state: state, entry: entry)

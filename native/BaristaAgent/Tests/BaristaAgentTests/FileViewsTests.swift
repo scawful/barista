@@ -13,6 +13,38 @@ final class FileViewsTests: XCTestCase {
     XCTAssertEqual(FileOperations.stem("é.txt", isFolder: false), NSRange(location: 0, length: 1))
   }
 
+  func testImagesAndVideosGetThumbnailsAndOtherFilesKeepTheirIcon() async throws {
+    for name in ["shot.png", "scan.HEIC", "raw.dng", "clip.mov", "clip.mp4", "clip.mkv", "clip.webm"] {
+      XCTAssertTrue(FileIcons.hasThumbnail(URL(fileURLWithPath: "/tmp/\(name)")), name)
+    }
+    for name in ["song.mp3", "notes.md", "doc.pdf", "Folder"] {
+      XCTAssertFalse(FileIcons.hasThumbnail(URL(fileURLWithPath: "/tmp/\(name)")), name)
+    }
+
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let wide = folder.appendingPathComponent("wide.png")
+    let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 200, pixelsHigh: 100,
+                                                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+    try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: wide)
+    let text = folder.appendingPathComponent("notes.txt")
+    try Data("hi".utf8).write(to: text)
+
+    let modified = Date(timeIntervalSince1970: 1_000)
+    let thumbnail = await FileIcons.shared.icon(for: wide, points: 64, modified: modified)
+    let size = try XCTUnwrap(thumbnail?.size)
+    XCTAssertEqual(size.width / size.height, 2, accuracy: 0.1, "the picture's own shape, not a square icon")
+    XCTAssertNotNil(FileIcons.shared.cached(wide, points: 64, modified: modified))
+    XCTAssertNil(FileIcons.shared.cached(wide, points: 64, modified: modified.addingTimeInterval(1)),
+                 "an edited file draws a new thumbnail")
+
+    let icon = await FileIcons.shared.icon(for: text, points: 64)
+    let iconSize = try XCTUnwrap(icon?.size)
+    XCTAssertEqual(iconSize.width, iconSize.height)
+  }
+
   func testColumnsStartAtHomeOrTheRoot() {
     let home = URL(fileURLWithPath: "/Users/me")
     XCTAssertEqual(BrowserLayout.columnFolders(for: URL(fileURLWithPath: "/Users/me/src/oos/Core"), home: home).map(\.path),

@@ -59,7 +59,7 @@ private struct IconCell: View {
   var body: some View {
     let selected = state.selection.contains(entry.url)
     VStack(spacing: 4) {
-      FileIcon(url: entry.url, points: size.height - 44)
+      FileIcon(url: entry.url, points: size.height - 44, modified: entry.modified)
         .overlay(alignment: .bottomTrailing) {
           if let mark = state.git?.mark(for: entry.url, isFolder: entry.isFolder) {
             Text(mark.letter)
@@ -228,7 +228,7 @@ private struct ColumnRow: View {
 
   var body: some View {
     HStack(spacing: 6) {
-      FileIcon(url: entry.url, points: 16)
+      FileIcon(url: entry.url, points: 16, modified: entry.modified)
       if let rename {
         rename
       } else {

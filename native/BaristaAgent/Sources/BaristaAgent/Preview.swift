@@ -331,7 +331,7 @@ struct BrowserPreview: View {
 
   private func details(_ entry: FileEntry) -> some View {
     VStack(spacing: 8) {
-      Image(nsImage: NSWorkspace.shared.icon(forFile: entry.url.path)).resizable().frame(width: 96, height: 96)
+      FileIcon(url: entry.url, points: FileIcons.hasThumbnail(entry.url) ? 240 : 96, modified: entry.modified)
       Text(entry.name).font(.headline).multilineTextAlignment(.center)
       Text(entry.kind).foregroundStyle(.secondary)
       if let size = entry.size {

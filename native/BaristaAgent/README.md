@@ -48,7 +48,7 @@ The agent runs as `dev.barista.agent` and logs to
 | `Viewer.swift` | The viewer windows for Markdown and images, and `FileWatcher`, which reloads a file when it is saved. |
 | `FileBrowserModel.swift` | Barista Files' pure model: tab history, in-window tabs, listing, sorting, filtering, and `FileOperations` (Finder's names for new folders, copies, and kept-both clashes; rename; repo root). |
 | `FileBrowser.swift` | The Barista Files window: path bar, tabs, sidebar, table, preview, in-place rename, Finder's shortcuts and the Go and View menus, and `BrowserWindow`, which drives the Quick Look panel. |
-| `FileIcons.swift` | `FileIcons`: Finder icons drawn into small bitmaps off the main thread and cached by path and size (bounded by bytes); `FileIcon` shows one when it's ready. |
+| `FileIcons.swift` | `FileIcons`: Finder icons drawn into small bitmaps off the main thread, or Quick Look thumbnails for images and videos, cached by path, size, and modification date (bounded by bytes); `FileIcon` shows one when it's ready. |
 | `DSStore.swift` | A read-only reader for Finder's `.DS_Store` (the buddy-allocated B-tree of per-file records); Barista never writes one. |
 | `FolderViews.swift` | `FolderView` (layout, sort, icon size), what Finder recorded for a folder, Barista's own per-folder choices in its defaults, and the order they apply in. |
 | `OpenWith.swift` | `OpenRules` (Barista's app per extension, under a folder or everywhere, in `files.json`), `DefaultApps` (the system default and Change All), and the Open With menus. |

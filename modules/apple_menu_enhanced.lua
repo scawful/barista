@@ -109,6 +109,40 @@ local function compact_ai_apps(rendered, theme)
   return compacted
 end
 
+local afs_app_names = {
+  ["menu.tools.afs_browser"] = true,
+  ["menu.tools.cortex"] = true,
+}
+
+-- With the agents widget on, its popup takes the AFS and AI launchers:
+-- `tools` sit beside Codex/Claude/Cursor, `apps` below the sessions and
+-- `workflows` (the Agentic AI extensions) in a child popup.
+local function split_agent_entries(rendered)
+  local kept = {}
+  local moved = { tools = {}, apps = {}, workflows = {} }
+  for _, entry in ipairs(rendered or {}) do
+    local group = nil
+    if entry.workflow_group == "agentic_ai" then
+      group = "workflows"
+    elseif entry.section == "apps" and ai_app_names[entry.name] then
+      group = "tools"
+    elseif (entry.section == "apps" and afs_app_names[entry.name]) or entry.section == "afs" then
+      group = "apps"
+    end
+    if group then
+      local shortcut = entry.shortcut
+      if (not shortcut or shortcut == "") and entry.shortcut_action and shortcuts and shortcuts.get_symbol then
+        shortcut = shortcuts.get_symbol(entry.shortcut_action)
+      end
+      entry.display_label = menu_label(entry.label, shortcut)
+      table.insert(moved[group], entry)
+    else
+      table.insert(kept, entry)
+    end
+  end
+  return kept, moved
+end
+
 local workflow_groups = {
   agentic_ai = {
     id = "agentic_ai",
@@ -737,7 +771,7 @@ local function build_prepared(ctx)
     },
     {
       id = "reload_bar",
-      label = "Reload SketchyBar",
+      label = "Reload",
       icon = "󰑐",
       icon_color = tc("YELLOW"),
       section = "controls",
@@ -770,6 +804,11 @@ local function build_prepared(ctx)
     show_missing = show_missing,
     theme = theme,
   })
+  local rendered = menu_model.rendered
+  local agent_entries = { tools = {}, apps = {}, workflows = {} }
+  if type(state.widgets) == "table" and state.widgets.agents == true then
+    rendered, agent_entries = split_agent_entries(rendered)
+  end
   return {
     config_dir = config_dir,
     style = style,
@@ -781,7 +820,8 @@ local function build_prepared(ctx)
     popup_padding = popup_padding,
     hover_script_cmd = hover_script_cmd,
     menu_action = menu_action,
-    rendered = compact_workflow_extensions(compact_ai_apps(menu_model.rendered, theme), theme),
+    rendered = compact_workflow_extensions(compact_ai_apps(rendered, theme), theme),
+    agent_entries = agent_entries,
     sections = menu_model.sections,
   }
 end

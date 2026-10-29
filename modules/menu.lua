@@ -518,7 +518,7 @@ function menu.render_all_menus(ctx)
     type = "item",
     name = "menu.tools.barista.reload",
     icon = "󰑐",
-    label = "Reload SketchyBar",
+    label = "Reload",
     action = ctx.call_script(CONFIG_DIR .. "/plugins/reload_sketchybar.sh"),
     shortcut = "⌘⌥R",
   })

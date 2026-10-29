@@ -222,6 +222,64 @@ run_test("apple_menu.prepare: expands approved app launchers and keeps Oracle ou
   cleanup(root)
 end)
 
+run_test("apple_menu.prepare: agents widget takes the AFS and AI launchers", function()
+  local root = make_temp_dir("apple_menu_prepare_agents_split")
+  local browser_app = root .. "/apps/afs-browser.app"
+  local ghostty_app = root .. "/apps/Ghostty.app"
+  local chatgpt_app = root .. "/apps/ChatGPT.app"
+  local claude_app = root .. "/apps/Claude.app"
+
+  mkdir(root .. "/config")
+  mkdir(root .. "/code/lab")
+  mkdir(browser_app)
+  mkdir(ghostty_app)
+  mkdir(chatgpt_app)
+  mkdir(claude_app)
+
+  local ctx = build_ctx(root, {
+    paths = {
+      afs_browser_app = browser_app,
+      ghostty_app = ghostty_app,
+      chatgpt_app = chatgpt_app,
+      claude_app = claude_app,
+    },
+  })
+  ctx.state.widgets = { agents = true }
+
+  local prepared = apple_menu.prepare(ctx)
+  local root_ids = {}
+  for _, entry in ipairs(prepared.rendered or {}) do
+    root_ids[entry.id] = true
+  end
+  local function ids(entries)
+    local out = {}
+    for _, entry in ipairs(entries or {}) do
+      table.insert(out, entry.id)
+    end
+    return table.concat(out, "|")
+  end
+
+  assert_true(root_ids.ghostty, "Ghostty should stay in the Apple menu")
+  assert_nil(root_ids.afs_browser, "AFS Browser should leave the Apple menu")
+  assert_nil(root_ids.ai_apps, "AI Apps should leave the Apple menu")
+  assert_true(root_ids.reload_bar, "controls should stay in the Apple menu")
+  assert_equal(ids(prepared.agent_entries.tools), "chatgpt|claude", "AI apps should move to the agents tool rows")
+  assert_equal(ids(prepared.agent_entries.apps), "afs_browser", "AFS Browser should move below the agent sessions")
+  assert_true(prepared.agent_entries.apps[1].display_label:find("^AFS Browser") ~= nil,
+    "moved rows should carry a display label (with any shortcut hint)")
+
+  ctx.state.widgets = { agents = false }
+  local without = apple_menu.prepare(ctx)
+  local kept = {}
+  for _, entry in ipairs(without.rendered or {}) do
+    kept[entry.id] = true
+  end
+  assert_true(kept.afs_browser and kept.ai_apps, "without the agents widget the Apple menu keeps its launchers")
+  assert_equal(#without.agent_entries.tools, 0, "without the agents widget nothing moves")
+
+  cleanup(root)
+end)
+
 run_test("apple_menu.prepare: one available AI launcher stays direct", function()
   local root = make_temp_dir("apple_menu_prepare_single_ai")
   local chatgpt_app = root .. "/apps/ChatGPT.app"

@@ -88,7 +88,7 @@
   {
     "id": "workspace_navigator",
     "pack": "personal",
-    "label": "Workspace Navigator",
+    "label": "Navigator",
     "icon": "󰵮",
     "icon_color": "0xff89dceb",
     "script": "scripts/open_local_workflow.sh",

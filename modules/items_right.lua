@@ -213,6 +213,59 @@ local function get_layout(ctx)
         hover = tool.action ~= nil,
       }))
     end
+
+    -- AFS and AI launchers the Apple menu hands over while this widget is on
+    -- (apple_menu_enhanced split_agent_entries). Apps that already have a row
+    -- here, or LM Studio under Local, are skipped.
+    local apple_prepared = ctx.prepared_menus and ctx.prepared_menus.apple_menu
+    local moved = (apple_prepared and apple_prepared.agent_entries) or {}
+    local covered_tools = { lm_studio = true }
+    for _, tool in ipairs(agent_tools) do
+      covered_tools[tool.id] = true
+    end
+    local function launchable(entries, skip)
+      local out = {}
+      for _, entry in ipairs(entries or {}) do
+        if entry.action and entry.action ~= "" and not (skip and skip[entry.id]) then
+          table.insert(out, entry)
+        end
+      end
+      return out
+    end
+    local function launcher_props(entry, click_script)
+      return {
+        icon = { string = entry.icon or "󰐕", color = entry.icon_color },
+        label = entry.display_label or entry.label,
+        click_script = click_script,
+        ["label.font"] = font_small,
+        hover = true,
+      }
+    end
+    for _, entry in ipairs(launchable(moved.tools, covered_tools)) do
+      table.insert(layout, add_agent("agents.tool." .. entry.id,
+        launcher_props(entry, close_popup_after("agents", entry.action))))
+    end
+    local moved_apps = launchable(moved.apps)
+    local moved_workflows = launchable(moved.workflows)
+    local function add_submenu_row(name, icon, label, close_popups)
+      local row = {}
+      ui.submenu(row, "agents", name, {
+        ctx = ctx,
+        icon = { string = icon, color = tc("SUBTEXT1", "WHITE") },
+        label = label,
+        font = font_small,
+        sketchybar_bin = SKETCHYBAR_BIN,
+        popup_manager_script = ctx.popup_manager_script,
+        popup_topology_token = ctx.popup_topology_token,
+        close_popups = close_popups,
+      })
+      local props = row[1]
+      props.name = nil
+      props.hover = nil
+      props.script = hover_script_cmd
+      table.insert(layout, { type = "item", name = name, props = props, attach_hover = true })
+      table.insert(submenu_parents, name)
+    end
     table.insert(layout, add_agent("agents.sessions.sep", {
       drawing = false,
       icon = "",
@@ -237,22 +290,19 @@ local function get_layout(ctx)
       ["label.color"] = "0x40cdd6f4",
       background = { drawing = false },
     }))
-    local local_models_row = {}
-    ui.submenu(local_models_row, "agents", "lmstudio", {
-      ctx = ctx,
-      icon = { string = "󰭻", color = tc("SUBTEXT1", "WHITE") },
-      label = "Local",
-      font = font_small,
-      sketchybar_bin = SKETCHYBAR_BIN,
-      popup_manager_script = ctx.popup_manager_script,
-      popup_topology_token = ctx.popup_topology_token,
-    })
-    local local_models_props = local_models_row[1]
-    local_models_props.name = nil
-    local_models_props.hover = nil
-    local_models_props.script = hover_script_cmd
-    table.insert(layout, { type = "item", name = "lmstudio", props = local_models_props, attach_hover = true })
-    table.insert(submenu_parents, "lmstudio")
+    for _, entry in ipairs(moved_apps) do
+      table.insert(layout, add_agent("agents.app." .. entry.id,
+        launcher_props(entry, close_popup_after("agents", entry.action))))
+    end
+    if #moved_workflows > 0 then
+      add_submenu_row("agents.workflows", "󰘦", "Workflows", { "lmstudio" })
+      local add_workflow = popup_items.make_add("agents.workflows", { hover_script = hover_script_cmd })
+      for _, entry in ipairs(moved_workflows) do
+        table.insert(layout, add_workflow("agents.workflow." .. entry.id, launcher_props(entry,
+          ui.close_after_all({ "agents.workflows", "agents" }, entry.action, { sketchybar_bin = SKETCHYBAR_BIN }))))
+      end
+    end
+    add_submenu_row("lmstudio", "󰭻", "Local", #moved_workflows > 0 and { "agents.workflows" } or nil)
 
     local add_lm = popup_items.make_add("lmstudio", { hover_script = hover_script_cmd })
     table.insert(layout, add_lm("lmstudio.state", {

@@ -1225,6 +1225,24 @@ local function test_items_right_agents_widget()
     hover_color = "0x44ffffff",
     hover_animation_curve = "ease_out",
     hover_animation_duration = 0,
+    prepared_menus = {
+      apple_menu = {
+        agent_entries = {
+          tools = {
+            { id = "chatgpt", label = "ChatGPT", display_label = "ChatGPT", icon = "󰚩", action = "open chatgpt" },
+            { id = "claude", label = "Claude", action = "open claude-path" },
+            { id = "lm_studio", label = "LM Studio", action = "open lmstudio" },
+          },
+          apps = {
+            { id = "afs_browser", label = "AFS Browser", action = "open afs-browser" },
+            { id = "missing_tool", label = "Missing" },
+          },
+          workflows = {
+            { id = "claude_code", label = "Claude Code", display_label = "Claude Code   ⌘⌥C", action = "launch claude-code" },
+          },
+        },
+      },
+    },
   }
   mock_ctx.widget_factory = widgets_module.create_factory(
     { add = function() end, set = function() end },
@@ -1236,10 +1254,12 @@ local function test_items_right_agents_widget()
 
   local layout, _, metadata = items_right.get_layout(mock_ctx)
   local entries = {}
+  local order = {}
   local found_scawfulbot_default = false
   for _, entry in ipairs(layout) do
     if entry.type == "item" then
       entries[entry.name] = entry
+      table.insert(order, entry.name)
       if entry.name == "agents" or entry.name == "afs_approvals" then
         check_hover_settings(entry.name, entry.props.script)
       end
@@ -1264,7 +1284,32 @@ local function test_items_right_agents_widget()
   assert_equal(local_models.props.label, "Local  󰅂", "local models row should stay short")
   assert_true(local_models.props.click_script:find("--set lmstudio popup.drawing=toggle", 1, true) ~= nil,
     "local models should toggle its own submenu")
-  assert_equal(table.concat(metadata.submenu_parents, ","), "lmstudio", "local models submenu should be registered")
+  assert_equal(table.concat(metadata.submenu_parents, ","), "agents.workflows,lmstudio",
+    "workflow and local model submenus should be registered")
+  assert_true(local_models.props.click_script:find("--set agents.workflows popup.drawing=off", 1, true) ~= nil,
+    "local models should close the sibling workflows submenu")
+
+  -- Launchers handed over from the Apple menu.
+  local chatgpt = entries["agents.tool.chatgpt"]
+  assert_true(chatgpt ~= nil and chatgpt.props.position == "popup.agents", "ChatGPT should join the tool rows")
+  assert_true(chatgpt.props.click_script:find("open chatgpt", 1, true) ~= nil, "ChatGPT row should launch the app")
+  assert_equal(entries["agents.tool.claude"].props.click_script:find("claude-path", 1, true), nil,
+    "an app that already has a tool row should not be added twice")
+  assert_nil(entries["agents.tool.lm_studio"], "LM Studio stays under Local")
+  assert_equal(entries["agents.app.afs_browser"].props.position, "popup.agents", "AFS Browser should move into the agents popup")
+  assert_nil(entries["agents.app.missing_tool"], "entries without an action should be skipped")
+  local workflow = entries["agents.workflow.claude_code"]
+  assert_true(workflow ~= nil and workflow.props.position == "popup.agents.workflows",
+    "Agentic AI launchers should live in the Workflows submenu")
+  assert_equal(workflow.props.label, "Claude Code   ⌘⌥C", "workflow rows should keep their shortcut hint")
+  assert_true(workflow.props.click_script:find("--set agents.workflows popup.drawing=off --set agents popup.drawing=off", 1, true) ~= nil,
+    "workflow rows should close the submenu and the agents popup")
+  local index = {}
+  for i, name in ipairs(order) do index[name] = i end
+  assert_true(index["agents.local.sep"] < index["agents.app.afs_browser"]
+    and index["agents.app.afs_browser"] < index["agents.workflows"]
+    and index["agents.workflows"] < index["lmstudio"],
+    "launchers should sit between the sessions and Local")
   assert_equal(entries["lmstudio.extension.local_model"].props.position, "popup.lmstudio",
     "local model presets should live in the submenu")
   assert_true(entries["lmstudio.extension.local_model"].props.click_script:find("--set agents popup.drawing=off", 1, true) ~= nil,

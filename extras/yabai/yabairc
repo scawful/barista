@@ -54,8 +54,8 @@ yabai -m rule --add label="claude-window-layer" app="^Claude$" role="^AXWindow$"
 # --- Floating Rules (manage=off) ---
 # System / Utilities
 yabai -m rule --add app="^(System Settings|System Information|Activity Monitor|Calculator|Dictionary|Software Update|Archive Utility)$" manage=off
-yabai -m rule --add app="^(Photo Booth|QuickTime Player|VLC)$" manage=off
-yabai -m rule --add app="^Finder$" manage=off
+yabai -m rule --add app="^(Photo Booth|QuickTime Player|VLC)$" manage=off sub-layer=below
+yabai -m rule --add app="^Finder$" manage=off sub-layer=below
 yabai -m rule --add label="About This Mac" app="System Information" title="About This Mac" manage=off
 
 # Apps that behave better floating

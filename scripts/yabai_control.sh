@@ -810,6 +810,33 @@ window_toggle_property() {
   refresh_front_app_state
 }
 
+window_toggle_float() {
+  local window_id
+  require_jq
+  window_id="$(focused_window_id 2>/dev/null || true)"
+  if [[ -z "$window_id" ]]; then
+    run_window_command --toggle float
+    refresh_front_app_state
+    return
+  fi
+  local was_floating
+  was_floating="$(window_is_floating_for_id "$window_id" 2>/dev/null || echo "unknown")"
+  run_window_command --toggle float
+  if [[ "$was_floating" == "true" ]]; then
+    # Window transitioned from float to tiled: balance space and ensure sub-layer below
+    "$YABAI_BIN" -m window "$window_id" --sub-layer below 2>/dev/null || true
+    local target_space
+    target_space="$(window_space_for_id "$window_id" 2>/dev/null || true)"
+    if [[ -n "$target_space" ]]; then
+      "$YABAI_BIN" -m space "$target_space" --balance 2>/dev/null || true
+    fi
+  else
+    # Window transitioned from tiled to float: keep on below sub-layer so it doesn't float above tiled windows
+    "$YABAI_BIN" -m window "$window_id" --sub-layer below 2>/dev/null || true
+  fi
+  refresh_front_app_state
+}
+
 window_toggle_topmost() {
   local window_id
   require_jq
@@ -2809,7 +2836,7 @@ case "$command" in
     apply_space_layout "$layout"
     ;;
   window-toggle-float)
-    window_toggle_property float
+    window_toggle_float
     ;;
   window-toggle-sticky)
     window_toggle_property sticky

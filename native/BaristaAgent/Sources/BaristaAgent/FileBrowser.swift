@@ -46,6 +46,7 @@ final class BrowserController {
                                backing: .buffered, defer: false)
     window.watch(state)
     state.onQuickLook = { [weak window] in window?.toggleQuickLook() }
+    state.undoManager = window.undoManager
     window.isReleasedWhenClosed = false
     window.tabbingMode = .disallowed
     window.titlebarAppearsTransparent = true
@@ -374,6 +375,8 @@ final class BrowserState: ObservableObject {
   var onCloseWindow: (() -> Void)?
   var onWindowMenu: (() -> Void)?
   var onQuickLook: (() -> Void)?
+  /// The window's, where Move to Trash leaves its Undo.
+  weak var undoManager: UndoManager?
   private var watcher: FileWatcher?
   /// The folder whose view is applied, and the layout the window had
   /// before it, which the folder keeps unless it has its own.
@@ -808,13 +811,16 @@ final class BrowserState: ObservableObject {
     }
   }
 
+  /// ⌘Z puts the files back where they were, selected.
   func trashSelection() {
     let urls = Array(selection)
     guard !urls.isEmpty else { return }
-    NSWorkspace.shared.recycle(urls) { _, error in
-      if let error { DockStore.log("could not move files to the Trash: \(error)") }
+    FileOperations.trash(urls, undo: undoManager, target: self) { [weak self] _, restored, problem in
+      guard let self else { return }
+      if let problem { self.problem = problem }
+      if !restored.isEmpty { self.pendingSelection = Set(restored) }
       // The watcher sees the shown folder only; search results can be deeper.
-      DispatchQueue.main.async { [weak self] in self?.scheduleReload() }
+      self.scheduleReload()
     }
   }
 
@@ -1003,6 +1009,13 @@ final class BrowserState: ObservableObject {
 
   func duplicateSelection() {
     perform(selectedURLs, operation: FileOperations.duplicate)
+  }
+
+  /// Zips the selection beside it and selects the archive.
+  func compressSelection() {
+    let urls = selectedURLs
+    // One archive holds them all, so the operation runs once.
+    perform(Array(urls.prefix(1)), operation: { _ in try FileOperations.compress(urls) })
   }
 
   static let fileURLsOnly: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
@@ -1968,6 +1981,10 @@ struct EntryMenu: View {
           state.newFolderWithSelection()
         }
         .keyboardShortcut("n", modifiers: [.command, .control])
+        Button(single.map { "Compress “\($0.lastPathComponent)”" } ?? "Compress \(urls.count) Items") {
+          state.selection = urls
+          state.compressSelection()
+        }
       }
       Divider()
       ToolButtons(urls: sorted, directory: singleFolder ?? state.location)
@@ -2261,6 +2278,36 @@ extension GitMark {
     case .untracked: return "Untracked"
     case .conflicted: return "Conflicted"
     case .inside: return "Has changes inside"
+    }
+  }
+}
+
+extension FileOperations {
+  /// Moves `urls` to the Trash, then registers Undo on `undo` to put them
+  /// back where they were, and Redo to trash them again. `changed` runs on
+  /// the main thread with what each step moved, by the paths they left.
+  static func trash(_ urls: [URL], undo: UndoManager?, target: AnyObject,
+                    changed: @escaping (_ trashed: [URL], _ restored: [URL], _ problem: String?) -> Void) {
+    NSWorkspace.shared.recycle(urls) { moved, error in
+      DispatchQueue.main.async {
+        if let error { DockStore.log("could not move files to the Trash: \(error)") }
+        changed(Array(moved.keys), [], error?.localizedDescription)
+        guard let undo, !moved.isEmpty else { return }
+        // The manager keeps its actions; holding it from them would keep it.
+        undo.registerUndo(withTarget: target) { [weak undo] target in
+          var restored: [URL] = []
+          var failures: [String] = []
+          for (original, trashed) in moved {
+            do { restored.append(try restore(trashed, to: original)) } catch { failures.append(error.localizedDescription) }
+          }
+          changed([], restored, failures.isEmpty ? nil : failures.joined(separator: "\n"))
+          undo?.registerUndo(withTarget: target) { [weak undo] target in
+            trash(restored, undo: undo, target: target, changed: changed)
+          }
+          undo?.setActionName("Move to Trash")
+        }
+        undo.setActionName("Move to Trash")
+      }
     }
   }
 }

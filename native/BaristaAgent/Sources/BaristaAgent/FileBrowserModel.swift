@@ -314,12 +314,16 @@ enum FileOperationError: LocalizedError, Equatable {
   case invalidName(String)
   case nameTaken(String)
   case intoItself(String)
+  case mixedFolders
+  case compressFailed(String)
 
   var errorDescription: String? {
     switch self {
     case .invalidName(let name): return "“\(name)” can't be used as a name."
     case .nameTaken(let name): return "The name “\(name)” is already taken."
     case .intoItself(let name): return "“\(name)” can't be put inside itself."
+    case .mixedFolders: return "Items from different folders can't go in one archive."
+    case .compressFailed(let detail): return "The archive couldn't be made: \(detail)"
     }
   }
 }
@@ -337,9 +341,10 @@ enum FileOperations {
   }
 
   /// A folder's name has no extension to keep apart; a package's does.
-  private static func split(_ url: URL) -> (stem: String, ext: String) {
+  /// `name` stands in for `url`'s own, as for a file the Trash renamed.
+  private static func split(_ url: URL, name: String? = nil) -> (stem: String, ext: String) {
     let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
-    let name = url.lastPathComponent
+    let name = name ?? url.lastPathComponent
     if values?.isDirectory == true && values?.isPackage != true { return (name, "") }
     return ((name as NSString).deletingPathExtension, (name as NSString).pathExtension)
   }
@@ -376,6 +381,51 @@ enum FileOperations {
       try FileManager.default.copyItem(at: url, to: destination)
     }
     return destination
+  }
+
+  /// Puts a file back from the Trash at `original`, or beside it under the
+  /// next free name when something has taken the name since.
+  static func restore(_ trashed: URL, to original: URL) throws -> URL {
+    let folder = original.deletingLastPathComponent()
+    let (stem, ext) = split(trashed, name: original.lastPathComponent)
+    let destination = folder.appendingPathComponent(available(stem, ext: ext, exists: free(in: folder)))
+    try FileManager.default.moveItem(at: trashed, to: destination)
+    return destination
+  }
+
+  /// Finder's Compress: one item zips to `name.zip` beside it, several from
+  /// one folder to `Archive.zip`, each `… 2.zip` when the name is taken.
+  static func compress(_ urls: [URL]) throws -> URL {
+    guard let first = urls.first else { throw FileOperationError.compressFailed("nothing to compress") }
+    let folder = first.deletingLastPathComponent().standardizedFileURL
+    guard urls.allSatisfy({ $0.deletingLastPathComponent().standardizedFileURL == folder }) else {
+      throw FileOperationError.mixedFolders
+    }
+    let stem = urls.count == 1 ? first.lastPathComponent : "Archive"
+    let archive = folder.appendingPathComponent(available(stem, ext: "zip", exists: free(in: folder)))
+    let zip = Process()
+    if urls.count == 1 {
+      // ditto keeps resource forks and extended attributes, as Finder does.
+      zip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+      zip.arguments = ["-c", "-k", "--sequesterRsrc", "--keepParent", first.path, archive.path]
+    } else {
+      // `./` keeps a name that starts with `-` from reading as an option.
+      zip.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+      zip.currentDirectoryURL = folder
+      zip.arguments = ["-q", "-r", "-y", archive.path] + urls.map { "./" + $0.lastPathComponent }
+    }
+    let errors = Pipe()
+    zip.standardError = errors
+    zip.standardOutput = FileHandle.nullDevice
+    try zip.run()
+    let detail = errors.fileHandleForReading.readDataToEndOfFile()
+    zip.waitUntilExit()
+    guard zip.terminationStatus == 0 else {
+      try? FileManager.default.removeItem(at: archive)
+      let message = String(decoding: detail, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+      throw FileOperationError.compressFailed(message.isEmpty ? "exit \(zip.terminationStatus)" : message)
+    }
+    return archive
   }
 
   /// What Finder selects when a rename begins: a file's name up to its

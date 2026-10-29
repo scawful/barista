@@ -282,13 +282,15 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   so adding a favorite in Finder adds it here) and the dock's other folders,
   a sortable list, a preview pane (⇧⌘P), Quick Look (Space or ⌘Y; arrows
   follow the list), drag in and out, and Finder's shortcuts (⌘T, ⌘W, ⌘N, ⌘[
-  and ⌘], ⌘↑, ⌘↓, ⇧⌘., ⌘F, ⌃Tab, ⌘1–9, ⌘⌫, ⇧⌘⌫ Empty Trash, ⇧⌘N New Folder,
+  and ⌘], ⌘↑, ⌘↓, ⇧⌘., ⌘F, ⌃Tab, ⌘1–9, ⌘⌫ and ⌘Z to put it back, ⇧⌘⌫
+  Empty Trash, ⇧⌘N New Folder,
   ⌃⌘N New Folder with Selection, ⌘D Duplicate, ⌥⌘C Copy as Pathname, ⌘E
   Eject, ⌘C then ⌘V to copy or ⌥⌘V to move here). Finder's Go menu works
   too: ⇧⌘H Home, ⇧⌘D Desktop, ⇧⌘O Documents, ⌥⌘L Downloads, ⇧⌘A
   Applications, ⇧⌘U Utilities, ⇧⌘L Library, ⇧⌘I iCloud Drive, ⇧⌘C
   Computer (`/Volumes`). Go and View menus in the menu bar list them. Typing
-  a name selects the first row it starts.
+  a name selects the first row it starts. Right-click → Compress zips the
+  selection to `name.zip` or `Archive.zip` beside it, as Finder names them.
 - Loading: listings skip the per-file type description (Kind comes from
   the extension, once per extension), icons are drawn off the main thread
   and cached, and the last 48 folders' listings are remembered, so back,

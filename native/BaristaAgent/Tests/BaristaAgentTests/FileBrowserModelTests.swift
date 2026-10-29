@@ -183,6 +183,42 @@ final class FileBrowserModelTests: XCTestCase {
                    "a worktree's .git file marks the root too")
   }
 
+  func testPuttingBackFromTheTrashKeepsWhatTookTheNameSince() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("barista-restore-\(UUID().uuidString)")
+    let trash = folder.appendingPathComponent("Trash")
+    try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let original = folder.appendingPathComponent("shot.png")
+    let trashed = trash.appendingPathComponent("shot 5.12.03 PM.png")
+    try Data("old".utf8).write(to: trashed)
+
+    XCTAssertEqual(try FileOperations.restore(trashed, to: original).lastPathComponent, "shot.png")
+    try Data("again".utf8).write(to: trashed)
+    XCTAssertEqual(try FileOperations.restore(trashed, to: original).lastPathComponent, "shot 2.png",
+                   "a new file took the name, so both stay")
+    XCTAssertEqual(try String(contentsOf: original, encoding: .utf8), "old")
+  }
+
+  func testCompressNamesArchivesAsFinderDoes() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("barista-zip-\(UUID().uuidString)")
+    let inner = folder.appendingPathComponent("lib.d")
+    try FileManager.default.createDirectory(at: inner, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let note = folder.appendingPathComponent("note.txt")
+    let dash = folder.appendingPathComponent("-dash.txt")
+    try Data("x".utf8).write(to: note)
+    try Data("y".utf8).write(to: dash)
+
+    XCTAssertEqual(try FileOperations.compress([note]).lastPathComponent, "note.txt.zip")
+    XCTAssertEqual(try FileOperations.compress([note]).lastPathComponent, "note.txt 2.zip")
+    let archive = try FileOperations.compress([note, dash, inner])
+    XCTAssertEqual(archive.lastPathComponent, "Archive.zip")
+    XCTAssertGreaterThan(try archive.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0, 0)
+    XCTAssertThrowsError(try FileOperations.compress([note, inner.appendingPathComponent("x")])) {
+      XCTAssertEqual($0 as? FileOperationError, .mixedFolders)
+    }
+  }
+
   func testNewFolderStartsNamingAndARenameCommitsOnce() throws {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("barista-rename-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

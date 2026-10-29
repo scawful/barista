@@ -233,7 +233,12 @@ private struct DockMenu: View {
       Text(error)
       Divider()
     }
-    if tile.section != .trash, tile.item.kind == .app {
+    if let window = tile.window {
+      Button("Restore") { store.focus(window) }
+      Button("Close Window") { store.close(window) }
+      Divider()
+      dockItems
+    } else if tile.section != .trash, tile.item.kind == .app {
       AppMenu(store: store, tile: tile) {
         if case let entries = store.menuEntries(for: tile), !entries.isEmpty {
           MenuEntries(store: store, tile: tile, entries: entries)

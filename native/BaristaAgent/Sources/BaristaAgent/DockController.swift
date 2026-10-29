@@ -390,6 +390,7 @@ final class DockController {
     scene.update(DockScene.Input(pinned: store.pinned.map(\.id),
                                  running: store.running.map(\.id),
                                  others: store.others.map(\.id),
+                                 minimized: store.minimized.map(\.id),
                                  trash: store.trash.map { [$0.id] } ?? [],
                                  expanded: expanded,
                                  attention: attention,
@@ -422,7 +423,7 @@ final class DockController {
   /// The tile showing an app: its own, or the tile of the group or subgroup
   /// holding it, whichever the dock draws.
   private func cardTile(for app: String) -> String? {
-    for tile in store.sections.joined() where tile.contains(app: app) {
+    for tile in store.sections.joined() where tile.section != .minimized && tile.contains(app: app) {
       guard store.expanded.contains(tile.id),
             let member = tile.visibleChildren.first(where: { $0.contains(app: app) })
       else { return tile.id }

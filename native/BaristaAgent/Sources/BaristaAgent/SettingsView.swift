@@ -136,6 +136,7 @@ struct SettingsView: View {
       Section("Contents & Behavior") {
         Toggle("Show indicator lights for open applications", isOn: binding(\.showRunning))
         Toggle("Show Trash in Dock", isOn: binding(\.showTrash))
+        Toggle("Show minimized windows in Dock", isOn: binding(\.showMinimized))
         Toggle("Expand active group automatically", isOn: binding(\.expandActiveGroup))
       }
 

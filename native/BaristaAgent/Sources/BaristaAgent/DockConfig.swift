@@ -124,6 +124,8 @@ struct DockSettings: Equatable {
   var hideDelay: Double = 0.3
   var showRunning = true
   var showTrash = true
+  /// Minimized windows get tiles of their own before the Trash, as in the native Dock.
+  var showMinimized = true
   /// A group opens inline while one of its apps is frontmost.
   var expandActiveGroup = true
   /// Days a shelf item stays before it is cleared.
@@ -168,6 +170,7 @@ extension DockSettings: Codable {
     case hideDelay = "hide_delay"
     case showRunning = "show_running"
     case showTrash = "show_trash"
+    case showMinimized = "show_minimized"
     case expandActiveGroup = "expand_active_group"
     case shelfDays = "shelf_days"
     case filesBrowser = "files_browser"
@@ -188,6 +191,7 @@ extension DockSettings: Codable {
     hideDelay = try container.decodeIfPresent(Double.self, forKey: .hideDelay) ?? defaults.hideDelay
     showRunning = try container.decodeIfPresent(Bool.self, forKey: .showRunning) ?? defaults.showRunning
     showTrash = try container.decodeIfPresent(Bool.self, forKey: .showTrash) ?? defaults.showTrash
+    showMinimized = try container.decodeIfPresent(Bool.self, forKey: .showMinimized) ?? defaults.showMinimized
     expandActiveGroup = try container.decodeIfPresent(Bool.self, forKey: .expandActiveGroup)
       ?? defaults.expandActiveGroup
     shelfDays = try container.decodeIfPresent(Double.self, forKey: .shelfDays) ?? defaults.shelfDays

@@ -181,6 +181,23 @@ enum Yabai {
          "manage=off", "sub-layer=below"])
   }
 
+  static let windowsNotification = "dev.barista.agent.windows"
+
+  /// yabai posts `windowsNotification` when a window is minimized or
+  /// restored, so the dock's minimized tiles follow without polling. A
+  /// yabai restart forgets signals, so this runs again now and then.
+  static func ensureWindowSignals() {
+    guard let data = run(["signal", "--list"]),
+          let signals = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return }
+    let labels = Set(signals.compactMap { $0["label"] as? String })
+    for event in ["window_minimized", "window_deminimized"] {
+      let label = "barista-agent-" + event.dropFirst("window_".count)
+      guard !labels.contains(label) else { continue }
+      run(["signal", "--add", "label=\(label)", "event=\(event)",
+           "action=/usr/bin/notifyutil -p \(windowsNotification)"])
+    }
+  }
+
   static func runAsync(_ arguments: [String]) {
     DispatchQueue.global(qos: .userInitiated).async { run(arguments) }
   }

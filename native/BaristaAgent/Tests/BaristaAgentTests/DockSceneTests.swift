@@ -128,12 +128,27 @@ final class DockSceneTests: XCTestCase {
     XCTAssertEqual(scene.frame.items.first { $0.id == "x" }?.opacity ?? 0, 1, accuracy: 0.01)
   }
 
+  func testMinimizedWindowsGetASectionBeforeTheTrash() {
+    var docked = input
+    docked.others = ["f"]
+    docked.minimized = ["w1", "w2"]
+    XCTAssertEqual(docked.sections, [["a", "b", "c", "d"], [], ["f"], ["w1", "w2"], ["trash"]])
+
+    let scene = DockScene()
+    scene.currentTime = { [unowned self] in now }
+    scene.update(docked)
+    scene.show()
+    run(scene, seconds: 1.5)
+    XCTAssertEqual(scene.frame.items.map(\.id),
+                   ["a", "b", "c", "d", "divider.1", "f", "divider.2", "w1", "w2", "divider.3", "trash"])
+  }
+
   func testAnOpenGroupGetsItsOwnSectionAndKeepsItsPlaceInDrags() {
     var open = input
     open.pinned = ["a", "g", "b"]
     open.others = ["f"]
     open.expanded = ["g": ["m1", "m2"]]
-    XCTAssertEqual(open.sections, [["a"], ["m1", "m2"], ["b"], [], ["f", "trash"]])
+    XCTAssertEqual(open.sections, [["a"], ["m1", "m2"], ["b"], [], ["f"], [], ["trash"]])
 
     let scene = DockScene()
     scene.currentTime = { [unowned self] in now }
@@ -141,7 +156,7 @@ final class DockSceneTests: XCTestCase {
     scene.show()
     run(scene, seconds: 1.5)
     XCTAssertEqual(scene.frame.items.map(\.id),
-                   ["a", "divider.1", "m1", "m2", "divider.2", "b", "divider.3", "f", "trash"])
+                   ["a", "divider.1", "m1", "m2", "divider.2", "b", "divider.3", "f", "divider.4", "trash"])
 
     var outcomes: [DockScene.Outcome] = []
     scene.onCommit = { outcomes.append($0) }

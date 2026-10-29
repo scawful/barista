@@ -1,9 +1,10 @@
 import AppKit
 import Combine
 import SwiftUI
+import notify
 
 struct DockTile: Identifiable, Equatable {
-  enum Section { case pinned, running, others, trash }
+  enum Section { case pinned, running, others, minimized, trash }
 
   let id: String
   let item: DockItem
@@ -22,6 +23,8 @@ struct DockTile: Identifiable, Equatable {
   var fileName: String?
   /// The group holding this tile, for members drawn in an open group.
   var parentGroup: String?
+  /// The minimized window a `.minimized` tile restores.
+  var window: YabaiWindow?
 
   var isRunning: Bool { pid != nil || children.contains(where: \.isRunning) }
 
@@ -61,7 +64,7 @@ struct DockTile: Identifiable, Equatable {
     switch section {
     case .pinned: return .pinned
     case .others: return .others
-    case .running, .trash: return nil
+    case .running, .minimized, .trash: return nil
     }
   }
 
@@ -71,7 +74,8 @@ struct DockTile: Identifiable, Equatable {
   }
 
   var acceptsDrops: Bool {
-    section == .trash || [.app, .folder, .action, .group, .shelf].contains(item.kind)
+    if section == .minimized { return false }
+    return section == .trash || [.app, .folder, .action, .group, .shelf].contains(item.kind)
   }
 
   /// Quitting Finder from a dock leaves no way to get it back from the dock.
@@ -85,6 +89,8 @@ final class DockStore: ObservableObject {
   @Published private(set) var pinned: [DockTile] = []
   @Published private(set) var running: [DockTile] = []
   @Published private(set) var others: [DockTile] = []
+  /// Minimized windows of running apps, oldest first.
+  @Published private(set) var minimized: [DockTile] = []
   @Published private(set) var trash: DockTile?
   @Published private(set) var settings = DockSettings()
   @Published private(set) var theme = DockTheme.system
@@ -124,6 +130,7 @@ final class DockStore: ObservableObject {
   private var agentTimer: Timer?
   private let windowQueue = DispatchQueue(label: "dev.barista.agent.windows", qos: .userInitiated)
   private var sizeRulesSyncedAt = Date.distantPast
+  private var windowsToken: Int32 = 0
   private static let trashURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash")
 
   init() {
@@ -164,13 +171,19 @@ final class DockStore: ObservableObject {
       self?.loadAgents()
     }
     agentTimer?.tolerance = 2
+    // yabai's minimize signals post this; see `Yabai.ensureWindowSignals`.
+    notify_register_dispatch(Yabai.windowsNotification, &windowsToken, .main) { [weak self] _ in
+      self?.loadWindows()
+    }
     reload()
+    loadWindows()
     refreshSpaces()
+    syncSizeRules()
   }
 
-  /// Every section left to right; the Trash closes the last one.
+  /// Every section left to right; the Trash closes the dock.
   var sections: [[DockTile]] {
-    [pinned, running, others + (trash.map { [$0] } ?? [])]
+    [pinned, running, others, minimized, trash.map { [$0] } ?? []]
   }
 
   /// Every drawable tile by ID, including the members of open groups. The
@@ -239,12 +252,14 @@ final class DockStore: ObservableObject {
 
   /// Agent sessions in this app, or in this group's apps, that wait on you.
   func waiting(on tile: DockTile) -> Int {
+    if tile.section == .minimized { return 0 }
     if tile.item.kind == .group { return tile.children.reduce(0) { $0 + waiting(on: $1) } }
     return tile.item.bundleID.flatMap { agents.needs[$0] } ?? 0
   }
 
   /// An agent session in this app, or in one of this group's apps, finished.
   func hasFinished(_ tile: DockTile) -> Bool {
+    if tile.section == .minimized { return false }
     if tile.item.kind == .group { return tile.children.contains(where: hasFinished) }
     return tile.item.bundleID.map(attention.apps.contains) ?? false
   }
@@ -395,6 +410,7 @@ final class DockStore: ObservableObject {
     let trash = !settings.showTrash ? nil : DockTile(
       id: "trash", item: DockItem(kind: .folder, path: "~/.Trash", title: "Trash"),
       url: Self.trashURL, section: .trash, pid: nil, isActive: false, isHidden: false)
+    let minimized = !settings.showMinimized ? [] : minimizedTiles(apps: apps, me: me)
 
     let space = spaces.first(where: \.hasFocus)
     let expanded = Set((pinned + others).filter { group in
@@ -404,13 +420,47 @@ final class DockStore: ObservableObject {
     }.map(\.id))
 
     let changed = pinned != self.pinned || running != self.running || others != self.others
-      || trash != self.trash || expanded != self.expanded
+      || minimized != self.minimized || trash != self.trash || expanded != self.expanded
     if pinned != self.pinned { self.pinned = pinned }
     if running != self.running { self.running = running }
     if others != self.others { self.others = others }
+    if minimized != self.minimized { self.minimized = minimized }
     if trash != self.trash { self.trash = trash }
     if expanded != self.expanded { self.expanded = expanded }
     if changed { indexTiles() }
+  }
+
+  /// A tile for each minimized window, in the order the windows were
+  /// minimized: tiles already shown keep their places and new ones follow,
+  /// by yabai's window id, which grows as windows open.
+  private func minimizedTiles(apps: [NSRunningApplication], me: pid_t) -> [DockTile] {
+    let appsByPID = Dictionary(apps.map { ($0.processIdentifier, $0) }, uniquingKeysWith: { first, _ in first })
+    let windows = windowsByPID.values.joined().filter { $0.isMinimized }
+    let shown = Dictionary(minimized.enumerated().compactMap { index, tile in tile.window.map { ($0.id, index) } },
+                           uniquingKeysWith: { first, _ in first })
+    let ordered = windows.sorted { a, b in
+      switch (shown[a.id], shown[b.id]) {
+      case let (x?, y?): return x < y
+      case (_?, nil): return true
+      case (nil, _?): return false
+      case (nil, nil): return a.id < b.id
+      }
+    }
+    return ordered.compactMap { window -> DockTile? in
+      let own = window.pid == me
+      guard let app = appsByPID[window.pid], own || app.activationPolicy == .regular else { return nil }
+      // The agent is a bare executable: its Files and viewer windows get symbols.
+      let icon = !own ? nil
+        : window.title.hasSuffix(ViewerController.titleSuffix) ? "sf:photo"
+        : window.title.hasSuffix(BrowserController.titleSuffix) ? "sf:folder" : "sf:gearshape"
+      let path = own ? nil : app.bundleURL.map { DockConfigFile.tilde($0.path) }
+      let item = DockItem(kind: .app, path: path, bundleID: own ? nil : app.bundleIdentifier,
+                          title: window.title.isEmpty ? window.app : window.title, icon: icon)
+      var tile = DockTile(id: "window:\(window.id)", item: item, url: own ? nil : app.bundleURL,
+                          section: .minimized, pid: nil, isActive: false, isHidden: false)
+      tile.window = window
+      return tile
+    }
   }
 
   /// Closing the last window of a menu bar app (LM Studio, Docker) turns it
@@ -432,13 +482,27 @@ final class DockStore: ObservableObject {
 
   /// One yabai query per reveal; the context menu reads the cached result.
   func refreshWindows() {
+    loadWindows()
+    refreshSpaces()
+    syncSizeRules()
+  }
+
+  /// Rebuilds the tiles only when the minimized windows changed.
+  private func loadWindows() {
     windowQueue.async { [weak self] in
       guard let windows = Yabai.query("windows", as: [YabaiWindow].self) else { return }
       let grouped = Dictionary(grouping: windows.filter { $0.subrole == "AXStandardWindow" }, by: \.pid)
-      DispatchQueue.main.async { self?.windowsByPID = grouped }
+      DispatchQueue.main.async {
+        guard let self, grouped != self.windowsByPID else { return }
+        let before = self.minimizedWindows
+        self.windowsByPID = grouped
+        if self.minimizedWindows != before { self.refresh() }
+      }
     }
-    refreshSpaces()
-    syncSizeRules()
+  }
+
+  private var minimizedWindows: [YabaiWindow] {
+    windowsByPID.values.joined().filter(\.isMinimized).sorted { $0.id < $1.id }
   }
 
   /// Spaces for the Move to Space menu and for groups that open on a space.
@@ -472,7 +536,7 @@ final class DockStore: ObservableObject {
       image = defaultImage(for: tile)
     }
     var result = image.rasterized(pixels: iconPixels)
-    if case .image(let drawn) = result, let symbol = tile.item.borrowedIconBadge {
+    if case .image(let drawn) = result, let symbol = tile.section == .minimized ? "minus" : tile.item.borrowedIconBadge {
       result = .badged(drawn, symbol: symbol)
     }
     if images.count > 256 { images.removeAll() }
@@ -498,6 +562,10 @@ final class DockStore: ObservableObject {
   /// Opens a tile's target. Folder stacks, the shelf, and the controls are
   /// opened by the controller instead. A failed action shows its output; the next click runs it.
   func open(_ tile: DockTile) {
+    if let window = tile.window {
+      focus(window)
+      return
+    }
     switch tile.item.kind {
     case .app:
       guard let url = tile.url else { return }
@@ -667,11 +735,23 @@ final class DockStore: ObservableObject {
     if let url = tile.url, url.isFileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
   }
 
+  /// Restores a minimized window first: yabai can't focus one in the Dock.
+  /// The agent's own windows go through AppKit, since yabai would wait on
+  /// this process's main thread to answer Accessibility.
   func focus(_ window: YabaiWindow) {
-    if window.isMinimized {
-      Yabai.runAsync(["window", "--deminimize", String(window.id)])
+    if window.pid == ProcessInfo.processInfo.processIdentifier {
+      guard let own = NSApp.window(withWindowNumber: window.id) else { return }
+      own.deminiaturize(nil)
+      own.makeKeyAndOrderFront(nil)
+      NSApp.activate(ignoringOtherApps: true)
+      loadWindows()
+      return
     }
-    Yabai.runAsync(["window", "--focus", String(window.id)])
+    windowQueue.async { [weak self] in
+      if window.isMinimized { Yabai.run(["window", "--deminimize", String(window.id)]) }
+      Yabai.run(["window", "--focus", String(window.id)])
+      DispatchQueue.main.async { self?.loadWindows() }
+    }
   }
 
   // MARK: Windows
@@ -688,6 +768,15 @@ final class DockStore: ObservableObject {
   }
 
   var focusedSpace: YabaiSpace? { spaces.first(where: \.hasFocus) }
+
+  func close(_ window: YabaiWindow) {
+    if window.pid == ProcessInfo.processInfo.processIdentifier {
+      NSApp.window(withWindowNumber: window.id)?.close()
+      loadWindows()
+    } else {
+      windowAction("window-close", on: window)
+    }
+  }
 
   /// A `yabai_control.sh` window action (`window-center`, `window-toggle-float`, ...).
   func windowAction(_ action: String, on window: YabaiWindow) {
@@ -754,12 +843,15 @@ final class DockStore: ObservableObject {
   }
 
   /// On a change, and at most once a minute while the dock is used, since a
-  /// yabai restart forgets the rules.
+  /// yabai restart forgets the rules and the signals.
   private func syncSizeRules(force: Bool = false) {
     guard force || -sizeRulesSyncedAt.timeIntervalSinceNow > 60 else { return }
     sizeRulesSyncedAt = Date()
     let sizes = settings.windowSizes
-    windowQueue.async { Yabai.syncSizeRules(sizes) }
+    windowQueue.async {
+      Yabai.syncSizeRules(sizes)
+      Yabai.ensureWindowSignals()
+    }
   }
 
   func editConfig() {
@@ -841,6 +933,8 @@ final class DockStore: ObservableObject {
   /// Everything that changes a tile's picture.
   private func imageKey(for tile: DockTile) -> String {
     if tile.section == .trash { return "trash|\(trashFull)|\(iconPixels)" }
+    // An app's minimized windows share one picture.
+    if tile.section == .minimized { return "window|\(tile.item.icon ?? "")|\(tile.url?.path ?? "")|\(iconPixels)" }
     if tile.item.kind == .shelf { return "shelf|\(shelf.entries.isEmpty)|\(tile.item.icon ?? "")|\(iconPixels)" }
     if tile.item.kind == .group, (tile.item.icon ?? "").isEmpty {
       return "group|" + tile.visibleChildren.prefix(4).map(imageKey(for:)).joined(separator: ",")

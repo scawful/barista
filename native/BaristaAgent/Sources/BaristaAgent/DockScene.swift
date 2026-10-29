@@ -22,10 +22,12 @@ import QuartzCore
 /// `isLifted`); the canvas never moves within it.
 final class DockScene: ObservableObject {
   struct Input: Equatable {
-    /// Top-level tile ids, left to right: pins, running apps, then others and the Trash.
+    /// Top-level tile ids, left to right: pins, running apps, others,
+    /// minimized windows, and the Trash.
     var pinned: [String] = []
     var running: [String] = []
     var others: [String] = []
+    var minimized: [String] = []
     var trash: [String] = []
     /// Groups drawn open, as their members between dividers, by group id.
     var expanded: [String: [String]] = [:]
@@ -49,9 +51,7 @@ final class DockScene: ObservableObject {
         }
         return result
       }
-      var tail = split(others)
-      tail[tail.count - 1] += trash
-      return split(pinned) + [running] + tail
+      return split(pinned) + [running] + split(others) + [minimized, trash]
     }
   }
 

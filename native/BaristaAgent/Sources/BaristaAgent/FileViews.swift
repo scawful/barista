@@ -41,6 +41,36 @@ struct IconLayout: Equatable {
     guard count > 0, first <= last else { return [] }
     return (first * columns..<min(count, (last + 1) * columns)).filter { frame(at: $0).intersects(rect) }
   }
+
+  /// The next row out of sight above or below the visible `top..<top+height`,
+  /// for a drag held past that edge; nil at the first or last row.
+  func rowToReveal(top: CGFloat, height: CGFloat, down: Bool, count: Int) -> Int? {
+    guard count > 0 else { return nil }
+    let stride = cell.height + Self.spacing
+    if down {
+      let bottom = top + height
+      var row = max(0, Int((bottom - Self.spacing) / stride))
+      if Self.spacing + CGFloat(row) * stride + cell.height <= bottom + 1 { row += 1 }
+      return row <= (count - 1) / columns ? row : nil
+    }
+    var row = max(0, Int((top - Self.spacing) / stride))
+    if Self.spacing + CGFloat(row) * stride >= top - 1 { row -= 1 }
+    return row >= 0 ? row : nil
+  }
+}
+
+/// How far the icon view is scrolled, and where a marquee drag is, read by
+/// the auto-scroll timer between drag events without redrawing the grid.
+private final class MarqueeTrack {
+  var top: CGFloat = 0
+  var start: CGPoint = .zero
+  /// In the visible area's coordinates, so it stays put while the grid scrolls.
+  var pointer: CGPoint = .zero
+}
+
+private struct ScrollTopKey: PreferenceKey {
+  static var defaultValue: CGFloat = 0
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 /// The icon view: the shown rows as a grid, with Finder's clicks and arrows,
@@ -51,6 +81,9 @@ struct IconGrid: View {
   @State private var marquee: CGRect?
   /// What stays selected under a drag: the selection before it, with ⇧ or ⌘.
   @State private var marqueeKeeps: Set<URL> = []
+  @State private var track = MarqueeTrack()
+  /// Scrolls a row at a time while a marquee is held past the top or bottom.
+  @State private var autoscroll: Timer?
 
   var body: some View {
     GeometryReader { geometry in
@@ -73,9 +106,12 @@ struct IconGrid: View {
           .background {
             Color.clear.contentShape(Rectangle())
               .onTapGesture { state.selection = [] }
-              .gesture(select(in: layout))
+              .gesture(select(in: layout, height: geometry.size.height, proxy: proxy))
               .contextMenu { EntryMenu(state: state, urls: []) }
           }
+          .background(GeometryReader { content in
+            Color.clear.preference(key: ScrollTopKey.self, value: -content.frame(in: .named(Self.space)).minY)
+          })
           .overlay(alignment: .topLeading) {
             if let marquee {
               Rectangle().fill(Color.accentColor.opacity(0.15))
@@ -86,6 +122,8 @@ struct IconGrid: View {
             }
           }
         }
+        .coordinateSpace(name: Self.space)
+        .onPreferenceChange(ScrollTopKey.self) { [track] top in track.top = top }
         .onDrop(of: [.fileURL], isTargeted: nil, perform: state.drop)
         .simultaneousGesture(pinch)
         .onChange(of: state.scrollTarget) { scroll(proxy) }
@@ -98,24 +136,55 @@ struct IconGrid: View {
     }
   }
 
-  private func select(in layout: IconLayout) -> some Gesture {
+  private static let space = "IconGrid"
+
+  private func select(in layout: IconLayout, height: CGFloat, proxy: ScrollViewProxy) -> some Gesture {
     DragGesture(minimumDistance: 4)
       .onChanged { value in
         if marquee == nil {
           let adds = !NSEvent.modifierFlags.intersection([.shift, .command]).isEmpty
           marqueeKeeps = adds ? state.selection : []
         }
-        let rect = CGRect(x: min(value.startLocation.x, value.location.x),
-                          y: min(value.startLocation.y, value.location.y),
-                          width: abs(value.location.x - value.startLocation.x),
-                          height: abs(value.location.y - value.startLocation.y))
-        marquee = rect
-        let shown = state.shown
-        let covered = layout.indices(in: rect, count: shown.count).map { shown[$0].url }
-        let selection = marqueeKeeps.union(covered)
-        if selection != state.selection { state.selection = selection }
+        track.start = value.startLocation
+        track.pointer = CGPoint(x: value.location.x, y: value.location.y - track.top)
+        drawMarquee(layout)
+        let edge = min(24, height / 4)
+        if track.pointer.y < edge || track.pointer.y > height - edge {
+          guard autoscroll == nil else { return }
+          autoscroll = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { _ in
+            drawMarquee(layout)
+            let down = track.pointer.y > height / 2
+            guard let row = layout.rowToReveal(top: track.top, height: height, down: down, count: state.shown.count)
+            else { return }
+            proxy.scrollTo(state.shown[row * layout.columns].url, anchor: down ? .bottom : .top)
+          }
+        } else {
+          stopAutoscroll()
+        }
       }
-      .onEnded { _ in marquee = nil }
+      .onEnded { _ in
+        stopAutoscroll()
+        marquee = nil
+      }
+  }
+
+  private func stopAutoscroll() {
+    autoscroll?.invalidate()
+    autoscroll = nil
+  }
+
+  /// The rectangle from where the drag began to the pointer, in the grid's
+  /// coordinates, and the icons it touches selected.
+  private func drawMarquee(_ layout: IconLayout) {
+    let start = track.start
+    let end = CGPoint(x: track.pointer.x, y: max(0, track.pointer.y + track.top))
+    let rect = CGRect(x: min(start.x, end.x), y: min(start.y, end.y),
+                      width: abs(end.x - start.x), height: abs(end.y - start.y))
+    if rect != marquee { marquee = rect }
+    let shown = state.shown
+    let covered = layout.indices(in: rect, count: shown.count).map { shown[$0].url }
+    let selection = marqueeKeeps.union(covered)
+    if selection != state.selection { state.selection = selection }
   }
 
   /// Pinching scales the icons from their size when the pinch began.

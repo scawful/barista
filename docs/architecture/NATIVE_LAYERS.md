@@ -268,7 +268,9 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   ⌘W closes.
 - Barista Files is a Finder replacement that tiles: one window with its tabs
   inside it, back/forward history per tab, the folder's name in the toolbar
-  (click it for the folders above), Finder's path bar along the bottom, a
+  (click it for the folders above), Finder's path bar along the bottom
+  (folders a narrow window can't fit wait behind …; the icon slider and
+  free space give way first), a
   Window button (yabai: Float, Level, Size, Next Display, and New Windows
   Open tiled or floating at a size), a sidebar (⌥⌘S) of
   Finder's own Favorites in Finder's order (read from Finder's sidebar list,
@@ -298,8 +300,12 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   pinch) are the folder's own. The sidebar, list, and preview share one
   surface, with no row stripes; scroll bars float and show while the
   pointer moves over what scrolls. Dragging across empty space in the icon
-  view selects what the rectangle touches (⇧ or ⌘ adds); in the list a
-  drag up or down selects rows and a drag sideways carries files out.
+  view selects what the rectangle touches (⇧ or ⌘ adds), scrolling a row
+  at a time while held past the top or bottom; in the list a drag up or
+  down selects rows and a drag sideways carries files out. An empty folder
+  or search says so. Sidebar sections fold from their headers, and stay
+  folded; favorites that share a name (`/Applications` and
+  `~/Applications`) show their paths.
   Barista's choices live in its defaults; where it has none, it reads what
   Finder recorded in `.DS_Store` (the parent's record under the folder's
   name, or the folder's own `.`), off the main thread, and never writes

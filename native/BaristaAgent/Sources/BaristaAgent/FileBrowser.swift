@@ -1104,6 +1104,8 @@ struct BrowserView: View {
   @FocusState private var searchFocused: Bool
   @AppStorage("BaristaFilesSidebarWidth") private var sidebarWidth = 180.0
   @AppStorage("BaristaFilesPreviewWidth") private var previewWidth = 320.0
+  /// Sidebar sections closed by their header's chevron, one per line.
+  @AppStorage("BaristaFilesCollapsedSections") private var collapsedSections = ""
   static let surface = Color(nsColor: .controlBackgroundColor)
   private static let sidebarWidths: ClosedRange<Double> = 140...360
   private static let previewWidths: ClosedRange<Double> = 200...720
@@ -1243,29 +1245,40 @@ struct BrowserView: View {
     .font(.callout)
   }
 
+  /// Whether a sidebar section is open; the closed ones are remembered.
+  private func expanded(_ section: String) -> Binding<Bool> {
+    Binding {
+      !collapsedSections.split(separator: "\n").contains(Substring(section))
+    } set: { open in
+      var closed = Set(collapsedSections.split(separator: "\n").map(String.init))
+      if open { closed.remove(section) } else { closed.insert(section) }
+      collapsedSections = closed.sorted().joined(separator: "\n")
+    }
+  }
+
   private var sidebar: some View {
     List {
-      Section("Favorites") {
+      Section("Favorites", isExpanded: expanded("Favorites")) {
         ForEach(places.favorites, id: \.url) { place in placeRow(place) }
       }
       // Finder's favorites already list most of what the dock pins.
       let favorites = Set(places.favorites.map(\.url.path))
       let dock = state.places().filter { !favorites.contains($0.url.standardizedFileURL.path) }
       if !dock.isEmpty {
-        Section("Dock") {
+        Section("Dock", isExpanded: expanded("Dock")) {
           ForEach(dock, id: \.url) { place in
             placeRow(Place(name: place.name, url: place.url, symbol: FinderFavorites.place(place.url).symbol))
           }
         }
       }
       if !volumes.volumes.isEmpty {
-        Section("Locations") {
+        Section("Locations", isExpanded: expanded("Locations")) {
           ForEach(volumes.volumes) { volume in volumeRow(volume) }
         }
       }
       // Last, so entering or leaving a repo never moves the places above.
       if let git = state.git {
-        Section("Repository") {
+        Section("Repository", isExpanded: expanded("Repository")) {
           repoRow(git)
           if state.worktrees.count > 1 {
             ForEach(state.worktrees, id: \.path) { worktree in
@@ -1388,19 +1401,53 @@ struct BrowserView: View {
       WorkspaceBoard(state: state, workspace: workspace)
     } else {
       switch state.layout {
-      case .list: FileTable(state: state)
-      case .icons: IconGrid(state: state)
+      case .list: FileTable(state: state).overlay { emptyNote }
+      case .icons: IconGrid(state: state).overlay { emptyNote }
       case .columns: ColumnBrowser(state: state)
       }
     }
   }
 
-  /// The path on the left, counts and sizes on the right.
+  @ViewBuilder
+  private var emptyNote: some View {
+    if state.shown.isEmpty && !state.loading && !state.searching {
+      VStack(spacing: 6) {
+        Image(systemName: state.query.isEmpty ? "folder" : "magnifyingglass")
+          .font(.system(size: 28, weight: .light))
+        Text(state.query.isEmpty ? "Empty Folder" : "No Matches").font(.headline)
+        if !state.query.isEmpty {
+          Text(state.scope == .contents ? "Nothing here contains “\(state.query)”."
+               : "No names here match “\(state.query)”.")
+            .font(.callout)
+        }
+      }
+      .foregroundStyle(.tertiary)
+      .allowsHitTesting(false)
+    }
+  }
+
+  /// The path on the left, counts and sizes on the right. A narrow window
+  /// drops the slider, then the free space, before the path loses folders.
   private var statusBar: some View {
     HStack(spacing: 6) {
       PathBar(location: state.location) { state.go(to: $0) }
         .layoutPriority(-1)
       Spacer(minLength: 8)
+      ViewThatFits(in: .horizontal) {
+        statusDetails(slider: true, available: true)
+        statusDetails(slider: false, available: true)
+        statusDetails(slider: false, available: false)
+      }
+    }
+    .font(.caption)
+    .foregroundStyle(.secondary)
+    .lineLimit(1)
+    .padding(.horizontal, 8)
+    .frame(height: 24)
+  }
+
+  private func statusDetails(slider: Bool, available: Bool) -> some View {
+    HStack(spacing: 6) {
       if state.boardShown, let workspace = state.workspace {
         let open = workspace.tasks.filter { $0.state != .done }.count
         Text("\(open) open task\(open == 1 ? "" : "s") · \(workspace.notes.count) notes · \(workspace.ideas.count) ideas")
@@ -1408,20 +1455,14 @@ struct BrowserView: View {
         ProgressView().controlSize(.mini)
         Text("Loading…")
       } else {
-        let count = state.shown.count
-        let noun = state.isDeepSearch ? "result" : "item"
-        Text("\(count) \(noun)\(count == 1 ? "" : "s")"
-             + (state.selection.isEmpty ? "" : ", \(state.selection.count) selected"))
-        if state.measuringSizes && state.sizesPending == 0 {
-          Text("· \(Self.bytes(state.shown.compactMap(\.size).reduce(0, +))) in all")
-        }
+        Text(statusSummary(available: available))
       }
-      if state.hidden { Text("· hidden files shown") }
       if state.sizesPending > 0 {
         ProgressView().controlSize(.mini)
-        Text("measuring \(state.sizesPending) folder\(state.sizesPending == 1 ? "" : "s")")
+        Text("measuring \(state.sizesPending)")
+          .help("Measuring \(state.sizesPending) folder\(state.sizesPending == 1 ? "" : "s")")
       }
-      if !state.boardShown && state.layout == .icons {
+      if slider && !state.boardShown && state.layout == .icons {
         HStack(spacing: 4) {
           Image(systemName: "square.grid.3x3").imageScale(.small)
           Slider(value: Binding(get: { Double(FolderView.iconStep(of: state.iconSize)) },
@@ -1430,21 +1471,33 @@ struct BrowserView: View {
             .controlSize(.mini)
           Image(systemName: "square.grid.2x2").imageScale(.medium)
         }
-        .frame(width: 130)
+        .frame(width: 110)
         .help("Icon size for this folder (⌘- and ⌘=, or pinch)")
       }
       if !state.boardShown {
-        Button(state.measuringSizes ? "Hide Folder Sizes" : "Calculate Sizes") { state.measuringSizes.toggle() }
-          .buttonStyle(.borderless).font(.caption)
-          .help("Measures every folder shown, so sorting by Size ranks what takes the space")
+        Button { state.measuringSizes.toggle() } label: {
+          Image(systemName: state.measuringSizes ? "scalemass.fill" : "scalemass")
+        }
+        .buttonStyle(.borderless)
+        .help(state.measuringSizes ? "Hide Folder Sizes"
+              : "Calculate Sizes: measures every folder shown, so sorting by Size ranks what takes the space")
       }
-      if let available = state.available { Text("\(Self.bytes(available)) available") }
     }
-    .font(.caption)
-    .foregroundStyle(.secondary)
-    .lineLimit(1)
-    .padding(.horizontal, 8)
-    .frame(height: 24)
+    .fixedSize()
+  }
+
+  /// Finder's one line: "9 items, 2 selected, 41.99 GB available".
+  private func statusSummary(available: Bool) -> String {
+    let count = state.shown.count
+    let noun = state.isDeepSearch ? "result" : "item"
+    var parts = ["\(count) \(noun)\(count == 1 ? "" : "s")"]
+    if !state.selection.isEmpty { parts.append("\(state.selection.count) selected") }
+    if state.measuringSizes && state.sizesPending == 0 {
+      parts.append("\(Self.bytes(state.shown.compactMap(\.size).reduce(0, +))) in all")
+    }
+    if state.hidden { parts.append("hidden shown") }
+    if available, let free = state.available { parts.append("\(Self.bytes(free)) available") }
+    return parts.joined(separator: ", ")
   }
 }
 
@@ -1493,19 +1546,33 @@ private struct PathBar: View {
 
   var body: some View {
     let urls = enclosingFolders(of: location)
-    // A narrow window drops folders from the top, never breaks a name.
+    // A narrow window drops folders from the top, never breaks a name; the
+    // dropped ones wait behind a … menu.
     ViewThatFits(in: .horizontal) {
-      bar(urls[...])
-      bar(urls.suffix(5))
-      bar(urls.suffix(3))
-      bar(urls.suffix(1))
+      bar(urls, showing: urls.count)
+      bar(urls, showing: 4)
+      bar(urls, showing: 2)
+      bar(urls, showing: 1)
     }
     .buttonStyle(.borderless)
   }
 
-  private func bar(_ urls: ArraySlice<URL>) -> some View {
-    HStack(spacing: 3) {
-      ForEach(Array(urls.enumerated()), id: \.offset) { offset, url in
+  private func bar(_ urls: [URL], showing count: Int) -> some View {
+    let dropped = urls.dropLast(count)
+    return HStack(spacing: 3) {
+      if !dropped.isEmpty {
+        Menu {
+          ForEach(dropped.reversed(), id: \.self) { url in
+            Button(DisplayNames.name(of: url)) { go(url) }
+          }
+        } label: {
+          Text("…")
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .help("Enclosing folders")
+        Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary)
+      }
+      ForEach(Array(urls.suffix(count).enumerated()), id: \.offset) { offset, url in
         if offset > 0 { Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary) }
         Button { go(url) } label: {
           HStack(spacing: 3) {

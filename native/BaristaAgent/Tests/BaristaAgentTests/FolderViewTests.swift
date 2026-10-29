@@ -83,6 +83,28 @@ final class FolderViewTests: XCTestCase {
     XCTAssertEqual(layout.indices(in: CGRect(x: 0, y: 0, width: 400, height: 2000), count: 7).count, 7)
   }
 
+  func testAMarqueeHeldPastAnEdgeRevealsTheNextRow() {
+    // Rows of 100-point cells every 104 points, from y 4; 40 icons make rows 0 through 9.
+    let layout = IconLayout(width: 400, iconSize: 64)
+    XCTAssertEqual(layout.rowToReveal(top: 0, height: 300, down: true, count: 40), 2, "row 2 is cut off at the bottom")
+    XCTAssertEqual(layout.rowToReveal(top: 12, height: 300, down: true, count: 40), 3, "row 2 shows whole")
+    XCTAssertNil(layout.rowToReveal(top: 760, height: 300, down: true, count: 40), "the last row shows")
+    XCTAssertNil(layout.rowToReveal(top: 0, height: 300, down: false, count: 40), "at the top")
+    XCTAssertEqual(layout.rowToReveal(top: 220, height: 300, down: false, count: 40), 2, "row 2 is cut off at the top")
+    XCTAssertEqual(layout.rowToReveal(top: 212, height: 300, down: false, count: 40), 1, "row 2 shows whole")
+    XCTAssertNil(layout.rowToReveal(top: 0, height: 300, down: true, count: 0))
+  }
+
+  func testFavoritesThatShareANameShowTheirPaths() {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    let places = FinderFavorites.distinct([
+      Place(name: "Applications", url: URL(fileURLWithPath: "/Applications"), symbol: "square.grid.3x3"),
+      Place(name: "Downloads", url: home.appendingPathComponent("Downloads"), symbol: "arrow.down.circle"),
+      Place(name: "Applications", url: home.appendingPathComponent("Applications"), symbol: "square.grid.3x3"),
+    ])
+    XCTAssertEqual(places.map(\.name), ["/Applications", "Downloads", "~/Applications"])
+  }
+
   func testDSStoreReadsRecordsInEveryNode() throws {
     let data = try sample()
     let own = try XCTUnwrap(DSStore.records(in: data))

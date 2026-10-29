@@ -23,7 +23,17 @@ enum FinderFavorites {
   /// Nil when the list is missing or can't be read.
   static func load(from list: URL? = list) -> [Place]? {
     guard let list, let data = try? Data(contentsOf: list) else { return nil }
-    return places(in: data)
+    return places(in: data).map(distinct)
+  }
+
+  /// Folders that share a name (`/Applications` and `~/Applications`) are
+  /// told apart by their paths.
+  static func distinct(_ places: [Place]) -> [Place] {
+    let counts = Dictionary(places.map { ($0.name, 1) }, uniquingKeysWith: +)
+    return places.map { place in
+      guard counts[place.name, default: 0] > 1 else { return place }
+      return Place(name: (place.url.path as NSString).abbreviatingWithTildeInPath, url: place.url, symbol: place.symbol)
+    }
   }
 
   static func places(in data: Data) -> [Place]? {

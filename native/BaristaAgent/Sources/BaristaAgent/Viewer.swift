@@ -1,26 +1,35 @@
+import AVFoundation
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
 /// What the viewer shows natively; anything else opens in its default app.
 enum ViewerKind: Equatable {
-  case markdown, image
+  case markdown, image, video
+
+  var isMedia: Bool { self != .markdown }
+
+  /// Movies AVFoundation can play; an MKV or WebM opens in its own player.
+  private static let playable = Set(AVURLAsset.audiovisualTypes().map(\.rawValue))
 
   static func of(_ url: URL) -> ViewerKind? {
     let ext = url.pathExtension.lowercased()
     if ["md", "markdown", "mdown", "mkd"].contains(ext) { return .markdown }
-    guard let type = UTType(filenameExtension: ext), type.conforms(to: .image) else { return nil }
-    return .image
+    guard let type = UTType(filenameExtension: ext) else { return nil }
+    if type.conforms(to: .image) { return .image }
+    if type.conforms(to: .movie), playable.contains(type.identifier) { return .video }
+    return nil
   }
 
-  /// The other files of this kind in `url`'s folder, in Finder's name order,
-  /// for stepping through them with the arrow keys.
+  /// The other files in `url`'s folder the arrow keys step through, in
+  /// Finder's name order: Markdown, or pictures and movies together.
   static func siblings(of url: URL) -> [URL] {
     guard let kind = of(url),
           let urls = try? FileManager.default.contentsOfDirectory(
             at: url.deletingLastPathComponent(), includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
     else { return [url] }
-    let matching = urls.filter { of($0) == kind }
+    let matching = urls.filter { of($0)?.isMedia == kind.isMedia }
       .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     return matching.isEmpty ? [url] : matching
   }
@@ -38,6 +47,7 @@ final class ViewerController {
   private var models: [ObjectIdentifier: ViewerModel] = [:]
   private var keyMonitor: Any?
   private var closeObservers: [ObjectIdentifier: NSObjectProtocol] = [:]
+  private var chrome: [ObjectIdentifier: AnyCancellable] = [:]
 
   /// Shows `url` if the viewer handles it; returns false when it doesn't.
   @discardableResult
@@ -59,9 +69,11 @@ final class ViewerController {
     window.titlebarAppearsTransparent = true
     window.titleVisibility = .hidden
     window.minSize = NSSize(width: 320, height: 220)
-    window.contentView = NSHostingView(rootView: ViewerView(model: model))
+    let host = DockHostingView(rootView: ViewerView(model: model))
+    window.contentView = host
     model.onTitle = { [weak window] name in window?.title = name + Self.titleSuffix }
     model.onTitle?(url.lastPathComponent)
+    if model.kind.isMedia { dressForMedia(window, model: model, host: host) }
     place(window)
     windows.append(window)
     models[ObjectIdentifier(window)] = model
@@ -70,6 +82,8 @@ final class ViewerController {
     ) { [weak self] note in
       guard let self, let closing = note.object as? NSWindow else { return }
       self.closeObservers.removeValue(forKey: ObjectIdentifier(closing)).map(NotificationCenter.default.removeObserver)
+      self.chrome[ObjectIdentifier(closing)] = nil
+      self.models[ObjectIdentifier(closing)]?.media.stop()
       self.windows.removeAll { $0 === closing }
       self.models[ObjectIdentifier(closing)] = nil
       if self.windows.isEmpty, let monitor = self.keyMonitor {
@@ -87,35 +101,87 @@ final class ViewerController {
     AgentWindows.bringForward(window)
   }
 
-  /// Escape and ⌘W close, ←/→ step through the folder's images, ⌘R reloads,
-  /// ⌘E opens the file in its editor.
+  /// Picture and movie windows are only the picture: the window keeps its
+  /// shape as it resizes, and the buttons and bar show while the pointer is
+  /// over it.
+  private func dressForMedia(_ window: NSWindow, model: ViewerModel, host: DockHostingView<ViewerView>) {
+    window.backgroundColor = .black
+    window.titlebarSeparatorStyle = .none
+    if let size = model.media.size { window.contentAspectRatio = size }
+    let buttons = window.standardWindowButton(.closeButton)?.superview
+    buttons?.alphaValue = 0
+    chrome[ObjectIdentifier(window)] = model.media.$showsChrome.removeDuplicates().sink { shown in
+      NSAnimationContext.runAnimationGroup { context in
+        context.duration = 0.2
+        buttons?.animator().alphaValue = shown ? 1 : 0
+      }
+    }
+    host.onPointer = { [weak media = model.media] point in media?.pointer(point) }
+    model.media.resize = { [weak self, weak window, weak media = model.media] request in
+      guard let self, let window, let media else { return }
+      self.resize(window, request, keepShape: media.isVideo)
+    }
+  }
+
+  /// Escape and ⌘W close, ⌘R reloads, ⌘E opens the file in its editor;
+  /// picture and movie windows add `mediaKey`'s.
   private func installKeys() {
     guard keyMonitor == nil else { return }
     keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
       guard let self, let window = event.window, let model = self.models[ObjectIdentifier(window)] else {
         return event
       }
+      if model.kind.isMedia, Self.mediaKey(event, model: model) { return nil }
       let command = event.modifierFlags.contains(.command)
       switch (event.keyCode, command, event.charactersIgnoringModifiers?.lowercased()) {
-      case (53, _, _), (_, true, "w"):
+      case (53, _, _) where !model.media.trimming, (_, true, "w"):
         window.performClose(nil)
       case (_, true, "r"):
         model.reload()
       case (_, true, "e"):
         NSWorkspace.shared.open(model.url)
-      case (123, false, _) where model.kind == .image:
-        model.step(-1)
-      case (124, false, _) where model.kind == .image:
-        model.step(1)
-      case (_, false, "0") where model.kind == .image:
-        model.zoom = .fit
-      case (_, false, "1") where model.kind == .image:
-        model.zoom = .actual
       default:
         return event
       }
       return nil
     }
+  }
+
+  /// ←/→ step through the folder's pictures and movies, Space plays, 0 fits,
+  /// 1–9 zoom to that multiple, +/− step the zoom, P sharp pixels, I info,
+  /// R/⇧R rotate, C crop, T trim, ⌘S save a copy, ⌘C copy. While cropping,
+  /// Return saves and Escape cancels; while trimming the player has the keys.
+  private static func mediaKey(_ event: NSEvent, model: ViewerModel) -> Bool {
+    let media = model.media
+    if media.trimming { return false }
+    if media.cropping {
+      switch event.keyCode {
+      case 53: media.cancelCrop()
+      case 36, 76: media.saveCopy()
+      default: return false
+      }
+      return true
+    }
+    let command = event.modifierFlags.contains(.command)
+    let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+    switch (event.keyCode, command, key) {
+    case (123, false, _): model.step(-1)
+    case (124, false, _): model.step(1)
+    case (49, false, _) where media.isVideo: media.togglePlayback()
+    case (_, false, "0"): media.fit()
+    case (_, false, _) where Int(key).map((1...9).contains) == true: media.magnify(to: CGFloat(Int(key) ?? 1))
+    case (_, _, "="), (_, _, "+"): media.magnify(by: 1)
+    case (_, _, "-"): media.magnify(by: -1)
+    case (_, false, "p") where !media.isVideo: media.pixelated.toggle()
+    case (_, false, "i"): media.showsInfo.toggle()
+    case (_, false, "r") where !media.isVideo: media.rotate(event.modifierFlags.contains(.shift) ? -1 : 1)
+    case (_, false, "c"): media.beginCrop()
+    case (_, false, "t") where media.isVideo: media.beginTrimming()
+    case (_, true, "s"): media.saveCopy()
+    case (_, true, "c"): media.copy()
+    default: return false
+    }
+    return true
   }
 
   private static func size(for model: ViewerModel) -> NSSize {
@@ -124,10 +190,55 @@ final class ViewerController {
     case .markdown:
       return NSSize(width: min(760, visible.width * 0.6), height: min(900, visible.height * 0.8))
     case .image:
-      let image = model.image?.size ?? NSSize(width: 640, height: 480)
-      let scale = min(1, visible.width * 0.7 / max(image.width, 1), visible.height * 0.7 / max(image.height, 1))
-      return NSSize(width: max(360, image.width * scale), height: max(240, image.height * scale + 28))
+      let image = model.media.size ?? NSSize(width: 640, height: 480)
+      return natural(image, in: visible, pixelated: model.media.pixelated)
+    case .video:
+      return NSSize(width: 640, height: 360)
     }
+  }
+
+  /// A picture's opening size: its own up to 70% of the screen, shrunk to
+  /// fit when bigger. Pixel art grows by the biggest whole multiple that fits.
+  static func natural(_ size: CGSize, in visible: CGSize, pixelated: Bool) -> CGSize {
+    guard size.width > 0, size.height > 0 else { return CGSize(width: 640, height: 480) }
+    let room = min(visible.width * 0.7 / size.width, visible.height * 0.7 / size.height)
+    let scale = room >= 1 ? (pixelated ? room.rounded(.down) : 1) : room
+    return CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+  }
+
+  /// Sizes the window's content for `request`, keeping its top edge and
+  /// center, on screen. The window keeps the picture's shape unless a zoom
+  /// is bigger than the screen, which leaves it free to pan.
+  private func resize(_ window: NSWindow, _ request: MediaState.Resize, keepShape: Bool) {
+    guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+    let shape: CGSize
+    var content: CGSize
+    switch request {
+    case .natural(let size):
+      shape = size
+      content = Self.natural(size, in: visible.size, pixelated: false)
+    case .sameWidth(let size):
+      shape = size
+      let width = window.contentLayoutRect.width
+      content = CGSize(width: width, height: width * size.height / max(size.width, 1))
+    case .exact(let size):
+      shape = size
+      content = size
+    }
+    let room = min(1, visible.width / content.width, visible.height * 0.95 / content.height)
+    let clipped = room < 1
+    if case .exact = request, clipped, !keepShape {
+      content = CGSize(width: min(content.width, visible.width), height: min(content.height, visible.height * 0.95))
+      window.contentResizeIncrements = NSSize(width: 1, height: 1)
+    } else {
+      content = CGSize(width: content.width * room, height: content.height * room)
+      window.contentAspectRatio = shape
+    }
+    var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: content))
+    frame.origin = NSPoint(x: window.frame.midX - frame.width / 2, y: window.frame.maxY - frame.height)
+    frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
+    frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
+    window.setFrame(frame, display: true, animate: false)
   }
 
   /// Centered on the screen under the pointer, each new window a step down
@@ -145,44 +256,41 @@ final class ViewerController {
 
 /// The file a viewer window shows, reloaded when it changes on disk.
 final class ViewerModel: ObservableObject {
-  /// `custom` is wherever a pinch left the image.
-  enum Zoom { case fit, actual, custom }
-
   @Published private(set) var url: URL
+  /// Changes as the arrow keys step between pictures and movies.
+  @Published private(set) var kind: ViewerKind
   @Published private(set) var blocks: [MarkdownBlock] = []
-  @Published private(set) var image: NSImage?
   @Published private(set) var error: String?
-  @Published var zoom = Zoom.fit
-  /// Position among the folder's files of the same kind, for "3 of 12".
+  /// Position among the folder's files the arrow keys reach, for "3 of 12".
   @Published private(set) var position: (index: Int, count: Int)?
+  let media = MediaState()
   var onTitle: ((String) -> Void)?
-  let kind: ViewerKind
   private var watcher: FileWatcher?
 
   init(url: URL) {
     self.url = url
     kind = ViewerKind.of(url) ?? .markdown
-    load()
+    media.openFile = { [weak self] in self?.show($0) }
+    load(fresh: true)
   }
 
-  func reload() { load() }
+  func reload() { load(fresh: false) }
 
   func step(_ offset: Int) {
     let siblings = ViewerKind.siblings(of: url)
     guard siblings.count > 1, let index = siblings.firstIndex(of: url) else { return }
-    url = siblings[(index + offset + siblings.count) % siblings.count]
-    zoom = .fit
-    load()
+    show(siblings[(index + offset + siblings.count) % siblings.count])
   }
 
   func show(_ next: URL) {
     url = next
-    load()
+    kind = ViewerKind.of(next) ?? kind
+    load(fresh: true)
   }
 
-  private func load() {
+  private func load(fresh: Bool) {
     onTitle?(url.lastPathComponent)
-    watcher = FileWatcher(url: url) { [weak self] in self?.load() }
+    watcher = FileWatcher(url: url) { [weak self] in self?.load(fresh: false) }
     switch kind {
     case .markdown:
       do {
@@ -191,9 +299,8 @@ final class ViewerModel: ObservableObject {
       } catch {
         self.error = "Can't read \(url.lastPathComponent): \(error.localizedDescription)"
       }
-    case .image:
-      image = NSImage(contentsOf: url)
-      error = image == nil ? "Can't open \(url.lastPathComponent) as an image." : nil
+    case .image, .video:
+      error = media.load(url, kind: kind, fresh: fresh)
       let siblings = ViewerKind.siblings(of: url)
       position = siblings.firstIndex(of: url).map { ($0 + 1, siblings.count) }
     }
@@ -245,26 +352,28 @@ struct ViewerView: View {
   @ObservedObject var model: ViewerModel
 
   var body: some View {
-    VStack(spacing: 0) {
-      header
-      Divider()
-      if let error = model.error {
-        Text(error).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else if model.kind == .markdown {
-        MarkdownDocumentView(blocks: model.blocks, base: model.url.deletingLastPathComponent(),
-                             open: { route in
-                               if case .view(let url) = route, ViewerKind.of(url) == .markdown {
-                                 model.show(url)
-                               } else {
-                                 route.perform()
-                               }
-                             })
-      } else if let image = model.image {
-        ZoomableImage(image: image, zoom: $model.zoom)
+    if model.kind.isMedia {
+      MediaView(model: model, media: model.media)
+    } else {
+      VStack(spacing: 0) {
+        header
+        Divider()
+        if let error = model.error {
+          Text(error).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+          MarkdownDocumentView(blocks: model.blocks, base: model.url.deletingLastPathComponent(),
+                               open: { route in
+                                 if case .view(let url) = route, ViewerKind.of(url) == .markdown {
+                                   model.show(url)
+                                 } else {
+                                   route.perform()
+                                 }
+                               })
+        }
       }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .ignoresSafeArea(edges: .top)
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .ignoresSafeArea(edges: .top)
   }
 
   /// Sits in the transparent title bar, clear of the window buttons.
@@ -276,7 +385,7 @@ struct ViewerView: View {
       }
       Spacer()
       Button { NSWorkspace.shared.open(model.url) } label: { Image(systemName: "square.and.pencil") }
-        .help(model.kind == .markdown ? "Open in Editor (⌘E)" : "Open in Default App (⌘E)")
+        .help("Open in Editor (⌘E)")
       Button { NSWorkspace.shared.activateFileViewerSelecting([model.url]) } label: { Image(systemName: "folder") }
         .help("Show in Finder")
       Button { copyText(model.url.path) } label: { Image(systemName: "doc.on.doc") }
@@ -458,89 +567,5 @@ private struct MarkdownImage: View {
     guard let image = NSImage(contentsOf: url) else { return nil }
     cache.setObject(image, forKey: key)
     return image
-  }
-}
-
-/// Pinch to zoom, double-click toggles fit and actual size, and the image
-/// stays centered while smaller than the window.
-private struct ZoomableImage: NSViewRepresentable {
-  let image: NSImage
-  @Binding var zoom: ViewerModel.Zoom
-
-  func makeNSView(context: Context) -> ImageScrollView {
-    let view = ImageScrollView()
-    view.onDoubleClick = { zoom = zoom == .fit ? .actual : .fit }
-    view.onPinch = { zoom = .custom }
-    return view
-  }
-
-  func updateNSView(_ view: ImageScrollView, context: Context) {
-    view.show(image, zoom: zoom)
-  }
-}
-
-final class ImageScrollView: NSScrollView {
-  var onDoubleClick: (() -> Void)?
-  var onPinch: (() -> Void)?
-  private let imageView = NSImageView()
-  private var zoom = ViewerModel.Zoom.fit
-
-  init() {
-    super.init(frame: .zero)
-    contentView = CenteringClipView()
-    documentView = imageView
-    imageView.imageScaling = .scaleAxesIndependently
-    imageView.animates = true
-    allowsMagnification = true
-    minMagnification = 0.02
-    maxMagnification = 16
-    hasVerticalScroller = true
-    hasHorizontalScroller = true
-    autohidesScrollers = true
-    drawsBackground = false
-    NotificationCenter.default.addObserver(self, selector: #selector(pinched),
-                                           name: NSScrollView.didEndLiveMagnifyNotification, object: self)
-  }
-
-  @objc private func pinched() {
-    zoom = .custom
-    onPinch?()
-  }
-
-  required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-
-  func show(_ image: NSImage, zoom: ViewerModel.Zoom) {
-    let changed = imageView.image !== image || self.zoom != zoom
-    imageView.image = image
-    imageView.frame = NSRect(origin: .zero, size: image.size)
-    self.zoom = zoom
-    if changed { applyZoom() }
-  }
-
-  override func layout() {
-    super.layout()
-    if zoom == .fit { applyZoom() }
-  }
-
-  override func mouseDown(with event: NSEvent) {
-    if event.clickCount == 2 { onDoubleClick?() } else { super.mouseDown(with: event) }
-  }
-
-  private func applyZoom() {
-    guard zoom != .custom, let size = imageView.image?.size, size.width > 0, size.height > 0 else { return }
-    let bounds = contentView.bounds.size
-    let visible = NSSize(width: bounds.width * magnification, height: bounds.height * magnification)
-    magnification = zoom == .actual ? 1 : min(1, visible.width / size.width, visible.height / size.height)
-  }
-}
-
-/// Keeps a document smaller than the view in the middle instead of the corner.
-private final class CenteringClipView: NSClipView {
-  override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
-    var rect = super.constrainBoundsRect(proposedBounds)
-    guard let document = documentView else { return rect }
-    if rect.width > document.frame.width { rect.origin.x = (document.frame.width - rect.width) / 2 }
-    if rect.height > document.frame.height { rect.origin.y = (document.frame.height - rect.height) / 2 }
-    return rect
   }
 }

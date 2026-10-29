@@ -19,6 +19,11 @@ enum AgentWindows {
     }
     NSApp.activate(ignoringOtherApps: true)
     window.makeKeyAndOrderFront(nil)
+    // A menu item's action runs before its menu has finished closing, and
+    // the close makes the window the menu came from key again, over this one.
+    RunLoop.main.perform(inModes: [.default]) {
+      if window.isVisible { window.makeKeyAndOrderFront(nil) }
+    }
   }
 
   /// Call from a window's will-close; `closing` is still listed then.

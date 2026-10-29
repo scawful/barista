@@ -27,6 +27,7 @@ enum Preview {
     switch ViewerKind.of(url) {
     case .markdown?: return .document(Markdown.parse(read(url, limit: documentLimit)))
     case .image?: return NSImage(contentsOf: url).map { .image($0) } ?? .details
+    case .video?: return .details
     case nil: break
     }
     if ext == "org" { return .document(Markdown.parse(Org.markdown(read(url, limit: documentLimit)))) }

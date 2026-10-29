@@ -57,7 +57,6 @@ local function get_layout(ctx)
   local music_module = ctx.integrations and ctx.integrations.music or nil
   local state = ctx.state
   local WINDOW_MANAGER_MODE = ctx.WINDOW_MANAGER_MODE
-  local group_border_color = ctx.group_border_color
   local function tc(k, d) return theme[k] or theme[d or "WHITE"] or theme.WHITE end
 
   local layout = {}
@@ -84,7 +83,6 @@ local function get_layout(ctx)
   local control_center_status = nil
   local font_small = font_string(settings.font.text, settings.font.style_map["Semibold"], settings.font.sizes.small)
   local font_bold = font_string(settings.font.text, settings.font.style_map["Bold"], settings.font.sizes.small)
-  local separator_color = theme.OVERLAY1 or theme.SUBTEXT0 or group_border_color
   local code_dir = ctx.CODE_DIR or (ctx.paths and ctx.paths.code_dir) or (os.getenv("BARISTA_CODE_DIR") or ((os.getenv("HOME") or "") .. "/src"))
 
   local function anchor_chip(overrides)
@@ -213,15 +211,12 @@ local function get_layout(ctx)
   })
   table.insert(layout, factory.create_item("front_app_divider", {
     position = "left",
+    -- Draws nothing: plugins/simple_spaces.sh places the spaces after this
+    -- item, and the gap to them matches the gaps between widget chips.
     icon = { drawing = false },
-    label = { drawing = true, string = "·", color = separator_color },
-    ["label.font"] = font_small,
-    -- Tight padding: the gap to the spaces should be close to the gaps
-    -- between widget chips.
+    label = { drawing = false },
     padding_left = 0,
     padding_right = 0,
-    ["label.padding_left"] = 2,
-    ["label.padding_right"] = 2,
     associated_display = associated_displays,
     associated_space = "all",
     background = { drawing = false },

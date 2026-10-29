@@ -145,7 +145,9 @@ local function test_items_left_layout()
         "compiled front_app popup refresh should not force Lua-only mode")
     elseif entry.type == "item" and entry.name == "front_app_divider" then
       found_front_app_divider = true
-      assert_equal(entry.props.label.string, "·", "front_app divider should render a subtle dot separator")
+      assert_equal(entry.props.label.drawing, false, "front_app divider should draw no dot")
+      assert_equal(entry.props.padding_left, 0, "front_app divider should add no gap before the spaces")
+      assert_equal(entry.props.padding_right, 0, "front_app divider should add no gap after the front app")
     elseif entry.type == "item" and entry.name == "shortcut_mode" then
       found_shortcut_mode = true
       assert_equal(entry.props.drawing, false, "shortcut mode should remain hidden outside a modal map")

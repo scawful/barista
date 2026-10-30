@@ -287,19 +287,21 @@ final class ViewerController {
     switch (event.keyCode, command, key) {
     case (48, false, _): model.cycle(shift ? -1 : 1)
     case (51, false, _) where model.tiles.count > 1: model.remove(media)
-    case (51, true, _): model.trash(media)
+    // Holding ⌘⌫ trashes one file, not one per key repeat.
+    case (51, true, _): if !event.isARepeat { model.trash(media) }
     case (_, false, "[") where model.tiles.count > 1: model.move(media, by: -1)
     case (_, false, "]") where model.tiles.count > 1: model.move(media, by: 1)
     case (_, false, "l") where model.tiles.count > 1: model.cycleLayout()
     case (_, false, "f") where model.tiles.count > 1: model.fills.toggle()
+    // ⌘← and ⌘→ always step, even zoomed in, where the bare arrows pan.
+    case (123, true, _): media.step(-1)
+    case (124, true, _): media.step(1)
     case (123, false, _) where !media.viewIsPartial: media.step(-1)
     case (124, false, _) where !media.viewIsPartial: media.step(1)
     case (123, _, _) where media.viewIsPartial: media.pan(dx: -40, dy: 0)
     case (124, _, _) where media.viewIsPartial: media.pan(dx: 40, dy: 0)
     case (125, _, _) where media.viewIsPartial: media.pan(dx: 0, dy: -40)
     case (126, _, _) where media.viewIsPartial: media.pan(dx: 0, dy: 40)
-    case (123, true, _): media.step(-1)
-    case (124, true, _): media.step(1)
     case (49, false, _) where media.isVideo: media.togglePlayback()
     case (_, false, "0"): media.fit()
     case (_, true, "0"): media.magnify(to: 1)
@@ -564,7 +566,8 @@ final class ViewerModel: ObservableObject {
 
   /// Moves `tile`'s file to the Trash. A lone tile steps to the next picture
   /// or movie in its folder first, so it never shows the file going; after
-  /// the folder's last one the window closes. ⌘Z puts the file back and shows it.
+  /// the folder's last one the window closes, and its undo with it (the file
+  /// stays in the Trash). Otherwise ⌘Z puts the file back and shows it.
   func trash(_ tile: MediaState) {
     let url = tile.url
     // Undo shows the file where it was: in the lone tile, or as a tile again.

@@ -625,6 +625,11 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
   func magnify(to scale: CGFloat) {
     guard let size, !cropping else { return }
     guard !isVideo else {
+      // A movie's window holds the whole frame and stops at the screen, so a
+      // bigger scale would only make the next zoom out a no-op.
+      let screen = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame.size ?? size
+      let fits = min(screen.width / max(size.width, 1), screen.height * 0.95 / max(size.height, 1))
+      let scale = min(scale, max(fits, Self.steps[0]))
       self.scale = scale
       zoom = .scale(scale)
       resize?(.exact(CGSize(width: size.width * scale, height: size.height * scale)))

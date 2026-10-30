@@ -33,9 +33,9 @@ struct Volume: Identifiable, Equatable {
   var canEject: Bool { !isStartup && (ejectable || !isLocal || !isInternal) }
 
   private static let keys: [URLResourceKey] = [
-    .volumeLocalizedNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey,
-    .volumeAvailableCapacityKey, .volumeIsEjectableKey, .volumeIsRemovableKey, .volumeIsBrowsableKey,
-    .volumeIsLocalKey, .volumeIsInternalKey,
+    .volumeLocalizedNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityKey,
+    .volumeIsEjectableKey, .volumeIsRemovableKey, .volumeIsBrowsableKey,
+    .volumeIsLocalKey, .volumeIsInternalKey, .volumeIsReadOnlyKey,
   ]
 
   /// Blocking, and a network volume that went away can hold it up.
@@ -48,7 +48,7 @@ struct Volume: Identifiable, Equatable {
       let total = Int64(values.volumeTotalCapacity ?? 0)
       // A local volume without a size is a system mount, not a drive.
       guard total > 0 || !isLocal else { return nil }
-      let available = free(values)
+      let available = free(at: url, values)
       return Volume(url: url, name: values.volumeLocalizedName ?? url.lastPathComponent, total: total,
                     available: available, ejectable: values.volumeIsEjectable == true || values.volumeIsRemovable == true,
                     isLocal: isLocal, isInternal: values.volumeIsInternal ?? false,
@@ -69,9 +69,9 @@ struct Volume: Identifiable, Equatable {
     if let volume, let known = freeSpace.withLock({ $0[volume] }), now.timeIntervalSince(known.at) < 20 {
       return known.bytes
     }
-    let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey,
-                                                   .volumeAvailableCapacityKey])
-    let bytes = values.map(free)
+    let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityKey, .volumeIsLocalKey,
+                                                   .volumeIsReadOnlyKey])
+    let bytes = values.map { free(at: url, $0) }
     if let volume, let bytes { freeSpace.withLock { $0[volume] = (bytes, now) } }
     return bytes
   }
@@ -79,9 +79,15 @@ struct Volume: Identifiable, Equatable {
   private static let freeSpace = OSAllocatedUnfairLock(initialState: [String: (bytes: Int64, at: Date)]())
 
   /// The larger count: APFS's for important use adds purgeable space, but
-  /// exFAT and other non-APFS drives answer it with zero.
-  static func free(_ values: URLResourceValues) -> Int64 {
-    max(values.volumeAvailableCapacityForImportantUsage ?? 0, Int64(values.volumeAvailableCapacity ?? 0))
+  /// exFAT and other non-APFS drives answer it with zero. Network mounts and
+  /// read-only disk images aren't asked: that lookup fails for them and logs
+  /// a CacheDelete error on every read.
+  static func free(at url: URL, _ values: URLResourceValues) -> Int64 {
+    let plain = Int64(values.volumeAvailableCapacity ?? 0)
+    guard values.volumeIsLocal != false, values.volumeIsReadOnly != true else { return plain }
+    let important = (try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+      .volumeAvailableCapacityForImportantUsage
+    return max(important ?? 0, plain)
   }
 }
 

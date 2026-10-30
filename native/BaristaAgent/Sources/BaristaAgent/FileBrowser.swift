@@ -1810,14 +1810,21 @@ private struct FileTable: View {
       }
     } set: { comparators in
       guard let first = comparators.first else { return }
-      state.ascending = first.order == .forward
+      let ascending = first.order == .forward
+      let key: FileSortKey
       switch first.keyPath {
-      case \FileEntry.modified: state.sortKey = .modified
-      case \FileEntry.created: state.sortKey = .created
-      case \FileEntry.added: state.sortKey = .added
-      case \FileEntry.sortableSize: state.sortKey = .size
-      case \FileEntry.kind: state.sortKey = .kind
-      default: state.sortKey = .name
+      case \FileEntry.modified: key = .modified
+      case \FileEntry.created: key = .created
+      case \FileEntry.added: key = .added
+      case \FileEntry.sortableSize: key = .size
+      case \FileEntry.kind: key = .kind
+      default: key = .name
+      }
+      // The table calls this from its sort delegate, where re-sorting its rows
+      // is reentrant. Each assignment re-sorts, so only a change is assigned.
+      DispatchQueue.main.async {
+        if state.ascending != ascending { state.ascending = ascending }
+        if state.sortKey != key { state.sortKey = key }
       }
     }
   }
@@ -2135,7 +2142,13 @@ struct RenameField: View {
         state.renaming = nil
         state.focusList += 1
       }
-      .onChange(of: focused) { if !focused { state.commitRename(entry.url, to: text) } }
+      // Focus leaves while the table is changing its selection; reloading the
+      // rows inside that delegate call is reentrant, so the commit waits a turn.
+      .onChange(of: focused) {
+        guard !focused else { return }
+        let url = entry.url, name = text
+        DispatchQueue.main.async { state.commitRename(url, to: name) }
+      }
       // The row is still being laid out when the field appears, and focus
       // selects the whole name before the stem can be selected.
       .onAppear {

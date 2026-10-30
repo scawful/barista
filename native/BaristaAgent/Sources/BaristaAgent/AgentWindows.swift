@@ -93,11 +93,13 @@ enum AgentWindows {
     newTab.target = MenuHandler.shared
     fileMenu.addItem(newTab)
     fileMenu.addItem(.separator())
-    fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+    // ⌘W closes a browser tab (the last one closes the window), as in Finder.
     let closeTab = NSMenuItem(title: "Close Tab", action: #selector(MenuHandler.closeTab), keyEquivalent: "w")
-    closeTab.keyEquivalentModifierMask = [.command, .shift]
     closeTab.target = MenuHandler.shared
     fileMenu.addItem(closeTab)
+    let closeWindow = NSMenuItem(title: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+    closeWindow.keyEquivalentModifierMask = [.command, .shift]
+    fileMenu.addItem(closeWindow)
     let fileMenuItem = NSMenuItem(title: "File", action: nil, keyEquivalent: "")
     fileMenuItem.submenu = fileMenu
     main.addItem(fileMenuItem)
@@ -213,7 +215,12 @@ final class MenuHandler: NSObject {
   }
 
   @objc func closeTab() {
-    NSApp.keyWindow?.performClose(nil)
+    guard let window = NSApp.keyWindow else { return }
+    if let state = BrowserController.shared.state(in: window) {
+      state.closeTab(state.tabs.selectedID)
+    } else {
+      window.performClose(nil)
+    }
   }
 
   @objc func zoomIn() { zoom(1) }
@@ -237,9 +244,11 @@ final class MenuHandler: NSObject {
 
   @objc func toggleFloat() {
     if let window = NSApp.keyWindow {
-      let id = String(window.windowNumber)
+      // AppKit objects stay on main; the background work gets the number.
+      let number = window.windowNumber
+      let id = String(number)
       DispatchQueue.global(qos: .userInitiated).async {
-        if let state = Yabai.state(ofWindow: window.windowNumber) {
+        if let state = Yabai.state(ofWindow: number) {
           if state.isFloating {
             Yabai.run(["window", id, "--toggle", "float"])
             Yabai.run(["window", id, "--sub-layer", "below"])

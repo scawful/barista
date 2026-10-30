@@ -281,7 +281,10 @@ struct BrowserPreview: View {
     PaneWidth {
       if let entry {
         if entry.isFolder {
+          // A new identity per folder, so one folder's items never show
+          // under the next folder's name while it loads, or when it can't.
           FolderPreviewView(entry: entry, state: state)
+            .id(entry.url)
         } else if loadedFor == entry, let content {
           view(for: content, entry: entry)
         } else {

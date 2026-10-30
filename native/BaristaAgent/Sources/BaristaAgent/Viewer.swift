@@ -112,13 +112,38 @@ final class ViewerController {
       store.create(CollectionStore.favorites)
     }
     guard let name = store.collection(named: name)?.name else { return false }
-    if let window = windows.first(where: { models[ObjectIdentifier($0)]?.gallery?.source == .collection(name) }) {
+    if let window = collectionWindow(name) {
       present(window)
       return true
     }
     let gallery = GalleryModel(collection: name)
     makeWindow(for: ViewerModel(gallery: gallery, mode: gallery.mode))
     return true
+  }
+
+  /// Renames a collection, and the window showing it as its own Rename
+  /// does; the new name, or nil when there is no such collection.
+  @discardableResult
+  func renameCollection(_ name: String, to new: String) -> String? {
+    guard let window = collectionWindow(name), let model = models[ObjectIdentifier(window)], let gallery = model.gallery
+    else { return CollectionStore.shared.rename(name, to: new) }
+    gallery.rename(to: new)
+    model.retitle()
+    return gallery.title
+  }
+
+  /// Deletes a collection and closes the window showing it.
+  func deleteCollection(_ name: String) {
+    let window = collectionWindow(name)
+    CollectionStore.shared.delete(name)
+    window?.close()
+  }
+
+  private func collectionWindow(_ name: String) -> NSWindow? {
+    windows.first { window in
+      guard case .collection(let shown)? = models[ObjectIdentifier(window)]?.gallery?.source else { return false }
+      return shown.caseInsensitiveCompare(name) == .orderedSame
+    }
   }
 
   private func makeWindow(for model: ViewerModel) {

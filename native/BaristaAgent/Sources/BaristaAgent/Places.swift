@@ -118,6 +118,34 @@ final class PlacesMonitor: ObservableObject {
   }
 }
 
+/// A media collection in the sidebar's Collections section: a click opens
+/// its gallery, and pictures and movies dropped on it join it.
+struct CollectionPlace: Equatable {
+  let name: String
+  let count: Int
+  /// Favorites is listed before it is made; the first add makes it.
+  let made: Bool
+
+  var symbol: String { name.caseInsensitiveCompare(CollectionStore.favorites) == .orderedSame ? "star" : "photo.stack" }
+
+  /// Favorites first, made or not, then the rest in the file's order, each
+  /// once under the name it is saved as.
+  static func list(_ store: CollectionStore) -> [CollectionPlace] {
+    var seen = Set<String>()
+    return CollectionMenu.names(store).compactMap { name in
+      let collection = store.collection(named: name)
+      let shown = collection?.name ?? name
+      guard seen.insert(shown.lowercased()).inserted else { return nil }
+      return CollectionPlace(name: shown, count: collection?.items.count ?? 0, made: collection != nil)
+    }
+  }
+
+  /// The pictures and movies among files dropped on a row.
+  static func media(_ urls: [URL]) -> [URL] {
+    urls.filter { $0.isFileURL && ViewerKind.of($0)?.isMedia == true }.map(\.standardizedFileURL)
+  }
+}
+
 /// Finder's names for folders, which a Launch Services lookup gives at a
 /// cost of up to milliseconds; path bars and tabs read them on every redraw.
 enum DisplayNames {

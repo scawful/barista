@@ -449,6 +449,7 @@ final class BrowserState: ObservableObject {
     }
     VolumeMonitor.shared.refresh()
     PlacesMonitor.shared.refresh()
+    CollectionStore.shared.refresh()
     watcher = FileWatcher(url: folder) { [weak self] in self?.scheduleReload() }
     if isDeepSearch { search() }
     let listed = "\(hidden)|\(folder.path)"
@@ -1183,6 +1184,9 @@ struct BrowserView: View {
   @ObservedObject private var volumes = VolumeMonitor.shared
   @ObservedObject private var places = PlacesMonitor.shared
   @ObservedObject private var sidebarPrefs = SidebarPreferences.shared
+  @ObservedObject private var collections = CollectionStore.shared
+  /// The collection row files are being dragged over.
+  @State private var collectionTarget: String?
   @FocusState private var searchFocused: Bool
   @AppStorage("BaristaFilesSidebarWidth") private var sidebarWidth = 180.0
   @AppStorage("BaristaFilesPreviewWidth") private var previewWidth = 320.0
@@ -1393,6 +1397,11 @@ struct BrowserView: View {
           sectionHeader("Locations", symbol: "internaldrive")
         }
       }
+      Section(isExpanded: expanded("Collections")) {
+        ForEach(CollectionPlace.list(collections), id: \.name) { place in collectionRow(place) }
+      } header: {
+        sectionHeader("Collections", symbol: "photo.on.rectangle.angled")
+      }
       // Last, so entering or leaving a repo never moves the places above.
       if let git = state.git {
         Section(isExpanded: expanded("Repository")) {
@@ -1436,8 +1445,12 @@ struct BrowserView: View {
 
   /// Behind the sidebar row for the shown folder.
   private func currentMark(_ url: URL) -> some View {
+    rowMark(state.location.path == url.standardizedFileURL.path)
+  }
+
+  private func rowMark(_ marked: Bool) -> some View {
     RoundedRectangle(cornerRadius: 5)
-      .fill(state.location.path == url.standardizedFileURL.path ? Color.accentColor.opacity(0.22) : Color.clear)
+      .fill(marked ? Color.accentColor.opacity(0.22) : Color.clear)
       .padding(.horizontal, 8)
   }
 
@@ -1555,6 +1568,59 @@ struct BrowserView: View {
   }
 
   static func bytes(_ count: Int64) -> String { ByteCountFormatter.string(fromByteCount: count, countStyle: .file) }
+
+  /// A click opens the collection's gallery, or brings its window forward.
+  private func collectionRow(_ place: CollectionPlace) -> some View {
+    let targeted = Binding<Bool> {
+      collectionTarget == place.name
+    } set: { over in
+      if over { collectionTarget = place.name } else if collectionTarget == place.name { collectionTarget = nil }
+    }
+    return HStack(spacing: 4) {
+      Label(place.name, systemImage: place.symbol).lineLimit(1)
+      Spacer(minLength: 2)
+      if place.made { Text("\(place.count)").font(.caption).monospacedDigit().foregroundStyle(.secondary) }
+    }
+    .help(place.made ? "\(place.count) item\(place.count == 1 ? "" : "s"); drop pictures or movies here to add them"
+          : "Made when the first picture or movie is added; drop one here")
+    .contentShape(Rectangle())
+    .listRowBackground(rowMark(collectionTarget == place.name))
+    .onTapGesture { ViewerController.shared.openCollection(place.name) }
+    .onDrop(of: [.fileURL], isTargeted: targeted) { drop($0, on: place.name) }
+    .contextMenu {
+      Button("Open") { ViewerController.shared.openCollection(place.name) }
+      Divider()
+      Button("Rename Collection…") {
+        if let name = CollectionPrompt.name("Rename Collection", value: place.name) {
+          ViewerController.shared.renameCollection(place.name, to: name)
+        }
+      }.disabled(!place.made)
+      Button("Delete Collection…") {
+        if CollectionPrompt.confirmDelete(place.name) { ViewerController.shared.deleteCollection(place.name) }
+      }.disabled(!place.made)
+      Divider()
+      fontSizeMenu
+    }
+  }
+
+  /// The pictures and movies dropped on a collection's row join it; a drop
+  /// with none beeps.
+  private func drop(_ providers: [NSItemProvider], on name: String) -> Bool {
+    var found: [Int: URL] = [:]
+    let group = DispatchGroup()
+    for (index, provider) in providers.enumerated() {
+      group.enter()
+      _ = provider.loadObject(ofClass: URL.self) { url, _ in
+        if let url { DispatchQueue.main.async { found[index] = url } }
+        group.leave()
+      }
+    }
+    group.notify(queue: .main) {
+      let media = CollectionPlace.media(found.keys.sorted().compactMap { found[$0] })
+      if media.isEmpty { NSSound.beep() } else { collections.add(media, to: name) }
+    }
+    return true
+  }
 
   private func placeRow(_ place: Place) -> some View {
     let symbol = sidebarPrefs.symbol(for: place.url)

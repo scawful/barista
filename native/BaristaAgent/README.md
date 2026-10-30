@@ -55,7 +55,7 @@ The agent runs as `dev.barista.agent` and logs to
 | `DSStore.swift` | A read-only reader for Finder's `.DS_Store` (the buddy-allocated B-tree of per-file records); Barista never writes one. |
 | `FolderViews.swift` | `FolderView` (layout, sort, icon size), what Finder recorded for a folder, Barista's own per-folder choices in its defaults, and the order they apply in. |
 | `OpenWith.swift` | `OpenRules` (Barista's app per extension, under a folder or everywhere, in `files.json`), `DefaultApps` (the system default and Change All), and the Open With menus. |
-| `Places.swift` | `FinderFavorites` (Finder's sidebar list, decoded from its shared file list, with template symbols), `PlacesMonitor`, and `DisplayNames`, a cache of Finder's folder names. |
+| `Places.swift` | `FinderFavorites` (Finder's sidebar list, decoded from its shared file list, with template symbols), `PlacesMonitor`, `CollectionPlace` (the sidebar's Collections rows and which dropped files they take), and `DisplayNames`, a cache of Finder's folder names. |
 | `Git.swift` | Barista Files' git: porcelain v2 status and worktree parsing, `Git.inspect` (no optional locks), and `Tool` for running Homebrew and cargo tools from launchd. |
 | `FileViews.swift` | Barista Files' icon and column views. The column view draws the shown folder as its live column, with the folders above it and a selected folder's contents as read-only columns around it. |
 | `Search.swift` | Barista Files' search scopes: `FileSearch` (the fd and rg commands and their output) and `ToolRun`, which streams a tool's lines and stops it at a limit or on cancel. |
@@ -143,6 +143,14 @@ Collection, with Favorites first, is on a picture's right-click and bar and
 on the gallery's bar; a thumbnail's right-click also has Add to Favorites.
 Favorites is made the first time it's used. Save as Collection… keeps a
 folder gallery's order and leaves out removed items.
+
+Barista Files' sidebar lists the collections under Collections, between
+Locations and Repository: Favorites first, even before it's made, then the
+rest in the file's order, each with its count. A click opens the
+collection's gallery, or brings its window forward. Dropping pictures or
+movies on a row adds them (a drop with none beeps). Right-click has Rename
+Collection… and Delete Collection…, which also retitle or close the
+collection's open window. The rows follow every change to the file.
 
 `dock.json` settings: `viewer_scroll_zoom` (`off`, `fine`, `normal`,
 `fast`) and `viewer_loops_movies`; the bar's More menu writes both.

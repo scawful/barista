@@ -76,6 +76,46 @@ enum MediaEdit {
     }
   }
 
+  /// Where an edit of `url` is written: beside it as a copy, or into
+  /// `scratch` under its own name to replace it.
+  static func output(for url: URL, ext: String, in scratch: URL?) -> URL {
+    guard let scratch else { return copyURL(for: url, ext: ext) }
+    return scratch.appendingPathComponent(url.deletingPathExtension().lastPathComponent).appendingPathExtension(ext)
+  }
+
+  /// Moves `url` to the Trash and `written` into its place, under
+  /// `written`'s extension. When that changes the name to one another file
+  /// has, `written` goes beside it as a copy and `url` stays.
+  static func replace(_ url: URL, with written: URL) throws -> URL {
+    let files = FileManager.default
+    guard written.pathExtension.lowercased() != url.pathExtension.lowercased() else {
+      return try swap(url, with: written, at: url)
+    }
+    let renamed = url.deletingPathExtension().appendingPathExtension(written.pathExtension)
+    guard files.fileExists(atPath: renamed.path) else { return try swap(url, with: written, at: renamed) }
+    let copy = copyURL(for: url, ext: written.pathExtension)
+    try files.moveItem(at: written, to: copy)
+    return copy
+  }
+
+  /// Moves a file to the Trash and says where it went; tests swap it.
+  static var trash: (URL) throws -> URL? = { url in
+    var trashed: NSURL?
+    try FileManager.default.trashItem(at: url, resultingItemURL: &trashed)
+    return trashed as URL?
+  }
+
+  private static func swap(_ url: URL, with written: URL, at target: URL) throws -> URL {
+    let trashed = try trash(url)
+    do {
+      try FileManager.default.moveItem(at: written, to: target)
+    } catch {
+      if let trashed { try? FileManager.default.moveItem(at: trashed, to: url) }
+      throw error
+    }
+    return target
+  }
+
   /// `image` turned clockwise by quarter turns.
   static func rotate(_ image: CGImage, quarterTurns: Int) -> CGImage? {
     let turns = (quarterTurns % 4 + 4) % 4
@@ -138,14 +178,14 @@ enum MediaEdit {
     return image
   }
 
-  /// Writes the turned and cropped picture next to `url`, in its format when
-  /// ImageIO can write that and as PNG otherwise. Blocking.
-  static func writeImage(_ url: URL, rotation: Int, crop: CGRect?) throws -> URL {
+  /// Writes the turned and cropped picture next to `url`, or into `scratch`,
+  /// in its format when ImageIO can write that and as PNG otherwise. Blocking.
+  static func writeImage(_ url: URL, rotation: Int, crop: CGRect?, in scratch: URL? = nil) throws -> URL {
     let image = try render(url, rotation: rotation, crop: crop)
     let writable = (CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? []
     let kept = CGImageSourceCreateWithURL(url as CFURL, nil).flatMap(CGImageSourceGetType)
       .map { $0 as String }.flatMap { writable.contains($0) ? $0 : nil }
-    let copy = copyURL(for: url, ext: kept == nil ? "png" : url.pathExtension)
+    let copy = output(for: url, ext: kept == nil ? "png" : url.pathExtension, in: scratch)
     guard let destination = CGImageDestinationCreateWithURL(copy as CFURL, (kept ?? UTType.png.identifier) as CFString,
                                                             1, nil)
     else { throw Failure("Can't write \(copy.lastPathComponent).") }
@@ -154,9 +194,9 @@ enum MediaEdit {
     return copy
   }
 
-  /// Exports the trimmed and cropped movie next to `url`. A trim alone
-  /// copies the samples as they are; a crop re-encodes.
-  static func exportVideo(_ url: URL, trim: CMTimeRange?, crop: CGRect?,
+  /// Exports the trimmed and cropped movie next to `url`, or into `scratch`.
+  /// A trim alone copies the samples as they are; a crop re-encodes.
+  static func exportVideo(_ url: URL, trim: CMTimeRange?, crop: CGRect?, in scratch: URL? = nil,
                           progress: @escaping (Float) -> Void) async throws -> URL {
     let asset = AVURLAsset(url: url)
     var composition: AVVideoComposition?
@@ -183,7 +223,7 @@ enum MediaEdit {
     else { throw Failure("Can't export \(url.lastPathComponent).") }
     let ext = url.pathExtension.lowercased()
     let fileType: AVFileType = ["mp4", "m4v"].contains(ext) ? .mp4 : .mov
-    let copy = copyURL(for: url, ext: fileType == .mp4 ? ext : "mov")
+    let copy = output(for: url, ext: fileType == .mp4 ? url.pathExtension : "mov", in: scratch)
     session.outputURL = copy
     session.outputFileType = fileType
     session.videoComposition = composition
@@ -425,7 +465,7 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
   }
   @Published private(set) var cropping = false
   @Published var crop = MediaEdit.whole
-  /// A crop waiting for Save Copy, from Crop to View or the crop handles.
+  /// A crop waiting for Save or Save Copy, from Crop to View or the crop handles.
   @Published private(set) var applied: CGRect?
   /// Some of the picture is outside the window: zoomed in, or cut off by a resize.
   @Published private(set) var viewIsPartial = false
@@ -434,8 +474,8 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
   @Published private(set) var status: String?
 
   var resize: ((Resize) -> Void)?
-  /// Zooms the shown picture and sizes its window around it; false when
-  /// the picture shares its window.
+  /// Zooms the shown picture or movie and sizes its window around it; false
+  /// when a picture shares its window.
   var zoomWindow: ((CGFloat) -> Bool)?
   /// The tile shows another file: stepped to, or a saved copy.
   var onShow: ((URL) -> Void)?
@@ -513,7 +553,7 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
       view = MediaEdit.whole
       viewIsPartial = false
       decoded = 0
-      watcher = FileWatcher(url: url) { [weak self] in self?.reload() }
+      watch()
       let siblings = ViewerKind.siblings(of: url)
       position = siblings.firstIndex(of: url).map { ($0 + 1, siblings.count) }
     }
@@ -624,18 +664,8 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
   /// window grows or shrinks with it.
   func magnify(to scale: CGFloat) {
     guard let size, !cropping else { return }
-    guard !isVideo else {
-      // A movie's window holds the whole frame and stops at the screen, so a
-      // bigger scale would only make the next zoom out a no-op.
-      let screen = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame.size ?? size
-      let fits = min(screen.width / max(size.width, 1), screen.height * 0.95 / max(size.height, 1))
-      let scale = min(scale, max(fits, Self.steps[0]))
-      self.scale = scale
-      zoom = .scale(scale)
-      resize?(.exact(CGSize(width: size.width * scale, height: size.height * scale)))
-      return
-    }
-    if zoomWindow?(scale) == true { return }
+    // A movie's view sizes its window and zooms the frame inside it.
+    if zoomWindow?(scale) == true || isVideo { return }
     zoom = .focus(scale, CGPoint(x: view.midX, y: view.midY))
     resize?(.exact(CGSize(width: size.width * view.width * scale, height: size.height * view.height * scale)))
   }
@@ -736,45 +766,81 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
     if player.timeControlStatus == .playing { player.pause() } else { player.play() }
   }
 
+  /// Writes the turn, crop, and trim over this file, puts the original in
+  /// the Trash, and shows the result.
+  func save() {
+    write(replacing: true)
+  }
+
   /// Writes the turn, crop, and trim to a new file beside this one, then
   /// shows that file.
   func saveCopy() {
+    write(replacing: false)
+  }
+
+  private func write(replacing: Bool) {
     if cropping { applyCrop() }
     guard hasEdits, !saving else { return }
     let (url, area) = (url, applied)
+    // The edit is written on the file's volume, then moved over it whole.
+    var scratch: URL?
+    if replacing {
+      do {
+        scratch = try FileManager.default.url(for: .itemReplacementDirectory, in: .userDomainMask,
+                                              appropriateFor: url, create: true)
+      } catch {
+        return show(status: "Couldn't save: \(error.localizedDescription)")
+      }
+    }
     saving = true
     show(status: "Saving…", clears: false)
+    let done: (Result<URL, Error>) -> Void = { [weak self] result in
+      DispatchQueue.main.async {
+        self?.saved(result, over: replacing ? url : nil)
+        if let scratch { try? FileManager.default.removeItem(at: scratch) }
+      }
+    }
     if isVideo {
       let trim = trim
       Task { [weak self] in
-        let result: Result<URL, Error>
         do {
-          result = .success(try await MediaEdit.exportVideo(url, trim: trim, crop: area) { fraction in
+          done(.success(try await MediaEdit.exportVideo(url, trim: trim, crop: area, in: scratch) { fraction in
             self?.show(status: "Saving… \(Int(fraction * 100))%", clears: false)
-          })
+          }))
         } catch {
-          result = .failure(error)
+          done(.failure(error))
         }
-        DispatchQueue.main.async { self?.saved(result) }
       }
     } else {
       let rotation = rotation
-      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-        let result = Result { try MediaEdit.writeImage(url, rotation: rotation, crop: area) }
-        DispatchQueue.main.async { self?.saved(result) }
+      DispatchQueue.global(qos: .userInitiated).async {
+        done(Result { try MediaEdit.writeImage(url, rotation: rotation, crop: area, in: scratch) })
       }
     }
   }
 
-  private func saved(_ result: Result<URL, Error>) {
+  /// Shows the written file, after moving it over `original` when given.
+  private func saved(_ result: Result<URL, Error>, over original: URL?) {
     saving = false
-    switch result {
-    case .success(let copy):
-      show(copy)
-      show(status: "Saved \(copy.lastPathComponent)")
-    case .failure(let error):
+    do {
+      var file = try result.get()
+      if let original {
+        // The original going to the Trash isn't a change to reload.
+        watcher = nil
+        file = try MediaEdit.replace(original, with: file)
+      }
+      // A name another file had leaves the original and saves a copy.
+      let replaced = original.map { file.deletingPathExtension() == $0.deletingPathExtension() } ?? false
+      show(file)
+      show(status: "Saved \(file.lastPathComponent)" + (replaced ? "; the original is in the Trash" : ""))
+    } catch {
+      if watcher == nil { watch() }
       show(status: "Couldn't save: \(error.localizedDescription)")
     }
+  }
+
+  private func watch() {
+    watcher = FileWatcher(url: url) { [weak self] in self?.reload() }
   }
 
   /// The picture with its edits at full size, or the movie file.
@@ -1012,7 +1078,10 @@ enum MediaMenu {
     add("Crop…", "c") { media.beginCrop() }
     if !media.isVideo, media.viewIsPartial { add("Crop to View", "c", .shift) { media.cropToView() } }
     if media.applied != nil { add("Remove Crop") { media.clearCrop() } }
-    if media.hasEdits { add("Save Copy", "s", .command) { media.saveCopy() } }
+    if media.hasEdits {
+      add("Save") { media.save() }
+      add("Save Copy", "s", .command) { media.saveCopy() }
+    }
     menu.addItem(.separator())
     add(media.isVideo ? "Copy File" : "Copy Image", "c", .command) { media.copy() }
     add("Show Info", "i", on: media.showsInfo) { media.showsInfo.toggle() }
@@ -1145,7 +1214,7 @@ private struct MediaTileView: View {
       if let error = media.error {
         Text(error).foregroundStyle(.secondary).padding()
       } else if let player = media.player {
-        VideoView(player: player, media: media, fills: fills && !media.cropping)
+        VideoView(player: player, media: media, zoom: media.zoom, fills: fills && !media.cropping)
       } else if let image = media.image {
         ZoomableImage(image: image, zoom: media.zoom, pixelated: media.pixelated, ownsWindow: !tiled,
                       frozen: media.cropping, fills: fills && !media.cropping, media: media)
@@ -1231,6 +1300,7 @@ private struct MediaBar: View {
       .fixedSize()
     }
     if media.hasEdits {
+      Button("Save") { media.save() }.help("Save the edits over this file; the original goes to the Trash")
       Button("Save Copy") { media.saveCopy() }.buttonStyle(.borderedProminent).help("Save the edits as a new file (⌘S)")
     }
     icon("info.circle", "Info (I)", on: media.showsInfo) { media.showsInfo.toggle() }
@@ -1427,8 +1497,40 @@ private struct CropOverlay: View {
   }
 }
 
+/// Pinch and scroll zoom at the pointer, the window first up to the screen
+/// and then the frame inside it; double-click toggles fit and actual size.
+/// While the whole frame shows, dragging it moves the window; past that, it
+/// pans. AVKit's own zoom, a scroll view over the frame, zooms inside.
 final class MoviePlayerView: AVPlayerView {
-  weak var media: MediaState?
+  weak var media: MediaState? {
+    didSet { if media !== oldValue { reported = nil } }
+  }
+  private weak var frameScroll: NSScrollView?
+  private var panStart: (point: NSPoint, origin: NSPoint)?
+  private var reported: (scale: CGFloat, view: CGRect)?
+
+  /// AVKit's scroll view over the frame, found again after AVKit rebuilds its views.
+  private var zoomer: NSScrollView? {
+    if let scroll = frameScroll, scroll.isDescendant(of: self) { return scroll }
+    guard let scroll = Self.magnifier(in: self) else { return nil }
+    frameScroll = scroll
+    // Legacy scroll bars would take room from the frame and throw its zoom off.
+    scroll.scrollerStyle = .overlay
+    scroll.contentView.postsBoundsChangedNotifications = true
+    NotificationCenter.default.addObserver(self, selector: #selector(scrolledClip),
+                                           name: NSView.boundsDidChangeNotification, object: scroll.contentView)
+    return scroll
+  }
+
+  private static func magnifier(in view: NSView) -> NSScrollView? {
+    for sub in view.subviews {
+      if let scroll = sub as? NSScrollView, scroll.allowsMagnification { return scroll }
+      if let found = magnifier(in: sub) { return found }
+    }
+    return nil
+  }
+
+  private var isZoomedIn: Bool { (zoomer?.magnification ?? 1) > 1.001 }
 
   private func isControlView(_ view: NSView?) -> Bool {
     var v = view
@@ -1443,22 +1545,45 @@ final class MoviePlayerView: AVPlayerView {
     return false
   }
 
+  /// Clicks, pinches and scrolls on the frame come here instead of to the
+  /// views AVKit lays over it; the controls and the trim bar still get theirs.
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    let hit = super.hitTest(point)
+    guard let hit, hit !== self, media?.trimming != true, !isControlView(hit) else { return hit }
+    return self
+  }
+
+  /// A drag moves the window from the first click, as the title bar does.
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
   override func mouseDown(with event: NSEvent) {
     if event.clickCount == 2 {
       media?.toggleActualSize()
       return
     }
-    let hit = super.hitTest(event.locationInWindow)
-    if isControlView(hit) {
-      super.mouseDown(with: event)
-      return
+    if isZoomedIn, let scroll = zoomer {
+      panStart = (event.locationInWindow, scroll.contentView.bounds.origin)
+    } else {
+      window?.performDrag(with: event)
     }
-    window?.performDrag(with: event)
+  }
+
+  override func mouseDragged(with event: NSEvent) {
+    guard let start = panStart, let scroll = zoomer else { return super.mouseDragged(with: event) }
+    move(scroll, from: start.origin, by: CGPoint(x: start.point.x - event.locationInWindow.x,
+                                                 y: start.point.y - event.locationInWindow.y))
+  }
+
+  override func mouseUp(with event: NSEvent) {
+    guard panStart != nil else { return super.mouseUp(with: event) }
+    panStart = nil
   }
 
   override func scrollWheel(with event: NSEvent) {
     let rate = ViewerPreferences.shared.scrollZoom.rate
-    guard rate > 0, !event.modifierFlags.contains(.command), let media = media else {
+    guard rate > 0, !event.modifierFlags.contains(.command), media?.cropping == false else {
+      // Without scroll zoom, or with ⌘, a scroll pans the zoomed frame.
+      if isZoomedIn, let scroll = zoomer { return scroll.scrollWheel(with: event) }
       return super.scrollWheel(with: event)
     }
     guard event.momentumPhase.isEmpty else { return }
@@ -1466,22 +1591,121 @@ final class MoviePlayerView: AVPlayerView {
     guard toward != 0 else { return }
     let precise = event.hasPreciseScrollingDeltas
     let amount = precise ? toward * rate : (toward > 0 ? 1 : -1) * rate * ViewerPreferences.ScrollZoom.notch
-    let currentScale = media.scale > 0 ? media.scale : (window.map { $0.contentLayoutRect.width / max(media.size?.width ?? 640, 1) } ?? 1.0)
-    let target = min(max(currentScale * exp(amount), 0.1), 16.0)
-    media.magnify(to: target)
+    zoom(to: shownScale * exp(amount), around: event.locationInWindow)
   }
 
   override func magnify(with event: NSEvent) {
-    guard let media = media else { return super.magnify(with: event) }
-    let currentScale = media.scale > 0 ? media.scale : (window.map { $0.contentLayoutRect.width / max(media.size?.width ?? 640, 1) } ?? 1.0)
-    let target = min(max(currentScale * (1 + event.magnification), 0.1), 16.0)
-    media.magnify(to: target)
+    guard media?.cropping == false else { return }
+    zoom(to: shownScale * (1 + event.magnification), around: event.locationInWindow)
+  }
+
+  /// Zooms to `scale` of the frame's size. The window grows or shrinks to
+  /// the frame up to the screen; past that, the frame zooms inside it,
+  /// keeping the point under `anchor` (in the window; its middle when nil)
+  /// still. A movie sharing its window zooms inside its tile only.
+  @discardableResult
+  func zoom(to scale: CGFloat, around anchor: NSPoint? = nil) -> Bool {
+    guard let media, let size = media.size, size.width > 0, size.height > 0, let scroll = zoomer,
+          let visible = (window?.screen ?? NSScreen.main)?.visibleFrame
+    else { return false }
+    let scale = min(max(scale, MediaState.steps[0]), MediaState.steps[MediaState.steps.count - 1])
+    // As big as the controller lets the window grow for this frame.
+    let fits = min(visible.width / size.width, visible.height * 0.95 / size.height)
+    media.zoom = .scale(scale)
+    media.resize?(.exact(CGSize(width: size.width * min(scale, fits), height: size.height * min(scale, fits))))
+    window?.contentView?.layoutSubtreeIfNeeded()
+    scroll.scrollerStyle = .overlay
+    let inner = min(scale / drawn(size, in: scroll).scale, scroll.maxMagnification)
+    if inner < 1.001 {
+      unzoom()
+    } else {
+      let clip = scroll.contentView
+      scroll.setMagnification(inner, centeredAt: anchor.map { clip.convert($0, from: nil) }
+                                ?? NSPoint(x: clip.bounds.midX, y: clip.bounds.midY))
+    }
+    report()
+    return true
+  }
+
+  /// The whole frame in the window again.
+  func unzoom() {
+    guard let scroll = zoomer, isZoomedIn || scroll.contentView.bounds.origin != .zero else { return }
+    scroll.magnification = 1
+    // Zooming out leaves the clip scrolled a few points off the frame.
+    scroll.contentView.scroll(to: .zero)
+    scroll.reflectScrolledClipView(scroll.contentView)
+    report()
+  }
+
+  /// The arrow keys: `delta` window points, y up.
+  func pan(by delta: CGPoint) {
+    guard isZoomedIn, let scroll = zoomer else { return }
+    move(scroll, from: scroll.contentView.bounds.origin, by: delta)
+  }
+
+  private func move(_ scroll: NSScrollView, from origin: NSPoint, by delta: CGPoint) {
+    let clip = scroll.contentView
+    let magnification = scroll.magnification
+    let target = NSPoint(x: origin.x + delta.x / magnification,
+                         y: origin.y + (clip.isFlipped ? -delta.y : delta.y) / magnification)
+    clip.scroll(to: clip.constrainBoundsRect(NSRect(origin: target, size: clip.bounds.size)).origin)
+    scroll.reflectScrolledClipView(clip)
+    report()
+  }
+
+  /// The frame's size on screen over its own.
+  private var shownScale: CGFloat {
+    guard let size = media?.size, size.width > 0, size.height > 0, let scroll = zoomer else { return 1 }
+    return drawn(size, in: scroll).scale * scroll.magnification
+  }
+
+  /// Where AVKit draws a frame `size` big in the scroll view's document,
+  /// unzoomed, and at what scale.
+  private func drawn(_ size: CGSize, in scroll: NSScrollView) -> (rect: CGRect, scale: CGFloat) {
+    let box = scroll.documentView?.bounds ?? bounds
+    let across = box.width / size.width, down = box.height / size.height
+    let scale = videoGravity == .resizeAspectFill ? max(across, down) : min(across, down)
+    let (width, height) = (size.width * scale, size.height * scale)
+    return (CGRect(x: box.midX - width / 2, y: box.midY - height / 2, width: width, height: height), scale)
+  }
+
+  override func layout() {
+    super.layout()
+    report()
+  }
+
+  @objc private func scrolledClip() {
+    report()
+  }
+
+  /// Tells the tile the frame's scale and the part in view, for the readout
+  /// and the arrow keys. Layout can run inside a SwiftUI update.
+  private func report() {
+    guard let media, let size = media.size, size.width > 0, size.height > 0, let scroll = zoomer else { return }
+    let (frame, fitted) = drawn(size, in: scroll)
+    guard frame.width > 0, frame.height > 0 else { return }
+    var view = MediaEdit.whole
+    let shown = scroll.contentView.bounds.intersection(frame)
+    if isZoomedIn, !shown.isNull, shown.width > 0, shown.height > 0 {
+      let top = scroll.contentView.isFlipped ? shown.minY - frame.minY : frame.maxY - shown.maxY
+      view = CGRect(x: (shown.minX - frame.minX) / frame.width, y: top / frame.height,
+                    width: shown.width / frame.width, height: shown.height / frame.height)
+    }
+    let now = (scale: fitted * scroll.magnification, view: view)
+    if let reported, abs(reported.scale - now.scale) < 0.001, reported.view == now.view { return }
+    reported = now
+    let backing = window?.backingScaleFactor ?? 2
+    DispatchQueue.main.async { [weak media] in
+      media?.shown(at: now.scale, backing: backing)
+      media?.viewed(now.view)
+    }
   }
 }
 
 private struct VideoView: NSViewRepresentable {
   let player: AVPlayer
   let media: MediaState
+  let zoom: MediaState.Zoom
   let fills: Bool
 
   func makeNSView(context: Context) -> MoviePlayerView {
@@ -1489,7 +1713,13 @@ private struct VideoView: NSViewRepresentable {
     view.media = media
     view.controlsStyle = .floating
     view.showsFullScreenToggleButton = true
+    // AVKit's zoom is what zooms the frame inside the window. Live Text
+    // can't take clicks on a frame that drags its window.
+    view.allowsMagnification = true
+    view.allowsVideoFrameAnalysis = false
     view.player = player
+    media.zoomWindow = { [weak view] scale in view?.zoom(to: scale) ?? false }
+    media.pan = { [weak view] dx, dy in view?.pan(by: CGPoint(x: dx, y: dy)) }
     media.beginTrim = { [weak view, weak media] in
       guard let view, let media, view.canBeginTrimming else { return }
       media.trimming = true
@@ -1505,9 +1735,17 @@ private struct VideoView: NSViewRepresentable {
 
   func updateNSView(_ view: MoviePlayerView, context: Context) {
     view.media = media
-    if view.player !== player { view.player = player }
+    if view.player !== player {
+      view.player = player
+      view.unzoom()
+    }
     let gravity: AVLayerVideoGravity = fills ? .resizeAspectFill : .resizeAspect
-    if view.videoGravity != gravity { view.videoGravity = gravity }
+    if view.videoGravity != gravity {
+      view.videoGravity = gravity
+      view.needsLayout = true
+    }
+    // Fit, a crop starting, or a new file.
+    if case .region = zoom { view.unzoom() }
   }
 }
 
@@ -1750,6 +1988,9 @@ final class ImageScrollView: NSScrollView {
     return true
   }
 
+  /// A drag moves the window from the first click, as the title bar does.
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
   override func mouseDown(with event: NSEvent) {
     if event.clickCount == 2 { return onDoubleClick?() ?? () }
     if fitsInside {
@@ -1847,6 +2088,7 @@ private final class PixelImageView: NSImageView {
     super.draw(dirtyRect)
   }
 
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
   override func mouseDown(with event: NSEvent) { nextResponder?.mouseDown(with: event) }
   override func mouseDragged(with event: NSEvent) { nextResponder?.mouseDragged(with: event) }
   override func mouseUp(with event: NSEvent) { nextResponder?.mouseUp(with: event) }
@@ -1854,6 +2096,8 @@ private final class PixelImageView: NSImageView {
 
 /// Keeps a document smaller than the view in the middle instead of the corner.
 private final class CenteringClipView: NSClipView {
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
   override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
     var rect = super.constrainBoundsRect(proposedBounds)
     guard let document = documentView else { return rect }

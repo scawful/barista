@@ -87,14 +87,20 @@ Zooming by scroll, pinch, keys, or double-click sizes the window to the
 picture around the pointer, up to the screen, so no black shows; dragging an
 edge moves it over a still picture, stopping at the picture's edges (⌥ scales
 the view with the window instead). The part showing is only a view until
-Crop to View (⇧C) or the C handles and Return make it an edit. Scroll bars
+Crop to View (⇧C) or the C handles and Return make it an edit. Dragging
+anywhere on a picture or movie moves the window from the first click, as the
+title bar does; zoomed in, it pans, and the title bar still moves the window.
+A movie zooms the same way, past the screen inside its window (AVKit's own
+zoom), so Live Text is off on movie frames. Scroll bars
 float and fade. Movies wait to be played and loop. Keys: ←/→ step through the
 folder's pictures and movies (zoomed in they pan, and ⌘←/⌘→ step), Space plays, 0 fits, 1–9 zoom to that
 multiple, +/− step the zoom, P toggles sharp pixels, I shows info, R and ⇧R
-rotate, C crops, ⇧C crops to the view, T trims a movie, ⌘S saves the edits,
+rotate, C crops, ⇧C crops to the view, T trims a movie, ⌘S saves a copy,
 ⌘C copies, ⌘⌫ moves the file to the Trash and steps to the next one (⌘Z puts
-it back). Edits never touch the original: Save Copy writes
-`name (edited).ext` beside it and shows that. A trim alone copies the movie's
+it back). Save Copy writes `name (edited).ext` beside the original and shows
+that. Save writes over the original and moves the original to the Trash; a
+format ImageIO can't write saves as PNG (a movie as .mov) under the same
+name, and saves a copy instead when another file has that name. A trim alone copies the movie's
 samples; a crop re-encodes. Right-click has all of it, plus Show in Files.
 
 Several pictures or movies tile in one window: `barista-agent view A B …`,

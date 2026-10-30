@@ -76,6 +76,44 @@ final class MediaViewerTests: XCTestCase {
     XCTAssertEqual(try pixels(bottom), [0x0000FF])
   }
 
+  func testSaveWritesOverTheOriginalAndTrashesIt() throws {
+    let bin = folder.appendingPathComponent("Trash")
+    try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+    let real = MediaEdit.trash
+    MediaEdit.trash = { url in
+      let moved = bin.appendingPathComponent(url.lastPathComponent)
+      try FileManager.default.moveItem(at: url, to: moved)
+      return moved
+    }
+    defer { MediaEdit.trash = real }
+
+    let source = folder.appendingPathComponent("pair.png")
+    try png([0xFF0000, 0x0000FF], width: 2, height: 1).write(to: source)
+    let media = MediaState(url: source, kind: .image)
+    media.rotate(1)
+    media.save()
+    try spin { media.status?.hasPrefix("Saved") == true || media.status?.hasPrefix("Couldn't") == true }
+    XCTAssertEqual(media.status, "Saved pair.png; the original is in the Trash")
+    XCTAssertEqual(media.url, source)
+    XCTAssertFalse(media.hasEdits)
+    XCTAssertEqual(try size(source), CGSize(width: 1, height: 2), "the turn is in the file")
+    XCTAssertEqual(try size(bin.appendingPathComponent("pair.png")), CGSize(width: 2, height: 1))
+    XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted(), ["Trash", "pair.png"],
+                   "no copy and no scratch file beside it")
+  }
+
+  func testSaveKeepsTheOriginalWhenTheNewNameIsTaken() throws {
+    let raw = folder.appendingPathComponent("shot.tga")
+    let written = folder.appendingPathComponent("scratch.png")
+    try Data("raw".utf8).write(to: raw)
+    try Data("new".utf8).write(to: written)
+    try Data("other".utf8).write(to: folder.appendingPathComponent("shot.png"))
+    let saved = try MediaEdit.replace(raw, with: written)
+    XCTAssertEqual(saved.lastPathComponent, "shot (edited).png")
+    XCTAssertEqual(try String(contentsOf: raw, encoding: .utf8), "raw")
+    XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent("shot.png"), encoding: .utf8), "other")
+  }
+
   func testPixelArtOpensAtAWholeMultipleAndZoomsInWholeSteps() throws {
     XCTAssertEqual(ViewerController.natural(CGSize(width: 256, height: 224), in: CGSize(width: 1512, height: 945),
                                             pixelated: true), CGSize(width: 512, height: 448))
@@ -327,7 +365,107 @@ final class MediaViewerTests: XCTestCase {
     XCTAssertEqual(natural, CGSize(width: 32, height: 24))
   }
 
+  func testDraggingAPictureMovesItsWindowFromTheFirstClick() throws {
+    let url = folder.appendingPathComponent("drag.png")
+    try write(CGSize(width: 400, height: 300), to: url)
+    let (window, model) = showViewer(url, size: CGSize(width: 400, height: 300))
+    defer { window.close() }
+    try spin { model.media?.image != nil }
+    drag(window, at: NSPoint(x: 200, y: 150))
+    XCTAssertEqual(window.drags, 1, "a click on an inactive window's picture starts a window drag")
+  }
+
+  func testDraggingAMovieMovesItsWindowUntilZoomedInThenPans() throws {
+    let url = folder.appendingPathComponent("drag.mov")
+    // Synchronous, on the main thread: the main queue drains while it waits.
+    let written = expectation(description: "movie written")
+    Task {
+      try await self.writeMovie(to: url, size: CGSize(width: 640, height: 360), seconds: 1)
+      written.fulfill()
+    }
+    wait(for: [written], timeout: 20)
+    let (window, model) = showViewer(url, size: CGSize(width: 640, height: 360))
+    defer { window.close() }
+    let media = try XCTUnwrap(model.media)
+    try spin { media.size != nil && window.contentView.flatMap(movieView(in:)) != nil }
+    window.contentView?.layoutSubtreeIfNeeded()
+    drag(window, at: NSPoint(x: 320, y: 250))
+    XCTAssertEqual(window.drags, 1, "a click on the frame starts a window drag")
+
+    // A quarter across and a quarter down stays under the pointer.
+    let view = try XCTUnwrap(window.contentView.flatMap(movieView(in:)))
+    // AVKit adds its zooming scroll view once the item can play.
+    try spin { self.subviews(of: view).contains { ($0 as? NSScrollView)?.allowsMagnification == true } }
+    XCTAssertTrue(view.zoom(to: 2, around: NSPoint(x: 160, y: 270)))
+    try spin { media.viewIsPartial }
+    XCTAssertEqual(media.scale, 2, accuracy: 0.01)
+    XCTAssertEqual(media.view.minX, 0.125, accuracy: 0.01)
+    XCTAssertEqual(media.view.minY, 0.125, accuracy: 0.01)
+    XCTAssertEqual(media.view.width, 0.5, accuracy: 0.01)
+
+    let left = media.view.minX
+    drag(window, at: NSPoint(x: 320, y: 250), by: CGSize(width: -100, height: 0))
+    XCTAssertEqual(window.drags, 1, "zoomed in, a drag pans instead")
+    try spin { media.view.minX > left }
+    XCTAssertEqual(media.view.minX - left, 100.0 / (640 * 2), accuracy: 0.005)
+    let top = media.view.minY
+    media.pan(dx: 0, dy: 40)
+    try spin { media.view.minY < top }
+
+    media.fit()
+    try spin { !media.viewIsPartial }
+    XCTAssertEqual(media.scale, 1, accuracy: 0.01)
+    drag(window, at: NSPoint(x: 320, y: 250))
+    XCTAssertEqual(window.drags, 2, "fitted again, a drag moves the window")
+  }
+
   // MARK: Helpers
+
+  /// A viewer window for `url` that counts drags instead of moving.
+  private func showViewer(_ url: URL, size: CGSize) -> (RecordingWindow, ViewerModel) {
+    let model = ViewerModel(url: url)
+    let window = RecordingWindow(contentRect: NSRect(origin: .zero, size: size),
+                                 styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
+                                 backing: .buffered, defer: false)
+    window.titlebarAppearsTransparent = true
+    window.titleVisibility = .hidden
+    window.isReleasedWhenClosed = false
+    window.contentView = DockHostingView(rootView: ViewerView(model: model))
+    window.orderBack(nil)
+    return (window, model)
+  }
+
+  /// Sends a press at `point` in `window`, moved `by` before the release.
+  private func drag(_ window: NSWindow, at point: NSPoint, by offset: CGSize = .zero) {
+    let end = NSPoint(x: point.x + offset.width, y: point.y + offset.height)
+    var events: [(NSEvent.EventType, NSPoint)] = [(.leftMouseDown, point)]
+    if offset != .zero { events.append((.leftMouseDragged, end)) }
+    events.append((.leftMouseUp, end))
+    for (type, location) in events {
+      window.sendEvent(NSEvent.mouseEvent(with: type, location: location, modifierFlags: [],
+                                          timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                                          clickCount: 1, pressure: 1)!)
+    }
+  }
+
+  private func movieView(in view: NSView) -> MoviePlayerView? {
+    if let movie = view as? MoviePlayerView { return movie }
+    return view.subviews.lazy.compactMap { self.movieView(in: $0) }.first
+  }
+
+  private func subviews(of view: NSView) -> [NSView] {
+    view.subviews + view.subviews.flatMap { subviews(of: $0) }
+  }
+
+  /// Runs the main queue until `done` holds.
+  private func spin(until done: () -> Bool) throws {
+    let deadline = Date().addingTimeInterval(10)
+    while !done() {
+      guard Date() < deadline else { throw XCTSkip("the viewer didn't settle in time") }
+      RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+    }
+  }
 
   /// A gray picture written with ImageIO, at `dpi` when given.
   private func write(_ size: CGSize, to url: URL, type: String = "public.png", dpi: Double? = nil) throws {
@@ -410,4 +548,10 @@ final class MediaViewerTests: XCTestCase {
     await writer.finishWriting()
     XCTAssertEqual(writer.status, .completed)
   }
+}
+
+/// Counts the drags a press starts instead of moving the window.
+private final class RecordingWindow: NSWindow {
+  var drags = 0
+  override func performDrag(with event: NSEvent) { drags += 1 }
 }

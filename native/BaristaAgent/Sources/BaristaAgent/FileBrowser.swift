@@ -1377,18 +1377,6 @@ struct BrowserView: View {
       } header: {
         sectionHeader("Favorites", symbol: "star.fill", divided: false)
       }
-      // Finder's favorites already list most of what the dock pins.
-      let favorites = Set(places.favorites.map(\.url.path))
-      let dock = state.places().filter { !favorites.contains($0.url.standardizedFileURL.path) }
-      if !dock.isEmpty {
-        Section(isExpanded: expanded("Dock")) {
-          ForEach(dock, id: \.url) { place in
-            placeRow(Place(name: place.name, url: place.url, symbol: sidebarPrefs.symbol(for: place.url)))
-          }
-        } header: {
-          sectionHeader("Dock", symbol: "dock.rectangle")
-        }
-      }
       if !volumes.volumes.isEmpty || !volumes.offline.isEmpty {
         Section(isExpanded: expanded("Locations")) {
           ForEach(volumes.volumes) { volume in volumeRow(volume) }

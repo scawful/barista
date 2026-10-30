@@ -57,7 +57,6 @@ Sections, top to bottom, in `sidebar` (`FileBrowser.swift`):
 | Section | Rows | Shows when |
 | --- | --- | --- |
 | Favorites | `placeRow` | always |
-| Dock | `placeRow` | the dock pins folders that Favorites doesn't list |
 | Locations | `volumeRow`, then `remoteRow` | a volume is mounted or a known remote is offline |
 | Collections | `collectionRow` | always (Favorites is listed before it's made) |
 | Repository | `repoRow`, worktree rows | the shown folder is in a git repo |

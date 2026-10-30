@@ -265,7 +265,7 @@ final class ViewerController {
 
   /// ←/→ step through the folder's pictures and movies, Space plays, 0 fits,
   /// 1–9 zoom to that multiple, +/− step the zoom, P sharp pixels, I info,
-  /// R/⇧R rotate, C crop, ⇧C crop to the view, T trim, ⌘S save a copy, ⌘C
+  /// R/⇧R rotate, C crop, ⇧C crop to the view, T trim, ⌘S save, ⇧⌘S save a copy, ⌘C
   /// copy, ⌘Delete moves the file to the Trash. With tiles, Tab/⇧Tab pick
   /// the next, Delete removes it, [ and ]
   /// move it, L changes the layout, F fills tiles or fits them. While
@@ -314,7 +314,8 @@ final class ViewerController {
     case (_, false, "c") where shift: media.cropToView()
     case (_, false, "c"): media.beginCrop()
     case (_, false, "t") where media.isVideo: media.beginTrimming()
-    case (_, true, "s"): media.saveCopy()
+    case (_, true, "s") where shift: media.saveCopy()
+    case (_, true, "s"): media.save()
     case (_, true, "c"): media.copy()
     default: return false
     }

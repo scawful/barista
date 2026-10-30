@@ -731,7 +731,7 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
     if let beforeCrop { zoom = beforeCrop }
   }
 
-  /// Keeps the handles' crop for Save Copy and shows just that part.
+  /// Keeps the handles' crop for a save and shows just that part.
   func applyCrop() {
     guard cropping else { return }
     cropping = false
@@ -739,12 +739,12 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
     fit()
   }
 
-  /// Keeps the part of the picture in the window as the crop for Save Copy.
+  /// Keeps the part of the picture in the window as the crop for a save.
   func cropToView() {
     guard !isVideo, !cropping, viewIsPartial else { return }
     applied = view
     let area = MediaEdit.pixels(view, in: pixelSize ?? .zero)
-    show(status: "Crop \(Int(area.width)) × \(Int(area.height)): Save Copy keeps it")
+    show(status: "Crop \(Int(area.width)) × \(Int(area.height)): Save keeps it")
   }
 
   func clearCrop() {
@@ -1079,8 +1079,8 @@ enum MediaMenu {
     if !media.isVideo, media.viewIsPartial { add("Crop to View", "c", .shift) { media.cropToView() } }
     if media.applied != nil { add("Remove Crop") { media.clearCrop() } }
     if media.hasEdits {
-      add("Save") { media.save() }
-      add("Save Copy", "s", .command) { media.saveCopy() }
+      add("Save", "s", .command) { media.save() }
+      add("Save Copy", "s", [.command, .shift]) { media.saveCopy() }
     }
     menu.addItem(.separator())
     add(media.isVideo ? "Copy File" : "Copy Image", "c", .command) { media.copy() }
@@ -1249,7 +1249,7 @@ private struct MediaBar: View {
         Text("Drag the edges to crop").font(.caption).foregroundStyle(.white.opacity(0.7)).fixedSize()
         Button("Cancel") { media.cancelCrop() }.buttonStyle(.bordered).help("Cancel (Esc)")
         Button("Apply") { media.applyCrop() }.buttonStyle(.borderedProminent)
-          .help("Keep this crop; Save Copy writes it (Return)")
+          .help("Keep this crop; Save writes it (Return)")
       } else {
         controls
       }
@@ -1300,8 +1300,9 @@ private struct MediaBar: View {
       .fixedSize()
     }
     if media.hasEdits {
-      Button("Save") { media.save() }.help("Save the edits over this file; the original goes to the Trash")
-      Button("Save Copy") { media.saveCopy() }.buttonStyle(.borderedProminent).help("Save the edits as a new file (⌘S)")
+      Button("Save Copy") { media.saveCopy() }.help("Save the edits as a new file (⇧⌘S)")
+      Button("Save") { media.save() }.buttonStyle(.borderedProminent)
+        .help("Save the edits over this file; the original goes to the Trash (⌘S)")
     }
     icon("info.circle", "Info (I)", on: media.showsInfo) { media.showsInfo.toggle() }
     Image(systemName: "hand.draw")

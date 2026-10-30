@@ -23,7 +23,7 @@ icon = c_bridge.icons.get("apple", icon_for("apple", ""))
 ```
 
 ### In Barista
-1. Open Barista: `⌘⌥P` or Shift + Click Apple menu
+1. Open Barista: `⌘⌥P`, Shift + Click Apple menu, or the yabai popup's **Barista** row
 2. Go to Icons tab
 3. Search or browse categories
 4. Click icon to copy or assign

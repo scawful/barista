@@ -457,7 +457,9 @@ Supported keys:
 - `items[]`
 
 Interface extensions are script-backed rows for `apple_menu`, `front_app`,
-`control_center`, and `lmstudio` surfaces. The default file is
+`control_center`, `triforce`, and `lmstudio` surfaces. `apple_menu` rows
+show only while the Apple chip is on (`menus.apple.enabled`), except the
+Agentic AI rows, which move to the agents popup when `widgets.agents` is on. The default file is
 `data/interface_extensions.local.json`, which is gitignored. See
 [guides/INTERFACE_EXTENSIONS.md](guides/INTERFACE_EXTENSIONS.md).
 

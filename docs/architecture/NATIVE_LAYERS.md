@@ -281,7 +281,7 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   Finder's own Favorites in Finder's order (read from Finder's sidebar list,
   so adding a favorite in Finder adds it here) and the dock's other folders,
   a sortable list, a preview pane (⇧⌘P), Quick Look (Space or ⌘Y; arrows
-  follow the list), drag in and out, and Finder's shortcuts (⌘T, ⌘W, ⌘N, ⌘[
+  follow the list), drag in and out, and Finder's shortcuts (⌘T, ⌘W to close a tab and ⇧⌘W the window, ⌘N, ⌘[
   and ⌘], ⌘↑, ⌘↓, ⇧⌘., ⌘F, ⌃Tab, ⌘1–9, ⌘⌫ and ⌘Z to put it back, ⇧⌘⌫
   Empty Trash, ⇧⌘N New Folder,
   ⌃⌘N New Folder with Selection, ⌘D Duplicate, ⌥⌘C Copy as Pathname, ⌘E
@@ -439,9 +439,10 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   thumbnails. The field above the board appends a task to the tasks file,
   or starts a note or idea in the tasks file's format and opens it for
   writing.
-- yabai: viewer windows float on the raised layer through the rule
+- yabai: viewer windows float on the below sub-layer through the rule
   `barista-agent-viewer` (title `… - Barista Viewer`), which the agent adds
-  when it opens one. Browser windows match no rule and tile. macOS window
+  when it opens one; the settings window has its own
+  `barista-agent-settings` rule. Browser windows match no rule and tile. macOS window
   tabbing is off in the agent, so neither ever becomes several windows.
 - From a shell or skhd: `scripts/barista_agent.sh view|browse|open PATH`, or
   `group TITLE` for a dock group's callout.
@@ -461,6 +462,7 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
     "hide_delay": 0.3,
     "show_running": true,
     "show_trash": true,
+    "show_minimized": true,
     "expand_active_group": true,
     "shelf_days": 3,
     "theme": "barista",
@@ -535,8 +537,8 @@ to a standalone Oracle app; this document replaces the "Cortex owns" section of
   members with their own art stay in the icon grid while plain folders (no
   `icon`, not a package) list below it as rows with their path; clicking one
   browses it in place, and Back returns to the group.
-- Requires macOS 14. Unit tests: `swift test --package-path native/BaristaAgent`
-  (run by `scripts/check_scripts.sh` on macOS). Code layout, the per-frame
+- Requires macOS 14. Unit tests: `swift test --package-path native/BaristaAgent
+  --scratch-path ~/.cache/barista-agent-tests` (run by `scripts/check_scripts.sh` on macOS). Code layout, the per-frame
   motion model, and coordinate spaces are in
   [`native/BaristaAgent/README.md`](../../native/BaristaAgent/README.md).
 

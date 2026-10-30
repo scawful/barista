@@ -116,6 +116,8 @@ The primary way to access the control panel:
 ```bash
 # Simply Shift + Click the Apple menu icon in your bar
 ```
+With `menus.apple.enabled=false` there is no Apple chip; use `⌘⌥P` or the
+**Barista** row in the yabai (Control Center) popup.
 
 #### 3. Command Line
 ```bash

@@ -10,10 +10,14 @@ work or restricted Mac unless that machine opts into a local extension file.
 
 ## Surfaces
 
-- `apple_menu`: rows in the Apple-menu `Extensions` section
+- `apple_menu`: rows in the Apple-menu `Extensions` section. With
+  `menus.apple.enabled=false` the Apple chip is gone and these rows do not
+  show, except Agentic AI rows, which the agents popup's `Workflows` submenu
+  takes when `widgets.agents` is on. Give a row the `triforce` surface to
+  keep it on the bar (`control_center` rows show only while yabai is off).
 - `front_app`: rows under the front-app popup `Desk` section when yabai controls are unavailable
 - `control_center`: rows under the Control Center `Desk` section when yabai is disabled or unavailable
-- `lmstudio`: model preset rows in the LM Studio popup
+- `lmstudio`: model preset rows in the agents popup's `Local` submenu
 - `triforce`: rows under the Triforce (Oracle) popup `Apps` section
 - `all`: all extension-aware surfaces
 

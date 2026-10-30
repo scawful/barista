@@ -1,5 +1,39 @@
 # SketchyBar Configuration Changelog
 
+## October 29, 2026 - Bar Layout, Dock Sections, Files and Viewer Trash
+
+- Left side order: yabai controls (`control_center`) first, then one
+  `left_group` bracket (Triforce, music, agents), then the spaces. The Apple
+  chip is off with `menus.apple.enabled=false`; `menu.prepare` still runs so
+  the agents popup keeps its AFS and AI launchers. The yabai popup gains
+  **Barista** and **Reload**; Prototype Lab moves to the Triforce popup through
+  the new `triforce` interface-extension surface.
+- `spaces.merge_front_app` (default on): the active space chip shows the front
+  app, and clicking it opens the front app menu under that chip, on any
+  display. `false` restores the separate front app chip.
+- With the Barista SketchyBar fork: native hover fills, grouped widget
+  brackets, hairline popup headers, and `appearance.bar_corners`
+  (`all|top|bottom|none`). Stock SketchyBar gets the same bar table as before.
+- Space chips use one overridable icon font (`SPACE_ICON_FONT`); Barista Files
+  and Barista View windows show under their own names and icons.
+- Dock: tiles for minimized windows (click restores, right-click closes), a
+  system section for the shelf, controls, and Trash, drop-on-group to add a
+  tile to a group, a reveal that waits for the pointer to rest, and a tile-face
+  cache (a cached frame costs 0.004 ms instead of 0.26-0.46 ms for 17 tiles).
+- Barista Files: Move to Trash with ⌘Z undo, Compress, folder preview,
+  Home/End/Page keys, and a Settings window. Barista View: ⌘⌫ trashes the file
+  and steps to the next one (⌘Z restores it), Show in Files, movie zoom, and
+  arrow-key pan.
+- Review fixes: the front app menu's window actions and saved defaults target
+  `barista-agent` for Barista Files and Barista View windows; in merged mode a
+  focus change only renames the menu header, and a right click on the active
+  space no longer opens the app menu. Barista Files commits renames and sort
+  changes after the table's delegate call returns, ⌘W closes a tab (⇧⌘W the
+  window), and Float reads the window on the main thread. Barista View: ⌘←/⌘→
+  step even while zoomed, a held ⌘⌫ trashes one file, and movie zoom stops at
+  the screen's size. Free space is no longer asked of network mounts and
+  read-only disk images (each read logged a CacheDelete error).
+
 ## September 24, 2026 - Music Studio → sp-xcx (SP-1 desk)
 
 - Music Studio primary SP-1 launcher is now **sp-xcx**

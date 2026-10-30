@@ -33,7 +33,7 @@ The committed default is generic and may be empty. Machine-local launchers shoul
 
 A script-backed row loaded from `data/interface_extensions.local.json` or inline `menus.extensions.items`.
 
-Extensions can appear in the Apple menu, disabled-yabai Desk rows, Control Center, or LM Studio. Pack gates such as `personal` keep local apps off work and restricted machines by default.
+Extensions can appear in the Apple menu, disabled-yabai Desk rows, Control Center, the Triforce popup, or the agents popup's `Local` (LM Studio) submenu. Pack gates such as `personal` keep local apps off work and restricted machines by default.
 
 ## Space Chip
 

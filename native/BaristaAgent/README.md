@@ -73,7 +73,8 @@ The dock's panels never take focus, but these windows do: opening one
 activates the agent, and closing the last one returns focus to the app you
 were in. Both disable macOS window tabbing, so yabai sees exactly one window
 per viewer or browser. Viewer windows are titled `<file> - Barista Viewer`
-and `Yabai.ensureViewerRule` floats that title on the raised layer; browser
+and `Yabai.ensureViewerRule` floats that title on the below sub-layer, so
+focused tiled windows stack over it; browser
 windows match no rule and tile. Tabs in Barista Files are drawn inside the
 window, which is the point: native tabs are separate windows to yabai.
 
@@ -88,7 +89,7 @@ edge moves it over a still picture, stopping at the picture's edges (⌥ scales
 the view with the window instead). The part showing is only a view until
 Crop to View (⇧C) or the C handles and Return make it an edit. Scroll bars
 float and fade. Movies wait to be played and loop. Keys: ←/→ step through the
-folder's pictures and movies, Space plays, 0 fits, 1–9 zoom to that
+folder's pictures and movies (zoomed in they pan, and ⌘←/⌘→ step), Space plays, 0 fits, 1–9 zoom to that
 multiple, +/− step the zoom, P toggles sharp pixels, I shows info, R and ⇧R
 rotate, C crops, ⇧C crops to the view, T trims a movie, ⌘S saves the edits,
 ⌘C copies, ⌘⌫ moves the file to the Trash and steps to the next one (⌘Z puts

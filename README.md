@@ -358,7 +358,10 @@ See [docs/guides/WORK_MACHINE_GEMINI.md](docs/guides/WORK_MACHINE_GEMINI.md) for
 Use script-backed extension rows for local launchers and machine-specific
 actions instead of committing personal app paths into the default Apple menu.
 Extensions can appear in the Apple menu, disabled-yabai `front_app` / Control
-Center replacement rows, and the agents popup's `Local` submenu.
+Center replacement rows, the Triforce popup's Apps section (`triforce`
+surface), and the agents popup's `Local` submenu. With the agents widget on,
+the Apple menu's Agentic AI rows move to the agents popup's `Workflows`
+submenu.
 
 ```bash
 # Personal Mac only; this file is ignored by git.
@@ -436,7 +439,7 @@ Push the latest repo changes to a remote Mac and apply work profile extras:
 - **Spaces Diff Path:** `plugins/simple_spaces.sh` now updates `space.*` incrementally for reorder and add/remove topology changes instead of dropping the full spaces stack in those cases.
 - **Non-blocking Spaces Startup:** `plugins/simple_spaces.sh` no longer stalls reload waiting for `front_app`; it falls back to the next available anchor and lets the async reorder path repair final placement once `front_app` appears.
 - **Dedicated Spaces Startup Delay:** the initial spaces rebuild and `space_runtime` subscription now use a shorter post-config delay than the rest of the bar so `space.*` items land sooner after reload without retuning every other delayed subscription.
-- **Stable Left-Side Order:** one post-config batch places Triforce → Music → Control Center → the hidden modal `shortcut_mode` indicator → Front App before the delayed spaces rebuild.
+- **Stable Left-Side Order:** one post-config batch places Control Center (the yabai chip) → Triforce → Music → Agents → the hidden modal `shortcut_mode` indicator → Front App before the delayed spaces rebuild. With `spaces.merge_front_app` on (the default), Front App draws nothing and the active space chip opens its menu.
 - **Per-Display Space Creator:** each `space_creator.<display>` is associated with the known spaces on only its target display, so multi-monitor setups show one `+` per monitor instead of every creator on every bar.
 - **Precomputed Apple Menu Model:** the enhanced Apple-menu model is now prepared before `begin_config`, so menu path discovery and section building happen while the old bar is still visible instead of inside the blank reload window.
 - **Shared Popup UI Builder:** repeated popup toggles and menu-style rows now go through `modules/ui_builder.lua`, keeping click-open anchors direct while detail refreshes happen asynchronously. Front App and Control Center popup rows use the same row/header/separator helpers as Triforce and Music.

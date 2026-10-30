@@ -55,6 +55,7 @@ System design and technical documentation.
 | [DIAGRAMS.md](architecture/DIAGRAMS.md) | Visual diagrams |
 | [CODE_ANALYSIS.md](architecture/CODE_ANALYSIS.md) | Codebase metrics and analysis |
 | [CONTROL_PANEL_DESIGN.md](architecture/CONTROL_PANEL_DESIGN.md) | GUI architecture |
+| [BaristaAgent DESIGN.md](../native/BaristaAgent/DESIGN.md) | Barista Files and gallery design system: sizes, sidebar rows, and how to extend them |
 | [PORTABILITY_SUMMARY.md](architecture/PORTABILITY_SUMMARY.md) | Cross-platform notes |
 
 ### dev/

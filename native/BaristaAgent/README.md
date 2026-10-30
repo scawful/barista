@@ -8,6 +8,10 @@ this file covers the code.
 
 Requires macOS 14 (`NSView.displayLink`) and Swift 5.10 or later.
 
+Barista Files' and the gallery's sizes, sidebar row patterns, and recipes
+for adding toolbar buttons, sidebar sections, gallery layouts, remotes, and
+preferences are in [DESIGN.md](DESIGN.md).
+
 ## Build, run, test
 
 | Task | Command |

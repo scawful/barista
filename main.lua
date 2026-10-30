@@ -214,6 +214,11 @@ local NATIVE_HOVER, POPUP_STRETCH = detect_native_features()
 -- Shell plugins read this marker instead of querying SketchyBar themselves.
 do
   local marker = io.open(CONFIG_DIR .. "/cache/native_hover", "w")
+  if not marker then
+    -- First run: cache/ does not exist yet, and later markers need it too.
+    os.execute(string.format("mkdir -p %q", CONFIG_DIR .. "/cache"))
+    marker = io.open(CONFIG_DIR .. "/cache/native_hover", "w")
+  end
   if marker then
     marker:write(NATIVE_HOVER and "1\n" or "0\n")
     marker:close()

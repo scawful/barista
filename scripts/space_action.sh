@@ -453,7 +453,8 @@ focus_space() {
   fi
   if focus_error=$(run_with_timeout 1 "$YABAI_BIN" -m space --focus "$space_idx" 2>&1 >/dev/null); then
     :
-  elif [ -n "${BUTTON:-}" ] && [[ "$focus_error" == *"already focused"* ]] \
+  elif [ -n "${BUTTON:-}" ] && ! is_right_click \
+      && [[ "$focus_error" == *"already focused"* ]] \
       && front_app_merged && open_front_app_menu "$space_idx"; then
     # A space_change trigger here would close the menu that just opened.
     return 0

@@ -47,7 +47,7 @@ run_click() {
     JQ_BIN="$JQ" \
     SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
     BARISTA_TEST_LOG="$LOG_FILE" \
-    BUTTON=left \
+    BUTTON="${2:-left}" \
     "$SCRIPT" focus --space "$space"
 }
 
@@ -72,6 +72,12 @@ run_click 5
 grep -Fq $'sketchybar\t--trigger space_change' "$LOG_FILE" || fail "focusing another space should refresh"
 if grep -Fq 'menu' "$LOG_FILE"; then
   fail "focusing another space should not open the front_app menu"
+fi
+
+# A right click that falls through to focus (close mode off) is not a menu click.
+run_click 3 right
+if grep -Fq -- '--move front_app' "$LOG_FILE" || grep -Fq 'menu' "$LOG_FILE"; then
+  fail "right click on the active space must not open the front_app menu"
 fi
 
 # merge_front_app=false keeps the old no-op refresh, and the false is honored.

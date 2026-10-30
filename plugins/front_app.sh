@@ -82,6 +82,14 @@ if [ "${BARISTA_FRONT_APP_ACTION:-}" = "click" ]; then
   exit 0
 fi
 
+# Merged mode draws no chip, and the click script rebuilds every menu row
+# (SENDER=popup_refresh) as the menu opens. A focus change only renames the
+# header, so the menu never opens under the previous app's name.
+if [ "$FRONT_APP_CHIP" = "0" ] && [ "${SENDER:-}" = "front_app_switched" ]; then
+  [ -n "$APP_NAME" ] && sketchybar --set front_app.header "label=$APP_NAME" >/dev/null 2>&1
+  exit 0
+fi
+
 STATE_ICON="󰋽"
 STATE_LABEL="No managed window"
 LOCATION_LABEL="Space ? · Display ?"
@@ -136,6 +144,13 @@ if [ -z "$APP_NAME" ]; then
   exit 0
 fi
 
+# Barista Files and Barista View are windows of barista-agent: the menu shows
+# the window's name, while yabai actions and saved defaults use the process.
+DISPLAY_NAME="$APP_NAME"
+case "$APP_NAME" in
+  "Barista Files"|"Barista View") APP_NAME="barista-agent" ;;
+esac
+
 # Preserve the known manual-layout label from older context snapshots.
 if [ -z "$WINDOW_SPACE_TYPE" ]; then
   case "$STATE_LABEL" in *"Float Space"*) WINDOW_SPACE_TYPE="float" ;; esac
@@ -163,18 +178,18 @@ case "$APP_NAME" in
     exit 0
     ;;
   barista-agent)
-    if [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ] && [ -n "$WINDOW_ID" ]; then
+    if [ "$DISPLAY_NAME" = "barista-agent" ] && [ -n "$YABAI_BIN" ] && [ -n "$JQ_BIN" ] && [ -n "$WINDOW_ID" ]; then
       W_TITLE="$(run_with_timeout 1 "$YABAI_BIN" -m query --windows --window "$WINDOW_ID" 2>/dev/null | "$JQ_BIN" -r '.title // ""' 2>/dev/null || true)"
       case "$W_TITLE" in
-        *"Barista Files"*) APP_NAME="Barista Files" ;;
-        *"Barista View"*) APP_NAME="Barista View" ;;
+        *"Barista Files"*) DISPLAY_NAME="Barista Files" ;;
+        *"Barista View"*) DISPLAY_NAME="Barista View" ;;
       esac
     fi
     ;;
 esac
 
 if [ -x "$APP_ICON_SCRIPT" ]; then
-  APP_ICON="$("$APP_ICON_SCRIPT" "$APP_NAME" 2>/dev/null || true)"
+  APP_ICON="$("$APP_ICON_SCRIPT" "$DISPLAY_NAME" 2>/dev/null || true)"
 fi
 
 if [ -z "$APP_ICON" ]; then
@@ -321,7 +336,7 @@ else
   )
 fi
 FRONT_APP_UPDATE+=(
-  --set front_app.header "label=$APP_NAME"
+  --set front_app.header "label=$DISPLAY_NAME"
   --set front_app.state "icon=$STATE_ICON" "label=$STATE_LABEL"
   --set front_app.location "label=$LOCATION_LABEL"
 )
@@ -332,7 +347,7 @@ if [ "$FRONT_APP_ACTION_ROWS" = "1" ]; then
     --set front_app.window.topmost "label=$TOPMOST_ACTION_LABEL"
     --set front_app.window.sticky "label=$STICKY_ACTION_LABEL"
     --set front_app.preset.tile_here "label=$TILE_PRESET_LABEL"
-    --set front_app.defaults.header "label=App Defaults · $APP_NAME"
+    --set front_app.defaults.header "label=App Defaults · $DISPLAY_NAME"
     --set front_app.defaults.status "label=$SAVED_LABEL"
   )
   for binding in \

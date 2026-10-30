@@ -104,6 +104,13 @@ case "$mode" in
     printf 'state_label\tNo managed window\n'
     printf 'location_label\tSpace 1 · Display 1\n'
     ;;
+  barista_files)
+    printf 'app_name\tBarista Files\n'
+    printf 'window_available\ttrue\n'
+    printf 'state_icon\t󰒄\n'
+    printf 'state_label\tFloating · Above\n'
+    printf 'location_label\tSpace 1 · Display 1\n'
+    ;;
   quoted)
     printf 'app_name\tO\x27Reilly "日本" 🌟\n'
     printf 'window_available\ttrue\n'
@@ -567,6 +574,42 @@ else:
 PYTEST
 BARISTA_TEST_WINDOW_JSON='{"id":731,"app":"Ghostty","is-minimized":false}' run_front_app legacy
 assert_log_contains "'window-adopt-space-mode' '731' 'Ghostty'"
+
+# Barista Files is a window of barista-agent: the menu shows the window name,
+# while window actions and saved defaults target the process yabai knows.
+printf '{"window_levels":{"barista-agent":{"level":"raised"}}}\n' > "$TMP_DIR/custom config's/state.json"
+: > "$CONTEXT_MODE_FILE"
+run_front_app barista_files
+assert_log_contains "--set front_app.header label=Barista Files"
+assert_log_contains "label=App Defaults · Barista Files"
+assert_log_contains "'level' 'top' '731' 'barista-agent'"
+assert_log_contains "--set front_app.level.raised icon=✓"
+if grep -Fq "'Barista Files'" "$LOG_FILE"; then
+  echo 'FAIL: window actions must target barista-agent, not the window name' >&2
+  exit 1
+fi
+
+# Merged mode draws no chip: a focus change renames the header and stops.
+: > "$LOG_FILE"
+: > "$ARGV_LOG"
+: > "$CONTEXT_LOG"
+PATH="$POISON_BIN_DIR:$BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+  BARISTA_CONFIG_DIR="$TMP_DIR/custom config's" \
+  BARISTA_SCRIPTS_DIR="$SCRIPTS_DIR" \
+  BARISTA_SKETCHYBAR_BIN="$BIN_DIR/sketchybar" \
+  BARISTA_FRONT_APP_CONTEXT_SCRIPT="$SCRIPTS_DIR/front_app_context.sh" \
+  BARISTA_TEST_CONTEXT_LOG="$CONTEXT_LOG" \
+  BARISTA_FRONT_APP_CHIP=0 \
+  NAME=front_app \
+  SENDER=front_app_switched \
+  INFO="Ghostty" \
+  "$SCRIPT"
+assert_call_count 1
+assert_log_contains "--set front_app.header label=Ghostty"
+[ ! -s "$CONTEXT_LOG" ] || {
+  echo 'FAIL: merged mode must not query window context on a focus change' >&2
+  exit 1
+}
 
 [ ! -s "$POISON_LOG" ] || {
   echo "FAIL: front_app should use BARISTA_SKETCHYBAR_BIN instead of the PATH poison" >&2

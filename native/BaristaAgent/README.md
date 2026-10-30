@@ -150,7 +150,9 @@ rest in the file's order, each with its count. A click opens the
 collection's gallery, or brings its window forward. Dropping pictures or
 movies on a row adds them (a drop with none beeps). Right-click has Rename
 Collection… and Delete Collection…, which also retitle or close the
-collection's open window. The rows follow every change to the file.
+collection's open window. Changes made in Barista show at once; edits to
+the file itself show at the next folder change, and every write from the
+sidebar reads the file first so it doesn't undo them.
 
 `dock.json` settings: `viewer_scroll_zoom` (`off`, `fine`, `normal`,
 `fast`) and `viewer_loops_movies`; the bar's More menu writes both.

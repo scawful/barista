@@ -1617,7 +1617,10 @@ struct BrowserView: View {
     }
     group.notify(queue: .main) {
       let media = CollectionPlace.media(found.keys.sorted().compactMap { found[$0] })
-      if media.isEmpty { NSSound.beep() } else { collections.add(media, to: name) }
+      guard !media.isEmpty else { return NSSound.beep() }
+      // The file may have been edited since it was read; don't write over that.
+      collections.refresh()
+      collections.add(media, to: name)
     }
     return true
   }

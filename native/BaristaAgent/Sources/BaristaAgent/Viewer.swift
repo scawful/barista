@@ -125,6 +125,8 @@ final class ViewerController {
   /// does; the new name, or nil when there is no such collection.
   @discardableResult
   func renameCollection(_ name: String, to new: String) -> String? {
+    // The file may have been edited since it was read; don't write over that.
+    CollectionStore.shared.refresh()
     guard let window = collectionWindow(name), let model = models[ObjectIdentifier(window)], let gallery = model.gallery
     else { return CollectionStore.shared.rename(name, to: new) }
     gallery.rename(to: new)
@@ -134,6 +136,7 @@ final class ViewerController {
 
   /// Deletes a collection and closes the window showing it.
   func deleteCollection(_ name: String) {
+    CollectionStore.shared.refresh()
     let window = collectionWindow(name)
     CollectionStore.shared.delete(name)
     window?.close()

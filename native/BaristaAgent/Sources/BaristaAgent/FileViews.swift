@@ -1,43 +1,59 @@
 import AppKit
 import SwiftUI
 
-/// Where the icon view puts each icon: fixed cells in rows, the block
-/// centered across the width, so a cell's frame follows from its index
-/// whether or not the lazy grid has drawn it.
+/// Where the icon view puts each icon: rows of cells that share the width
+/// inside a fixed margin, so a cell's frame follows from its index whether
+/// or not the lazy grid has drawn it. The space around and between icons,
+/// and the names' type, grow with the icons.
 struct IconLayout: Equatable {
-  static let spacing: CGFloat = 4
-  /// Around the icon and between it and its name.
-  static let inset: CGFloat = 3
-  /// A cell's height beyond its icon: two caption lines of name and insets.
-  static let nameRoom: CGFloat = 36
+  /// Between the view's edge and the cells, and above the first row.
+  static let margin: CGFloat = 8
+  let icon: CGFloat
+  /// Between cells.
+  let spacing: CGFloat
+  /// Around the icon, inside its cell.
+  let inset: CGFloat
+  /// Between the icon and its name.
+  let gap: CGFloat
+  /// Finder's 10 points for small icons, a point or three more for large ones.
+  let fontSize: CGFloat
   let cell: CGSize
   let columns: Int
   /// The block's left edge.
   let left: CGFloat
 
-  /// Room for two caption lines of name under the icon, and no narrower
-  /// than a short name needs at the smallest size.
+  /// Room for two lines of name under the icon, and no narrower than a
+  /// short name needs at the smallest size; what's left of the width
+  /// widens the cells rather than the margins.
   init(width: CGFloat, iconSize: Double) {
     let icon = CGFloat(iconSize)
-    cell = CGSize(width: max(72, icon + 16), height: icon + Self.nameRoom)
-    let columns = max(1, Int((width - Self.spacing) / (cell.width + Self.spacing)))
+    self.icon = icon
+    spacing = min(16, max(4, (icon * 0.06).rounded()))
+    inset = min(12, max(3, (icon * 0.05).rounded()))
+    gap = min(8, max(2, (icon * 0.03).rounded()))
+    fontSize = icon < 80 ? 10 : icon < 160 ? 11 : icon < 320 ? 12 : 13
+    let line = (fontSize * 1.25).rounded(.up)
+    let least = max(72, icon + 2 * inset + 8)
+    let columns = max(1, Int((width - 2 * Self.margin + spacing) / (least + spacing)))
+    let share = ((width - 2 * Self.margin - CGFloat(columns - 1) * spacing) / CGFloat(columns)).rounded(.down)
+    cell = CGSize(width: max(least, share), height: icon + 2 * inset + gap + 2 * line + 2)
     self.columns = columns
-    left = max(0, (width - (CGFloat(columns) * cell.width + CGFloat(columns - 1) * Self.spacing)) / 2)
+    left = max(0, (width - (CGFloat(columns) * cell.width + CGFloat(columns - 1) * spacing)) / 2)
   }
 
-  var blockWidth: CGFloat { CGFloat(columns) * cell.width + CGFloat(columns - 1) * Self.spacing }
+  var blockWidth: CGFloat { CGFloat(columns) * cell.width + CGFloat(columns - 1) * spacing }
 
   func frame(at index: Int) -> CGRect {
-    CGRect(x: left + CGFloat(index % columns) * (cell.width + Self.spacing),
-           y: Self.spacing + CGFloat(index / columns) * (cell.height + Self.spacing),
+    CGRect(x: left + CGFloat(index % columns) * (cell.width + spacing),
+           y: Self.margin + CGFloat(index / columns) * (cell.height + spacing),
            width: cell.width, height: cell.height)
   }
 
   /// The icons a dragged rectangle touches, of `count`.
   func indices(in rect: CGRect, count: Int) -> [Int] {
-    let stride = cell.height + Self.spacing
-    let first = max(0, Int((rect.minY - Self.spacing) / stride))
-    let last = min((count - 1) / columns, Int((rect.maxY - Self.spacing) / stride))
+    let stride = cell.height + spacing
+    let first = max(0, Int((rect.minY - Self.margin) / stride))
+    let last = min((count - 1) / columns, Int((rect.maxY - Self.margin) / stride))
     guard count > 0, first <= last else { return [] }
     return (first * columns..<min(count, (last + 1) * columns)).filter { frame(at: $0).intersects(rect) }
   }
@@ -46,15 +62,15 @@ struct IconLayout: Equatable {
   /// for a drag held past that edge; nil at the first or last row.
   func rowToReveal(top: CGFloat, height: CGFloat, down: Bool, count: Int) -> Int? {
     guard count > 0 else { return nil }
-    let stride = cell.height + Self.spacing
+    let stride = cell.height + spacing
     if down {
       let bottom = top + height
-      var row = max(0, Int((bottom - Self.spacing) / stride))
-      if Self.spacing + CGFloat(row) * stride + cell.height <= bottom + 1 { row += 1 }
+      var row = max(0, Int((bottom - Self.margin) / stride))
+      if Self.margin + CGFloat(row) * stride + cell.height <= bottom + 1 { row += 1 }
       return row <= (count - 1) / columns ? row : nil
     }
-    var row = max(0, Int((top - Self.spacing) / stride))
-    if Self.spacing + CGFloat(row) * stride >= top - 1 { row -= 1 }
+    var row = max(0, Int((top - Self.margin) / stride))
+    if Self.margin + CGFloat(row) * stride >= top - 1 { row -= 1 }
     return row >= 0 ? row : nil
   }
 }
@@ -91,15 +107,15 @@ struct IconGrid: View {
       let columns = layout.columns
       ScrollViewReader { proxy in
         ScrollView {
-          LazyVGrid(columns: Array(repeating: GridItem(.fixed(layout.cell.width), spacing: IconLayout.spacing),
+          LazyVGrid(columns: Array(repeating: GridItem(.fixed(layout.cell.width), spacing: layout.spacing),
                                    count: columns),
-                    spacing: IconLayout.spacing) {
+                    spacing: layout.spacing) {
             ForEach(state.shown) { entry in
-              IconCell(state: state, entry: entry, size: layout.cell).id(entry.url)
+              IconCell(state: state, entry: entry, layout: layout).id(entry.url)
             }
           }
           .frame(width: layout.blockWidth)
-          .padding(.vertical, IconLayout.spacing)
+          .padding(.vertical, IconLayout.margin)
           .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .top)
           // Behind the icons: a click between them clears the selection,
           // a drag selects what it covers.
@@ -208,12 +224,12 @@ struct IconGrid: View {
 private struct IconCell: View {
   @ObservedObject var state: BrowserState
   let entry: FileEntry
-  let size: CGSize
+  let layout: IconLayout
 
   var body: some View {
     let selected = state.selection.contains(entry.url)
-    VStack(spacing: 2) {
-      FileIcon(url: entry.url, points: size.height - IconLayout.nameRoom, modified: entry.modified)
+    VStack(spacing: layout.gap) {
+      FileIcon(url: entry.url, points: layout.icon, modified: entry.modified)
         .overlay(alignment: .bottomTrailing) {
           if let mark = state.git?.mark(for: entry.url, isFolder: entry.isFolder) {
             Text(mark.letter)
@@ -224,19 +240,22 @@ private struct IconCell: View {
               .help(mark.help)
           }
         }
+        // Finder's highlight: around the icon, with the name's own below.
+        .padding(layout.inset)
+        .background(selected ? Color.primary.opacity(0.1) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: layout.inset + 3))
+      let font = Font.system(size: layout.fontSize)
       if state.isRenaming(entry.url) {
-        RenameField(state: state, entry: entry).multilineTextAlignment(.center).font(.caption)
+        RenameField(state: state, entry: entry).multilineTextAlignment(.center).font(font)
       } else {
         Text(entry.name)
-          .font(.caption).lineLimit(2).truncationMode(.middle).multilineTextAlignment(.center)
-          .padding(.horizontal, 3)
+          .font(font).lineLimit(2).truncationMode(.middle).multilineTextAlignment(.center)
+          .padding(.horizontal, 4).padding(.vertical, 1)
           .foregroundStyle(selected ? Color.white : Color.primary)
           .background(selected ? Color.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 4))
       }
     }
-    .padding(IconLayout.inset)
-    .frame(width: size.width, height: size.height, alignment: .top)
-    .background(selected ? Color.primary.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+    .frame(width: layout.cell.width, height: layout.cell.height, alignment: .top)
     .contentShape(Rectangle())
     .help(entry.match.map { match in entry.line.map { "\(entry.name), line \($0): \(match)" } ?? match } ?? entry.name)
     // Simultaneous, so a single click selects at once instead of waiting

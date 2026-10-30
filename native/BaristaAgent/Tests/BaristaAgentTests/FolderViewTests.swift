@@ -74,8 +74,9 @@ final class FolderViewTests: XCTestCase {
   func testADraggedRectangleSelectsTheIconsItTouches() {
     let layout = IconLayout(width: 400, iconSize: 64)
     XCTAssertEqual(layout.columns, 4, "64-point icons fit four across 400 points")
-    XCTAssertEqual(layout.frame(at: 0), CGRect(x: 34, y: 4, width: 80, height: 100), "the block is centered")
-    XCTAssertEqual(layout.frame(at: 5).origin, CGPoint(x: 118, y: 108))
+    XCTAssertEqual(layout.frame(at: 0), CGRect(x: 8, y: 8, width: 93, height: 100),
+                   "the cells share the width inside the margin")
+    XCTAssertEqual(layout.frame(at: 5).origin, CGPoint(x: 105, y: 112))
     XCTAssertEqual(layout.indices(in: CGRect(x: 30, y: 10, width: 10, height: 10), count: 7), [0])
     XCTAssertEqual(layout.indices(in: CGRect(x: 100, y: 50, width: 100, height: 100), count: 7), [0, 1, 4, 5])
     XCTAssertEqual(layout.indices(in: CGRect(x: 300, y: 120, width: 10, height: 10), count: 7), [],
@@ -83,11 +84,24 @@ final class FolderViewTests: XCTestCase {
     XCTAssertEqual(layout.indices(in: CGRect(x: 0, y: 0, width: 400, height: 2000), count: 7).count, 7)
   }
 
+  func testLargerIconsGetMoreRoomAroundThemAndLargerNames() {
+    let small = IconLayout(width: 1000, iconSize: 32)
+    let large = IconLayout(width: 1000, iconSize: 256)
+    XCTAssertEqual(small.fontSize, 10)
+    XCTAssertEqual(large.fontSize, 12)
+    XCTAssertGreaterThan(large.inset, small.inset)
+    XCTAssertGreaterThan(large.spacing, small.spacing)
+    for layout in [small, large] {
+      XCTAssertEqual(layout.left, IconLayout.margin, accuracy: CGFloat(layout.columns),
+                     "the margin stays the same at every size; the cells take the rest")
+    }
+  }
+
   func testAMarqueeHeldPastAnEdgeRevealsTheNextRow() {
-    // Rows of 100-point cells every 104 points, from y 4; 40 icons make rows 0 through 9.
+    // Rows of 100-point cells every 104 points, from y 8; 40 icons make rows 0 through 9.
     let layout = IconLayout(width: 400, iconSize: 64)
     XCTAssertEqual(layout.rowToReveal(top: 0, height: 300, down: true, count: 40), 2, "row 2 is cut off at the bottom")
-    XCTAssertEqual(layout.rowToReveal(top: 12, height: 300, down: true, count: 40), 3, "row 2 shows whole")
+    XCTAssertEqual(layout.rowToReveal(top: 16, height: 300, down: true, count: 40), 3, "row 2 shows whole")
     XCTAssertNil(layout.rowToReveal(top: 760, height: 300, down: true, count: 40), "the last row shows")
     XCTAssertNil(layout.rowToReveal(top: 0, height: 300, down: false, count: 40), "at the top")
     XCTAssertEqual(layout.rowToReveal(top: 220, height: 300, down: false, count: 40), 2, "row 2 is cut off at the top")

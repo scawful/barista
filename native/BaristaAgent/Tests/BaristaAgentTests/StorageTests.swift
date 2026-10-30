@@ -51,4 +51,22 @@ final class StorageTests: XCTestCase {
     XCTAssertTrue((0...1).contains(root.fraction))
     XCTAssertNotNil(Volume.available(at: folder))
   }
+
+  func testRemotesComeFromTheMountsToolsStatus() {
+    let status = """
+    === SSHFS Mount Status ===
+    halext       not-mounted  Halext      halext-nj:/home/halext
+    mm-d         stale        MM-D        mm:/D:/
+    mm-e         mounted      MM-E        mm:/E:/
+
+    Mount points: /Users/someone/Mounts
+    """
+    let remotes = RemoteMount.parse(status)
+    XCTAssertEqual(remotes.map(\.name), ["halext", "mm-d", "mm-e"], "stale and mounted remotes are listed too")
+    XCTAssertEqual(remotes.first?.title, "Halext")
+    XCTAssertEqual(remotes.first?.source, "halext-nj:/home/halext")
+    XCTAssertEqual(remotes.last?.url.path, "/Users/someone/Mounts/mm-e")
+    XCTAssertEqual(RemoteMount.parse("halext not-mounted Halext halext-nj:/home/halext"), [],
+                   "without the mount folder there's nowhere to look")
+  }
 }

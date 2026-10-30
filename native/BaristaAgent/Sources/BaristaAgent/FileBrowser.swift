@@ -51,6 +51,13 @@ final class BrowserController {
     window.tabbingMode = .disallowed
     window.titlebarAppearsTransparent = true
     window.titleVisibility = .hidden
+    // An empty toolbar only makes the title bar 40 points, centering the
+    // window buttons on the browser's own toolbar; clicks still reach it.
+    let toolbar = NSToolbar(identifier: "BaristaFiles")
+    toolbar.allowsUserCustomization = false
+    window.toolbar = toolbar
+    window.toolbarStyle = .unifiedCompact
+    window.titlebarSeparatorStyle = .none
     window.backgroundColor = .controlBackgroundColor
     window.acceptsMouseMovedEvents = true
     window.minSize = NSSize(width: 600, height: 300)
@@ -1105,6 +1112,13 @@ final class BrowserState: ObservableObject {
     }, failed: { [weak self] in self?.problem = $0 })
   }
 
+  /// Mounts a remote, or remounts one whose server stopped answering, and
+  /// opens it.
+  func connect(_ remote: RemoteMount) {
+    VolumeMonitor.shared.connect(remote, done: { [weak self] in self?.go(to: remote.url) },
+                                 failed: { [weak self] in self?.problem = $0 })
+  }
+
   /// ⌘E: the selected volumes, else the one the shown folder is on.
   func ejectSelectionOrShown() {
     let volumes = VolumeMonitor.shared.volumes
@@ -1230,9 +1244,9 @@ struct BrowserView: View {
 
   /// A narrow window keeps the buttons that have no key of their own.
   private var toolbar: some View {
-    let compact = width < 760
-    return HStack(spacing: 6) {
-      HStack(spacing: 3) {
+    let compact = width < 820
+    return HStack(spacing: 10) {
+      HStack(spacing: 2) {
         Button { state.showSidebar.toggle() } label: { Image(systemName: "sidebar.left") }.help("Sidebar (⌥⌘S)")
         Button(action: state.back) { Image(systemName: "chevron.left") }
           .disabled(!state.tabs.selected.canGoBack).help("Back (⌘[)")
@@ -1257,11 +1271,11 @@ struct BrowserView: View {
           Image(systemName: $0.symbol).help("View \($0.title)").tag(BrowserLayout?.some($0))
         }
       }
-      .pickerStyle(.segmented).labelsHidden().fixedSize()
+      .pickerStyle(.segmented).labelsHidden().fixedSize().controlSize(.large)
       .help(state.workspace == nil ? "List, icons, or columns (⌥⌘1, ⌥⌘2, ⌥⌘3)"
             : "Board, list, icons, or columns (⌥⌘4, ⌥⌘1, ⌥⌘2, ⌥⌘3)")
       if state.layout == .icons && !state.boardShown && !compact {
-        HStack(spacing: 2) {
+        HStack(spacing: 0) {
           Button { state.stepIconSize(-1) } label: { Image(systemName: "minus") }
             .disabled(state.iconSize <= FolderView.iconSizes.first ?? 32)
             .help("Smaller Icons (⌘-)")
@@ -1270,13 +1284,14 @@ struct BrowserView: View {
             .help("Larger Icons (⌘+)")
         }
       }
-      HStack(spacing: 3) {
+      HStack(spacing: 2) {
         if !compact {
           Button { state.jumping = true } label: { Image(systemName: "arrow.up.forward.square") }
             .help("Jump to a Folder (⌘K)")
         }
         TextField("Search", text: $state.query)
-          .textFieldStyle(.roundedBorder).frame(width: compact ? 100 : 160).focused($searchFocused)
+          .textFieldStyle(.roundedBorder).controlSize(.large).frame(width: compact ? 110 : 180)
+          .focused($searchFocused).padding(.horizontal, 4)
           .onExitCommand { state.query = "" }
           .help("Search (⌘F); ⇧⌘F searches file contents; Escape clears")
         if !compact {
@@ -1286,7 +1301,7 @@ struct BrowserView: View {
           Button(action: state.newFolder) { Image(systemName: "folder.badge.plus") }.help("New Folder (⇧⌘N)")
         }
       }
-      HStack(spacing: 3) {
+      HStack(spacing: 2) {
         Button { state.showPreview.toggle() } label: { Image(systemName: "sidebar.right") }
           .help("Preview Pane (⇧⌘P); Space opens Quick Look")
         if !compact {
@@ -1296,10 +1311,11 @@ struct BrowserView: View {
           .help("Window: float or tile, level, size, and how new windows open (yabai)")
       }
     }
-    .buttonStyle(.borderless)
-    .padding(.leading, 74)
+    .buttonStyle(ChromeButtonStyle())
+    // Clear of the window buttons, which a compact toolbar centers in 40 points.
+    .padding(.leading, 82)
     .padding(.trailing, 10)
-    .frame(height: 34)
+    .frame(height: 40)
   }
 
   private var scopeBar: some View {
@@ -1355,7 +1371,7 @@ struct BrowserView: View {
       Section(isExpanded: expanded("Favorites")) {
         ForEach(places.favorites, id: \.url) { place in placeRow(place) }
       } header: {
-        Label("Favorites", systemImage: "star.fill")
+        sectionHeader("Favorites", symbol: "star.fill", divided: false)
       }
       // Finder's favorites already list most of what the dock pins.
       let favorites = Set(places.favorites.map(\.url.path))
@@ -1366,14 +1382,15 @@ struct BrowserView: View {
             placeRow(Place(name: place.name, url: place.url, symbol: sidebarPrefs.symbol(for: place.url)))
           }
         } header: {
-          Label("Dock", systemImage: "dock.rectangle")
+          sectionHeader("Dock", symbol: "dock.rectangle")
         }
       }
-      if !volumes.volumes.isEmpty {
+      if !volumes.volumes.isEmpty || !volumes.offline.isEmpty {
         Section(isExpanded: expanded("Locations")) {
           ForEach(volumes.volumes) { volume in volumeRow(volume) }
+          ForEach(volumes.offline) { remote in remoteRow(remote) }
         } header: {
-          Label("Locations", systemImage: "internaldrive")
+          sectionHeader("Locations", symbol: "internaldrive")
         }
       }
       // Last, so entering or leaving a repo never moves the places above.
@@ -1398,7 +1415,7 @@ struct BrowserView: View {
             }
           }
         } header: {
-          Label("Repository", systemImage: "shippingbox")
+          sectionHeader("Repository", symbol: "shippingbox")
         }
       }
     }
@@ -1406,6 +1423,15 @@ struct BrowserView: View {
     .font(.system(size: sidebarPrefs.fontSize))
     .environment(\.sidebarRowSize, sidebarPrefs.fontSize < 12 ? .small : (sidebarPrefs.fontSize > 14 ? .large : .medium))
     .contextMenu { fontSizeMenu }
+  }
+
+  /// A sidebar section's title, with a line above it to set the section
+  /// apart from the one before.
+  private func sectionHeader(_ title: String, symbol: String, divided: Bool = true) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      if divided { Divider().padding(.top, 2) }
+      Label(title, systemImage: symbol)
+    }
   }
 
   /// Behind the sidebar row for the shown folder.
@@ -1441,7 +1467,12 @@ struct BrowserView: View {
     let home = FileManager.default.homeDirectoryForCurrentUser
     // The startup volume's own folders are mostly the system's; Home is where yours are.
     let largest = volume.isStartup ? home : volume.url
-    let detail = !volume.responding ? "Not responding"
+    // A dead SSHFS mount the `mounts` tool made can be made again.
+    let remote = volume.responding ? nil : volumes.remote(for: volume)
+    let reconnecting = remote.map { volumes.connecting.contains($0.name) } ?? false
+    let detail = reconnecting ? "Reconnecting…"
+      : remote != nil ? "Not responding; click to reconnect"
+      : !volume.responding ? "Not responding"
       : volume.total > 0 ? "\(Self.bytes(volume.available)) free" : "Network"
     return VStack(alignment: .leading, spacing: 3) {
       HStack(spacing: 4) {
@@ -1449,6 +1480,12 @@ struct BrowserView: View {
           .fontWeight(state.location.path == volume.url.standardizedFileURL.path ? .semibold : .regular)
           .lineLimit(1)
         Spacer(minLength: 2)
+        if reconnecting {
+          ProgressView().controlSize(.mini)
+        } else if let remote {
+          Button { state.connect(remote) } label: { Image(systemName: "arrow.clockwise").font(.caption2) }
+            .buttonStyle(.borderless).foregroundStyle(.secondary).help("Reconnect to \(remote.source)")
+        }
         if volume.canEject {
           Button { state.eject(volume) } label: { Image(systemName: "eject.fill").font(.caption2) }
             .buttonStyle(.borderless).foregroundStyle(.secondary).help("Eject \(volume.name) (⌘E)")
@@ -1465,8 +1502,14 @@ struct BrowserView: View {
           : (volume.url.path as NSString).abbreviatingWithTildeInPath)
     .contentShape(Rectangle())
     .listRowBackground(currentMark(volume.url))
-    .onTapGesture { state.go(to: volume.url) }
+    .onTapGesture {
+      if let remote { state.connect(remote) } else { state.go(to: volume.url) }
+    }
     .contextMenu {
+      if let remote {
+        Button("Reconnect") { state.connect(remote) }.disabled(reconnecting)
+        Divider()
+      }
       if volume.total > 0 && volume.responding {
         Button(volume.isStartup ? "Show Largest Folders in Home" : "Show Largest Folders") {
           state.showLargest(in: largest)
@@ -1478,6 +1521,34 @@ struct BrowserView: View {
         Divider()
         Button(volume.isLocal ? "Eject" : "Disconnect") { state.eject(volume) }
       }
+      Divider()
+      fontSizeMenu
+    }
+  }
+
+  /// A remote the `mounts` tool knows that isn't mounted: a click connects.
+  private func remoteRow(_ remote: RemoteMount) -> some View {
+    let busy = volumes.connecting.contains(remote.name)
+    return VStack(alignment: .leading, spacing: 3) {
+      HStack(spacing: 4) {
+        Label(remote.title, systemImage: "network").lineLimit(1)
+        Spacer(minLength: 2)
+        if busy {
+          ProgressView().controlSize(.mini)
+        } else {
+          Button { state.connect(remote) } label: { Image(systemName: "link").font(.caption2) }
+            .buttonStyle(.borderless).foregroundStyle(.secondary).help("Connect to \(remote.source)")
+        }
+      }
+      Text(busy ? "Connecting…" : remote.source).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+    }
+    .opacity(busy ? 1 : 0.7)
+    .help("\(remote.source) isn't connected; click to connect")
+    .contentShape(Rectangle())
+    .onTapGesture { state.connect(remote) }
+    .contextMenu {
+      Button("Connect") { state.connect(remote) }.disabled(busy)
+      Button("Copy Address") { copyText(remote.source) }
       Divider()
       fontSizeMenu
     }
@@ -1604,8 +1675,8 @@ struct BrowserView: View {
     .font(.caption)
     .foregroundStyle(.secondary)
     .lineLimit(1)
-    .padding(.horizontal, 6)
-    .frame(height: 22)
+    .padding(.horizontal, 8)
+    .frame(height: 26)
   }
 
   private func statusDetails(slider: Bool, available: Bool) -> some View {
@@ -1625,12 +1696,9 @@ struct BrowserView: View {
           .help("Measuring \(state.sizesPending) folder\(state.sizesPending == 1 ? "" : "s")")
       }
       if slider && !state.boardShown && state.layout == .icons {
-        HStack(spacing: 3) {
-          Button { state.stepIconSize(-1) } label: {
-            Image(systemName: "minus")
-              .font(.system(size: 9, weight: .bold))
-          }
-          .buttonStyle(.borderless)
+        HStack(spacing: 2) {
+          Button { state.stepIconSize(-1) } label: { Image(systemName: "minus") }
+          .buttonStyle(ChromeButtonStyle.small)
           .disabled(state.iconSize <= FolderView.iconSizes.first ?? 32)
           .help("Smaller Icons (⌘-)")
 
@@ -1639,22 +1707,19 @@ struct BrowserView: View {
                  in: 0...Double(FolderView.iconSizes.count - 1), step: 1)
             .controlSize(.mini)
 
-          Button { state.stepIconSize(1) } label: {
-            Image(systemName: "plus")
-              .font(.system(size: 9, weight: .bold))
-          }
-          .buttonStyle(.borderless)
+          Button { state.stepIconSize(1) } label: { Image(systemName: "plus") }
+          .buttonStyle(ChromeButtonStyle.small)
           .disabled(state.iconSize >= FolderView.iconSizes.last ?? 128)
           .help("Larger Icons (⌘+ or ⌘=)")
         }
-        .frame(width: 125)
+        .frame(width: 160)
         .help("Icon size: \(Int(state.iconSize)) pt (⌘- and ⌘+, or pinch)")
       }
       if !state.boardShown {
         Button { state.measuringSizes.toggle() } label: {
           Image(systemName: state.measuringSizes ? "scalemass.fill" : "scalemass")
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(ChromeButtonStyle(size: CGSize(width: 24, height: 22), symbol: 12))
         .help(state.measuringSizes ? "Hide Folder Sizes"
               : "Calculate Sizes: measures every folder shown, so sorting by Size ranks what takes the space")
       }
@@ -1766,6 +1831,41 @@ private struct PathBar: View {
 
 /// The shown folder's name in the toolbar; clicking it lists the folders
 /// above, as Finder's title does.
+/// A toolbar or status bar button: a bigger target than a borderless
+/// button's symbol, lit while the pointer is over it.
+private struct ChromeButtonStyle: ButtonStyle {
+  var size = CGSize(width: 30, height: 28)
+  var symbol: CGFloat = 15
+  var weight = Font.Weight.regular
+
+  /// The status bar's icon-size steps: small symbols, a whole-button target.
+  static let small = ChromeButtonStyle(size: CGSize(width: 22, height: 22), symbol: 10, weight: .bold)
+
+  func makeBody(configuration: Configuration) -> some View {
+    Chrome(configuration: configuration, size: size, symbol: symbol, weight: weight)
+  }
+
+  private struct Chrome: View {
+    let configuration: ButtonStyleConfiguration
+    let size: CGSize
+    let symbol: CGFloat
+    let weight: Font.Weight
+    @Environment(\.isEnabled) private var enabled
+    @State private var hovering = false
+
+    var body: some View {
+      let lit = configuration.isPressed ? 0.16 : hovering && enabled ? 0.08 : 0
+      configuration.label
+        .font(.system(size: symbol, weight: weight))
+        .foregroundStyle(enabled ? .secondary : .tertiary)
+        .frame(width: size.width, height: size.height)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(lit)))
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+    }
+  }
+}
+
 private struct FolderTitle: View {
   let location: URL
   let go: (URL) -> Void

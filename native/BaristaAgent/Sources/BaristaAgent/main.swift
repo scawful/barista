@@ -82,6 +82,19 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     DistributedNotificationCenter.default().addObserver(forName: groupRequest, object: nil, queue: .main) { [weak self] note in
       if let title = note.object as? String { self?.dock.openGroup(titled: title) }
     }
+    DistributedNotificationCenter.default().addObserver(forName: galleryRequest, object: nil, queue: .main) { note in
+      guard let path = note.object as? String, path.hasPrefix("/"), FileManager.default.fileExists(atPath: path) else {
+        return
+      }
+      let url = URL(fileURLWithPath: path).standardizedFileURL
+      if !ViewerController.shared.openGallery(url) {
+        ViewerController.shared.openGallery(url.deletingLastPathComponent(), focus: url)
+      }
+    }
+    DistributedNotificationCenter.default().addObserver(forName: collectionRequest, object: nil, queue: .main) { note in
+      guard let name = note.object as? String else { return }
+      if !ViewerController.shared.openCollection(name) { DockStore.log("collection: no collection named \(name)") }
+    }
     BrowserController.shared.dockPlaces = { [weak self] in
       guard let self else { return [] }
       return (self.store.pinned + self.store.others).flatMap { [$0] + $0.descendants }
@@ -94,6 +107,13 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
 
 /// `barista-agent group TITLE` opens that group's callout; its object is the title.
 let groupRequest = Notification.Name("dev.barista.agent.group")
+/// `barista-agent gallery PATH` shows a folder's pictures and movies as
+/// thumbnails, or a file's folder with that file chosen; its object is the
+/// absolute path.
+let galleryRequest = Notification.Name("dev.barista.agent.gallery")
+/// `barista-agent collection NAME` shows a collection the way it was last
+/// shown; its object is the name. Favorites is made when first asked for.
+let collectionRequest = Notification.Name("dev.barista.agent.collection")
 
 /// Hands a request to the running agent.
 func post(_ name: Notification.Name, _ object: String) {
@@ -124,7 +144,13 @@ case let command? where OpenRequest(rawValue: command) != nil && arguments.count
   post(OpenRequest(rawValue: command)!.notification, paths.joined(separator: "\n"))
 case "group" where arguments.count == 2:
   post(groupRequest, arguments[1])
+case "gallery" where arguments.count == 2:
+  let here = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+  post(galleryRequest, URL(fileURLWithPath: arguments[1], relativeTo: here).standardizedFileURL.path)
+case "collection" where arguments.count == 2:
+  post(collectionRequest, arguments[1])
 default:
-  FileHandle.standardError.write(Data("usage: barista-agent [run] | {view|browse|open} PATH | view PATH... | group TITLE\n".utf8))
+  FileHandle.standardError.write(Data(("usage: barista-agent [run] | {view|browse|open|gallery} PATH | view PATH... "
+    + "| group TITLE | collection NAME\n").utf8))
   exit(2)
 }

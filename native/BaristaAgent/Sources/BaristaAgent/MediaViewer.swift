@@ -479,6 +479,10 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
   var zoomWindow: ((CGFloat) -> Bool)?
   /// The tile shows another file: stepped to, or a saved copy.
   var onShow: ((URL) -> Void)?
+  /// The files ← and → step through, when not the folder's: a gallery's.
+  var order: (() -> [URL]?)? {
+    didSet { updatePosition() }
+  }
   fileprivate var beginTrim: (() -> Void)?
   var pan: ((CGFloat, CGFloat) -> Void)?
 
@@ -525,7 +529,7 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
   func reload() { load(fresh: false) }
 
   func step(_ offset: Int) {
-    let siblings = ViewerKind.siblings(of: url)
+    let siblings = stepOrder()
     guard siblings.count > 1, let index = siblings.firstIndex(of: url) else { return }
     show(siblings[(index + offset + siblings.count) % siblings.count])
   }
@@ -554,11 +558,19 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
       viewIsPartial = false
       decoded = 0
       watch()
-      let siblings = ViewerKind.siblings(of: url)
-      position = siblings.firstIndex(of: url).map { ($0 + 1, siblings.count) }
+      updatePosition()
     }
     if isVideo { loadMovie(fresh: fresh) } else { loadPicture(fresh: fresh) }
     if showsInfo { loadInfo() }
+  }
+
+  private func stepOrder() -> [URL] {
+    order?() ?? ViewerKind.siblings(of: url)
+  }
+
+  private func updatePosition() {
+    let siblings = stepOrder()
+    position = siblings.firstIndex(of: url).map { ($0 + 1, siblings.count) }
   }
 
   private func loadMovie(fresh: Bool) {
@@ -1097,6 +1109,16 @@ enum MediaMenu {
     menu.addItem(.separator())
     add("Move to Trash", "\u{8}", .command) { model.trash(media) }
     menu.addItem(.separator())
+    if model.gallery != nil {
+      add("Back to Gallery", "\u{1b}") { model.show(.gallery) }
+    } else {
+      add("Show Folder as Gallery") {
+        ViewerController.shared.openGallery(media.url.deletingLastPathComponent(), focus: media.url)
+      }
+    }
+    let collections = NSMenuItem(title: "Add to Collection", action: nil, keyEquivalent: "")
+    collections.submenu = CollectionMenu.add({ [media.url] }, done: { media.show(status: $0) })
+    menu.addItem(collections)
     add("Add Pictures or Movies…") { model.add(chooseFiles(near: media.url)) }
     guard model.tiles.count > 1 else { return menu }
     let layout = submenu("Layout")
@@ -1140,11 +1162,13 @@ struct MediaView: View {
     GeometryReader { geometry in
       let frames = model.frames(in: geometry.size)
       let tiled = model.tiles.count > 1
+      // A gallery's window keeps its size whatever it shows.
+      let shared = tiled || model.gallery != nil
       ZStack(alignment: .topLeading) {
         Color.black
         ForEach(Array(model.tiles.enumerated()), id: \.element.id) { index, tile in
           if index < frames.count {
-            MediaTileView(media: tile, tiled: tiled, active: tiled && tile === model.media,
+            MediaTileView(media: tile, tiled: shared, active: tiled && tile === model.media,
                           fills: tiled && model.fills)
               .frame(width: frames[index].width, height: frames[index].height)
               .offset(x: frames[index].minX, y: frames[index].minY)
@@ -1239,6 +1263,9 @@ private struct MediaBar: View {
 
   var body: some View {
     HStack(spacing: 4) {
+      if model.gallery != nil, !media.cropping {
+        icon("square.grid.2x2", "Back to Gallery (Esc)") { model.show(.gallery) }
+      }
       Text(media.url.lastPathComponent).font(.headline).lineLimit(1).truncationMode(.middle)
       if let position = media.position, position.count > 1 {
         Text("\(position.index) of \(position.count)").font(.caption).foregroundStyle(.white.opacity(0.7))
@@ -1330,6 +1357,14 @@ private struct MediaBar: View {
         }
       }
       Divider()
+      if model.gallery != nil {
+        Button("Back to Gallery") { model.show(.gallery) }
+      } else {
+        Button("Show Folder as Gallery") {
+          ViewerController.shared.openGallery(url.deletingLastPathComponent(), focus: url)
+        }
+      }
+      AddToCollectionMenu(urls: { [url] }, done: { media.show(status: $0) })
       Button("Add Pictures or Movies…") { model.add(MediaMenu.chooseFiles(near: media.url)) }
       if model.tiles.count > 1 {
         Picker("Layout", selection: $model.layout) {

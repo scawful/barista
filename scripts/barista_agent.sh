@@ -156,8 +156,20 @@ case "${1:-}" in
     [ -x "$BINARY" ] || { echo "barista-agent is not built; run: $0 build" >&2; exit 1; }
     "$BINARY" group "$2"
     ;;
+  gallery)
+    # A folder's pictures and movies as thumbnails; a file opens its folder.
+    [ -n "${2:-}" ] || { echo "Usage: $0 gallery PATH" >&2; exit 1; }
+    [ -x "$BINARY" ] || { echo "barista-agent is not built; run: $0 build" >&2; exit 1; }
+    "$BINARY" gallery "$2"
+    ;;
+  collection)
+    # A named collection from data/barista_collections.local.json.
+    [ -n "${2:-}" ] || { echo "Usage: $0 collection NAME" >&2; exit 1; }
+    [ -x "$BINARY" ] || { echo "barista-agent is not built; run: $0 build" >&2; exit 1; }
+    "$BINARY" collection "$2"
+    ;;
   *)
-    echo "Usage: $0 {build|dock {barista|native|toggle|status}|restart|view PATH|browse PATH|open PATH|group TITLE}" >&2
+    echo "Usage: $0 {build|dock {barista|native|toggle|status}|restart|view PATH|browse PATH|open PATH|group TITLE|gallery PATH|collection NAME}" >&2
     exit 1
     ;;
 esac

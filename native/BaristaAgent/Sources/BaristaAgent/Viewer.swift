@@ -75,9 +75,54 @@ final class ViewerController {
       models[ObjectIdentifier(window)]?.focus(urls[0])
       return present(window)
     }
-    Yabai.ensureViewerRule()
     let model = ViewerModel(url: urls[0])
     model.add(Array(urls.dropFirst()))
+    makeWindow(for: model)
+  }
+
+  /// Shows every picture and movie in `folder` as thumbnails, in the window
+  /// already showing it if there is one; false when it is not a folder.
+  @discardableResult
+  func openGallery(_ folder: URL, focus: URL? = nil) -> Bool {
+    let folder = folder.standardizedFileURL
+    var isFolder: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isFolder), isFolder.boolValue else {
+      return false
+    }
+    if let window = windows.first(where: { models[ObjectIdentifier($0)]?.gallery?.source == .folder(folder) }),
+       let model = models[ObjectIdentifier(window)] {
+      model.show(.gallery)
+      if let focus { model.gallery?.reveal(focus.standardizedFileURL) }
+      present(window)
+      return true
+    }
+    let gallery = GalleryModel(folder: folder)
+    if let focus { gallery.reveal(focus.standardizedFileURL) }
+    makeWindow(for: ViewerModel(gallery: gallery))
+    return true
+  }
+
+  /// Shows a collection the way it was last shown; false when there is no
+  /// such collection. Favorites is made the first time it is asked for.
+  @discardableResult
+  func openCollection(_ name: String) -> Bool {
+    let store = CollectionStore.shared
+    store.refresh()
+    if store.collection(named: name) == nil, name.caseInsensitiveCompare(CollectionStore.favorites) == .orderedSame {
+      store.create(CollectionStore.favorites)
+    }
+    guard let name = store.collection(named: name)?.name else { return false }
+    if let window = windows.first(where: { models[ObjectIdentifier($0)]?.gallery?.source == .collection(name) }) {
+      present(window)
+      return true
+    }
+    let gallery = GalleryModel(collection: name)
+    makeWindow(for: ViewerModel(gallery: gallery, mode: gallery.mode))
+    return true
+  }
+
+  private func makeWindow(for model: ViewerModel) {
+    Yabai.ensureViewerRule()
     let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.size(for: model)),
                           styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
@@ -86,12 +131,14 @@ final class ViewerController {
     window.titlebarAppearsTransparent = true
     window.titleVisibility = .hidden
     // A picture zoomed out small keeps its window to its edges.
-    window.minSize = model.isMedia ? NSSize(width: 96, height: 64) : NSSize(width: 320, height: 220)
+    window.minSize = model.isMedia && model.gallery == nil ? NSSize(width: 96, height: 64)
+      : NSSize(width: 320, height: 220)
     let host = DockHostingView(rootView: ViewerView(model: model))
     window.contentView = host
     model.onTitle = { [weak window] title in window?.title = title + Self.titleSuffix }
     model.onTitle?(model.title)
     model.undoManager = window.undoManager
+    model.gallery?.undoManager = window.undoManager
     if model.isMedia { dressForMedia(window, model: model, host: host) }
     place(window)
     windows.append(window)
@@ -181,7 +228,7 @@ final class ViewerController {
       self.resize(window, request, locksShape: locksShape)
     }
     model.onTilesChanged = { [weak self, weak window, weak model] in
-      guard let self, let window, let model else { return }
+      guard let self, let window, let model, model.gallery == nil else { return }
       self.retile(window, count: model.tiles.count)
     }
     model.onEmpty = { [weak window] in window?.close() }
@@ -195,7 +242,8 @@ final class ViewerController {
 
   /// Escape and ⌘W close, ⌘R reloads, ⌘E opens the file in its editor;
   /// picture and movie windows add `mediaKey`'s, a click picks a tile, and
-  /// a right- or Control-click opens its menu.
+  /// a right- or Control-click opens its menu. Gallery windows add
+  /// `galleryKey`'s, and their thumbnails have their own menus.
   private func installMonitor() {
     guard eventMonitor == nil else { return }
     eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) {
@@ -203,7 +251,9 @@ final class ViewerController {
       guard let self, let window = event.window, let model = self.models[ObjectIdentifier(window)] else {
         return event
       }
+      let browsing = model.mode == .gallery
       if event.type == .rightMouseDown || event.type == .leftMouseDown && event.modifierFlags.contains(.control) {
+        if browsing { return event }
         return Self.showMenu(event, in: window, model: model) ? nil : event
       }
       if event.type == .leftMouseDown {
@@ -215,10 +265,21 @@ final class ViewerController {
             return nil
           }
         }
-        Self.pickTile(event, in: window, model: model)
+        if !browsing { Self.pickTile(event, in: window, model: model) }
         return event
       }
-      if model.isMedia, Self.mediaKey(event, model: model) { return nil }
+      if let gallery = model.gallery {
+        if browsing {
+          if Self.galleryKey(event, model: model, gallery: gallery) { return nil }
+        } else if Self.mediaKey(event, model: model) {
+          return nil
+        } else if model.media?.trimming != true, model.media?.cropping != true,
+                  Self.galleryKey(event, model: model, gallery: gallery) {
+          return nil
+        }
+      } else if model.isMedia, Self.mediaKey(event, model: model) {
+        return nil
+      }
       let command = event.modifierFlags.contains(.command)
       switch (event.keyCode, command, event.charactersIgnoringModifiers?.lowercased()) {
       case (53, _, _) where model.media?.trimming != true, (_, true, "w"):
@@ -322,8 +383,60 @@ final class ViewerController {
     return true
   }
 
+  /// In a gallery: the arrows move (⇧ extends the selection), Home and End
+  /// jump, Return or Space opens, ⌘A selects all, Delete removes from the
+  /// gallery, ⌘Delete moves to the Trash, ⌘C copies, [ and ] move the
+  /// selection, L changes the layout, + and − resize, F features, and . brings
+  /// back removed items. Escape clears the selection, then closes. Anywhere
+  /// in a gallery window ⌘1, ⌘2, ⌘3 show it as a gallery, tiles, or one at a
+  /// time, and Escape goes back to the gallery.
+  private static func galleryKey(_ event: NSEvent, model: ViewerModel, gallery: GalleryModel) -> Bool {
+    let command = event.modifierFlags.contains(.command)
+    let shift = event.modifierFlags.contains(.shift)
+    let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+    if command, !shift, let mode = ViewMode.allCases.first(where: { $0.key == key }) {
+      model.show(mode)
+      return true
+    }
+    guard model.mode == .gallery else {
+      guard event.keyCode == 53 else { return false }
+      model.show(.gallery)
+      return true
+    }
+    let chosen = gallery.selectedOrFocus
+    switch (event.keyCode, command, key) {
+    case (53, _, _):
+      guard !gallery.selection.isEmpty else { return false }
+      gallery.clearSelection()
+    case (123, _, _): gallery.moveFocus(.left, extend: shift)
+    case (124, _, _): gallery.moveFocus(.right, extend: shift)
+    case (125, _, _): gallery.moveFocus(.down, extend: shift)
+    case (126, _, _): gallery.moveFocus(.up, extend: shift)
+    case (115, _, _): gallery.moveToEdge(end: false, extend: shift)
+    case (119, _, _): gallery.moveToEdge(end: true, extend: shift)
+    case (36, false, _), (76, false, _), (49, false, _): model.open(chosen)
+    case (_, true, "a"): gallery.selectAll()
+    // Holding ⌘⌫ trashes once, not once per key repeat.
+    case (51, true, _), (117, true, _): if !event.isARepeat { model.trash(chosen) }
+    case (51, false, _), (117, false, _): gallery.remove(chosen)
+    case (_, true, "c"): gallery.copy(chosen)
+    case (_, false, "["): gallery.moveSelection(by: -1)
+    case (_, false, "]"): gallery.moveSelection(by: 1)
+    case (_, false, "l"): gallery.cycleLayout()
+    case (_, _, "="), (_, _, "+"): gallery.resize(by: 1)
+    case (_, _, "-"): gallery.resize(by: -1)
+    case (_, false, "f"): gallery.toggleFeatured(chosen)
+    case (_, false, "."): gallery.showHidden()
+    default: return false
+    }
+    return true
+  }
+
   private static func size(for model: ViewerModel) -> NSSize {
     let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame.size ?? NSSize(width: 1280, height: 800)
+    if model.gallery != nil {
+      return NSSize(width: min(1200, visible.width * 0.85), height: min(860, visible.height * 0.85))
+    }
     guard let media = model.media else {
       return NSSize(width: min(760, visible.width * 0.6), height: min(900, visible.height * 0.8))
     }
@@ -464,7 +577,8 @@ final class ViewerPreferences: ObservableObject {
 }
 
 /// What a viewer window shows: a Markdown file, reloaded when it changes on
-/// disk, or pictures and movies as tiles, one unless more were added.
+/// disk, or pictures and movies as tiles, one unless more were added. A
+/// gallery window shows its gallery as thumbnails, tiles, or one at a time.
 final class ViewerModel: ObservableObject {
   /// The Markdown file, or the picture or movie in the active tile.
   @Published private(set) var url: URL
@@ -476,7 +590,12 @@ final class ViewerModel: ObservableObject {
   @Published private(set) var media: MediaState?
   /// The window buttons and bar, shown while the pointer is over the window.
   @Published private(set) var showsChrome = false
-  @Published var layout = TileLayout.grid
+  @Published var layout = TileLayout.grid {
+    didSet { gallery?.remember(tileLayout: layout) }
+  }
+  /// The pictures and movies a gallery window keeps, however it shows them.
+  let gallery: GalleryModel?
+  @Published private(set) var mode = ViewMode.one
   /// Tiles show their pictures cut to fill them rather than whole.
   @Published var fills = false
   var onTitle: ((String) -> Void)?
@@ -494,11 +613,23 @@ final class ViewerModel: ObservableObject {
   init(url: URL) {
     self.url = url
     isMedia = ViewerKind.of(url)?.isMedia == true
+    gallery = nil
     if isMedia { add([url]) } else { load() }
   }
 
+  /// A gallery window, opening the way `mode` shows it.
+  init(gallery: GalleryModel, mode: ViewMode = .gallery) {
+    url = gallery.focus ?? gallery.items.first ?? gallery.folder ?? URL(fileURLWithPath: NSHomeDirectory())
+    isMedia = true
+    self.gallery = gallery
+    self.mode = .gallery
+    layout = gallery.tileLayout
+    if mode != .gallery { show(mode) }
+  }
+
   var title: String {
-    tiles.count > 1 ? "\(url.lastPathComponent) and \(tiles.count - 1) more" : url.lastPathComponent
+    if let gallery, mode == .gallery { return gallery.title }
+    return tiles.count > 1 ? "\(url.lastPathComponent) and \(tiles.count - 1) more" : url.lastPathComponent
   }
 
   func shows(_ url: URL) -> Bool {
@@ -506,7 +637,12 @@ final class ViewerModel: ObservableObject {
   }
 
   func reload() {
+    if let gallery, mode == .gallery { return gallery.reload() }
     if isMedia { media?.reload() } else { load() }
+  }
+
+  func retitle() {
+    onTitle?(title)
   }
 
   /// A Markdown link to another Markdown file opens in place.
@@ -532,8 +668,103 @@ final class ViewerModel: ObservableObject {
 
   // MARK: Tiles
 
+  // MARK: Gallery
+
+  /// Shows the gallery as thumbnails; as tiles, `chosen` or the selection
+  /// or else the nine around the focus; or one at a time, from `chosen`'s
+  /// first or the focus.
+  func show(_ mode: ViewMode, _ chosen: [URL]? = nil) {
+    guard let gallery else { return }
+    switch mode {
+    case .gallery:
+      if self.mode != .gallery, let shown = media?.url { gallery.reveal(shown) }
+      clearTiles()
+    case .one:
+      guard let first = chosen?.first ?? media?.url ?? gallery.focus ?? gallery.items.first else { return }
+      clearTiles()
+      place([first])
+    case .tiles:
+      var urls = chosen ?? gallery.selected
+      if urls.count < 2 {
+        let around = gallery.focus.flatMap(gallery.items.firstIndex) ?? 0
+        let start = max(0, min(around, gallery.items.count - 9))
+        urls = Array(gallery.items[start..<min(start + 9, gallery.items.count)])
+      }
+      guard !urls.isEmpty else { return }
+      clearTiles()
+      place(urls)
+      if let focus = gallery.focus { self.focus(focus) }
+    }
+    self.mode = mode
+    gallery.remember(mode)
+    onTitle?(title)
+    onTilesChanged?()
+  }
+
+  /// Thumbnails opened from the gallery: one fills the window, more share it.
+  func open(_ urls: [URL]) {
+    guard !urls.isEmpty else { return }
+    show(urls.count == 1 ? .one : .tiles, urls)
+  }
+
+  /// Moves a gallery's files to the Trash. A lone tile steps to the next
+  /// in the gallery first; ⌘Z puts them back, and on screen outside the
+  /// gallery.
+  func trash(_ urls: [URL]) {
+    guard let gallery, !urls.isEmpty else { return }
+    let gone = Set(urls)
+    if mode != .gallery {
+      if tiles.count == 1, let tile = tiles.first, gone.contains(tile.url) {
+        if let next = Self.next(after: tile.url, in: gallery.items, skipping: gone) {
+          tile.show(next)
+        } else {
+          show(.gallery)
+        }
+      } else {
+        for tile in tiles where gone.contains(tile.url) { remove(tile) }
+      }
+    }
+    gallery.trash(urls) { [weak self] restored in
+      guard let self, self.mode != .gallery, let first = restored.first else { return }
+      if self.tiles.count == 1, restored.count == 1, let tile = self.tiles.first {
+        tile.show(first)
+      } else {
+        self.place(restored)
+      }
+    }
+  }
+
+  /// The first of `order` after `url` and not `gone`, or else the last before it.
+  static func next(after url: URL, in order: [URL], skipping gone: Set<URL>) -> URL? {
+    guard let index = order.firstIndex(of: url) else { return order.first { !gone.contains($0) } }
+    return order[(index + 1)...].first { !gone.contains($0) } ?? order[..<index].last { !gone.contains($0) }
+  }
+
+  private func clearTiles() {
+    tiles.forEach { $0.stop() }
+    shapes = [:]
+    tiles = []
+    media = nil
+  }
+
   /// Adds the pictures and movies not shown yet; the last becomes active.
+  /// A gallery window adds them to its gallery, and shows them outside it.
   func add(_ urls: [URL]) {
+    guard let gallery else { return place(urls) }
+    gallery.add(urls)
+    guard mode != .gallery else { return }
+    let known = Set(gallery.items)
+    let shown = urls.map(\.standardizedFileURL).filter(known.contains)
+    guard !shown.isEmpty else { return }
+    place(shown)
+    if tiles.count > 1, mode != .tiles {
+      mode = .tiles
+      gallery.remember(.tiles)
+      onTitle?(title)
+    }
+  }
+
+  private func place(_ urls: [URL]) {
     let fresh = urls.filter { ViewerKind.of($0)?.isMedia == true && !shows($0) }
     guard !fresh.isEmpty else { return urls.first.map(focus) ?? () }
     let count = tiles.count + fresh.count
@@ -549,6 +780,7 @@ final class ViewerModel: ObservableObject {
     tiles.remove(at: index)
     guard !tiles.isEmpty else {
       media = nil
+      if gallery != nil { return show(.gallery) }
       return onEmpty?() ?? ()
     }
     if media === tile { focus(tiles[min(index, tiles.count - 1)]) } else { onTitle?(title) }
@@ -570,6 +802,7 @@ final class ViewerModel: ObservableObject {
   /// the folder's last one the window closes, and its undo with it (the file
   /// stays in the Trash). Otherwise ⌘Z puts the file back and shows it.
   func trash(_ tile: MediaState) {
+    if gallery != nil { return trash([tile.url]) }
     let url = tile.url
     // Undo shows the file where it was: in the lone tile, or as a tile again.
     let lone = tiles.count == 1
@@ -630,13 +863,15 @@ final class ViewerModel: ObservableObject {
 
   private func tile(_ url: URL, sharing count: Int) -> MediaState {
     let tile = MediaState(url: url, kind: ViewerKind.of(url) ?? .image, tiles: count)
+    if let gallery { tile.order = { [weak gallery] in gallery?.items } }
     tile.onShow = { [weak self, weak tile] url in
       guard let self, let tile, self.media === tile else { return }
       self.url = url
+      self.gallery?.reveal(url)
       self.onTitle?(self.title)
     }
     tile.resize = { [weak self, weak tile] request in
-      guard let self, let tile, self.tiles.count == 1 else { return }
+      guard let self, let tile, self.tiles.count == 1, self.gallery == nil else { return }
       self.onResize?(request, tile.isVideo)
     }
     shapes[ObjectIdentifier(tile)] = tile.$size.dropFirst().removeDuplicates()
@@ -710,7 +945,9 @@ struct ViewerView: View {
   @ObservedObject var model: ViewerModel
 
   var body: some View {
-    if model.isMedia {
+    if let gallery = model.gallery, model.mode == .gallery {
+      GalleryView(model: model, gallery: gallery)
+    } else if model.isMedia {
       MediaView(model: model)
     } else {
       VStack(spacing: 0) {

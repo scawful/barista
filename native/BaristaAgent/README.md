@@ -47,6 +47,8 @@ The agent runs as `dev.barista.agent` and logs to
 | `Markdown.swift` | Markdown to blocks (headings, lists, code, quotes, tables, images); inline syntax is left to `AttributedString`. |
 | `Viewer.swift` | The viewer windows for Markdown, images, and movies, their keys and sizing, and `FileWatcher`, which reloads a file when it is saved. |
 | `MediaViewer.swift` | The picture and movie window: zoom, sharp pixels, rotate, crop, trim, the info panel, and the bar that shows on hover; `MediaEdit` saves edits as copies. |
+| `Gallery.swift` | Gallery mode: `GalleryModel` (order, selection, removed items, undo, featured items, size), `GalleryGrid`'s four layouts, `Thumbnails`, and `GalleryView` with its bar and menus. |
+| `Collections.swift` | `MediaCollection` and `CollectionStore` (`data/barista_collections.local.json`, backed up daily before a rewrite), plus the collection prompt and menus. |
 | `FileBrowserModel.swift` | Barista Files' pure model: tab history, in-window tabs, listing, sorting, filtering, and `FileOperations` (Finder's names for new folders, copies, and kept-both clashes; rename; repo root). |
 | `FileBrowser.swift` | The Barista Files window: folder title, bottom path bar, tabs, sidebar, table, preview, in-place rename, Finder's shortcuts and the Go and View menus, `OverlayScrollers`, and `BrowserWindow`, which drives the Quick Look panel, hover scroll bars, and row drag-select. |
 | `FileIcons.swift` | `FileIcons`: Finder icons drawn into small bitmaps off the main thread, or Quick Look thumbnails for images and videos, cached by path, size, and modification date (bounded by bytes); `FileIcon` shows one when it's ready. |
@@ -111,6 +113,37 @@ by shape), F switches between whole pictures and filling the tiles. Each tile
 decodes at its share of the screen and more only when zoomed; hidden and
 minimized windows let movie decoders go, and memory pressure sheds pixels.
 
+A gallery shows every picture and movie in a folder, or in a collection, as
+thumbnails in one window: Show Folder as Gallery on a picture's right-click
+or bar, or `barista-agent gallery PATH`. The window has three modes: ⌘1
+Gallery, ⌘2 Tiles (the selection tiled, as above), and ⌘3 One (the focused
+item alone, ←/→ stepping in the gallery's order); Esc in Tiles or One comes
+back to the gallery. Layouts, cycled with L or chosen in the bar: Justified
+Rows (the default, each picture its own shape), Even Grid, Columns (masonry),
+and Featured, where F makes the selection span ½ or ⅔ of the width and the
+rest fill beside it. + and − change the thumbnail size. Click selects, ⇧
+extends, ⌘ toggles, and dragging a thumbnail moves the selection; arrows (⇧
+to extend), Home, and End move the focus; Return or Space or a double-click
+opens the selection; ⌘A selects all; `[` and `]` move the selection; ⌘C
+copies the files. Delete removes the selection from the gallery and never
+touches the files; `.` (Show Removed Items) brings them back, and ⌘Z undoes
+a move or removal. Only ⌘⌫ (Move to Trash) deletes. A folder's order and
+removed items last while its window is open; ⌘R reloads the folder.
+
+Collections are named lists of pictures and movies from any folder, kept in
+`data/barista_collections.local.json` under the config folder
+(`BARISTA_CONFIG_DIR`, else `~/.config/sketchybar`). Each entry has `name`
+and `items` (paths, `~` allowed); the agent also saves the gallery's `mode`,
+`layout`, `tileLayout`, `size`, `featured`, and `share`, so a collection
+reopens the way it was left. Every change saves at once and every window
+showing that collection follows. The first rewrite each day copies the file
+to `<file>.YYYY-MM-DD.bak` (the newest three stay); an unreadable file is
+copied to `<file>.unreadable-<time>.bak` before anything replaces it. Add to
+Collection, with Favorites first, is on a picture's right-click and bar and
+on the gallery's bar; a thumbnail's right-click also has Add to Favorites.
+Favorites is made the first time it's used. Save as Collection… keeps a
+folder gallery's order and leaves out removed items.
+
 `dock.json` settings: `viewer_scroll_zoom` (`off`, `fine`, `normal`,
 `fast`) and `viewer_loops_movies`; the bar's More menu writes both.
 Right-click → Window (and the Window button in Barista Files) runs yabai on
@@ -121,7 +154,9 @@ float at it.
 
 From a shell, `barista-agent {view|browse|open} PATH` posts a distributed
 notification to the running agent (`scripts/barista_agent.sh view PATH` does
-the same); `barista-agent group TITLE` opens a dock group's callout.
+the same); `barista-agent group TITLE` opens a dock group's callout;
+`barista-agent gallery PATH` shows a folder (or a file's folder, at that
+file) as a gallery; `barista-agent collection NAME` opens a collection.
 
 ## How a frame is made
 

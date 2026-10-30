@@ -63,6 +63,7 @@ data/nerv.local.json
 data/workflow_shortcuts.local.json
 data/workflow_shortcuts.local.generated.json
 data/workflow_shortcuts.extra.json
+data/barista_collections.local.json
 *.icon_backup
 state.json.*backup
 themes/theme.local.lua

@@ -116,6 +116,14 @@ if grep -Fq -- "$app_name" "${BARISTA_TEST_ACTION_LOG}.source"; then
   echo 'FAIL: app name was interpolated into AppleScript' >&2; exit 1
 fi
 
+# New Window goes to the agent, which presses the app's own menu item.
+run_action app new-window 731 "$app_name"
+assert_line "$BARISTA_TEST_ACTION_LOG" 'arg=new-window'
+: > "$BARISTA_TEST_ACTION_LOG"
+BARISTA_AGENT_SCRIPT="$TMP_DIR/app-action" "$ROOT_DIR/scripts/front_app_action.sh" new-window "$app_name"
+assert_line "$BARISTA_TEST_ACTION_LOG" 'arg=new-window'
+assert_line "$BARISTA_TEST_ACTION_LOG" "arg=$app_name"
+
 # Force quit targets the app's pid, not a process whose name happens to match.
 python3 -c 'import pathlib, signal, sys, time
 signal.signal(signal.SIGTERM, signal.SIG_IGN)

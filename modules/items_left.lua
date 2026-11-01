@@ -564,6 +564,7 @@ local function get_layout(ctx)
   end
   local front_app_more_actions = {}
   local app_actions = {
+    { name = "front_app.new_window", icon = "󰏌", icon_color = tc("GREEN"), label = "New Window", action = call_script(FRONT_APP_ACTION_SCRIPT, "new-window") },
     { name = "front_app.hide", icon = "󰘔", icon_color = tc("PEACH"), label = "Hide App", action = call_script(FRONT_APP_ACTION_SCRIPT, "hide"), shortcut = "⌘H", more = true },
     { name = "front_app.quit", icon = "󰅘", icon_color = tc("RED"), label = "Quit App", action = call_script(FRONT_APP_ACTION_SCRIPT, "quit"), shortcut = "⌘Q", more = true },
     { name = "front_app.force_quit", icon = "󰜏", icon_color = tc("MAROON", "RED"), label = "Force Quit", action = call_script(FRONT_APP_ACTION_SCRIPT, "force-quit"), more = true },

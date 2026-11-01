@@ -7,10 +7,11 @@ APP_NAME="${2:-}"
 OSASCRIPT_BIN="${BARISTA_OSASCRIPT_BIN:-$(command -v osascript 2>/dev/null || true)}"
 YABAI_BIN="${BARISTA_YABAI_BIN:-$(command -v yabai 2>/dev/null || true)}"
 JQ_BIN="${BARISTA_JQ_BIN:-$(command -v jq 2>/dev/null || true)}"
+AGENT_SCRIPT="${BARISTA_AGENT_SCRIPT:-$(cd "$(dirname "$0")" && pwd)/barista_agent.sh}"
 
 case "$ACTION" in
-  show|hide|quit|force-quit|force_quit) ;;
-  *) echo "Usage: $0 <show|hide|quit|force-quit> [app name]" >&2; exit 1 ;;
+  show|hide|quit|force-quit|force_quit|new-window|new_window) ;;
+  *) echo "Usage: $0 <show|hide|quit|force-quit|new-window> [app name]" >&2; exit 1 ;;
 esac
 
 if [ -z "$APP_NAME" ]; then
@@ -24,6 +25,11 @@ fi
 [ -n "$APP_NAME" ] || { echo 'App unavailable. Reopen the menu.' >&2; exit 1; }
 
 case "$ACTION" in
+  new-window|new_window)
+    # The agent presses the app's own New Window menu item; ⌘N is New
+    # Document or New Message in many apps.
+    "$AGENT_SCRIPT" new-window "$APP_NAME"
+    ;;
   force-quit|force_quit)
     # App names often differ from process names (and comm is capped at 16
     # characters), so resolve the pid from the app name first.

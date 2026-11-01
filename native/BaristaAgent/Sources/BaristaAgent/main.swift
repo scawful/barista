@@ -95,6 +95,13 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
       guard let name = note.object as? String else { return }
       if !ViewerController.shared.openCollection(name) { DockStore.log("collection: no collection named \(name)") }
     }
+    DistributedNotificationCenter.default().addObserver(forName: newWindowRequest, object: nil, queue: .main) { [weak self] note in
+      guard let name = note.object as? String else { return }
+      let app = NSWorkspace.shared.runningApplications.first { $0.localizedName == name || $0.bundleIdentifier == name }
+        ?? pid_t(name).flatMap(NSRunningApplication.init(processIdentifier:))
+      guard let app else { return DockStore.log("new window: no running app named \(name)") }
+      self?.store.newWindow(app)
+    }
     BrowserController.shared.dockPlaces = { [weak self] in
       guard let self else { return [] }
       return (self.store.pinned + self.store.others).flatMap { [$0] + $0.descendants }
@@ -114,6 +121,9 @@ let galleryRequest = Notification.Name("dev.barista.agent.gallery")
 /// `barista-agent collection NAME` shows a collection the way it was last
 /// shown; its object is the name. Favorites is made when first asked for.
 let collectionRequest = Notification.Name("dev.barista.agent.collection")
+/// `barista-agent new-window APP` presses APP's own New Window item; its
+/// object is the app's name, bundle identifier, or pid.
+let newWindowRequest = Notification.Name("dev.barista.agent.new-window")
 
 /// Hands a request to the running agent.
 func post(_ name: Notification.Name, _ object: String) {
@@ -149,8 +159,10 @@ case "gallery" where arguments.count == 2:
   post(galleryRequest, URL(fileURLWithPath: arguments[1], relativeTo: here).standardizedFileURL.path)
 case "collection" where arguments.count == 2:
   post(collectionRequest, arguments[1])
+case "new-window" where arguments.count == 2:
+  post(newWindowRequest, arguments[1])
 default:
   FileHandle.standardError.write(Data(("usage: barista-agent [run] | {view|browse|open|gallery} PATH | view PATH... "
-    + "| group TITLE | collection NAME\n").utf8))
+    + "| group TITLE | collection NAME | new-window APP\n").utf8))
   exit(2)
 }

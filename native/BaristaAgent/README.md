@@ -35,6 +35,7 @@ The agent runs as `dev.barista.agent` and logs to
 | `DockScene.swift` | All dock geometry and motion, advanced once per display frame. Also `RectSpring` and `FrameClock`. |
 | `DockLayout.swift` | Pure layout math: slot frames, magnification, pointer mapping. |
 | `DockView.swift` | SwiftUI renderer for the scene's frame, plus gestures, drops, and context menus (`AppMenu` holds the window controls). |
+| `NewWindow.swift` | Finds and presses another app's New Window menu item through Accessibility. |
 | `TileViews.swift` | `TileIcon`, `TileBadge`, `ActionStatus`, `GroupGlyph`. |
 | `TileImage.swift` | What a tile draws: custom `icon` specs, the single-bitmap rasterizing behind the icon cache, and the folder or document mark on borrowed app icons. |
 | `Popover.swift` | Folder (browsable), shelf, group (subgroups open in place; search and hidden members), and controls callouts above a tile. |
@@ -171,6 +172,14 @@ notification to the running agent (`scripts/barista_agent.sh view PATH` does
 the same); `barista-agent group TITLE` opens a dock group's callout;
 `barista-agent gallery PATH` shows a folder (or a file's folder, at that
 file) as a gallery; `barista-agent collection NAME` opens a collection.
+
+New Window, on an app's right-click and the bar's app menu
+(`barista-agent new-window APP`, by name, bundle id, or pid), presses the
+app's own New Window item through Accessibility: "New Window" first, then
+"New … Window", then Emacs's "New Frame", never a private window. Terminal's
+item is a submenu of profiles, so its first profile opens. Finder, while
+Barista browses folders, opens a Barista Files window instead. It needs
+Accessibility for `barista-agent`; an ad-hoc build's grant lapses on rebuild.
 
 ## How a frame is made
 

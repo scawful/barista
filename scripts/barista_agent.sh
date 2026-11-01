@@ -168,8 +168,14 @@ case "${1:-}" in
     [ -x "$BINARY" ] || { echo "barista-agent is not built; run: $0 build" >&2; exit 1; }
     "$BINARY" collection "$2"
     ;;
+  new-window)
+    # Presses the app's own New Window menu item; APP is a name, bundle id, or pid.
+    [ -n "${2:-}" ] || { echo "Usage: $0 new-window APP" >&2; exit 1; }
+    [ -x "$BINARY" ] || { echo "barista-agent is not built; run: $0 build" >&2; exit 1; }
+    "$BINARY" new-window "$2"
+    ;;
   *)
-    echo "Usage: $0 {build|dock {barista|native|toggle|status}|restart|view PATH|browse PATH|open PATH|group TITLE|gallery PATH|collection NAME}" >&2
+    echo "Usage: $0 {build|dock {barista|native|toggle|status}|restart|view PATH|browse PATH|open PATH|group TITLE|gallery PATH|collection NAME|new-window APP}" >&2
     exit 1
     ;;
 esac

@@ -385,7 +385,7 @@ if [ "$FRONT_APP_ACTION_ROWS" = "1" ]; then
     menu_action level "$level"
     FRONT_APP_UPDATE+=(--set "front_app.level.$level" "icon=$marker" "click_script=$CLICK_SCRIPT")
   done
-  for binding in hide:hide quit:quit force_quit:force-quit; do
+  for binding in new_window:new-window hide:hide quit:quit force_quit:force-quit; do
     menu_action app "${binding#*:}"
     FRONT_APP_UPDATE+=(--set "front_app.${binding%%:*}" "click_script=$CLICK_SCRIPT")
   done

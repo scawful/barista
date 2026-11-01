@@ -220,11 +220,11 @@ local function test_items_left_layout()
   assert_true(found_front_app_default_row, "saved app defaults belong under the displayed app")
   assert(front_app_move_prev ~= nil, "front_app move-to-prev-display action not found in popup layout")
   assert(front_app_move_next ~= nil, "front_app move-to-next-display action not found in popup layout")
-  assert_equal(front_app_root_rows, 11, "front_app should render only its context and frequent actions initially")
+  assert_equal(front_app_root_rows, 12, "front_app should render only its context and frequent actions initially")
   assert_equal(front_app_more_rows, 11, "front_app nested popup should retain every secondary action")
   assert_equal(table.concat(front_app_root_names, "|"), table.concat({
     "front_app.header", "front_app.state", "front_app.location", "front_app.feedback",
-    "front_app.window.float",
+    "front_app.new_window", "front_app.window.float",
     "front_app.window.fullscreen", "front_app.window.sticky", "front_app.window.topmost",
     "front_app.move", "front_app.defaults", "front_app.more",
   }, "|"), "window actions and named scope menus should be direct")

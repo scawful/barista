@@ -349,7 +349,7 @@ if action_rows == "1":
             except ValueError:
                 raise AssertionError(repr(script))
             assert args[-4] == "window" and args[-2:] == ["731", app_name], args
-    for name in ("hide", "quit", "force_quit"):
+    for name in ("new_window", "hide", "quit", "force_quit"):
         args = shlex.split(fields["front_app." + name]["click_script"])
         assert args[-4] == "app" and args[-1] == app_name, args
 else:
@@ -392,7 +392,7 @@ assert_log_contains "--set front_app popup.drawing=toggle"
 
 run_front_app floating_above
 assert_call_count 1
-assert_set_count 36
+assert_set_count 37
 assert_single_animated_batch Ghostty "󰒄" "Floating · Above" "Space 1 · Display 1" \
   "Tile Window" "Enter Fullscreen" "Always on top: On" "Exit Fullscreen + Match Space"
 assert_log_contains "--set front_app.window.float label=Tile Window"
@@ -402,7 +402,7 @@ assert_log_contains "--set front_app.preset.tile_here label=Exit Fullscreen + Ma
 
 run_front_app fullscreen
 assert_call_count 1
-assert_set_count 36
+assert_set_count 37
 assert_single_animated_batch Ghostty "󰊓" Fullscreen "Space 1 · Display 1" \
   "Float Window" "Exit Fullscreen" "Always on top: Off" "Exit Fullscreen + Match Space"
 assert_log_contains "--set front_app.window.float label=Float Window"
@@ -411,7 +411,7 @@ assert_log_contains "--set front_app.window.topmost label=Always on top: Off"
 
 run_front_app none
 assert_call_count 1
-assert_set_count 36
+assert_set_count 37
 assert_single_animated_batch Ghostty "󰋽" "No window available · App defaults still apply" "Space 1 · Display 1" \
   "No Window Available" "No Window Available" "No Window Available" "No Window Available"
 assert_log_contains "--set front_app.window.float label=No Window Available"
@@ -419,7 +419,7 @@ assert_log_contains "--set front_app.preset.tile_here label=No Window Available"
 
 run_front_app quoted
 assert_call_count 1
-assert_set_count 36
+assert_set_count 37
 assert_single_animated_batch $'O\x27Reilly "日本" 🌟' "󰒄" "Floating · Above · 日本" \
   'Space 2 · Display "Studio" 🌟' "Tile Window" "Enter Fullscreen" "Always on top: On" "Exit Fullscreen + Match Space"
 assert_argv_contains $'label=O\x27Reilly "日本" 🌟'
@@ -428,13 +428,13 @@ assert_argv_contains 'label=Space 2 · Display "Studio" 🌟'
 
 run_front_app floating_above animate
 assert_call_count 2
-assert_set_count 72
+assert_set_count 74
 assert_argv_contains "--animate"
 assert_animation_fallback_payload
 
 run_front_app floating_above all
 assert_call_count 2
-assert_set_count 72
+assert_set_count 74
 
 run_front_app floating_above none 0
 assert_call_count 1
@@ -444,7 +444,7 @@ assert_single_animated_batch Ghostty "󰒄" "Floating · Above" "Space 1 · Disp
 
 run_front_app_popup_refresh
 assert_call_count 1
-assert_set_count 37
+assert_set_count 38
 assert_single_animated_batch Ghostty "󰊓" Fullscreen "Space 1 · Display 1" \
   "Float Window" "Exit Fullscreen" "Always on top: Off" "Exit Fullscreen + Match Space"
 grep -Fxq $'fresh-front-app\tyabai='"$BIN_DIR/yabai" "$HELPER_LOG" || {
@@ -466,7 +466,7 @@ assert_log_contains "--set front_app.window.fullscreen label=Exit Fullscreen"
 
 run_front_app_popup_refresh success empty
 assert_call_count 1
-assert_set_count 37
+assert_set_count 38
 assert_single_animated_batch Ghostty "󰊓" Fullscreen "Space 1 · Display 1" \
   "Float Window" "Exit Fullscreen" "Always on top: Off" "Exit Fullscreen + Match Space"
 grep -Fxq $'fresh-front-app\tyabai='"$BIN_DIR/yabai" "$HELPER_LOG" || {
@@ -487,7 +487,7 @@ grep -Fxq $'fresh-front-app\tlua_only=1' "$RUNTIME_LOG" || {
 
 run_front_app_popup_refresh success success 1
 assert_call_count 1
-assert_set_count 37
+assert_set_count 38
 [ ! -s "$HELPER_LOG" ] || {
   echo "FAIL: Lua-only popup refresh should not call the native helper" >&2
   cat "$HELPER_LOG" >&2
@@ -501,7 +501,7 @@ grep -Fxq $'fresh-front-app\tlua_only=1' "$RUNTIME_LOG" || {
 
 run_front_app_popup_refresh empty empty
 assert_call_count 1
-assert_set_count 37
+assert_set_count 38
 assert_single_animated_batch Ghostty "󰒄" "Floating · Above" "Space 1 · Display 1" \
   "Tile Window" "Enter Fullscreen" "Always on top: On" "Exit Fullscreen + Match Space"
 grep -Fxq -- '--app Ghostty' "$CONTEXT_LOG" || {

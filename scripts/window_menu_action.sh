@@ -64,7 +64,7 @@ case "$SCOPE" in
     esac
     ;;
   app)
-    case "$ACTION" in show|hide|quit|force-quit|force_quit) ;; *) fail "Unknown app action." ;; esac
+    case "$ACTION" in show|hide|quit|force-quit|force_quit|new-window) ;; *) fail "Unknown app action." ;; esac
     output="$("$APP_ACTION" "$ACTION" "$APP_NAME" 2>&1)"
     result=$?
     message="App action completed"

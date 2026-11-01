@@ -361,7 +361,7 @@ struct MenuEntries: View {
 }
 
 /// An app's menu in the native Dock's order, shared by dock tiles and group
-/// callouts: its windows, then `custom` items and Barista's window controls,
+/// callouts: its windows and New Window, then `custom` items and Barista's window controls,
 /// then the `options` submenu, then Hide or Show
 /// and Quit, which turns into Force Quit while Option is held. Window actions
 /// go through Barista's `yabai_control.sh`, so they follow the same rules as
@@ -378,6 +378,7 @@ struct AppMenu<Custom: View, Options: View>: View {
       Button(window.title.isEmpty ? window.app : window.title) { store.focus(window) }
     }
     if !windows.isEmpty { Divider() }
+    if tile.pid != nil { Button("New Window") { store.newWindow(tile) } }
     custom
     windowControls(windows)
     Divider()

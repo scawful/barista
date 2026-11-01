@@ -758,6 +758,23 @@ final class DockStore: ObservableObject {
     edit { $0.place(id, before: before, inGroup: group.id) }
   }
 
+  /// Opens a window in the tile's app, launching it when it isn't running.
+  func newWindow(_ tile: DockTile) {
+    guard let app = runningApplication(tile) else { return open(tile) }
+    newWindow(app)
+  }
+
+  /// Opens a window the way the app's own New Window item does. Finder, while
+  /// Barista browses folders, and Barista itself open a Barista Files window
+  /// at Home.
+  func newWindow(_ app: NSRunningApplication) {
+    let finder = app.bundleIdentifier == "com.apple.finder" && settings.filesBrowser == "barista"
+    if finder || app.processIdentifier == ProcessInfo.processInfo.processIdentifier {
+      return BrowserController.shared.open(FileManager.default.homeDirectoryForCurrentUser, newWindow: true)
+    }
+    NewWindow.open(app)
+  }
+
   func hide(_ tile: DockTile) { runningApplication(tile)?.hide() }
   func unhide(_ tile: DockTile) { runningApplication(tile)?.unhide() }
   func quit(_ tile: DockTile) { runningApplication(tile)?.terminate() }

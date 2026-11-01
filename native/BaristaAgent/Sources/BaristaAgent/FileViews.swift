@@ -248,11 +248,15 @@ private struct IconCell: View {
       if state.isRenaming(entry.url) {
         RenameField(state: state, entry: entry).multilineTextAlignment(.center).font(font)
       } else {
-        Text(entry.name)
-          .font(font).lineLimit(2).truncationMode(.middle).multilineTextAlignment(.center)
-          .padding(.horizontal, 4).padding(.vertical, 1)
-          .foregroundStyle(selected ? Color.white : Color.primary)
-          .background(selected ? Color.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+        // Finder's dots sit before the name's first line.
+        HStack(alignment: .firstTextBaseline, spacing: 2) {
+          TagDots(tags: entry.tags)
+          Text(entry.name)
+            .font(font).lineLimit(2).truncationMode(.middle).multilineTextAlignment(.center)
+            .padding(.horizontal, 4).padding(.vertical, 1)
+            .foregroundStyle(selected ? Color.white : Color.primary)
+            .background(selected ? Color.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+        }
       }
     }
     .frame(width: layout.cell.width, height: layout.cell.height, alignment: .top)
@@ -406,6 +410,7 @@ private struct ColumnRow: View {
         rename
       } else {
         Text(entry.name).lineLimit(1).truncationMode(.middle)
+        TagDots(tags: entry.tags)
       }
       Spacer(minLength: 4)
       if let mark {

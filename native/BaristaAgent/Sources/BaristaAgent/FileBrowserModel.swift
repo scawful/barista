@@ -112,6 +112,7 @@ struct FileEntry: Identifiable, Equatable {
   var match: String?
   /// Its place in Finder's name order among the rows it was listed with.
   var nameOrder: Int?
+  var tags: [FinderTag] = []
   var id: URL { url }
 }
 
@@ -246,7 +247,8 @@ enum FileListing {
                      created: values?.creationDate ?? .distantPast,
                      added: values?.addedToDirectoryDate ?? .distantPast,
                      size: isFolder ? nil : values?.fileSize.map(Int64.init),
-                     kind: kind(of: url, isFolder: isFolder, isExecutable: values?.isExecutable == true))
+                     kind: kind(of: url, isFolder: isFolder, isExecutable: values?.isExecutable == true),
+                     tags: FinderTags.read(url))
   }
 
   /// Folders come first for a name sort, as in Finder; ties fall back to name.
@@ -366,6 +368,24 @@ enum FileOperations {
     let copy = folder.appendingPathComponent(available("\(stem) copy", ext: ext, exists: free(in: folder)))
     try FileManager.default.copyItem(at: url, to: copy)
     return copy
+  }
+
+  /// Finder's Make Alias: `name alias` next to the original, then `name alias 2`.
+  static func makeAlias(_ url: URL) throws -> URL {
+    let folder = url.deletingLastPathComponent()
+    let alias = folder.appendingPathComponent(available("\(url.lastPathComponent) alias", ext: "",
+                                                        exists: free(in: folder)))
+    let bookmark = try url.bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil,
+                                        relativeTo: nil)
+    try URL.writeBookmarkData(bookmark, to: alias)
+    return alias
+  }
+
+  /// What a Finder alias points to; nil for anything else, symlinks included.
+  static func aliasTarget(_ url: URL) -> URL? {
+    let values = try? url.resourceValues(forKeys: [.isAliasFileKey, .isSymbolicLinkKey])
+    guard values?.isAliasFile == true, values?.isSymbolicLink != true else { return nil }
+    return try? URL(resolvingAliasFileAt: url, options: [.withoutUI])
   }
 
   /// Copies or moves `url` into `folder`, keeping both when the name is taken.

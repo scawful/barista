@@ -183,6 +183,28 @@ final class FileBrowserModelTests: XCTestCase {
                    "a worktree's .git file marks the root too")
   }
 
+  func testMakeAliasNamesAsFinderDoesAndResolves() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("barista-alias-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: folder.appendingPathComponent("Maps"), withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let note = folder.appendingPathComponent("note.txt")
+    try Data("x".utf8).write(to: note)
+
+    let alias = try FileOperations.makeAlias(note)
+    XCTAssertEqual(alias.lastPathComponent, "note.txt alias")
+    XCTAssertEqual(try FileOperations.makeAlias(note).lastPathComponent, "note.txt alias 2")
+    XCTAssertEqual(try alias.resourceValues(forKeys: [.isAliasFileKey]).isAliasFile, true)
+    XCTAssertEqual(FileOperations.aliasTarget(alias)?.resolvingSymlinksInPath().path,
+                   note.resolvingSymlinksInPath().path)
+    let maps = try FileOperations.makeAlias(folder.appendingPathComponent("Maps"))
+    XCTAssertEqual(FileOperations.aliasTarget(maps)?.lastPathComponent, "Maps", "a folder's alias opens the folder")
+
+    let link = folder.appendingPathComponent("link")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: note)
+    XCTAssertNil(FileOperations.aliasTarget(link), "a symlink is no alias, though the key says so")
+    XCTAssertNil(FileOperations.aliasTarget(note))
+  }
+
   func testPuttingBackFromTheTrashKeepsWhatTookTheNameSince() throws {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("barista-restore-\(UUID().uuidString)")
     let trash = folder.appendingPathComponent("Trash")

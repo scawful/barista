@@ -171,6 +171,8 @@ final class BrowserController {
       case (.command, _, "a") where !typing: state.selection = Set(state.shown.map(\.url))
       case (.command, _, "c") where !typing && !state.selection.isEmpty: state.copySelection()
       case (.command, _, "d") where !typing && !state.selection.isEmpty: state.duplicateSelection()
+      case ([.command, .control], _, "a") where !typing && !state.boardShown && !state.selection.isEmpty:
+        state.makeAliasSelection()
       case (.command, _, "v") where !typing: state.paste(move: false)
       case ([.command, .option], _, "v") where !typing: state.paste(move: true)
       case (.command, _, "y") where !typing: state.onQuickLook?()
@@ -319,8 +321,15 @@ final class BrowserState: ObservableObject {
   @Published var ascending = true { didSet { sortChanged { $0.ascending = ascending } } }
   /// Points per icon in the icon view, one of `FolderView.iconSizes`.
   @Published var iconSize = FolderView.fallback.iconSize ?? 64 { didSet { remember { $0.iconSize = iconSize } } }
-  /// Going to a folder clears it; only a change re-sorts the rows.
-  @Published var query = "" { didSet { if query != oldValue { search() } } }
+  /// Going to a folder clears it; only a change re-sorts the rows. Clearing
+  /// it leaves a tag's files for this folder's.
+  @Published var query = "" {
+    didSet {
+      guard query != oldValue else { return }
+      if query.isEmpty && scope == .tags { scope = .folder }
+      search()
+    }
+  }
   @Published var scope = SearchScope.folder { didSet { if scope != oldValue { search() } } }
   /// fd or rg is running for the query.
   @Published private(set) var searching = false
@@ -534,7 +543,8 @@ final class BrowserState: ObservableObject {
       return
     }
     let run = ToolRun()
-    let root = location
+    // A tag's files can be anywhere; their names start from Home.
+    let root = scope == .tags ? FileManager.default.homeDirectoryForCurrentUser : location
     searchRun = run
     searching = true
     let work = DispatchWorkItem {
@@ -788,9 +798,15 @@ final class BrowserState: ObservableObject {
     reload()
   }
 
+  /// An alias stands for what it points to, as in Finder.
+  private func resolvingAlias(_ entry: FileEntry) -> FileEntry {
+    FileOperations.aliasTarget(entry.url).map { FileListing.entry($0) } ?? entry
+  }
+
   /// A folder browses; a file opens with Barista's app for it, else in the
   /// viewer when it can show it, else with the system's default.
   func open(_ entry: FileEntry) {
+    let entry = resolvingAlias(entry)
     if entry.isFolder {
       go(to: entry.url)
     } else if let app = OpenRules.app(for: entry.url) {
@@ -801,7 +817,7 @@ final class BrowserState: ObservableObject {
   }
 
   func openSelection() {
-    let chosen = shown.filter { selection.contains($0.url) }
+    let chosen = shown.filter { selection.contains($0.url) }.map(resolvingAlias)
     if chosen.count == 1, let entry = chosen.first {
       open(entry)
       return
@@ -1019,6 +1035,39 @@ final class BrowserState: ObservableObject {
     perform(selectedURLs, operation: FileOperations.duplicate)
   }
 
+  /// An alias of each beside it, selected, as Finder's Make Alias (⌃⌘A).
+  func makeAliasSelection() {
+    perform(selectedURLs, operation: FileOperations.makeAlias)
+  }
+
+  /// The files with the tag `name`, as a sidebar tag shows them.
+  func showTag(_ name: String) {
+    scope = .tags
+    query = name
+  }
+
+  func toggleTag(_ tag: FinderTag, on urls: [URL]) {
+    TagCatalog.shared.add(tag)
+    changeTags { try FinderTags.toggle(tag, on: urls) }
+  }
+
+  func removeTags(from urls: [URL]) {
+    changeTags { try urls.forEach { try FinderTags.write([], to: $0) } }
+  }
+
+  /// Runs a tag change off the main thread, then lists the rows again to show it.
+  private func changeTags(_ change: @escaping () throws -> Void) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      var failure: String?
+      do { try change() } catch { failure = error.localizedDescription }
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
+        if let failure { self.problem = failure }
+        self.reload()
+      }
+    }
+  }
+
   /// Zips the selection beside it and selects the archive.
   func compressSelection() {
     let urls = selectedURLs
@@ -1185,6 +1234,7 @@ struct BrowserView: View {
   @ObservedObject private var places = PlacesMonitor.shared
   @ObservedObject private var sidebarPrefs = SidebarPreferences.shared
   @ObservedObject private var collections = CollectionStore.shared
+  @ObservedObject private var tags = TagCatalog.shared
   /// The collection row files are being dragged over.
   @State private var collectionTarget: String?
   @FocusState private var searchFocused: Bool
@@ -1229,6 +1279,7 @@ struct BrowserView: View {
     .scrollContentBackground(.hidden)
     .background(Self.surface)
     .onChange(of: state.focusSearch) { searchFocused = true }
+    .onAppear { tags.refresh() }
     .sheet(isPresented: $state.jumping) { JumpView(state: state) }
     .sheet(isPresented: Binding(get: { !state.inspecting.isEmpty }, set: { if !$0 { state.inspecting = [] } })) {
       GetInfoView(urls: state.inspecting, repo: state.git?.root) { state.inspecting = [] }
@@ -1330,7 +1381,7 @@ struct BrowserView: View {
       }
       .pickerStyle(.segmented).labelsHidden().fixedSize()
       .help("Subfolders matches names with fd; Contents matches text with rg. Both skip what .gitignore "
-            + "ignores unless hidden files are shown.")
+            + "ignores unless hidden files are shown. Tags finds the files with that tag anywhere, with Spotlight.")
       if state.searching { ProgressView().controlSize(.small) }
       Spacer()
       if let note = state.searchNote { Text(note).foregroundStyle(.secondary) }
@@ -1390,6 +1441,11 @@ struct BrowserView: View {
       } header: {
         sectionHeader("Collections", symbol: "photo.on.rectangle.angled")
       }
+      Section(isExpanded: expanded("Tags")) {
+        ForEach(tags.tags, id: \.name) { tag in tagRow(tag) }
+      } header: {
+        sectionHeader("Tags", symbol: "tag")
+      }
       // Last, so entering or leaving a repo never moves the places above.
       if let git = state.git {
         Section(isExpanded: expanded("Repository")) {
@@ -1440,6 +1496,23 @@ struct BrowserView: View {
     RoundedRectangle(cornerRadius: 5)
       .fill(marked ? Color.accentColor.opacity(0.22) : Color.clear)
       .padding(.horizontal, 8)
+  }
+
+  /// A tag's files, found with Spotlight wherever they are.
+  private func tagRow(_ tag: FinderTag) -> some View {
+    let current = state.scope == .tags && state.query.caseInsensitiveCompare(tag.name) == .orderedSame
+    return Label {
+      Text(tag.name).lineLimit(1)
+    } icon: {
+      Image(systemName: tag.nsColor == nil ? "circle" : "circle.fill")
+        .foregroundStyle(tag.nsColor.map { Color(nsColor: $0) } ?? .secondary)
+    }
+    .fontWeight(current ? .semibold : .regular)
+    .help("Files tagged \(tag.name), found with Spotlight")
+    .contentShape(Rectangle())
+    .listRowBackground(rowMark(current))
+    .onTapGesture { state.showTag(tag.name) }
+    .contextMenu { fontSizeMenu }
   }
 
   private func repoRow(_ git: GitStatus) -> some View {
@@ -1707,6 +1780,7 @@ struct BrowserView: View {
         Text(state.query.isEmpty ? "Empty Folder" : "No Matches").font(.headline)
         if !state.query.isEmpty {
           Text(state.scope == .contents ? "Nothing here contains “\(state.query)”."
+               : state.scope == .tags ? "Spotlight finds nothing tagged “\(state.query)”."
                : "No names here match “\(state.query)”.")
             .font(.callout)
         }
@@ -2021,6 +2095,7 @@ private struct FileTable: View {
             RenameField(state: state, entry: entry)
           } else {
             Text(entry.name).lineLimit(1).truncationMode(.middle).layoutPriority(1)
+            TagDots(tags: entry.tags)
             if let match = entry.match {
               Text(match).foregroundStyle(.secondary).lineLimit(1)
                 .help(entry.line.map { "Line \($0): \(match)" } ?? match)
@@ -2139,6 +2214,11 @@ struct EntryMenu: View {
         state.duplicateSelection()
       }
       .keyboardShortcut("d")
+      Button("Make Alias") {
+        state.selection = urls
+        state.makeAliasSelection()
+      }
+      .keyboardShortcut("a", modifiers: [.command, .control])
       if !state.isDeepSearch {
         Button("New Folder with Selection") {
           state.selection = urls
@@ -2153,6 +2233,15 @@ struct EntryMenu: View {
       Divider()
       ToolButtons(urls: sorted, directory: singleFolder ?? state.location)
       Divider()
+      // ⌘C here, then ⌘V or Move Items Here (⌥⌘V) in another folder.
+      Button("Copy") {
+        state.selection = urls
+        state.copySelection()
+      }
+      .keyboardShortcut("c")
+      TagsMenu(state: state, urls: sorted)
+      // AirDrop, Mail, Messages, and the rest, as a submenu.
+      ShareLink(items: sorted)
       Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(sorted) }
       Button("Copy Path") { copyText(sorted.map(\.path).joined(separator: "\n")) }
         .keyboardShortcut("c", modifiers: [.command, .option])
@@ -2174,8 +2263,9 @@ struct EntryMenu: View {
   @ViewBuilder
   private var folderMenu: some View {
     Button("New Folder") { state.newFolder() }.keyboardShortcut("n", modifiers: [.command, .shift])
-    Button("Paste") { state.paste(move: false) }.disabled(!state.canPaste)
+    Button("Paste") { state.paste(move: false) }.disabled(!state.canPaste).keyboardShortcut("v")
     Button("Move Items Here") { state.paste(move: true) }.disabled(!state.canPaste)
+      .keyboardShortcut("v", modifiers: [.command, .option])
     Button("Get Info") { state.inspecting = [state.location] }
     if state.workspace == nil {
       Button("Make Workspace Here") { state.makeWorkspace() }

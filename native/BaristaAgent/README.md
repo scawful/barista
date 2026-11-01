@@ -54,7 +54,7 @@ The agent runs as `dev.barista.agent` and logs to
 | `MediaViewer.swift` | The picture and movie window: zoom, sharp pixels, rotate, crop, trim, the info panel, and the bar that shows on hover; `MediaEdit` saves edits as copies. |
 | `Gallery.swift` | Gallery mode: `GalleryModel` (order, selection, removed items, undo, featured items, size), `GalleryGrid`'s four layouts, `Thumbnails`, and `GalleryView` with its bar and menus. |
 | `Collections.swift` | `MediaCollection` and `CollectionStore` (`data/barista_collections.local.json`, backed up daily before a rewrite), plus the collection prompt and menus. |
-| `FileBrowserModel.swift` | Barista Files' pure model: tab history, in-window tabs, listing, sorting, filtering, and `FileOperations` (Finder's names for new folders, copies, and kept-both clashes; rename; repo root). |
+| `FileBrowserModel.swift` | Barista Files' pure model: tab history, in-window tabs, listing, sorting, filtering, and `FileOperations` (Finder's names for new folders, copies, aliases, and kept-both clashes; rename; alias targets; repo root). |
 | `FileBrowser.swift` | The Barista Files window: folder title, bottom path bar, tabs, sidebar, table, preview, in-place rename, Finder's shortcuts and the Go and View menus, `OverlayScrollers`, and `BrowserWindow`, which drives the Quick Look panel, hover scroll bars, and row drag-select. |
 | `FileIcons.swift` | `FileIcons`: Finder icons drawn into small bitmaps off the main thread, or Quick Look thumbnails for images and videos, cached by path, size, and modification date (bounded by bytes); `FileIcon` shows one when it's ready. |
 | `DSStore.swift` | A read-only reader for Finder's `.DS_Store` (the buddy-allocated B-tree of per-file records); Barista never writes one. |
@@ -63,7 +63,8 @@ The agent runs as `dev.barista.agent` and logs to
 | `Places.swift` | `FinderFavorites` (Finder's sidebar list, decoded from its shared file list, with template symbols), `PlacesMonitor`, `CollectionPlace` (the sidebar's Collections rows and which dropped files they take), and `DisplayNames`, a cache of Finder's folder names. |
 | `Git.swift` | Barista Files' git: porcelain v2 status and worktree parsing, `Git.inspect` (no optional locks), and `Tool` for running Homebrew and cargo tools from launchd. |
 | `FileViews.swift` | Barista Files' icon and column views. The column view draws the shown folder as its live column, with the folders above it and a selected folder's contents as read-only columns around it. |
-| `Search.swift` | Barista Files' search scopes: `FileSearch` (the fd and rg commands and their output) and `ToolRun`, which streams a tool's lines and stops it at a limit or on cancel. |
+| `Search.swift` | Barista Files' search scopes: `FileSearch` (the fd, rg, and Spotlight tag commands and their output) and `ToolRun`, which streams a tool's lines and stops it at a limit or on cancel. |
+| `Tags.swift` | Finder tags: `FinderTags` reads and writes the `_kMDItemUserTags` attribute, `TagCatalog` lists Finder's seven and the tags Spotlight finds in use, and `TagDots` and `TagsMenu` draw and set them. |
 | `Jump.swift` | ⌘K: candidate ranking, `JumpIndex` (places, zoxide, repos under `~/src`), and the sheet. |
 | `Preview.swift` | Barista Files' preview pane: `Preview.load` (Markdown, org, text, JSON, ROM, image), `Org` to Markdown, and `SNESHeader`. |
 | `Syntax.swift` | Regex coloring for code previews: 65816/asar, and comment, string, keyword, and number rules for other languages. |
@@ -150,7 +151,7 @@ Favorites is made the first time it's used. Save as Collection… keeps a
 folder gallery's order and leaves out removed items.
 
 Barista Files' sidebar lists the collections under Collections, between
-Locations and Repository: Favorites first, even before it's made, then the
+Locations and Tags: Favorites first, even before it's made, then the
 rest in the file's order, each with its count. A click opens the
 collection's gallery, or brings its window forward. Dropping pictures or
 movies on a row adds them (a drop with none beeps). Right-click has Rename
@@ -158,6 +159,19 @@ Collection… and Delete Collection…, which also retitle or close the
 collection's open window. Changes made in Barista show at once; edits to
 the file itself show at the next folder change, and every write from the
 sidebar reads the file first so it doesn't undo them.
+
+Tags are Finder's: right-click → Tags puts a tag on the selection, or takes
+it off when every item has it, and Remove All Tags clears them. Rows show
+their colored tags as dots. The sidebar's Tags lists Finder's seven, then
+any other tag Spotlight finds on a file (looked up when a window opens, at
+most once a minute); a click shows every file with that tag, wherever
+Spotlight indexes (`mdfind`; names start from Home), as the search's Tags scope does for a
+typed name. The tags are written to the file's
+`com.apple.metadata:_kMDItemUserTags` attribute directly, with their colors.
+Make Alias (⌃⌘A) writes `name alias` beside the original, and opening an
+alias opens what it points to. Right-click also has Copy and Share
+(AirDrop, Mail, Messages); ⌘C then ⌥⌘V in another folder moves the files,
+as Finder's Move Items Here does.
 
 `dock.json` settings: `viewer_scroll_zoom` (`off`, `fine`, `normal`,
 `fast`) and `viewer_loops_movies`; the bar's More menu writes both.

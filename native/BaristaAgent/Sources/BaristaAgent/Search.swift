@@ -1,9 +1,10 @@
 import Foundation
 
-/// Where the search field looks. The folder filter is instant; the other two
-/// run fd and rg under the shown folder.
+/// Where the search field looks. The folder filter is instant; subfolders
+/// and contents run fd and rg under the shown folder, and tags ask Spotlight
+/// for the files with that tag anywhere.
 enum SearchScope: String, CaseIterable, Identifiable {
-  case folder, subfolders, contents
+  case folder, subfolders, contents, tags
 
   var id: Self { self }
 
@@ -12,6 +13,7 @@ enum SearchScope: String, CaseIterable, Identifiable {
     case .folder: return "This Folder"
     case .subfolders: return "Subfolders"
     case .contents: return "Contents"
+    case .tags: return "Tags"
     }
   }
 
@@ -20,6 +22,7 @@ enum SearchScope: String, CaseIterable, Identifiable {
     case .folder: return nil
     case .subfolders: return "fd"
     case .contents: return "rg"
+    case .tags: return "mdfind"
     }
   }
 }
@@ -27,15 +30,24 @@ enum SearchScope: String, CaseIterable, Identifiable {
 enum FileSearch {
   static let limit = 1000
 
-  /// The fd or rg run for `query` under `root`; nil for the folder filter, an
-  /// empty query, or a missing tool. Names must hold every word of the query;
+  /// The fd or rg run for `query` under `root`, or Spotlight's for the tag
+  /// `query` names; nil for the folder filter, an empty query, or a missing
+  /// tool. Names must hold every word of the query;
   /// contents hold the query as one phrase. Both skip `.git`, and skip what
   /// `.gitignore` ignores unless `everything` (hidden files shown).
   static func command(_ scope: SearchScope, query: String, in root: URL, everything: Bool,
                       find: (String) -> String? = Tool.find) -> (tool: String, arguments: [String])? {
     let phrase = query.trimmingCharacters(in: .whitespaces)
     let words = phrase.split(whereSeparator: \.isWhitespace).map(String.init)
-    guard let first = words.first, let name = scope.tool, let tool = find(name) else { return nil }
+    guard let first = words.first, let name = scope.tool,
+          let tool = scope == .tags ? "/usr/bin/mdfind" : find(name) else { return nil }
+    if scope == .tags {
+      // The whole tag, whatever its case, as Finder's sidebar matches it; a
+      // `*` in the name is literal, not Spotlight's wildcard.
+      let literal = phrase.replacingOccurrences(of: "\\", with: "\\\\")
+        .replacingOccurrences(of: "\"", with: "\\\"").replacingOccurrences(of: "*", with: "\\*")
+      return (tool, ["kMDItemUserTags == \"\(literal)\"c"])
+    }
     let all = everything ? ["--hidden", "--no-ignore"] : []
     if scope == .subfolders {
       let more = words.dropFirst().flatMap { ["--and", $0] }

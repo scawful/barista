@@ -37,6 +37,13 @@ final class SearchTests: XCTestCase {
     XCTAssertTrue(text.arguments.contains("--no-ignore") && text.arguments.contains("--hidden"))
     XCTAssertTrue(text.arguments.contains("--fixed-strings"), "$ and # are not regex")
 
+    let tagged = try XCTUnwrap(FileSearch.command(.tags, query: " Zelda \"*\" ", in: root, everything: false,
+                                                  find: { _ in nil }))
+    XCTAssertEqual(tagged.tool, "/usr/bin/mdfind", "Spotlight is always there")
+    XCTAssertEqual(tagged.arguments, [#"kMDItemUserTags == "Zelda \"\*\""c"#],
+                   "the whole tag in any case, its quote and star literal")
+
+    XCTAssertNil(FileSearch.command(.tags, query: " ", in: root, everything: false, find: found))
     XCTAssertNil(FileSearch.command(.folder, query: "x", in: root, everything: false, find: found))
     XCTAssertNil(FileSearch.command(.contents, query: "  ", in: root, everything: false, find: found))
     XCTAssertNil(FileSearch.command(.contents, query: "x", in: root, everything: false, find: { _ in nil }))

@@ -179,7 +179,10 @@ app's own New Window item through Accessibility: "New Window" first, then
 "New … Window", then Emacs's "New Frame", never a private window. Terminal's
 item is a submenu of profiles, so its first profile opens. Finder, while
 Barista browses folders, opens a Barista Files window instead. It needs
-Accessibility for `barista-agent`; an ad-hoc build's grant lapses on rebuild.
+Accessibility for `barista-agent`. `scripts/barista_agent.sh build` signs with
+the keychain's first Apple Development identity so the grant survives
+rebuilds; an ad-hoc build (`BARISTA_AGENT_SIGN_IDENTITY=-`, or no identity)
+loses it on every rebuild.
 
 ## How a frame is made
 

@@ -17,6 +17,23 @@ HIDDEN_DELAY=1000
 
 build() {
   swift build -c release --package-path "$PACKAGE" --scratch-path "$BUILD_DIR"
+  sign
+}
+
+# An ad-hoc signature changes with every build, and macOS keys an ad-hoc
+# binary's Accessibility grant (New Window) to it; a certificate's grant
+# survives rebuilds. BARISTA_AGENT_SIGN_IDENTITY names the identity, "-" keeps
+# ad-hoc; the default is the keychain's first Apple Development identity.
+sign() {
+  local identity="${BARISTA_AGENT_SIGN_IDENTITY:-}"
+  if [ -z "$identity" ]; then
+    identity="$(security find-identity -v -p codesigning 2>/dev/null \
+      | awk '/"Apple Development: /{print $2; exit}')"
+  fi
+  [ -n "$identity" ] && [ "$identity" != "-" ] || return 0
+  # Signing changes the binary, so the next swift build relinks it ad-hoc;
+  # every build signs again.
+  codesign --force --sign "$identity" "$BINARY"
 }
 
 dock_value() {

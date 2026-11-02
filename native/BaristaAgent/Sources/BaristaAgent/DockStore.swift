@@ -130,6 +130,8 @@ final class DockStore: ObservableObject {
   private var policyWatches: [pid_t: (app: NSRunningApplication, watch: NSKeyValueObservation)] = [:]
   private var cancellables: Set<AnyCancellable> = []
   private var agentTimer: Timer?
+  /// Callers waiting on the feed rewrite under way; nil when none runs.
+  private var agentWaiters: [() -> Void]?
   private let windowQueue = DispatchQueue(label: "dev.barista.agent.windows", qos: .userInitiated)
   private var sizeRulesSyncedAt = Date.distantPast
   private var windowsToken: Int32 = 0
@@ -1120,6 +1122,48 @@ final class DockStore: ObservableObject {
     let asking = Dictionary(snapshot.sessions.map { ($0.id, $0.needs) }, uniquingKeysWith: { first, _ in first })
     let kept = setAside.filter { asking[$0.key] == $0.value }
     if kept != setAside { setAside = kept }
+  }
+
+  /// Rewrites the agent feed and reads it, so the attention card asks only
+  /// what is still open: the bar's rewrite lags up to 30 s, longer while the
+  /// bar is not drawn. A feed written in the last few seconds is read as it
+  /// is. `done` runs on the main queue, also when the script fails or hangs.
+  func refreshAgents(_ done: @escaping () -> Void) {
+    if agentWaiters != nil {
+      agentWaiters?.append(done)
+      return
+    }
+    if let stamp = DockConfigFile.modificationDate(AgentFeed.url), Date().timeIntervalSince(stamp) < 3 {
+      loadAgents()
+      done()
+      return
+    }
+    agentWaiters = [done]
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: AgentFeed.script)
+    process.arguments = ["badges"]
+    process.standardInput = FileHandle.nullDevice
+    process.standardOutput = FileHandle.nullDevice
+    process.terminationHandler = { [weak self] _ in
+      DispatchQueue.main.async { self?.agentsRefreshed() }
+    }
+    do {
+      try process.run()
+      // The scan takes a quarter second; one that hangs must not hold the card for good.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+        if process.isRunning { process.terminate() }
+      }
+    } catch {
+      Self.log("could not run \(AgentFeed.script): \(error)")
+      agentsRefreshed()
+    }
+  }
+
+  private func agentsRefreshed() {
+    loadAgents()
+    let waiters = agentWaiters ?? []
+    agentWaiters = nil
+    waiters.forEach { $0() }
   }
 
   /// A drop on a folder asks, at the pointer, whether to copy or move.

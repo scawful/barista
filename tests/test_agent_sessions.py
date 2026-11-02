@@ -240,6 +240,18 @@ class AgentSessionsTests(unittest.TestCase):
         self.assertEqual(claude, [f"claude:{os.getpid()}"], "pids 0, -1, and true are never live")
         self.assertEqual({s["id"].split(":")[0] for s in badges["sessions"]}, {"codex", "cursor", "claude"})
 
+    def test_badges_writes_the_dock_feed_without_touching_the_bar(self):
+        log = self.home / "sketchybar.log"
+        fake = self.home / "sketchybar"
+        fake.write_text(f"#!/bin/sh\nprintf '%s\\n' \"$@\" >> {log}\n", encoding="utf-8")
+        fake.chmod(0o755)
+        result = self.run_script("badges", extra_env={"BARISTA_SKETCHYBAR_BIN": str(fake)})
+        self.assertEqual(result.stdout, "")
+        self.assertFalse(log.exists(), "the dock's refresh never redraws the bar")
+        badges = json.loads((self.home / "badges.json").read_text(encoding="utf-8"))
+        self.assertLessEqual(abs(badges["updated"] - time.time()), 60)
+        self.assertIn("claude:cli-live", {s["id"] for s in badges["sessions"]})
+
     def test_a_failing_source_costs_only_its_own_sessions(self):
         module = self.load_module()
 

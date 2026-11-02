@@ -121,7 +121,7 @@ final class DockController {
 
   private let store: DockStore
   private let scene = DockScene()
-  private let panel = makeOverlayPanel()
+  private var panel = makeOverlayPanel()
   private let host: DockHostingView<DockView>
   private var clock: FrameClock?
   private let popover = PopoverController()
@@ -137,6 +137,8 @@ final class DockController {
   private var restWorkItem: DispatchWorkItem?
   private var menuOpen = false
   private var syncPending = false
+  /// The attention card waits for the agent feed rewritten as the dock comes up.
+  private var feedPending = false
   private var cancellables: Set<AnyCancellable> = []
 
   init(store: DockStore, onUseNativeDock: @escaping () -> Void) {
@@ -278,12 +280,30 @@ final class DockController {
     popover.close()
     store.reload()
     store.refreshWindows()
+    feedPending = true
+    store.refreshAgents { [weak self] in
+      self?.feedPending = false
+      self?.syncCard()
+    }
     maxWidth = target.frame.width - 24
     scene.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     syncScene()
     scene.show()
     panel.setFrame(frame(on: target), display: false)
     panel.orderFrontRegardless()
+    if !panel.isOnActiveSpace {
+      // The window server can drop the long-lived panel from every Space
+      // (see PopoverController.present); only a new window joins them again.
+      // Until then the dock is invisible while the card, a new window each
+      // time, still shows.
+      DockStore.log("the dock panel left the active Space; replacing it")
+      panel.orderOut(nil)
+      panel.contentView = nil
+      panel = makeOverlayPanel()
+      panel.contentView = host
+      panel.setFrame(frame(on: target), display: false)
+      panel.orderFrontRegardless()
+    }
     syncCard()
     if pointerTimer == nil {
       pointerTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -408,11 +428,12 @@ final class DockController {
     syncCard()
   }
 
-  /// Shows the attention card while the dock is out, nothing is dragged, and
-  /// no callout is open.
+  /// Shows the attention card while the dock is out and on this Space, the
+  /// feed has been rewritten since it came up, nothing is dragged, and no
+  /// callout is open.
   private func syncCard() {
-    guard let screen, popover.frame == nil, !scene.isLifted,
-          let session = store.waitingSessions.first
+    guard let screen, !feedPending, panel.isVisible, panel.isOnActiveSpace, popover.frame == nil,
+          !scene.isLifted, let session = store.waitingSessions.first
     else {
       card.hide()
       return

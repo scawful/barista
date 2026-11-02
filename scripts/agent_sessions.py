@@ -25,6 +25,9 @@ Usage:
                                     the sessions and per-app counts of those
                                     that need you for the Barista dock
                                     (BARISTA_AGENT_BADGES_FILE)
+  agent_sessions.py badges          write only the dock's file; the dock runs
+                                    this when it comes up, so its question
+                                    card never waits on the bar's refresh
   agent_sessions.py focus <target>  jump to a session (app:<bundle>,
                                     pid:<pid>, cursor:<path>)
 """
@@ -595,6 +598,9 @@ def main(argv: list[str]) -> int:
             apply(snap)
         except (OSError, subprocess.SubprocessError) as error:
             print(f"agent_sessions: could not update the bar: {error}", file=sys.stderr)
+        return 0
+    if command == "badges":
+        write_badges(snapshot())
         return 0
     if command == "focus" and len(argv) > 2:
         return focus(argv[2])

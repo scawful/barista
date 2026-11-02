@@ -26,7 +26,8 @@ struct AgentSnapshot: Equatable {
 }
 
 /// Agent sessions written by `scripts/agent_sessions.py apply` each time the
-/// bar's agents widget refreshes (every 30 s).
+/// bar's agents widget refreshes (every 30 s, and only while the bar is
+/// drawn), and by its `badges` command each time the dock comes up.
 enum AgentFeed {
   /// An older file means the widget stopped refreshing, so it is ignored.
   static let staleAfter: TimeInterval = 600
@@ -37,6 +38,16 @@ enum AgentFeed {
     }
     return BaristaAppearance.stateURL.deletingLastPathComponent()
       .appendingPathComponent("cache/agent_sessions.json")
+  }()
+
+  /// `scripts/agent_sessions.py`, whose `badges` command rewrites `url`
+  /// without touching the bar.
+  static let script: String = {
+    if let path = ProcessInfo.processInfo.environment["BARISTA_AGENT_SESSIONS_SCRIPT"], !path.isEmpty {
+      return path
+    }
+    return BaristaAppearance.stateURL.deletingLastPathComponent()
+      .appendingPathComponent("scripts/agent_sessions.py").path
   }()
 
   static func load(now: Date = Date()) -> AgentSnapshot {

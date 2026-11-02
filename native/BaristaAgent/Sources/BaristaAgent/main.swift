@@ -42,6 +42,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
   static private(set) var shared: AgentDelegate?
   let store = DockStore()
   private lazy var dock = DockController(store: store, onUseNativeDock: useNativeDock)
+  private let menus = BarMenuNavigator()
   private var viewerSettings: AnyCancellable?
 
   override init() {
@@ -102,6 +103,9 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
       guard let app else { return DockStore.log("new window: no running app named \(name)") }
       self?.store.newWindow(app)
     }
+    DistributedNotificationCenter.default().addObserver(forName: menusRequest, object: nil, queue: .main) { [weak self] _ in
+      self?.menus.toggle()
+    }
     BrowserController.shared.dockPlaces = { [weak self] in
       guard let self else { return [] }
       return (self.store.pinned + self.store.others).flatMap { [$0] + $0.descendants }
@@ -124,6 +128,9 @@ let collectionRequest = Notification.Name("dev.barista.agent.collection")
 /// `barista-agent new-window APP` presses APP's own New Window item; its
 /// object is the app's name, bundle identifier, or pid.
 let newWindowRequest = Notification.Name("dev.barista.agent.new-window")
+/// `barista-agent menus` starts moving through the bar's menus with the
+/// arrow keys, or ends it; it carries no object.
+let menusRequest = Notification.Name("dev.barista.agent.menus")
 
 /// Hands a request to the running agent.
 func post(_ name: Notification.Name, _ object: String) {
@@ -161,8 +168,10 @@ case "collection" where arguments.count == 2:
   post(collectionRequest, arguments[1])
 case "new-window" where arguments.count == 2:
   post(newWindowRequest, arguments[1])
+case "menus" where arguments.count == 1:
+  post(menusRequest, "")
 default:
   FileHandle.standardError.write(Data(("usage: barista-agent [run] | {view|browse|open|gallery} PATH | view PATH... "
-    + "| group TITLE | collection NAME | new-window APP\n").utf8))
+    + "| group TITLE | collection NAME | new-window APP | menus\n").utf8))
   exit(2)
 }

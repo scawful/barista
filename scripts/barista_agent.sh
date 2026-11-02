@@ -191,8 +191,13 @@ case "${1:-}" in
     [ -x "$BINARY" ] || { echo "barista-agent is not built; run: $0 build" >&2; exit 1; }
     "$BINARY" new-window "$2"
     ;;
+  menus)
+    # The arrow keys move through the bar's popups until Esc; again ends it.
+    [ -x "$BINARY" ] || { echo "barista-agent is not built; run: $0 build" >&2; exit 1; }
+    "$BINARY" menus
+    ;;
   *)
-    echo "Usage: $0 {build|dock {barista|native|toggle|status}|restart|view PATH|browse PATH|open PATH|group TITLE|gallery PATH|collection NAME|new-window APP}" >&2
+    echo "Usage: $0 {build|dock {barista|native|toggle|status}|restart|view PATH|browse PATH|open PATH|group TITLE|gallery PATH|collection NAME|new-window APP|menus}" >&2
     exit 1
     ;;
 esac

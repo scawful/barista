@@ -56,6 +56,11 @@
           "action": "toggle_keyboard_overlay"
         },
         {
+          "keys": "⌘⌥M",
+          "description": "Navigate Bar Menus",
+          "action": "navigate_menus"
+        },
+        {
           "keys": "⌘⌥R",
           "description": "Reload SketchyBar",
           "action": "reload_sketchybar"

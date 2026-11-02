@@ -601,6 +601,13 @@ shortcuts.global = {
   },
   {
     mods = {"cmd", "alt"},
+    key = "m",
+    action = "navigate_menus",
+    desc = "Navigate Bar Menus",
+    symbol = "⌘⌥M"
+  },
+  {
+    mods = {"cmd", "alt"},
     key = "r",
     action = "reload_sketchybar",
     desc = "Reload SketchyBar",
@@ -741,6 +748,8 @@ shortcuts.actions = setmetatable({
   open_control_panel = script_action(CONFIG_DIR .. "/bin/open_control_panel.sh", "--tab", "home"),
   toggle_control_center = shortcuts.build_control_center_toggle_command(shortcuts.resolve_control_center_item_name(runtime_state)),
   toggle_keyboard_overlay = script_action(CONFIG_DIR .. "/scripts/open_keyboard_overlay.sh"),
+  -- The arrow keys move through the bar's popups until Esc (barista-agent).
+  navigate_menus = script_action(CONFIG_DIR .. "/scripts/barista_agent.sh", "menus"),
 
   -- Yabai
   toggle_yabai_shortcuts = script_action(SCRIPTS_DIR .. "/toggle_shortcuts.sh", "toggle"),

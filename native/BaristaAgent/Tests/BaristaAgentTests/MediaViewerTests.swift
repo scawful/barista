@@ -114,13 +114,21 @@ final class MediaViewerTests: XCTestCase {
     XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent("shot.png"), encoding: .utf8), "other")
   }
 
+  func testWindowsKeepClearOfTheBarYabaiPadsFor() {
+    XCTAssertEqual(Yabai.barInsets("all:28:0\n", onMain: false).top, 28)
+    XCTAssertEqual(Yabai.barInsets("main:28:4", onMain: true).bottom, 4)
+    XCTAssertEqual(Yabai.barInsets("main:28:0", onMain: false).top, 0, "only the main display has the bar")
+    XCTAssertEqual(Yabai.barInsets("off:0:0", onMain: true).top, 0)
+    XCTAssertEqual(Yabai.barInsets("", onMain: true).top, 0, "yabai didn't answer")
+  }
+
   func testPixelArtOpensAtAWholeMultipleAndZoomsInWholeSteps() throws {
     XCTAssertEqual(ViewerController.natural(CGSize(width: 256, height: 224), in: CGSize(width: 1512, height: 945),
-                                            pixelated: true), CGSize(width: 512, height: 448))
+                                            pixelated: true), CGSize(width: 1024, height: 896))
     XCTAssertEqual(ViewerController.natural(CGSize(width: 256, height: 224), in: CGSize(width: 1512, height: 945),
-                                            pixelated: false), CGSize(width: 256, height: 224))
+                                            pixelated: false), CGSize(width: 1080, height: 945), "fills the screen")
     XCTAssertEqual(ViewerController.natural(CGSize(width: 4000, height: 2000), in: CGSize(width: 1000, height: 1000),
-                                            pixelated: false), CGSize(width: 700, height: 350))
+                                            pixelated: false), CGSize(width: 1000, height: 500))
 
     let sprite = folder.appendingPathComponent("sprite.png")
     try png(Array(repeating: 0x00FF00, count: 16 * 16), width: 16, height: 16).write(to: sprite)
@@ -132,6 +140,33 @@ final class MediaViewerTests: XCTestCase {
     media.magnify(by: 1)
     XCTAssertEqual(media.zoom, .focus(2, CGPoint(x: 0.5, y: 0.5)))
     XCTAssertEqual(requests, [CGSize(width: 32, height: 32)], "the window grows to the zoomed picture")
+  }
+
+  func testAPortraitMovieThatLoadedFirstOpensAndZoomsTall() async throws {
+    let source = folder.appendingPathComponent("tall.mov")
+    try await writeMovie(to: source, size: CGSize(width: 360, height: 640), seconds: 1)
+    let model = await MainActor.run { ViewerModel(url: source) }
+    // The size lands before any window can take it, as when yabai is slow to answer.
+    for _ in 0..<100 where await MainActor.run(body: { model.media?.size == nil }) {
+      try await Task.sleep(nanoseconds: 50_000_000)
+    }
+    let room = NSRect(x: 0, y: 30, width: 1920, height: 1050)
+    let (opening, zoomed) = await MainActor.run { () -> (CGSize, NSRect?) in
+      defer { model.stop() }
+      return (ViewerController.size(for: model, in: room.size),
+              ViewerController.zoomFrame(for: model, from: NSRect(x: 200, y: 400, width: 640, height: 360), in: room))
+    }
+    XCTAssertEqual(opening, CGSize(width: 590, height: 1050), "its own shape, not 16:9 with bars")
+    XCTAssertEqual(zoomed, NSRect(x: 225, y: 30, width: 590, height: 1050), "zoom fills the height, not the screen")
+  }
+
+  func testZoomFitsAPictureAtItsShapeAndKeepsItOnScreen() throws {
+    let tall = folder.appendingPathComponent("tall.jpg")
+    try write(CGSize(width: 300, height: 600), to: tall, type: "public.jpeg")
+    let model = ViewerModel(url: tall)
+    let room = NSRect(x: 0, y: 30, width: 1920, height: 1050)
+    let zoomed = ViewerController.zoomFrame(for: model, from: NSRect(x: 1700, y: 900, width: 300, height: 600), in: room)
+    XCTAssertEqual(zoomed, NSRect(x: 1395, y: 30, width: 525, height: 1050), "as tall as the room, pulled back on screen")
   }
 
   func testTilesFillTheWindowAndCenterAShortLastRow() {
@@ -347,6 +382,35 @@ final class MediaViewerTests: XCTestCase {
     try await Task.sleep(nanoseconds: 1_800_000_000)
     XCTAssertGreaterThan(player.rate, 0, "it started over at the end")
     XCTAssertLessThan(player.currentTime().seconds, 1)
+    await MainActor.run { media.stop() }
+  }
+
+  func testAMovieOutOfSightPlaysAgainWhenItsWindowShows() async throws {
+    let source = folder.appendingPathComponent("hidden.mov")
+    try await writeMovie(to: source, size: CGSize(width: 32, height: 32), seconds: 2)
+    let media = await MainActor.run { MediaState(url: source, kind: .video) }
+    let loaded = await MainActor.run { media.player }
+    let player = try XCTUnwrap(loaded)
+    await MainActor.run {
+      player.play()
+      media.pause()
+    }
+    XCTAssertEqual(player.rate, 0, "covered, or on another space")
+    await MainActor.run { media.resume() }
+    XCTAssertGreaterThan(player.rate, 0, "it shows again")
+
+    await MainActor.run {
+      media.suspend()
+      media.resume()
+    }
+    XCTAssertGreaterThan(player.rate, 0, "back from minimized")
+
+    await MainActor.run {
+      player.pause()
+      media.pause()
+      media.resume()
+    }
+    XCTAssertEqual(player.rate, 0, "one paused by hand stays paused")
     await MainActor.run { media.stop() }
   }
 

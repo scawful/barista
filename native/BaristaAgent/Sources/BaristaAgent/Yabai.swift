@@ -151,6 +151,16 @@ enum Yabai {
     return try? JSONDecoder().decode(T.self, from: data)
   }
 
+  /// The points yabai keeps clear for a bar on one display, from its
+  /// `external_bar` setting: "all:28:0" on every display, "main:28:0" on
+  /// the main one only, "off:0:0" on none.
+  static func barInsets(_ setting: String, onMain: Bool) -> (top: CGFloat, bottom: CGFloat) {
+    let parts = setting.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: ":")
+    guard parts.count == 3, parts[0] == "all" || (parts[0] == "main" && onMain),
+          let top = Double(parts[1]), let bottom = Double(parts[2]) else { return (0, 0) }
+    return (CGFloat(top), CGFloat(bottom))
+  }
+
   static let viewerRuleLabel = "barista-agent-viewer"
   static let settingsRuleLabel = "barista-agent-settings"
 

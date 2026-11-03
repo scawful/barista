@@ -502,6 +502,11 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
   private var saving = false
   private var suspended = false
   private var resumeAt: CMTime?
+  /// Its window is out of sight or minimized; a loop starting over waits.
+  private var outOfSight = false
+  /// The movie was playing when its window went out of sight, so it plays
+  /// again when the window shows.
+  private var playsWhenShown = false
   private var beforeCrop: Zoom?
   private var watcher: FileWatcher?
   private var endObserver: NSObjectProtocol?
@@ -621,8 +626,12 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
     watcher = nil
   }
 
+  /// Pauses a movie whose window went out of sight; `resume` plays it again.
   func pause() {
-    player?.pause()
+    outOfSight = true
+    guard let player, player.rate != 0 else { return }
+    playsWhenShown = true
+    player.pause()
   }
 
   /// Lets go of the pixels and the movie's decoder until `resume`, for a
@@ -630,8 +639,10 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
   func suspend() {
     guard !suspended else { return }
     suspended = true
+    outOfSight = true
     generation += 1
     if let player {
+      if player.rate != 0 { playsWhenShown = true }
       resumeAt = player.currentTime()
       player.pause()
       player.replaceCurrentItem(with: nil)
@@ -643,18 +654,25 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
     requested = 0
   }
 
+  /// The window shows again: back from `suspend`, and a movie `pause` or
+  /// `suspend` stopped plays again.
   func resume() {
-    guard suspended else { return }
-    suspended = false
-    guard let player else { return decode(limit: baseLimit) }
-    let item = AVPlayerItem(url: url)
-    if let trim {
-      item.reversePlaybackEndTime = trim.start
-      item.forwardPlaybackEndTime = trim.end
+    outOfSight = false
+    if suspended {
+      suspended = false
+      guard let player else { return decode(limit: baseLimit) }
+      let item = AVPlayerItem(url: url)
+      if let trim {
+        item.reversePlaybackEndTime = trim.start
+        item.forwardPlaybackEndTime = trim.end
+      }
+      player.replaceCurrentItem(with: item)
+      watchEnd(of: item)
+      if let resumeAt { player.seek(to: resumeAt, toleranceBefore: .zero, toleranceAfter: .zero) }
     }
-    player.replaceCurrentItem(with: item)
-    watchEnd(of: item)
-    if let resumeAt { player.seek(to: resumeAt, toleranceBefore: .zero, toleranceAfter: .zero) }
+    guard playsWhenShown else { return }
+    playsWhenShown = false
+    player?.play()
   }
 
   /// Under memory pressure: back to the pixels it opened with.
@@ -686,12 +704,20 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
     pan?(dx, dy)
   }
 
+  /// What a fitted window shows: the whole picture or movie, or the crop waiting to be saved.
+  private var fitted: CGRect { isVideo ? MediaEdit.whole : applied ?? MediaEdit.whole }
+
+  /// The shape of what a fitted window shows.
+  var shape: CGSize? {
+    guard let size else { return nil }
+    return CGSize(width: size.width * fitted.width, height: size.height * fitted.height)
+  }
+
   /// The whole picture, or the crop waiting to be saved, and the window takes its shape.
   func fit() {
-    guard let size else { return }
-    let region = isVideo ? MediaEdit.whole : applied ?? MediaEdit.whole
-    zoom = .region(region)
-    resize?(.sameWidth(CGSize(width: size.width * region.width, height: size.height * region.height)))
+    guard let shape else { return }
+    zoom = .region(fitted)
+    resize?(.sameWidth(shape))
   }
 
   func toggleActualSize() {
@@ -932,13 +958,17 @@ final class MediaState: ObservableObject, Identifiable, @unchecked Sendable {
     }
   }
 
-  /// Starts over from the trim's start, when movies loop.
+  /// Starts over from the trim's start, when movies loop; out of sight, it
+  /// waits for the window to show.
   private func ended() {
     guard ViewerPreferences.shared.loopsMovies, let player, let item = player.currentItem else { return }
     let start = item.reversePlaybackEndTime.isNumeric ? item.reversePlaybackEndTime : .zero
-    player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero) { [weak player] finished in
+    player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] finished in
       guard finished else { return }
-      DispatchQueue.main.async { player?.play() }
+      DispatchQueue.main.async {
+        guard let self, let player, self.player === player else { return }
+        if self.outOfSight { self.playsWhenShown = true } else { player.play() }
+      }
     }
   }
 
@@ -1641,9 +1671,9 @@ final class MoviePlayerView: AVPlayerView {
   /// still. A movie sharing its window zooms inside its tile only.
   @discardableResult
   func zoom(to scale: CGFloat, around anchor: NSPoint? = nil) -> Bool {
-    guard let media, let size = media.size, size.width > 0, size.height > 0, let scroll = zoomer,
-          let visible = (window?.screen ?? NSScreen.main)?.visibleFrame
+    guard let media, let size = media.size, size.width > 0, size.height > 0, let scroll = zoomer
     else { return false }
+    let visible = ViewerController.room(on: window?.screen ?? NSScreen.main)
     let scale = min(max(scale, MediaState.steps[0]), MediaState.steps[MediaState.steps.count - 1])
     // As big as the controller lets the window grow for this frame.
     let fits = min(visible.width / size.width, visible.height * 0.95 / size.height)
@@ -1968,9 +1998,9 @@ final class ImageScrollView: NSScrollView {
   /// so no black shows. False when the picture shares its window.
   @discardableResult
   func zoomWindow(to scale: CGFloat, around anchor: NSPoint? = nil) -> Bool {
-    guard ownsWindow, !frozen, let window, let size = imageView.image?.size, size.width > 0, size.height > 0,
-          var screen = (window.screen ?? NSScreen.main)?.visibleFrame
+    guard ownsWindow, !frozen, let window, let size = imageView.image?.size, size.width > 0, size.height > 0
     else { return false }
+    var screen = ViewerController.room(on: window.screen ?? NSScreen.main)
     let scale = min(max(scale, minMagnification), maxMagnification)
     let old = magnification
     let view = window.convertToScreen(convert(bounds, to: nil))

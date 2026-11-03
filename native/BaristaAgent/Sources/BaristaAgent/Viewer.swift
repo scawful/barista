@@ -39,9 +39,10 @@ enum ViewerKind: Equatable {
 /// the dock does not open a whole editor. yabai floats them by title (see
 /// `Yabai.ensureViewerRule`); macOS window tabbing is off, so each stays one
 /// window to the tiler.
-final class ViewerController {
+final class ViewerController: NSObject, NSWindowDelegate {
   static let shared = ViewerController()
   static let titleSuffix = " - Barista Viewer"
+  static let styleMask: NSWindow.StyleMask = [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView]
 
   private var windows: [NSWindow] = []
   private var models: [ObjectIdentifier: ViewerModel] = [:]
@@ -151,9 +152,12 @@ final class ViewerController {
 
   private func makeWindow(for model: ViewerModel) {
     Yabai.ensureViewerRule()
+    if let data = Yabai.run(["config", "external_bar"]), let setting = String(data: data, encoding: .utf8) {
+      Self.barSetting = setting
+    }
     let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.size(for: model)),
-                          styleMask: [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView],
-                          backing: .buffered, defer: false)
+                          styleMask: Self.styleMask, backing: .buffered, defer: false)
+    window.delegate = self
     window.isReleasedWhenClosed = false
     window.tabbingMode = .disallowed
     window.titlebarAppearsTransparent = true
@@ -181,7 +185,7 @@ final class ViewerController {
   }
 
   /// A minimized window lets go of its pixels and movies; one out of sight
-  /// pauses its movies.
+  /// pauses its movies until it shows again.
   private func observe(_ window: NSWindow, model: ViewerModel) {
     let center = NotificationCenter.default
     let watch = { (name: Notification.Name, action: @escaping (NSWindow, ViewerModel) -> Void) -> NSObjectProtocol in
@@ -254,6 +258,11 @@ final class ViewerController {
     model.onResize = { [weak self, weak window] request, locksShape in
       guard let self, let window else { return }
       self.resize(window, request, locksShape: locksShape)
+    }
+    // A movie that loaded while the window was made opened at its shape
+    // (see `size(for:)`) and keeps it, as `resize` would have it.
+    if model.gallery == nil, model.tiles.count == 1, let media = model.media, media.isVideo, let shape = media.size {
+      window.contentAspectRatio = shape
     }
     model.onTilesChanged = { [weak self, weak window, weak model] in
       guard let self, let window, let model, model.gallery == nil else { return }
@@ -460,8 +469,31 @@ final class ViewerController {
     return true
   }
 
-  private static func size(for model: ViewerModel) -> NSSize {
-    let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame.size ?? NSSize(width: 1280, height: 800)
+  /// yabai's `external_bar`, read as each window opens.
+  private static var barSetting = ""
+
+  /// The screen under the pointer, where a new window opens.
+  private static var pointerScreen: NSScreen? {
+    let pointer = NSEvent.mouseLocation
+    return NSScreen.screens.first { $0.frame.contains(pointer) } ?? NSScreen.main
+  }
+
+  /// The part of `screen` a window can use: its visible frame, less the
+  /// bar yabai keeps clear, which macOS doesn't count.
+  static func room(on screen: NSScreen?) -> NSRect {
+    guard let screen else { return NSRect(x: 0, y: 0, width: 1280, height: 800) }
+    let bar = Yabai.barInsets(barSetting, onMain: screen == NSScreen.screens.first)
+    var frame = screen.frame
+    frame.origin.y += bar.bottom
+    frame.size.height -= bar.top + bar.bottom
+    return screen.visibleFrame.intersection(frame)
+  }
+
+  /// A new window's content size. yabai answers `makeWindow` while the run
+  /// loop turns, so a movie may have loaded by now; its size has been sent
+  /// with no window to take it.
+  static func size(for model: ViewerModel, in visible: CGSize? = nil) -> NSSize {
+    let visible = visible ?? room(on: pointerScreen).size
     if model.gallery != nil {
       return NSSize(width: min(1200, visible.width * 0.85), height: min(860, visible.height * 0.85))
     }
@@ -469,8 +501,23 @@ final class ViewerController {
       return NSSize(width: min(760, visible.width * 0.6), height: min(900, visible.height * 0.8))
     }
     if model.tiles.count > 1 { return tiled(model.tiles.count, in: visible) }
-    if media.isVideo { return NSSize(width: 640, height: 360) }
+    // Most movies are 16:9; the window takes the movie's shape once it loads.
+    if media.isVideo { return natural(media.size ?? NSSize(width: 16, height: 9), in: visible, pixelated: false) }
     return natural(media.size ?? NSSize(width: 640, height: 480), in: visible, pixelated: media.pixelated)
+  }
+
+  /// Zoom, or a double-click on the top edge, fits the picture or movie to
+  /// the screen at its own shape; nil leaves macOS's whole-screen frame.
+  static func zoomFrame(for model: ViewerModel, from frame: NSRect, in visible: NSRect) -> NSRect? {
+    guard model.gallery == nil, model.tiles.count == 1, let media = model.media, let shape = media.shape
+    else { return nil }
+    let content = natural(shape, in: visible.size, pixelated: media.pixelated)
+    return self.frame(content, from: frame, in: visible)
+  }
+
+  func windowWillUseStandardFrame(_ window: NSWindow, defaultFrame newFrame: NSRect) -> NSRect {
+    guard let model = models[ObjectIdentifier(window)] else { return newFrame }
+    return Self.zoomFrame(for: model, from: window.frame, in: Self.room(on: window.screen ?? NSScreen.main)) ?? newFrame
   }
 
   /// Room for `count` tiles about 400 by 300 points each, up to most of the screen.
@@ -484,7 +531,8 @@ final class ViewerController {
   /// Several tiles share the window: it stops keeping one picture's shape
   /// and grows to fit them.
   private func retile(_ window: NSWindow, count: Int) {
-    guard count > 1, let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+    guard count > 1 else { return }
+    let visible = Self.room(on: window.screen ?? NSScreen.main)
     window.contentResizeIncrements = NSSize(width: 1, height: 1)
     let content = window.contentLayoutRect.size
     let wanted = Self.tiled(count, in: visible.size)
@@ -493,26 +541,30 @@ final class ViewerController {
     setContent(window, size, in: visible)
   }
 
-  /// A picture's opening size: its own up to 70% of the screen, shrunk to
-  /// fit when bigger. Pixel art grows by the biggest whole multiple that fits.
+  /// A picture's opening size: the biggest that fits the screen at its own
+  /// shape, as if its window's corner were double-clicked. Pixel art grows
+  /// by the biggest whole multiple that fits.
   static func natural(_ size: CGSize, in visible: CGSize, pixelated: Bool) -> CGSize {
     guard size.width > 0, size.height > 0 else { return CGSize(width: 640, height: 480) }
-    let room = min(visible.width * 0.7 / size.width, visible.height * 0.7 / size.height)
-    let scale = room >= 1 ? (pixelated ? room.rounded(.down) : 1) : room
-    return CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+    let room = min(visible.width / size.width, visible.height / size.height)
+    let scale = pixelated && room >= 1 ? room.rounded(.down) : room
+    return CGSize(width: (size.width * scale).rounded(.down), height: (size.height * scale).rounded(.down))
   }
 
-  /// Sizes the window's content for `request` on screen. A movie's window
-  /// keeps its shape; a zoom bigger than the screen leaves a picture's
-  /// window as big as the screen to pan in.
+  /// Sizes the window's content for `request` on screen. A new file fills
+  /// the screen; a movie's window keeps its shape; a zoom bigger than the
+  /// screen leaves a picture's window as big as the screen to pan in.
   private func resize(_ window: NSWindow, _ request: MediaState.Resize, locksShape: Bool) {
-    guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+    let visible = Self.room(on: window.screen ?? NSScreen.main)
     let shape: CGSize
     var content: CGSize
+    var height = visible.height * 0.95
     switch request {
     case .natural(let size):
       shape = size
-      content = Self.natural(size, in: visible.size, pixelated: false)
+      let pixelated = models[ObjectIdentifier(window)]?.media?.pixelated ?? false
+      content = Self.natural(size, in: visible.size, pixelated: pixelated)
+      height = visible.height
     case .sameWidth(let size):
       shape = size
       let width = window.contentLayoutRect.width
@@ -521,9 +573,9 @@ final class ViewerController {
       shape = size
       content = size
     }
-    let room = min(1, visible.width / content.width, visible.height * 0.95 / content.height)
+    let room = min(1, visible.width / content.width, height / content.height)
     if case .exact = request, !locksShape {
-      content = CGSize(width: min(content.width, visible.width), height: min(content.height, visible.height * 0.95))
+      content = CGSize(width: min(content.width, visible.width), height: min(content.height, height))
     } else {
       content = CGSize(width: content.width * room, height: content.height * room)
     }
@@ -535,25 +587,30 @@ final class ViewerController {
     setContent(window, content, in: visible)
   }
 
-  /// Keeps the window's top edge and center, on screen.
   private func setContent(_ window: NSWindow, _ content: CGSize, in visible: NSRect) {
-    var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: content))
-    frame.origin = NSPoint(x: window.frame.midX - frame.width / 2, y: window.frame.maxY - frame.height)
-    frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
-    frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
-    window.setFrame(frame, display: true, animate: false)
+    window.setFrame(Self.frame(content, from: window.frame, in: visible), display: true, animate: false)
+  }
+
+  /// A frame around `content` with `frame`'s top edge and center, kept on screen.
+  static func frame(_ content: CGSize, from frame: NSRect, in visible: NSRect) -> NSRect {
+    let size = NSWindow.frameRect(forContentRect: NSRect(origin: .zero, size: content), styleMask: styleMask).size
+    var moved = NSRect(origin: .zero, size: size)
+    moved.origin = NSPoint(x: frame.midX - size.width / 2, y: frame.maxY - size.height)
+    moved.origin.x = min(max(moved.minX, visible.minX), visible.maxX - size.width)
+    moved.origin.y = min(max(moved.minY, visible.minY), visible.maxY - size.height)
+    return moved
   }
 
   /// Centered on the screen under the pointer, each new window a step down
-  /// and right of the last so they don't stack exactly.
+  /// and right of the last so they don't stack exactly, and kept on it.
   private func place(_ window: NSWindow) {
-    let pointer = NSEvent.mouseLocation
-    let screen = NSScreen.screens.first { $0.frame.contains(pointer) } ?? NSScreen.main
-    guard let visible = screen?.visibleFrame else { return window.center() }
+    guard let screen = Self.pointerScreen else { return window.center() }
+    let visible = Self.room(on: screen)
     let offset = CGFloat(windows.count % 6) * 24
     let size = window.frame.size
-    window.setFrameOrigin(NSPoint(x: visible.midX - size.width / 2 + offset,
-                                  y: visible.midY - size.height / 2 - offset))
+    let x = visible.midX - size.width / 2 + offset, y = visible.midY - size.height / 2 - offset
+    window.setFrameOrigin(NSPoint(x: min(max(x, visible.minX), visible.maxX - size.width),
+                                  y: min(max(y, visible.minY), visible.maxY - size.height)))
   }
 }
 
